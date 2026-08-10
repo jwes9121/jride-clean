@@ -699,47 +699,73 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const { data: event, error: eventError } = await admin
-        .from("driver_availability_ping_events")
-        .insert({
-          ping_id: ping.id,
-          event_type: "violation_waived",
-          driver_id: ping.driver_id,
-          device_id: null,
-          metadata: {
-            reason: waiverReason,
-            ...actorMetadata,
-          },
-        })
-        .select("id,ping_id,event_type,recorded_at,driver_id,device_id,metadata")
-        .single();
+      const { data: waiver, error: waiverError } = await admin.rpc(
+        "jride_waive_driver_availability_ping",
+        {
+          p_ping_id: ping.id,
+          p_admin_id: isUuid(authorization.id)
+            ? authorization.id
+            : null,
+          p_admin_email: authorization.email || null,
+          p_admin_name: authorization.name || null,
+          p_admin_role: authorization.role,
+          p_reason: waiverReason,
+        }
+      );
 
-      if (eventError) {
-        const duplicate =
-          String(eventError.code || "") === "23505" ||
-          String(eventError.message || "").toLowerCase().includes("duplicate");
+      if (waiverError) {
         return NextResponse.json(
           {
             ok: false,
-            code: duplicate
-              ? "VIOLATION_ALREADY_WAIVED"
-              : "VIOLATION_WAIVER_FAILED",
-            error: duplicate
-              ? "This Duty Check violation has already been waived."
-              : eventError.message,
+            code: "VIOLATION_WAIVER_FAILED",
+            error: waiverError.message,
           },
-          { status: duplicate ? 409 : 500 }
+          { status: 500 }
         );
+      }
+
+      const waiverCode = String(waiver?.code || "").trim();
+      const successfulWaiverCodes = new Set([
+        "WAIVED_AND_RESUMED",
+        "WAIVED_AFTER_LATE_ACK",
+        "WAIVED_LEGACY",
+        "ALREADY_WAIVED",
+      ]);
+
+      if (successfulWaiverCodes.has(waiverCode)) {
+        return NextResponse.json(
+          {
+            ...waiver,
+            ok: true,
+            action: "violation_waived",
+          },
+          {
+            status: waiverCode === "ALREADY_WAIVED" ? 200 : 201,
+          }
+        );
+      }
+
+      if (waiverCode === "PING_NOT_FOUND") {
+        return NextResponse.json(waiver, { status: 404 });
+      }
+
+      if (
+        waiverCode === "PING_NOT_WAIVABLE" ||
+        waiverCode === "INVALID_WAIVER_REASON"
+      ) {
+        return NextResponse.json(waiver, { status: 409 });
       }
 
       return NextResponse.json(
         {
-          ok: true,
-          action: "violation_waived",
-          ping,
-          event,
+          ...waiver,
+          ok: false,
+          error:
+            waiver?.message ||
+            waiver?.code ||
+            "Unable to waive Duty Check violation.",
         },
-        { status: 201 }
+        { status: 400 }
       );
     }
 
