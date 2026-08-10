@@ -538,15 +538,33 @@ function TreeDiagram({
 
       if (!viewport || !root) return;
 
-      const rootCenter =
-        (root.offsetLeft + root.offsetWidth / 2) * zoom;
+      const viewportRect = viewport.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+
+      // offsetLeft is relative to the root card's nearest offset parent, not
+      // the full scrollable tree canvas. Center by measuring the root's
+      // current visual position inside the viewport, then applying only the
+      // required scroll delta.
+      const rootCenterX = rootRect.left + rootRect.width / 2;
+      const viewportCenterX =
+        viewportRect.left + viewport.clientWidth / 2;
+      const deltaX = rootCenterX - viewportCenterX;
+
+      const maxScrollLeft = Math.max(
+        0,
+        viewport.scrollWidth - viewport.clientWidth
+      );
+      const targetScrollLeft = Math.min(
+        maxScrollLeft,
+        Math.max(0, viewport.scrollLeft + deltaX)
+      );
 
       viewport.scrollTo({
-        left: Math.max(0, rootCenter - viewport.clientWidth / 2),
+        left: targetScrollLeft,
         behavior,
       });
     },
-    [zoom]
+    []
   );
 
   React.useLayoutEffect(() => {
