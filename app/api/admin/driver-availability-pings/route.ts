@@ -126,25 +126,60 @@ const DUTY_CHECK_STATE: Record<
     badge_class: "border-amber-200 bg-amber-50 text-amber-800",
     incentive_impact: "None",
   },
-  waiting_response: {
-    label: "WAITING RESPONSE",
+  alerted_waiting_response: {
+    label: "ALERTED - WAITING RESPONSE",
     badge_class: "border-sky-200 bg-sky-50 text-sky-800",
     incentive_impact: "None",
   },
-  expired_not_delivered: {
-    label: "EXPIRED - NOT DELIVERED",
-    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
-    incentive_impact: "None",
-  },
-  expired_no_response: {
-    label: "EXPIRED - NO RESPONSE",
-    badge_class: "border-rose-200 bg-rose-50 text-rose-800",
-    incentive_impact: "None - observation mode",
-  },
-  acknowledged: {
-    label: "ACKNOWLEDGED",
+  acknowledged_on_time: {
+    label: "ACKNOWLEDGED ON TIME",
     badge_class: "border-emerald-200 bg-emerald-50 text-emerald-800",
     incentive_impact: "None",
+  },
+  acknowledged_late: {
+    label: "ACKNOWLEDGED LATE",
+    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
+    incentive_impact: "Miss retained; frozen interval excluded unless waived",
+  },
+  missed_timer_paused: {
+    label: "MISSED - TIMER PAUSED",
+    badge_class: "border-rose-300 bg-rose-100 text-rose-900",
+    incentive_impact: "Counts as miss; eligible duty time paused",
+  },
+  missed_resolved: {
+    label: "MISSED - RESOLVED",
+    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
+    incentive_impact: "Review resolution; missed check may still count",
+  },
+  waived: {
+    label: "WAIVED",
+    badge_class: "border-emerald-300 bg-emerald-100 text-emerald-900",
+    incentive_impact: "Excluded from missed-check ladder",
+  },
+  expired_not_alerted: {
+    label: "EXPIRED - NOT ALERTED",
+    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
+    incentive_impact: "None - device alert was not confirmed",
+  },
+  waiting_response: {
+    label: "LEGACY - WAITING RESPONSE",
+    badge_class: "border-sky-200 bg-sky-50 text-sky-800",
+    incentive_impact: "None - legacy observation mode",
+  },
+  expired_not_delivered: {
+    label: "LEGACY - NOT DELIVERED",
+    badge_class: "border-orange-200 bg-orange-50 text-orange-800",
+    incentive_impact: "None - legacy observation mode",
+  },
+  expired_no_response: {
+    label: "LEGACY - EXPIRED NO RESPONSE",
+    badge_class: "border-rose-200 bg-rose-50 text-rose-800",
+    incentive_impact: "None - legacy observation mode",
+  },
+  acknowledged: {
+    label: "LEGACY - ACKNOWLEDGED",
+    badge_class: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    incentive_impact: "None - legacy observation mode",
   },
   cancelled: {
     label: "CANCELLED",
@@ -153,11 +188,56 @@ const DUTY_CHECK_STATE: Record<
   },
 };
 
-function deriveDutyCheckState(ping: any, wasFetched: boolean, nowMs: number) {
+function deriveDutyCheckState(
+  ping: any,
+  wasFetched: boolean,
+  nowMs: number,
+  wasWaived: boolean
+) {
   const rawStatus = String(ping?.status || "").trim().toLowerCase();
+  const lifecycleVersion = Number(ping?.lifecycle_version || 1);
   let code: keyof typeof DUTY_CHECK_STATE;
 
-  if (rawStatus === "acknowledged") {
+  if (wasWaived) {
+    code = "waived";
+  } else if (lifecycleVersion >= 2) {
+    const resolutionKind = String(ping?.resolution_kind || "")
+      .trim()
+      .toLowerCase();
+    const responseResult = String(ping?.response_result || "")
+      .trim()
+      .toLowerCase();
+
+    if (rawStatus === "acknowledged") {
+      code = "acknowledged_on_time";
+    } else if (rawStatus === "cancelled") {
+      code =
+        resolutionKind === "delivery_expired_not_alerted" ||
+        resolutionKind === "delivery_expired_not_presented"
+          ? "expired_not_alerted"
+          : "cancelled";
+    } else if (rawStatus === "expired") {
+      if (
+        responseResult === "accepted_late" ||
+        Boolean(ping?.late_acknowledged_at)
+      ) {
+        code = "acknowledged_late";
+      } else if (
+        Boolean(ping?.requires_late_ack) &&
+        !ping?.timer_resumed_at
+      ) {
+        code = "missed_timer_paused";
+      } else {
+        code = "missed_resolved";
+      }
+    } else if (rawStatus === "pending") {
+      code = ping?.alerted_at
+        ? "alerted_waiting_response"
+        : "pending_delivery";
+    } else {
+      code = "cancelled";
+    }
+  } else if (rawStatus === "acknowledged") {
     code = "acknowledged";
   } else if (rawStatus === "cancelled") {
     code = "cancelled";
@@ -310,7 +390,7 @@ export async function GET(request: NextRequest) {
     let pingQuery = admin
       .from("driver_availability_pings")
       .select(
-        "id,driver_id,status,created_at,expires_at,first_seen_at,last_fetched_at,fetch_count,responded_at,expired_at,cancelled_at,created_by,creation_source,response_device_id,response_http_received_at,response_result,notes"
+        "id,driver_id,status,created_at,expires_at,first_seen_at,last_fetched_at,fetch_count,responded_at,expired_at,cancelled_at,created_by,creation_source,response_device_id,response_http_received_at,response_result,notes,lifecycle_version,response_window_seconds,delivery_expires_at,alerted_at,alerted_device_id,presented_at,presented_device_id,response_expires_at,requires_late_ack,late_acknowledged_at,timer_frozen_at,timer_resumed_at,resolution_kind"
       )
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -395,13 +475,35 @@ export async function GET(request: NextRequest) {
         online_status: driver.online_status || "unknown",
         location_updated_at: driver.location_updated_at || null,
         response_seconds: differenceSeconds(
-          ping.first_seen_at || ping.created_at,
+          Number(ping.lifecycle_version || 1) >= 2
+            ? ping.alerted_at ||
+                ping.presented_at ||
+                ping.first_seen_at ||
+                ping.created_at
+            : ping.first_seen_at || ping.created_at,
           ping.responded_at
         ),
         fetch_delay_seconds: differenceSeconds(
           ping.created_at,
           ping.first_seen_at
         ),
+        alert_delay_seconds: differenceSeconds(
+          ping.created_at,
+          ping.alerted_at
+        ),
+        presentation_delay_seconds: differenceSeconds(
+          ping.alerted_at || ping.first_seen_at,
+          ping.presented_at
+        ),
+        frozen_seconds: ping.timer_frozen_at
+          ? differenceSeconds(
+              ping.timer_frozen_at,
+              ping.timer_resumed_at ||
+                (ping.requires_late_ack
+                  ? new Date(nowMs).toISOString()
+                  : null)
+            )
+          : null,
         was_fetched: wasFetched,
         events,
         manual_response: manualResponseEvent
@@ -424,7 +526,12 @@ export async function GET(request: NextRequest) {
               admin_name: waiverEvent.metadata?.admin_name || null,
             }
           : null,
-        duty_check_state: deriveDutyCheckState(ping, wasFetched, nowMs),
+        duty_check_state: deriveDutyCheckState(
+          ping,
+          wasFetched,
+          nowMs,
+          Boolean(waiverEvent)
+        ),
       };
     });
 
@@ -454,19 +561,48 @@ export async function GET(request: NextRequest) {
 
     const counts = {
       total: rows.length,
+      lifecycle_v1: rows.filter(
+        (row: any) => Number(row.lifecycle_version || 1) === 1
+      ).length,
+      lifecycle_v2: rows.filter(
+        (row: any) => Number(row.lifecycle_version || 1) >= 2
+      ).length,
       pending_delivery: rows.filter(
         (row: any) => row.duty_check_state.code === "pending_delivery"
       ).length,
-      waiting_response: rows.filter(
+      alerted_waiting_response: rows.filter(
+        (row: any) =>
+          row.duty_check_state.code === "alerted_waiting_response"
+      ).length,
+      acknowledged_on_time: rows.filter(
+        (row: any) =>
+          row.duty_check_state.code === "acknowledged_on_time"
+      ).length,
+      acknowledged_late: rows.filter(
+        (row: any) => row.duty_check_state.code === "acknowledged_late"
+      ).length,
+      missed_timer_paused: rows.filter(
+        (row: any) => row.duty_check_state.code === "missed_timer_paused"
+      ).length,
+      missed_resolved: rows.filter(
+        (row: any) => row.duty_check_state.code === "missed_resolved"
+      ).length,
+      waived: rows.filter(
+        (row: any) => row.duty_check_state.code === "waived"
+      ).length,
+      expired_not_alerted: rows.filter(
+        (row: any) => row.duty_check_state.code === "expired_not_alerted"
+      ).length,
+      legacy_waiting_response: rows.filter(
         (row: any) => row.duty_check_state.code === "waiting_response"
       ).length,
-      acknowledged: rows.filter(
+      legacy_acknowledged: rows.filter(
         (row: any) => row.duty_check_state.code === "acknowledged"
       ).length,
-      expired_not_delivered: rows.filter(
+      legacy_expired_not_delivered: rows.filter(
         (row: any) => row.duty_check_state.code === "expired_not_delivered"
       ).length,
-      expired_no_response: rows.filter(
+      legacy_expired_no_response: rows.filter(
         (row: any) => row.duty_check_state.code === "expired_no_response"
       ).length,
       cancelled: rows.filter(
@@ -478,7 +614,11 @@ export async function GET(request: NextRequest) {
 
     const acknowledgedRows = rows.filter(
       (row: any) =>
-        row.duty_check_state.code === "acknowledged" &&
+        [
+          "acknowledged",
+          "acknowledged_on_time",
+          "acknowledged_late",
+        ].includes(row.duty_check_state.code) &&
         typeof row.response_seconds === "number"
     );
 
@@ -492,9 +632,14 @@ export async function GET(request: NextRequest) {
           )
         : null;
 
+    const acknowledgedCount =
+      counts.legacy_acknowledged +
+      counts.acknowledged_on_time +
+      counts.acknowledged_late;
+
     const acknowledgementRate =
       counts.total > 0
-        ? Math.round((counts.acknowledged / counts.total) * 1000) / 10
+        ? Math.round((acknowledgedCount / counts.total) * 1000) / 10
         : 0;
 
     const towns = Array.from(
@@ -508,6 +653,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       observation_mode: true,
+      send_lifecycle_version: 1,
+      v2_display_enabled: true,
+      incentive_enforcement_enabled: false,
       generated_at: new Date().toISOString(),
       summary: {
         ...counts,

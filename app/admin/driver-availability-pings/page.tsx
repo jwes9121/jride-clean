@@ -26,6 +26,19 @@ type DashboardRow = {
   status: string;
   created_at: string;
   expires_at: string;
+  lifecycle_version: number;
+  response_window_seconds: number;
+  delivery_expires_at: string | null;
+  alerted_at: string | null;
+  alerted_device_id: string | null;
+  presented_at: string | null;
+  presented_device_id: string | null;
+  response_expires_at: string | null;
+  requires_late_ack: boolean;
+  late_acknowledged_at: string | null;
+  timer_frozen_at: string | null;
+  timer_resumed_at: string | null;
+  resolution_kind: string | null;
   first_seen_at: string | null;
   last_fetched_at: string | null;
   fetch_count: number;
@@ -36,6 +49,9 @@ type DashboardRow = {
   notes: string | null;
   response_seconds: number | null;
   fetch_delay_seconds: number | null;
+  alert_delay_seconds: number | null;
+  presentation_delay_seconds: number | null;
+  frozen_seconds: number | null;
   was_fetched: boolean;
   manual_response: {
     recorded_at: string;
@@ -63,11 +79,20 @@ type DashboardRow = {
 
 type Summary = {
   total: number;
+  lifecycle_v1: number;
+  lifecycle_v2: number;
   pending_delivery: number;
-  waiting_response: number;
-  acknowledged: number;
-  expired_not_delivered: number;
-  expired_no_response: number;
+  alerted_waiting_response: number;
+  acknowledged_on_time: number;
+  acknowledged_late: number;
+  missed_timer_paused: number;
+  missed_resolved: number;
+  waived: number;
+  expired_not_alerted: number;
+  legacy_waiting_response: number;
+  legacy_acknowledged: number;
+  legacy_expired_not_delivered: number;
+  legacy_expired_no_response: number;
   cancelled: number;
   fetched: number;
   never_fetched: number;
@@ -77,11 +102,20 @@ type Summary = {
 
 const EMPTY_SUMMARY: Summary = {
   total: 0,
+  lifecycle_v1: 0,
+  lifecycle_v2: 0,
   pending_delivery: 0,
-  waiting_response: 0,
-  acknowledged: 0,
-  expired_not_delivered: 0,
-  expired_no_response: 0,
+  alerted_waiting_response: 0,
+  acknowledged_on_time: 0,
+  acknowledged_late: 0,
+  missed_timer_paused: 0,
+  missed_resolved: 0,
+  waived: 0,
+  expired_not_alerted: 0,
+  legacy_waiting_response: 0,
+  legacy_acknowledged: 0,
+  legacy_expired_not_delivered: 0,
+  legacy_expired_no_response: 0,
   cancelled: 0,
   fetched: 0,
   never_fetched: 0,
@@ -350,9 +384,11 @@ export default function DriverAvailabilityPingsPage() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900">
-                OBSERVATION MODE - Duty Checks are recorded. No incentive
-                penalties are currently applied. Expired checks will NOT
-                affect rewards until enforcement is enabled.
+                PRODUCTION SEND REMAINS LEGACY OBSERVATION MODE - Normal
+                dashboard sends still create lifecycle v1 checks and do not
+                affect incentives. Lifecycle v2 records are displayed with
+                their real alert, timer, missed-check, late-ack, and waiver
+                state while the Driver APK rollout is being completed.
               </div>
               <h1 className="mt-2 text-2xl font-bold text-slate-950 md:text-3xl">
                 Driver Duty Check
@@ -387,7 +423,7 @@ export default function DriverAvailabilityPingsPage() {
 
         <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-widest text-amber-800">
-            Send controlled Duty Check
+            Send controlled Duty Check - legacy v1
           </div>
 
           <div className="mt-3 grid gap-4 lg:grid-cols-[1.4fr_1fr_auto]">
@@ -489,39 +525,74 @@ export default function DriverAvailabilityPingsPage() {
           ) : null}
 
           <div className="mt-3 text-xs text-amber-900">
-            Fixed response window: 180 seconds. Duplicate pending checks are
-            rejected. Offline drivers cannot be selected.
+            Normal dashboard sends remain lifecycle v1 and observation-only.
+            Lifecycle v2 is display-only here until the new Driver APK is
+            deployed and capability-gated. Fixed response window: 180 seconds.
+            Duplicate pending checks are rejected. Offline drivers cannot be
+            selected.
           </div>
         </section>
 
         <section className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <Card label="Checks sent" value={summary.total} />
-          <Card label="Pending delivery" value={summary.pending_delivery} />
-          <Card label="Waiting response" value={summary.waiting_response} />
           <Card
-            label="Acknowledged"
-            value={summary.acknowledged}
+            label="Checks sent"
+            value={summary.total}
             detail={
-              summary.acknowledgement_rate_percent + "% response rate"
+              "V1: " + summary.lifecycle_v1 + " | V2: " + summary.lifecycle_v2
+            }
+          />
+          <Card label="Pending delivery" value={summary.pending_delivery} />
+          <Card
+            label="V2 alerted"
+            value={summary.alerted_waiting_response}
+            detail="Notification posted; response timer running"
+          />
+          <Card
+            label="On-time acknowledgements"
+            value={summary.acknowledged_on_time}
+          />
+          <Card
+            label="Late acknowledgements"
+            value={summary.acknowledged_late}
+            detail="Miss retained unless waived"
+          />
+          <Card
+            label="Timer paused"
+            value={summary.missed_timer_paused}
+            detail="Unresolved missed lifecycle-v2 checks"
+          />
+          <Card
+            label="Waived"
+            value={summary.waived}
+            detail="Excluded from the missed-check ladder"
+          />
+          <Card
+            label="V2 not alerted"
+            value={summary.expired_not_alerted}
+            detail="No confirmed device alert; no incentive impact"
+          />
+          <Card
+            label="Legacy waiting"
+            value={summary.legacy_waiting_response}
+            detail="Lifecycle v1 observation mode"
+          />
+          <Card
+            label="Legacy acknowledged"
+            value={summary.legacy_acknowledged}
+            detail={
+              summary.acknowledgement_rate_percent + "% overall response rate"
             }
           />
           <Card
-            label="Not delivered"
-            value={summary.expired_not_delivered}
-            detail="Device never fetched - no incentive impact"
+            label="Legacy expired"
+            value={summary.legacy_expired_no_response}
+            detail="Lifecycle v1 observation only"
           />
-          <Card
-            label="Missed check"
-            value={summary.expired_no_response}
-            detail="Delivered, no response - counts toward incentives"
-          />
-          <Card label="Fetched" value={summary.fetched} />
-          <Card label="Never fetched" value={summary.never_fetched} />
           <Card label="Cancelled" value={summary.cancelled} />
           <Card
             label="Average response"
             value={duration(summary.average_response_seconds)}
-            detail="Measured from first device fetch"
+            detail="V2 from alert; V1 from first fetch"
           />
         </section>
 
@@ -626,9 +697,9 @@ export default function DriverAvailabilityPingsPage() {
                     <th className="p-3 text-left">Driver</th>
                     <th className="p-3 text-left">Town / vehicle</th>
                     <th className="p-3 text-left">Duty Check</th>
-                    <th className="p-3 text-left">Created / expires</th>
-                    <th className="p-3 text-left">Device fetch</th>
-                    <th className="p-3 text-left">Response</th>
+                    <th className="p-3 text-left">Created / deadlines</th>
+                    <th className="p-3 text-left">Delivery / presentation</th>
+                    <th className="p-3 text-left">Response / timer</th>
                     <th className="p-3 text-left">Device / notes</th>
                   </tr>
                 </thead>
@@ -680,21 +751,29 @@ export default function DriverAvailabilityPingsPage() {
                       </td>
 
                       <td className="p-3">
-                        <span
-                          className={
-                            "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold " +
-                            row.duty_check_state.badge_class
-                          }
-                        >
-                          {row.duty_check_state.label}
-                        </span>
-                        <div className="mt-2 text-xs text-slate-600">
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          <span className="inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                            V{Number(row.lifecycle_version || 1)}
+                          </span>
+                          <span
+                            className={
+                              "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold " +
+                              row.duty_check_state.badge_class
+                            }
+                          >
+                            {row.duty_check_state.label}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-600">
                           Driver response: {row.response_result || "-"}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Resolution: {row.resolution_kind || "-"}
                         </div>
                         <div className="text-xs text-slate-500">
                           Fetch count: {row.fetch_count || 0}
                         </div>
-                        <div className="mt-1 text-xs text-slate-700">
+                        <div className="mt-1 text-xs font-medium text-slate-700">
                           Incentive impact: {row.duty_check_state.incentive_impact}
                         </div>
                         <div className="mt-1 text-[11px] text-slate-400">
@@ -707,10 +786,27 @@ export default function DriverAvailabilityPingsPage() {
                           <span className="font-semibold">Created:</span>{" "}
                           {manilaTime(row.created_at)}
                         </div>
-                        <div className="mt-1">
-                          <span className="font-semibold">Expires:</span>{" "}
-                          {manilaTime(row.expires_at)}
-                        </div>
+                        {Number(row.lifecycle_version || 1) >= 2 ? (
+                          <>
+                            <div className="mt-1">
+                              <span className="font-semibold">
+                                Delivery deadline:
+                              </span>{" "}
+                              {manilaTime(row.delivery_expires_at)}
+                            </div>
+                            <div className="mt-1">
+                              <span className="font-semibold">
+                                Response deadline:
+                              </span>{" "}
+                              {manilaTime(row.response_expires_at)}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="mt-1">
+                            <span className="font-semibold">Legacy expires:</span>{" "}
+                            {manilaTime(row.expires_at)}
+                          </div>
+                        )}
                         {row.expired_at ? (
                           <div className="mt-1 text-rose-700">
                             <span className="font-semibold">Expired:</span>{" "}
@@ -740,25 +836,73 @@ export default function DriverAvailabilityPingsPage() {
                         <div>
                           Last fetch: {manilaTime(row.last_fetched_at)}
                         </div>
+
+                        {Number(row.lifecycle_version || 1) >= 2 ? (
+                          <div className="mt-2 border-t border-slate-200 pt-2">
+                            <div className="font-semibold text-slate-700">
+                              Alerted: {manilaTime(row.alerted_at)}
+                            </div>
+                            <div>
+                              Alert delay: {duration(row.alert_delay_seconds)}
+                            </div>
+                            <div>
+                              Presented: {manilaTime(row.presented_at)}
+                            </div>
+                            <div>
+                              Presentation delay:{" "}
+                              {duration(row.presentation_delay_seconds)}
+                            </div>
+                          </div>
+                        ) : null}
                       </td>
 
                       <td className="p-3 text-xs">
                         <div>
-                          Responded: {row.was_fetched
+                          Responded:{" "}
+                          {row.was_fetched
                             ? manilaTime(row.responded_at)
                             : "Not applicable"}
                         </div>
                         <div className="mt-1 font-semibold text-slate-800">
-                          Response time: {row.was_fetched
+                          Response time:{" "}
+                          {row.was_fetched
                             ? duration(row.response_seconds)
                             : "Not applicable"}
                         </div>
+
+                        {Number(row.lifecycle_version || 1) >= 2 ? (
+                          <div className="mt-2 border-t border-slate-200 pt-2">
+                            <div>
+                              Frozen: {manilaTime(row.timer_frozen_at)}
+                            </div>
+                            <div>
+                              Resumed: {manilaTime(row.timer_resumed_at)}
+                            </div>
+                            <div className="font-semibold">
+                              Frozen duration: {duration(row.frozen_seconds)}
+                            </div>
+                            <div>
+                              Late acknowledged:{" "}
+                              {manilaTime(row.late_acknowledged_at)}
+                            </div>
+                          </div>
+                        ) : null}
                       </td>
 
                       <td className="p-3 text-xs">
                         <div className="font-mono text-[11px] text-slate-600">
-                          {row.response_device_id || "-"}
+                          Response device: {row.response_device_id || "-"}
                         </div>
+                        {Number(row.lifecycle_version || 1) >= 2 ? (
+                          <>
+                            <div className="font-mono text-[11px] text-slate-600">
+                              Alert device: {row.alerted_device_id || "-"}
+                            </div>
+                            <div className="font-mono text-[11px] text-slate-600">
+                              Presented device: {row.presented_device_id || "-"}
+                            </div>
+                          </>
+                        ) : null}
                         <div className="mt-2 max-w-xs whitespace-pre-wrap text-slate-600">
                           {row.notes || "-"}
                         </div>
@@ -814,7 +958,12 @@ export default function DriverAvailabilityPingsPage() {
                           ) : null}
 
                           {!row.violation_waiver &&
-                          row.duty_check_state.code === "expired_no_response" ? (
+                          [
+                            "expired_no_response",
+                            "missed_timer_paused",
+                            "acknowledged_late",
+                            "missed_resolved",
+                          ].includes(row.duty_check_state.code) ? (
                             <button
                               type="button"
                               onClick={() => {
