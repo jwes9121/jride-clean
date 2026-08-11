@@ -27,8 +27,8 @@ function isUuid(value: string): boolean {
 }
 
 const SUCCESS_CODES = new Set([
-  "PRESENTED",
-  "ALREADY_PRESENTED",
+  "ALERTED",
+  "ALREADY_ALERTED",
   "LEGACY_PING",
   "LATE_ACK_REQUIRED",
   "ALREADY_ACKNOWLEDGED",
@@ -40,9 +40,8 @@ const CONFLICT_CODES = new Set([
   "PING_EXPIRED",
   "PING_CANCELLED",
   "PING_DELIVERY_EXPIRED",
-  "PING_NOT_ALERTED",
-  "PING_PRESENT_RACE",
-  "PING_NOT_PRESENTABLE",
+  "PING_ALERT_RACE",
+  "PING_NOT_ALERTABLE",
 ]);
 
 export async function POST(req: NextRequest) {
@@ -93,7 +92,7 @@ export async function POST(req: NextRequest) {
     const admin = supabaseAdmin();
 
     const { data, error } = await admin.rpc(
-      "jride_present_driver_availability_ping",
+      "jride_alert_driver_availability_ping",
       {
         p_ping_id: pingId,
         p_driver_id: auth.driverId,
@@ -103,13 +102,13 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error(
-        "[JRIDE_DUTY_CHECK_PRESENT_RPC_FAILED]",
+        "[JRIDE_DUTY_CHECK_ALERT_RPC_FAILED]",
         error.message
       );
 
       return json(500, {
         ok: false,
-        error: "DUTY_CHECK_PRESENT_FAILED",
+        error: "DUTY_CHECK_ALERT_FAILED",
         message: error.message,
       });
     }
@@ -131,14 +130,14 @@ export async function POST(req: NextRequest) {
     return json(data?.ok === false ? 400 : 200, data);
   } catch (error: any) {
     console.error(
-      "[JRIDE_DUTY_CHECK_PRESENT_UNEXPECTED]",
+      "[JRIDE_DUTY_CHECK_ALERT_UNEXPECTED]",
       error
     );
 
     return json(500, {
       ok: false,
-      error: "DUTY_CHECK_PRESENT_FAILED",
-      message: error?.message ?? "Unable to present Duty Check.",
+      error: "DUTY_CHECK_ALERT_FAILED",
+      message: error?.message ?? "Unable to record Duty Check alert.",
     });
   }
 }
