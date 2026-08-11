@@ -140,6 +140,57 @@ type QuickAddCandidatesResponse = {
   otherFamilyMatches?: QuickAddCandidate[];
 };
 
+type QuickParentCandidate = {
+  candidateId: string;
+  fullName: string;
+  nickname: string | null;
+  locationText: string | null;
+  locationBucket: string | null;
+  matchScope: "CURRENT_FAMILY" | "OTHER_FAMILY";
+  organizationalFamily: {
+    id: string;
+    name: string | null;
+  } | null;
+  similarityScore: number;
+  childBiologicalParentCount: number;
+  childBiologicalParents: {
+    id: string;
+    fullName: string;
+  }[];
+  alreadyParentOfChild: boolean;
+  cycleWouldBeCreated: boolean;
+  quickParentDecision:
+    | "SAFE_TO_LINK"
+    | "ALREADY_LINKED"
+    | "ADVANCED_EDITOR_REQUIRED"
+    | "CYCLE_WOULD_BE_CREATED";
+};
+
+type QuickParentCandidatesResponse = {
+  success: boolean;
+  error?: string;
+  child?: {
+    id: string;
+    fullName: string;
+    biologicalParentCount: number;
+    biologicalParents: {
+      id: string;
+      fullName: string;
+    }[];
+  };
+  currentFamilyMatches?: QuickParentCandidate[];
+  otherFamilyMatches?: QuickParentCandidate[];
+};
+
+type QuickParentWriteResponse = {
+  success: boolean;
+  resultCode?: string;
+  error?: string;
+  message?: string;
+  personId?: string | null;
+  relationshipId?: string | null;
+};
+
 type TreeGenerationResponse = {
   success: boolean;
   error?: string;
@@ -340,6 +391,33 @@ export default function FamilyReunionDetailPage() {
     React.useState<Record<string, QuickAddCandidate["quickAddDecision"]>>({});
   const [chartActivePersonId, setChartActivePersonId] = React.useState("");
   const [chartEntryOpen, setChartEntryOpen] = React.useState(false);
+
+  const [parentEntryOpen, setParentEntryOpen] = React.useState(false);
+  const [parentName, setParentName] = React.useState("");
+  const [parentSex, setParentSex] = React.useState("unspecified");
+  const [parentLocationText, setParentLocationText] = React.useState("");
+  const [parentSearching, setParentSearching] = React.useState(false);
+  const [parentSearchError, setParentSearchError] =
+    React.useState<string | null>(null);
+  const [parentCurrentMatches, setParentCurrentMatches] =
+    React.useState<QuickParentCandidate[]>([]);
+  const [parentOtherMatches, setParentOtherMatches] =
+    React.useState<QuickParentCandidate[]>([]);
+  const [parentChildSummary, setParentChildSummary] = React.useState<{
+    biologicalParentCount: number;
+    biologicalParents: {
+      id: string;
+      fullName: string;
+    }[];
+  } | null>(null);
+  const [parentCreateOverride, setParentCreateOverride] =
+    React.useState(false);
+  const [parentWriting, setParentWriting] = React.useState(false);
+  const [parentWriteError, setParentWriteError] =
+    React.useState<string | null>(null);
+  const [parentWriteSuccess, setParentWriteSuccess] =
+    React.useState<string | null>(null);
+
   const [bulkChildrenOpen, setBulkChildrenOpen] = React.useState(false);
   const [bulkChildren, setBulkChildren] = React.useState<BulkChildDraft[]>([
     createBulkChildDraft(),
@@ -816,6 +894,108 @@ export default function FamilyReunionDetailPage() {
       cancelled = true;
     };
   }, [displayRootPersonId, familyId, generationRefreshKey]);
+
+  React.useEffect(() => {
+    if (!parentEntryOpen || !chartActivePersonId) {
+      return;
+    }
+
+    let cancelled = false;
+    const query = parentName.trim();
+
+    const executeSearch = async () => {
+      if (query.length >= 2) {
+        setParentSearching(true);
+      }
+
+      setParentSearchError(null);
+
+      try {
+        const params = new URLSearchParams({
+          childPersonId: chartActivePersonId,
+          q: query,
+        });
+
+        const response = await fetch(
+          `/api/events/family-reunions/${encodeURIComponent(
+            familyId
+          )}/quick-add/parent-candidates?${params.toString()}`,
+          { method: "GET", cache: "no-store" }
+        );
+
+        const data =
+          (await response.json()) as QuickParentCandidatesResponse;
+
+        if (cancelled) return;
+
+        if (!response.ok || !data.success) {
+          setParentSearchError(
+            data.error || "Failed to search possible parent records."
+          );
+          setParentCurrentMatches([]);
+          setParentOtherMatches([]);
+          setParentChildSummary(null);
+          return;
+        }
+
+        setParentChildSummary(
+          data.child
+            ? {
+                biologicalParentCount:
+                  data.child.biologicalParentCount,
+                biologicalParents:
+                  data.child.biologicalParents || [],
+              }
+            : null
+        );
+
+        if (query.length >= 2) {
+          setParentCurrentMatches(data.currentFamilyMatches || []);
+          setParentOtherMatches(data.otherFamilyMatches || []);
+        } else {
+          setParentCurrentMatches([]);
+          setParentOtherMatches([]);
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        setParentSearchError(
+          error instanceof Error
+            ? error.message
+            : "Failed to search possible parent records."
+        );
+        setParentCurrentMatches([]);
+        setParentOtherMatches([]);
+        setParentChildSummary(null);
+      } finally {
+        if (!cancelled) {
+          setParentSearching(false);
+        }
+      }
+    };
+
+    if (query.length >= 2) {
+      const timer = window.setTimeout(() => {
+        void executeSearch();
+      }, 300);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    }
+
+    void executeSearch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    chartActivePersonId,
+    familyId,
+    parentEntryOpen,
+    parentName,
+  ]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -1902,6 +2082,155 @@ export default function FamilyReunionDetailPage() {
     }
   }
 
+  function resetParentEntryFields(clearSuccess = false) {
+    setParentName("");
+    setParentSex("unspecified");
+    setParentLocationText("");
+    setParentCurrentMatches([]);
+    setParentOtherMatches([]);
+    setParentChildSummary(null);
+    setParentCreateOverride(false);
+    setParentSearchError(null);
+    setParentWriteError(null);
+
+    if (clearSuccess) {
+      setParentWriteSuccess(null);
+    }
+  }
+
+  function activateParentEntry(personId: string) {
+    setChartActivePersonId(personId);
+    setQuickAnchorPersonId(personId);
+    setChartEntryOpen(false);
+    setBulkChildrenOpen(false);
+    resetBulkChildren();
+    resetParentEntryFields(true);
+    setParentEntryOpen(true);
+  }
+
+  async function runParentEntry(
+    mode: "create_new" | "use_existing",
+    existingPersonId?: string
+  ) {
+    setParentWriteError(null);
+    setParentWriteSuccess(null);
+
+    if (!chartActivePersonId) {
+      setParentWriteError("Choose the child whose parent you are adding.");
+      return;
+    }
+
+    if (
+      parentChildSummary &&
+      parentChildSummary.biologicalParentCount >= 2
+    ) {
+      setParentWriteError(
+        "This person already has two biological parents. Use Advanced Genealogy Editor for corrections."
+      );
+      return;
+    }
+
+    if (mode === "create_new" && !parentName.trim()) {
+      setParentWriteError("Enter the parent's name.");
+      return;
+    }
+
+    const normalizedParentName = parentName.trim().toLowerCase();
+    const allMatches = [
+      ...parentCurrentMatches,
+      ...parentOtherMatches,
+    ];
+    const hasExactNameMatch = allMatches.some(
+      (candidate) =>
+        candidate.fullName.trim().toLowerCase() ===
+        normalizedParentName
+    );
+
+    if (mode === "create_new" && hasExactNameMatch) {
+      setParentWriteError(
+        "An exact-name person already exists. Use the existing record instead."
+      );
+      return;
+    }
+
+    const selectedCandidate = existingPersonId
+      ? allMatches.find(
+          (candidate) => candidate.candidateId === existingPersonId
+        ) || null
+      : null;
+
+    setParentWriting(true);
+
+    try {
+      const childPersonId = chartActivePersonId;
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/quick-add/parent-write`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            childPersonId,
+            mode,
+            existingPersonId: existingPersonId || null,
+            fullName:
+              mode === "create_new" ? parentName.trim() : null,
+            sex: mode === "create_new" ? parentSex : "unspecified",
+            locationText:
+              mode === "create_new"
+                ? parentLocationText.trim() || null
+                : null,
+            locationScope: null,
+            locationBucket: null,
+          }),
+        }
+      );
+
+      const data = (await response.json()) as QuickParentWriteResponse;
+
+      if (!response.ok || !data.success) {
+        setParentWriteError(
+          data.error || "Quick Parent Entry failed."
+        );
+        return;
+      }
+
+      setParentWriteSuccess(
+        data.message || "Biological parent saved."
+      );
+      setParentEntryOpen(false);
+      resetParentEntryFields(false);
+
+      await loadFamily();
+      setGenerationRefreshKey((current) => current + 1);
+
+      if (
+        data.personId &&
+        (mode === "create_new" ||
+          selectedCandidate?.matchScope === "CURRENT_FAMILY")
+      ) {
+        setChartActivePersonId(data.personId);
+        setQuickAnchorPersonId(data.personId);
+      } else {
+        setChartActivePersonId(childPersonId);
+        setQuickAnchorPersonId(childPersonId);
+      }
+
+      if (expandedEventId) {
+        await loadParticipation(expandedEventId);
+      }
+    } catch (error) {
+      setParentWriteError(
+        error instanceof Error
+          ? error.message
+          : "Quick Parent Entry failed."
+      );
+    } finally {
+      setParentWriting(false);
+    }
+  }
+
   function selectSingleChildParentBranch(otherParentId: string) {
     setSingleChildOtherParentId(otherParentId);
     setSingleChildBranchConfirmed(true);
@@ -1932,6 +2261,8 @@ export default function FamilyReunionDetailPage() {
     setQuickWriteError(null);
     setQuickWriteSuccess(null);
     setBulkChildrenOpen(false);
+    setParentEntryOpen(false);
+    resetParentEntryFields(true);
     setChartEntryOpen(true);
   }
 
@@ -2133,6 +2464,8 @@ export default function FamilyReunionDetailPage() {
                           setQuickWriteError(null);
                           setQuickWriteSuccess(null);
                           setChartEntryOpen(false);
+                          setParentEntryOpen(false);
+                          resetParentEntryFields(true);
                           setBulkChildrenOpen(false);
                           setSingleChildOtherParentId("");
                           setSingleChildBranchConfirmed(false);
@@ -2266,7 +2599,17 @@ export default function FamilyReunionDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              activateParentEntry(chartActivePerson.id)
+                            }
+                            className="rounded-xl border border-violet-300/40 bg-violet-400/10 px-4 py-3 text-sm font-black text-violet-200"
+                          >
+                            + Parent
+                          </button>
+
                           <button
                             type="button"
                             onClick={() =>
@@ -2291,6 +2634,8 @@ export default function FamilyReunionDetailPage() {
                             type="button"
                             onClick={() => {
                               setChartEntryOpen(false);
+                              setParentEntryOpen(false);
+                              resetParentEntryFields(true);
                               setBulkChildrenOpen(true);
                               resetBulkChildren();
                             }}
@@ -2300,9 +2645,394 @@ export default function FamilyReunionDetailPage() {
                           </button>
                         </div>
 
+                        {parentWriteSuccess && !parentEntryOpen ? (
+                          <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                            {parentWriteSuccess}
+                          </div>
+                        ) : null}
+
                         {bulkSuccess && !bulkChildrenOpen ? (
                           <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
                             {bulkSuccess}
+                          </div>
+                        ) : null}
+
+                        {parentEntryOpen ? (
+                          <div className="mt-5 border-t border-slate-800 pt-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-violet-300">
+                                  Add Biological Parent of {chartActivePerson.fullName}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-slate-400">
+                                  Search existing family records first. A new
+                                  parent and the parent-child edge are saved in
+                                  one database operation.
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setParentEntryOpen(false);
+                                  resetParentEntryFields(true);
+                                }}
+                                className="rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+
+                            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
+                              {generationByPersonId[chartActivePerson.id] === 1 ? (
+                                <>
+                                  This person is the current Generation 1 root.
+                                  A newly added parent will be above the current
+                                  root. After saving, choose the older ancestor
+                                  as Family Tree Root if they should become the
+                                  new Generation 1.
+                                </>
+                              ) : generationByPersonId[chartActivePerson.id] ? (
+                                <>
+                                  Generation is derived from the graph. A parent
+                                  already connected to the selected root may
+                                  appear one level above; a newly introduced
+                                  co-parent may remain outside the current root
+                                  path.
+                                </>
+                              ) : (
+                                <>
+                                  This person is outside the current root path.
+                                  The parent relationship will still be stored
+                                  correctly; choose a different Family Tree Root
+                                  when you want to view that ancestry as the main
+                                  lineage.
+                                </>
+                              )}
+                            </div>
+
+                            {parentChildSummary ? (
+                              <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-3">
+                                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                  Recorded Biological Parents
+                                </p>
+                                <p className="mt-2 text-sm text-slate-300">
+                                  {parentChildSummary.biologicalParentCount === 0
+                                    ? "None recorded yet."
+                                    : parentChildSummary.biologicalParents
+                                        .map((parent) => parent.fullName)
+                                        .join(", ")}
+                                </p>
+                                <p className="mt-1 text-[11px] text-slate-500">
+                                  {parentChildSummary.biologicalParentCount} of 2
+                                  biological-parent slots recorded.
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {parentChildSummary &&
+                            parentChildSummary.biologicalParentCount >= 2 ? (
+                              <div className="mt-4 rounded-xl border border-amber-800 bg-amber-950/20 p-4">
+                                <p className="text-sm font-black text-amber-200">
+                                  Two biological parents are already recorded.
+                                </p>
+                                <p className="mt-2 text-xs leading-5 text-amber-100/80">
+                                  Quick Parent Entry will not add a third
+                                  biological parent. Use Advanced Genealogy
+                                  Editor if one of the recorded relationships
+                                  needs correction.
+                                </p>
+                              </div>
+                            ) : (
+                              <>
+                                <label className="mt-4 block">
+                                  <span className="text-xs font-bold text-slate-300">
+                                    Parent's Name
+                                  </span>
+                                  <input
+                                    value={parentName}
+                                    onChange={(event) => {
+                                      setParentName(event.target.value);
+                                      setParentCreateOverride(false);
+                                      setParentWriteError(null);
+                                      setParentWriteSuccess(null);
+                                    }}
+                                    placeholder="Type the parent's full name"
+                                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white"
+                                  />
+                                </label>
+
+                                {parentSearching ? (
+                                  <p className="mt-3 text-xs text-slate-400">
+                                    Searching existing family records...
+                                  </p>
+                                ) : null}
+
+                                {parentSearchError ? (
+                                  <div className="mt-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-200">
+                                    {parentSearchError}
+                                  </div>
+                                ) : null}
+
+                                {!parentSearching &&
+                                parentName.trim().length >= 2 &&
+                                !parentSearchError ? (
+                                  <div className="mt-4 space-y-3">
+                                    {[
+                                      ...parentCurrentMatches,
+                                      ...parentOtherMatches,
+                                    ].map((candidate) => {
+                                      const exact =
+                                        candidate.fullName
+                                          .trim()
+                                          .toLowerCase() ===
+                                        parentName.trim().toLowerCase();
+                                      const canUse =
+                                        candidate.quickParentDecision ===
+                                        "SAFE_TO_LINK";
+
+                                      return (
+                                        <div
+                                          key={`parent:${candidate.candidateId}`}
+                                          className={`rounded-xl border p-3 ${
+                                            candidate.quickParentDecision ===
+                                            "CYCLE_WOULD_BE_CREATED"
+                                              ? "border-red-800 bg-red-950/20"
+                                              : candidate.quickParentDecision ===
+                                                "ADVANCED_EDITOR_REQUIRED"
+                                              ? "border-amber-800 bg-amber-950/20"
+                                              : "border-slate-700 bg-slate-900"
+                                          }`}
+                                        >
+                                          <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                              <p className="text-sm font-black text-white">
+                                                {candidate.fullName}
+                                              </p>
+                                              <p className="mt-1 text-xs text-slate-400">
+                                                {candidate.locationBucket ||
+                                                  candidate.locationText ||
+                                                  "Location not recorded"}
+                                              </p>
+                                              {candidate.matchScope ===
+                                              "OTHER_FAMILY" ? (
+                                                <p className="mt-1 text-[11px] text-amber-300">
+                                                  Organized under:{" "}
+                                                  {candidate.organizationalFamily
+                                                    ?.name || "Unassigned family"}
+                                                </p>
+                                              ) : null}
+                                            </div>
+                                            <span className="text-[11px] text-slate-500">
+                                              {Math.round(
+                                                candidate.similarityScore * 100
+                                              )}
+                                              % match
+                                            </span>
+                                          </div>
+
+                                          {!exact ? (
+                                            <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950 p-3">
+                                              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                                Possible Same Person
+                                              </p>
+                                              <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                                                Compare carefully before creating
+                                                another record. Suffixes and
+                                                middle names may identify a
+                                                genuinely different person.
+                                              </p>
+                                            </div>
+                                          ) : null}
+
+                                          {candidate.quickParentDecision ===
+                                          "CYCLE_WOULD_BE_CREATED" ? (
+                                            <p className="mt-3 text-xs text-red-300">
+                                              This existing person cannot become
+                                              the parent because it would create
+                                              an ancestry cycle.
+                                            </p>
+                                          ) : candidate.quickParentDecision ===
+                                            "ADVANCED_EDITOR_REQUIRED" ? (
+                                            <p className="mt-3 text-xs text-amber-300">
+                                              The selected child already has two
+                                              biological parents. Review the
+                                              relationship in Advanced Genealogy
+                                              Editor.
+                                            </p>
+                                          ) : candidate.quickParentDecision ===
+                                            "ALREADY_LINKED" ? (
+                                            <p className="mt-3 text-xs text-slate-400">
+                                              This person is already recorded as
+                                              a biological parent.
+                                            </p>
+                                          ) : canUse ? (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void runParentEntry(
+                                                  "use_existing",
+                                                  candidate.candidateId
+                                                )
+                                              }
+                                              disabled={parentWriting}
+                                              className="mt-3 rounded-lg bg-emerald-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                                            >
+                                              Use Existing {candidate.fullName}
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+
+                                {[
+                                  ...parentCurrentMatches,
+                                  ...parentOtherMatches,
+                                ].some(
+                                  (candidate) =>
+                                    candidate.fullName
+                                      .trim()
+                                      .toLowerCase() ===
+                                    parentName.trim().toLowerCase()
+                                ) ? (
+                                  <div className="mt-4 rounded-lg border border-red-700 bg-red-950/20 p-3 text-xs text-red-200">
+                                    Exact-name person already exists. New-person
+                                    creation is disabled; use the existing record
+                                    above when it is the same person.
+                                  </div>
+                                ) : [
+                                    ...parentCurrentMatches,
+                                    ...parentOtherMatches,
+                                  ].length > 0 &&
+                                  !parentCreateOverride ? (
+                                  <div className="mt-4 rounded-lg border border-amber-700 bg-amber-950/20 p-3">
+                                    <p className="text-xs text-amber-200">
+                                      Existing records may match this parent.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setParentCreateOverride(true)
+                                      }
+                                      className="mt-2 rounded-lg border border-amber-500 px-3 py-2 text-xs font-black text-amber-200"
+                                    >
+                                      This Is A Different Person
+                                    </button>
+                                  </div>
+                                ) : null}
+
+                                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                  <label>
+                                    <span className="text-xs font-bold text-slate-300">
+                                      Sex
+                                    </span>
+                                    <select
+                                      value={parentSex}
+                                      onChange={(event) =>
+                                        setParentSex(event.target.value)
+                                      }
+                                      disabled={
+                                        [
+                                          ...parentCurrentMatches,
+                                          ...parentOtherMatches,
+                                        ].some(
+                                          (candidate) =>
+                                            candidate.fullName
+                                              .trim()
+                                              .toLowerCase() ===
+                                            parentName.trim().toLowerCase()
+                                        ) ||
+                                        ([
+                                          ...parentCurrentMatches,
+                                          ...parentOtherMatches,
+                                        ].length > 0 &&
+                                          !parentCreateOverride)
+                                      }
+                                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white disabled:opacity-40"
+                                    >
+                                      <option value="unspecified">
+                                        Unspecified
+                                      </option>
+                                      <option value="male">Male</option>
+                                      <option value="female">Female</option>
+                                    </select>
+                                  </label>
+
+                                  <label>
+                                    <span className="text-xs font-bold text-slate-300">
+                                      Detailed Place
+                                    </span>
+                                    <input
+                                      value={parentLocationText}
+                                      onChange={(event) =>
+                                        setParentLocationText(
+                                          event.target.value
+                                        )
+                                      }
+                                      disabled={
+                                        [
+                                          ...parentCurrentMatches,
+                                          ...parentOtherMatches,
+                                        ].some(
+                                          (candidate) =>
+                                            candidate.fullName
+                                              .trim()
+                                              .toLowerCase() ===
+                                            parentName.trim().toLowerCase()
+                                        ) ||
+                                        ([
+                                          ...parentCurrentMatches,
+                                          ...parentOtherMatches,
+                                        ].length > 0 &&
+                                          !parentCreateOverride)
+                                      }
+                                      placeholder="Example: Lagawe or Quezon City"
+                                      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-white disabled:opacity-40"
+                                    />
+                                  </label>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void runParentEntry("create_new")
+                                  }
+                                  disabled={
+                                    parentWriting ||
+                                    !parentName.trim() ||
+                                    [
+                                      ...parentCurrentMatches,
+                                      ...parentOtherMatches,
+                                    ].some(
+                                      (candidate) =>
+                                        candidate.fullName
+                                          .trim()
+                                          .toLowerCase() ===
+                                        parentName.trim().toLowerCase()
+                                    ) ||
+                                    ([
+                                      ...parentCurrentMatches,
+                                      ...parentOtherMatches,
+                                    ].length > 0 &&
+                                      !parentCreateOverride)
+                                  }
+                                  className="mt-4 w-full rounded-xl bg-violet-300 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
+                                >
+                                  {parentWriting
+                                    ? "Saving..."
+                                    : `Create ${
+                                        parentName.trim() || "Person"
+                                      } as Parent`}
+                                </button>
+                              </>
+                            )}
+
+                            {parentWriteError ? (
+                              <div className="mt-3 rounded-lg border border-red-800 bg-red-950/40 p-3 text-xs text-red-200">
+                                {parentWriteError}
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
 
@@ -3333,6 +4063,8 @@ export default function FamilyReunionDetailPage() {
                             setQuickWriteError(null);
                             setQuickWriteSuccess(null);
                             setChartEntryOpen(false);
+                            setParentEntryOpen(false);
+                            resetParentEntryFields(true);
                             setBulkChildrenOpen(false);
                             setSingleChildOtherParentId("");
                             setSingleChildBranchConfirmed(false);
@@ -3390,6 +4122,8 @@ export default function FamilyReunionDetailPage() {
                   type="button"
                   onClick={() => {
                     setAdvancedQuickEntryOpen((current) => !current);
+                    setParentEntryOpen(false);
+                    resetParentEntryFields(true);
                     setSingleChildOtherParentId("");
                     setSingleChildBranchConfirmed(false);
                     setQuickCoParentDecisionByCandidateId({});
