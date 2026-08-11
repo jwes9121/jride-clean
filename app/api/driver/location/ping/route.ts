@@ -174,14 +174,40 @@ async function enforceDeviceLockPing(opts: {
   nowIso: string;
   staleSeconds: number;
   forceTakeover: boolean;
+  clientVersionName: string | null;
+  clientVersionCode: number | null;
+  dutyCheckV2Capable: boolean;
 }) {
-  const { supabase, driverId, deviceId, nowIso, staleSeconds, forceTakeover } = opts;
+  const {
+    supabase,
+    driverId,
+    deviceId,
+    nowIso,
+    staleSeconds,
+    forceTakeover,
+    clientVersionName,
+    clientVersionCode,
+    dutyCheckV2Capable,
+  } = opts;
 
   const reqDevice = normDeviceId(deviceId);
 
+  // JRIDE_DRIVER_CAPABILITY_SIGNAL_V1
+  // Capability belongs to the currently active device lock, not permanently
+  // to the driver. Missing capability fields are intentionally persisted as
+  // false/null so an old or downgraded APK cannot inherit stale v2 capability.
+  const capabilityPatch = {
+    client_version_name: clientVersionName,
+    client_version_code: clientVersionCode,
+    duty_check_v2_capable: dutyCheckV2Capable,
+    capability_last_seen_at: nowIso,
+  };
+
   const { data: lock, error: lockErr } = await supabase
     .from("driver_device_locks")
-    .select("driver_id, device_id, last_seen")
+    .select(
+      "driver_id, device_id, last_seen, client_version_name, client_version_code, duty_check_v2_capable, capability_last_seen_at"
+    )
     .eq("driver_id", driverId)
     .maybeSingle();
 
@@ -190,11 +216,22 @@ async function enforceDeviceLockPing(opts: {
   if (!lock) {
     const { error: insErr } = await supabase
       .from("driver_device_locks")
-      .insert({ driver_id: driverId, device_id: reqDevice, last_seen: nowIso });
+      .insert({
+        driver_id: driverId,
+        device_id: reqDevice,
+        last_seen: nowIso,
+        ...capabilityPatch,
+      });
 
     if (insErr) throw new Error("driver_device_locks insert failed: " + insErr.message);
 
-    return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: 0 };
+    return {
+      ok: true,
+      claimed: true,
+      active_device_id: reqDevice,
+      last_seen_age_seconds: 0,
+      ...capabilityPatch,
+    };
   }
 
   const active = normDeviceId(lock.device_id ?? "");
@@ -206,12 +243,21 @@ async function enforceDeviceLockPing(opts: {
   if (same) {
     const { error: hbErr } = await supabase
       .from("driver_device_locks")
-      .update({ last_seen: nowIso })
+      .update({
+        last_seen: nowIso,
+        ...capabilityPatch,
+      })
       .eq("driver_id", driverId);
 
     if (hbErr) throw new Error("driver_device_locks heartbeat update failed: " + hbErr.message);
 
-    return { ok: true, claimed: false, active_device_id: active, last_seen_age_seconds: ageSec };
+    return {
+      ok: true,
+      claimed: false,
+      active_device_id: active,
+      last_seen_age_seconds: ageSec,
+      ...capabilityPatch,
+    };
   }
 
   if (!same && forceTakeover) {
@@ -241,12 +287,22 @@ async function enforceDeviceLockPing(opts: {
 
   const { error: upErr } = await supabase
     .from("driver_device_locks")
-    .update({ device_id: reqDevice, last_seen: nowIso })
+    .update({
+      device_id: reqDevice,
+      last_seen: nowIso,
+      ...capabilityPatch,
+    })
     .eq("driver_id", driverId);
 
   if (upErr) throw new Error("driver_device_locks update failed: " + upErr.message);
 
-  return { ok: true, claimed: true, active_device_id: reqDevice, last_seen_age_seconds: ageSec };
+  return {
+    ok: true,
+    claimed: true,
+    active_device_id: reqDevice,
+    last_seen_age_seconds: ageSec,
+    ...capabilityPatch,
+  };
 }
 
 async function syncDriverPresenceSession(opts: {
@@ -400,6 +456,31 @@ export async function POST(req: NextRequest) {
     const town = text(body?.town);
     const forceTakeover = !!(body?.force_takeover ?? body?.forceTakeover ?? false);
 
+    const rawClientVersionName = text(
+      body?.client_version_name ??
+        body?.app_version_name ??
+        body?.version_name
+    );
+    const clientVersionName = rawClientVersionName
+      ? rawClientVersionName.slice(0, 64)
+      : null;
+
+    const rawClientVersionCode = Number(
+      body?.client_version_code ??
+        body?.app_version_code ??
+        body?.version_code
+    );
+    const clientVersionCode =
+      Number.isSafeInteger(rawClientVersionCode) &&
+      rawClientVersionCode >= 0
+        ? rawClientVersionCode
+        : null;
+
+    // Explicit boolean true only. Missing fields from old APKs resolve false.
+    const dutyCheckV2Capable =
+      body?.duty_check_v2 === true ||
+      body?.duty_check_v2_capable === true;
+
     const supabaseUrl = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
     const supabaseServiceRole = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
 
@@ -460,6 +541,9 @@ export async function POST(req: NextRequest) {
       nowIso,
       staleSeconds: 120,
       forceTakeover,
+      clientVersionName,
+      clientVersionCode,
+      dutyCheckV2Capable,
     });
 
     if ((lock as any).online_block) {
@@ -578,6 +662,14 @@ export async function POST(req: NextRequest) {
         lat: 0,
         lng: 0,
         vehicle_type: vehicleType,
+        client_capability: {
+          client_version_name: (lock as any).client_version_name ?? null,
+          client_version_code: (lock as any).client_version_code ?? null,
+          duty_check_v2_capable:
+            (lock as any).duty_check_v2_capable === true,
+          capability_last_seen_at:
+            (lock as any).capability_last_seen_at ?? null,
+        },
       });
     }
 
@@ -700,6 +792,14 @@ export async function POST(req: NextRequest) {
       lng: finalLng,
       vehicle_type: vehicleType,
       presence_session: presenceSessionResult,
+      client_capability: {
+        client_version_name: (lock as any).client_version_name ?? null,
+        client_version_code: (lock as any).client_version_code ?? null,
+        duty_check_v2_capable:
+          (lock as any).duty_check_v2_capable === true,
+        capability_last_seen_at:
+          (lock as any).capability_last_seen_at ?? null,
+      },
     });
   } catch (e: any) {
     return json(500, { ok: false, code: "SERVER_ERROR", message: e?.message ?? String(e) });
