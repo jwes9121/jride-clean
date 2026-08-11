@@ -324,7 +324,7 @@ export default function EventRegistrationPage() {
               href="/events/platform"
               className="mt-2 inline-block text-sm font-bold text-amber-300 hover:underline"
             >
-              See how this platform works →
+              See how this platform works {"->"}
             </a>
           </div>
 
@@ -425,6 +425,35 @@ export default function EventRegistrationPage() {
                 placeholder="Optional"
               />
             </label>
+
+            <div className="rounded-2xl border border-amber-300/30 bg-amber-400/10 p-4">
+              <p className="font-black text-white">Need tickets?</p>
+              <p className="mt-1 text-sm leading-6 text-slate-300">
+                Contact our Finance Team at{" "}
+                <a
+                  href="tel:+639753585757"
+                  className="font-black text-amber-300 underline decoration-amber-300/40 underline-offset-4"
+                >
+                  0975 358 5757
+                </a>
+                {" "}for ticket assistance.
+              </p>
+
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <a
+                  href="tel:+639753585757"
+                  className="rounded-xl bg-amber-400 px-4 py-3 text-center text-sm font-black text-slate-950"
+                >
+                  Call Finance
+                </a>
+                <a
+                  href="sms:+639753585757"
+                  className="rounded-xl border border-amber-300/50 bg-slate-950 px-4 py-3 text-center text-sm font-black text-amber-300"
+                >
+                  Text Finance
+                </a>
+              </div>
+            </div>
 
             <div className="rounded-2xl border border-amber-300/40 bg-slate-950 p-4">
               <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300">
