@@ -11,6 +11,17 @@ type DriverOption = {
   phone: string | null;
   online_status: string | null;
   location_updated_at: string | null;
+  active_device_id: string | null;
+  device_lock_last_seen: string | null;
+  device_lock_age_seconds: number | null;
+  client_version_name: string | null;
+  client_version_code: number | null;
+  duty_check_v2_capable: boolean;
+  capability_last_seen_at: string | null;
+  capability_age_seconds: number | null;
+  capability_is_fresh: boolean;
+  duty_check_v2_ready: boolean;
+  capability_freshness_seconds: number;
 };
 
 type DashboardRow = {
@@ -450,7 +461,8 @@ export default function DriverAvailabilityPingsPage() {
                     }
                   >
                     {driver.driver_name} - {driver.municipality || "No town"} -{" "}
-                    {String(driver.online_status || "unknown").toUpperCase()}
+                    {String(driver.online_status || "unknown").toUpperCase()} -{" "}
+                    {driver.duty_check_v2_ready ? "V2 READY" : "LEGACY V1"}
                   </option>
                 ))}
               </select>
@@ -484,7 +496,7 @@ export default function DriverAvailabilityPingsPage() {
           </div>
 
           {selectedDriver ? (
-            <div className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-white p-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-4 grid gap-3 rounded-xl border border-amber-200 bg-white p-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <div className="text-xs text-slate-500">Driver</div>
                 <div className="font-semibold text-slate-900">
@@ -521,15 +533,60 @@ export default function DriverAvailabilityPingsPage() {
                 </div>
                 <div>{manilaTime(selectedDriver.location_updated_at)}</div>
               </div>
+              <div>
+                <div className="text-xs text-slate-500">
+                  Duty Check client
+                </div>
+                <div
+                  className={
+                    selectedDriver.duty_check_v2_ready
+                      ? "font-bold text-emerald-700"
+                      : "font-bold text-slate-600"
+                  }
+                >
+                  {selectedDriver.duty_check_v2_ready
+                    ? "V2 READY"
+                    : "LEGACY V1"}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Reported capable:{" "}
+                  {selectedDriver.duty_check_v2_capable ? "YES" : "NO"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">Client version</div>
+                <div className="font-mono text-xs">
+                  {selectedDriver.client_version_name || "-"}
+                  {selectedDriver.client_version_code !== null
+                    ? " (" + selectedDriver.client_version_code + ")"
+                    : ""}
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Device: {selectedDriver.active_device_id || "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500">
+                  Capability heartbeat
+                </div>
+                <div>{manilaTime(selectedDriver.capability_last_seen_at)}</div>
+                <div className="text-[11px] text-slate-500">
+                  Age: {duration(selectedDriver.capability_age_seconds)}
+                  {" | "}
+                  {selectedDriver.capability_is_fresh ? "FRESH" : "STALE"}
+                </div>
+              </div>
             </div>
           ) : null}
 
           <div className="mt-3 text-xs text-amber-900">
             Normal dashboard sends remain lifecycle v1 and observation-only.
-            Lifecycle v2 is display-only here until the new Driver APK is
-            deployed and capability-gated. Fixed response window: 180 seconds.
-            Duplicate pending checks are rejected. Offline drivers cannot be
-            selected.
+            V2 READY is display-only in this phase and does not change which
+            RPC is called. A client is V2 READY only when its explicit v2
+            capability, active device lock, version, and capability heartbeat
+            are all fresh within 120 seconds. Fixed response window: 180
+            seconds. Duplicate pending checks are rejected. Offline drivers
+            cannot be selected.
           </div>
         </section>
 

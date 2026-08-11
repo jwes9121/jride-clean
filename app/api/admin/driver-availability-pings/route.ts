@@ -262,6 +262,63 @@ function deriveDutyCheckState(
 
 
 const DRIVER_LOCATION_STALE_AFTER_SECONDS = 120;
+const DRIVER_CAPABILITY_STALE_AFTER_SECONDS = 120;
+
+// JRIDE_DUTY_CHECK_V2_CAPABILITY_DASHBOARD_V1
+// Display-only readiness signal. Admin Send remains lifecycle v1 in this phase.
+function driverCapabilityPresence(lock: any) {
+  const deviceId = String(lock?.device_id || "").trim() || null;
+  const lastSeen = String(lock?.last_seen || "").trim() || null;
+  const capabilityLastSeenAt =
+    String(lock?.capability_last_seen_at || "").trim() || null;
+
+  const lastSeenMs = lastSeen ? Date.parse(lastSeen) : Number.NaN;
+  const capabilitySeenMs = capabilityLastSeenAt
+    ? Date.parse(capabilityLastSeenAt)
+    : Number.NaN;
+
+  const deviceAgeSeconds = Number.isFinite(lastSeenMs)
+    ? Math.max(0, Math.floor((Date.now() - lastSeenMs) / 1000))
+    : null;
+  const capabilityAgeSeconds = Number.isFinite(capabilitySeenMs)
+    ? Math.max(0, Math.floor((Date.now() - capabilitySeenMs) / 1000))
+    : null;
+
+  const rawVersionName =
+    String(lock?.client_version_name || "").trim() || null;
+  const rawVersionCode = Number(lock?.client_version_code);
+  const versionCode =
+    Number.isSafeInteger(rawVersionCode) && rawVersionCode >= 0
+      ? rawVersionCode
+      : null;
+
+  const explicitlyCapable = lock?.duty_check_v2_capable === true;
+  const isFresh =
+    deviceAgeSeconds !== null &&
+    capabilityAgeSeconds !== null &&
+    deviceAgeSeconds <= DRIVER_CAPABILITY_STALE_AFTER_SECONDS &&
+    capabilityAgeSeconds <= DRIVER_CAPABILITY_STALE_AFTER_SECONDS;
+
+  const ready =
+    explicitlyCapable &&
+    isFresh &&
+    Boolean(rawVersionName) &&
+    versionCode !== null;
+
+  return {
+    device_id: deviceId,
+    last_seen: lastSeen,
+    device_age_seconds: deviceAgeSeconds,
+    client_version_name: rawVersionName,
+    client_version_code: versionCode,
+    duty_check_v2_capable: explicitlyCapable,
+    capability_last_seen_at: capabilityLastSeenAt,
+    capability_age_seconds: capabilityAgeSeconds,
+    capability_is_fresh: isFresh,
+    duty_check_v2_ready: ready,
+  };
+}
+
 const ONLINE_LIKE_DRIVER_STATUSES = new Set([
   "online",
   "available",
@@ -289,7 +346,12 @@ function driverLocationPresence(location: any) {
 }
 
 async function loadDriverCatalog(admin: any) {
-  const [driversResult, profilesResult, locationsResult] = await Promise.all([
+  const [
+    driversResult,
+    profilesResult,
+    locationsResult,
+    deviceLocksResult,
+  ] = await Promise.all([
     admin
       .from("drivers")
       .select("id,driver_status,driver_name,updated_at")
@@ -305,9 +367,19 @@ async function loadDriverCatalog(admin: any) {
       .select(
         "driver_id,status,town,home_town,vehicle_type,updated_at"
       ),
+    admin
+      .from("driver_device_locks")
+      .select(
+        "driver_id,device_id,last_seen,client_version_name,client_version_code,duty_check_v2_capable,capability_last_seen_at"
+      ),
   ]);
 
-  for (const result of [driversResult, profilesResult, locationsResult]) {
+  for (const result of [
+    driversResult,
+    profilesResult,
+    locationsResult,
+    deviceLocksResult,
+  ]) {
     if (result.error) throw new Error(result.error.message);
   }
 
@@ -316,6 +388,12 @@ async function loadDriverCatalog(admin: any) {
   );
   const locationsById = new Map(
     (locationsResult.data || []).map((row: any) => [
+      String(row.driver_id),
+      row,
+    ])
+  );
+  const deviceLocksById = new Map(
+    (deviceLocksResult.data || []).map((row: any) => [
       String(row.driver_id),
       row,
     ])
@@ -331,7 +409,9 @@ async function loadDriverCatalog(admin: any) {
 
     const driver: any = driversById.get(driverId) || {};
     const location: any = locationsById.get(driverId) || {};
+    const deviceLock: any = deviceLocksById.get(driverId) || {};
     const presence = driverLocationPresence(location);
+    const capability = driverCapabilityPresence(deviceLock);
 
     catalog.push({
       driver_id: driverId,
@@ -358,6 +438,19 @@ async function loadDriverCatalog(admin: any) {
       location_age_seconds: presence.age_seconds,
       location_is_stale: presence.is_stale,
       online_freshness_seconds: DRIVER_LOCATION_STALE_AFTER_SECONDS,
+
+      active_device_id: capability.device_id,
+      device_lock_last_seen: capability.last_seen,
+      device_lock_age_seconds: capability.device_age_seconds,
+      client_version_name: capability.client_version_name,
+      client_version_code: capability.client_version_code,
+      duty_check_v2_capable: capability.duty_check_v2_capable,
+      capability_last_seen_at: capability.capability_last_seen_at,
+      capability_age_seconds: capability.capability_age_seconds,
+      capability_is_fresh: capability.capability_is_fresh,
+      duty_check_v2_ready: capability.duty_check_v2_ready,
+      capability_freshness_seconds:
+        DRIVER_CAPABILITY_STALE_AFTER_SECONDS,
     });
   }
 
