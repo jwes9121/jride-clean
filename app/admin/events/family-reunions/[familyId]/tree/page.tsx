@@ -71,6 +71,14 @@ type Connector = {
   d: string;
 };
 
+function spousePairIdentity(personAId: string, personBId: string) {
+  return [personAId, personBId].sort().join("::");
+}
+
+function spouseRenderKey(primaryPersonId: string, spousePersonId: string) {
+  return `${primaryPersonId}::spouse::${spousePersonId}`;
+}
+
 function locationLabel(person: TreePerson) {
   if (person.locationBucket && person.locationText) {
     if (person.locationBucket === person.locationText) {
@@ -206,12 +214,12 @@ function TreeDiagram({
 
   // These anchors intentionally have different meanings:
   // - primaryRefs: the blood-line person's own card.
-  // - coupleAnchorRefs: the midpoint of the explicit spouse connector.
+  // - spouseRefs: one rendered spouse card per primary/spouse pair.
+  // - coupleAnchorRefs: one marriage/partnership marker per pair.
   //
-  // A person's incoming lineage must terminate on their own card, while
-  // children shared by an explicit spouse pair descend from the marriage
-  // midpoint. Keeping these anchors separate prevents an in-law spouse from
-  // looking like a child of the preceding generation.
+  // Pair-specific keys are required for remarriage. Two spouses of the same
+  // primary person must never overwrite each other's refs or share a child
+  // connector anchor.
   const primaryRefs = React.useRef(new Map<string, HTMLDivElement>());
   const spouseRefs = React.useRef(new Map<string, HTMLDivElement>());
   const coupleAnchorRefs = React.useRef(new Map<string, HTMLDivElement>());
@@ -278,25 +286,36 @@ function TreeDiagram({
     return map;
   }, [outsideParentById, parentLinks, visiblePeopleById]);
 
-  const unitKeyByPersonId = React.useMemo(() => {
+  const spousePairRenderKeyByIdentity = React.useMemo(() => {
     const map = new Map<string, string>();
 
-    // A visible blood-line person always owns their own unit.
-    for (const generation of units) {
-      for (const unit of generation.units) {
-        map.set(unit.primary.id, unit.key);
-      }
-    }
-
-    // An in-law spouse that is outside the selected descendant line maps to
-    // the visible spouse's couple unit. Never overwrite a visible person's
-    // own unit.
     for (const generation of units) {
       for (const unit of generation.units) {
         for (const spouse of unit.spouses) {
-          if (!map.has(spouse.personId)) {
-            map.set(spouse.personId, unit.key);
-          }
+          map.set(
+            spousePairIdentity(unit.primary.id, spouse.personId),
+            spouseRenderKey(unit.primary.id, spouse.personId)
+          );
+        }
+      }
+    }
+
+    return map;
+  }, [units]);
+
+  const spouseRenderKeysByPersonId = React.useMemo(() => {
+    const map = new Map<string, string[]>();
+
+    for (const generation of units) {
+      for (const unit of generation.units) {
+        for (const spouse of unit.spouses) {
+          const renderKey = spouseRenderKey(
+            unit.primary.id,
+            spouse.personId
+          );
+          const existing = map.get(spouse.personId) ?? [];
+          existing.push(renderKey);
+          map.set(spouse.personId, existing);
         }
       }
     }
@@ -317,60 +336,74 @@ function TreeDiagram({
 
     const plans: {
       key: string;
-      sourcePersonId: string;
-      sourceUnitKey: string;
+      sourceKind: "primary" | "spouse" | "couple";
+      sourceKey: string;
       targetPersonId: string;
-      useCoupleAnchor: boolean;
     }[] = [];
 
-    for (const [childPersonId, childLinks] of linksByChild.entries()) {
-      const mappedParents = childLinks
-        .map((link) => ({
-          parentPersonId: link.parentPersonId,
-          unitKey: unitKeyByPersonId.get(link.parentPersonId) || "",
-        }))
-        .filter((item) => item.unitKey);
-
-      if (mappedParents.length === 0) continue;
-
-      // Collapse two recorded parents into one visual connector only when
-      // both resolve to the same explicit spouse/couple unit.
-      const uniqueUnitKeys = Array.from(
-        new Set(mappedParents.map((item) => item.unitKey))
-      );
-
-      if (uniqueUnitKeys.length === 1) {
-        const sourceUnitKey = uniqueUnitKeys[0];
-        const parentIdsInSameUnit = new Set(
-          mappedParents.map((item) => item.parentPersonId)
-        );
-
+    function addSingleParentPlan(
+      parentPersonId: string,
+      childPersonId: string
+    ) {
+      if (visiblePeopleById.has(parentPersonId)) {
         plans.push({
-          key: `${sourceUnitKey}:${childPersonId}`,
-          sourcePersonId: mappedParents[0].parentPersonId,
-          sourceUnitKey,
+          key: `${parentPersonId}:${childPersonId}`,
+          sourceKind: "primary",
+          sourceKey: parentPersonId,
           targetPersonId: childPersonId,
-          useCoupleAnchor: parentIdsInSameUnit.size >= 2,
         });
-
-        continue;
+        return;
       }
 
-      // If parents are genuinely in different visible units, preserve both
-      // factual parent connectors rather than manufacturing a couple.
-      for (const parent of mappedParents) {
+      const spouseRenderKeys =
+        spouseRenderKeysByPersonId.get(parentPersonId) ?? [];
+
+      if (spouseRenderKeys.length > 0) {
         plans.push({
-          key: `${parent.parentPersonId}:${childPersonId}`,
-          sourcePersonId: parent.parentPersonId,
-          sourceUnitKey: parent.unitKey,
+          key: `${parentPersonId}:${childPersonId}`,
+          sourceKind: "spouse",
+          sourceKey: spouseRenderKeys[0],
           targetPersonId: childPersonId,
-          useCoupleAnchor: false,
         });
       }
     }
 
+    for (const [childPersonId, childLinks] of linksByChild.entries()) {
+      const parentPersonIds = Array.from(
+        new Set(childLinks.map((link) => link.parentPersonId))
+      );
+
+      if (parentPersonIds.length === 2) {
+        const pairIdentity = spousePairIdentity(
+          parentPersonIds[0],
+          parentPersonIds[1]
+        );
+        const pairRenderKey =
+          spousePairRenderKeyByIdentity.get(pairIdentity);
+
+        if (pairRenderKey) {
+          plans.push({
+            key: `${pairRenderKey}:${childPersonId}`,
+            sourceKind: "couple",
+            sourceKey: pairRenderKey,
+            targetPersonId: childPersonId,
+          });
+          continue;
+        }
+      }
+
+      for (const parentPersonId of parentPersonIds) {
+        addSingleParentPlan(parentPersonId, childPersonId);
+      }
+    }
+
     return plans;
-  }, [parentLinks, unitKeyByPersonId, visiblePeopleById]);
+  }, [
+    parentLinks,
+    spousePairRenderKeyByIdentity,
+    spouseRenderKeysByPersonId,
+    visiblePeopleById,
+  ]);
 
   const calculateConnectors = React.useCallback(() => {
     const container = containerRef.current;
@@ -393,42 +426,26 @@ function TreeDiagram({
 
       if (!target) continue;
 
-      let startX = 0;
-      let startY = 0;
+      let source: HTMLDivElement | undefined;
 
-      if (plan.useCoupleAnchor) {
-        const primary = primaryRefs.current.get(plan.sourceUnitKey);
-        const spouse = spouseRefs.current.get(plan.sourceUnitKey);
-
-        if (!primary || !spouse) continue;
-
-        const primaryRect = primary.getBoundingClientRect();
-        const spouseRect = spouse.getBoundingClientRect();
-
-        // Exact geometric midpoint of the visible marriage gap:
-        // primary card right edge <---- midpoint ----> spouse card left edge.
-        startX =
-          ((primaryRect.right + spouseRect.left) / 2 -
-            containerRect.left) /
-          zoom;
-        startY =
-          ((primaryRect.top + primaryRect.bottom) / 2 -
-            containerRect.top) /
-          zoom;
+      if (plan.sourceKind === "couple") {
+        source = coupleAnchorRefs.current.get(plan.sourceKey);
+      } else if (plan.sourceKind === "spouse") {
+        source = spouseRefs.current.get(plan.sourceKey);
       } else {
-        const source = primaryRefs.current.get(plan.sourcePersonId);
-
-        if (!source) continue;
-
-        const sourceRect = source.getBoundingClientRect();
-        startX =
-          (sourceRect.left -
-            containerRect.left +
-            sourceRect.width / 2) /
-          zoom;
-        startY =
-          (sourceRect.bottom - containerRect.top) / zoom;
+        source = primaryRefs.current.get(plan.sourceKey);
       }
+
+      if (!source) continue;
+
+      const sourceRect = source.getBoundingClientRect();
+      const startX =
+        (sourceRect.left -
+          containerRect.left +
+          sourceRect.width / 2) /
+        zoom;
+      const startY =
+        (sourceRect.bottom - containerRect.top) / zoom;
 
       const targetRect = target.getBoundingClientRect();
 
@@ -493,21 +510,24 @@ function TreeDiagram({
   }
 
   function setCoupleAnchorRef(
-    unitKey: string,
+    pairRenderKey: string,
     element: HTMLDivElement | null
   ) {
     if (element) {
-      coupleAnchorRefs.current.set(unitKey, element);
+      coupleAnchorRefs.current.set(pairRenderKey, element);
     } else {
-      coupleAnchorRefs.current.delete(unitKey);
+      coupleAnchorRefs.current.delete(pairRenderKey);
     }
   }
 
-  function setSpouseRef(unitKey: string, element: HTMLDivElement | null) {
+  function setSpouseRef(
+    pairRenderKey: string,
+    element: HTMLDivElement | null
+  ) {
     if (element) {
-      spouseRefs.current.set(unitKey, element);
+      spouseRefs.current.set(pairRenderKey, element);
     } else {
-      spouseRefs.current.delete(unitKey);
+      spouseRefs.current.delete(pairRenderKey);
     }
   }
 
@@ -736,31 +756,73 @@ function TreeDiagram({
                       )}
                     </div>
 
-                    {unit.spouses.map((spouse) => (
-                      <React.Fragment
-                        key={`${unit.primary.id}:${spouse.personId}`}
-                      >
-                        <div
-                          ref={(element) =>
-                            setCoupleAnchorRef(unit.key, element)
-                          }
-                          className="mx-3 flex h-8 items-center gap-1"
-                          aria-label={`${unit.primary.fullName} and ${spouse.fullName} spouse connection`}
-                        >
-                          <span className="h-px w-8 bg-rose-300/80" />
-                          <span className="text-xs font-black text-rose-300">
-                            =
-                          </span>
-                          <span className="h-px w-8 bg-rose-300/80" />
-                        </div>
+                    {unit.spouses.length > 0 ? (
+                      <div className="relative ml-3 flex items-center pl-8">
+                        {unit.spouses.length > 1 ? (
+                          <>
+                            <span
+                              aria-hidden="true"
+                              className="absolute left-0 top-1/2 h-px w-4 bg-rose-300/70"
+                            />
+                            <span
+                              aria-hidden="true"
+                              className="absolute bottom-8 left-4 top-8 w-px bg-rose-300/50"
+                            />
+                          </>
+                        ) : null}
 
-                        <div
-                          ref={(element) => setSpouseRef(unit.key, element)}
-                        >
-                          <CoupleCompanionCard spouse={spouse} />
+                        <div className="flex flex-col gap-4">
+                          {unit.spouses.map((spouse) => {
+                            const pairRenderKey = spouseRenderKey(
+                              unit.primary.id,
+                              spouse.personId
+                            );
+
+                            return (
+                              <div
+                                key={pairRenderKey}
+                                className="relative flex items-center"
+                              >
+                                {unit.spouses.length > 1 ? (
+                                  <span
+                                    aria-hidden="true"
+                                    className="absolute -left-4 h-px w-4 bg-rose-300/50"
+                                  />
+                                ) : null}
+
+                                <div
+                                  ref={(element) =>
+                                    setCoupleAnchorRef(
+                                      pairRenderKey,
+                                      element
+                                    )
+                                  }
+                                  className="mr-3 flex h-8 items-center gap-1"
+                                  aria-label={`${unit.primary.fullName} and ${spouse.fullName} spouse connection`}
+                                >
+                                  <span className="h-px w-8 bg-rose-300/80" />
+                                  <span className="text-xs font-black text-rose-300">
+                                    =
+                                  </span>
+                                  <span className="h-px w-8 bg-rose-300/80" />
+                                </div>
+
+                                <div
+                                  ref={(element) =>
+                                    setSpouseRef(
+                                      pairRenderKey,
+                                      element
+                                    )
+                                  }
+                                >
+                                  <CoupleCompanionCard spouse={spouse} />
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </React.Fragment>
-                    ))}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
