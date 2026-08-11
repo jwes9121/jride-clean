@@ -176,10 +176,36 @@ type BulkChildDraft = {
   reviewState: BulkChildReviewState;
   currentMatches: QuickAddCandidate[];
   otherMatches: QuickAddCandidate[];
+  coParentUnsafeCandidateIds: string[];
   selectedMode: BulkChildMode | null;
   selectedExistingPersonId: string | null;
   differentPersonConfirmed: boolean;
   error: string | null;
+};
+
+type SpouseRelationshipStatus =
+  | "married"
+  | "partner"
+  | "separated"
+  | "divorced"
+  | "widowed";
+
+type SpouseRelationship = {
+  relationshipId: string;
+  spousePersonId: string;
+  fullName: string;
+  familyId: string | null;
+  locationText: string | null;
+  locationBucket: string | null;
+  status: SpouseRelationshipStatus;
+  createdAt: string;
+};
+
+type SpouseRelationshipsResponse = {
+  success: boolean;
+  error?: string;
+  message?: string;
+  spouses?: SpouseRelationship[];
 };
 
 type BulkChildrenWriteResponse = {
@@ -192,7 +218,8 @@ type BulkChildrenWriteResponse = {
     clientRowId: string | null;
     mode: BulkChildMode;
     personId: string;
-    relationshipId: string;
+    relationshipId: string | null;
+    otherParentRelationshipId?: string | null;
     resultCode: string;
     message: string;
   }[];
@@ -254,6 +281,7 @@ function createBulkChildDraft(): BulkChildDraft {
     reviewState: "unreviewed",
     currentMatches: [],
     otherMatches: [],
+    coParentUnsafeCandidateIds: [],
     selectedMode: null,
     selectedExistingPersonId: null,
     differentPersonConfirmed: false,
@@ -314,8 +342,17 @@ export default function FamilyReunionDetailPage() {
   ]);
   const [bulkReviewing, setBulkReviewing] = React.useState(false);
   const [bulkSaving, setBulkSaving] = React.useState(false);
+  const [bulkOtherParentId, setBulkOtherParentId] = React.useState("");
   const [bulkError, setBulkError] = React.useState<string | null>(null);
   const [bulkSuccess, setBulkSuccess] = React.useState<string | null>(null);
+
+  const [chartSpouses, setChartSpouses] =
+    React.useState<SpouseRelationship[]>([]);
+  const [chartSpousesLoading, setChartSpousesLoading] = React.useState(false);
+  const [chartSpousesError, setChartSpousesError] =
+    React.useState<string | null>(null);
+  const [spouseStatusUpdatingId, setSpouseStatusUpdatingId] =
+    React.useState<string | null>(null);
   const [advancedQuickEntryOpen, setAdvancedQuickEntryOpen] =
     React.useState(false);
 
@@ -491,6 +528,99 @@ export default function FamilyReunionDetailPage() {
       setLoading(false);
     }
   }, [familyId]);
+
+  const loadChartSpouses = React.useCallback(
+    async (personId: string) => {
+      if (!personId) {
+        setChartSpouses([]);
+        setChartSpousesError(null);
+        return;
+      }
+
+      setChartSpousesLoading(true);
+      setChartSpousesError(null);
+
+      try {
+        const response = await fetch(
+          `/api/events/family-reunions/${encodeURIComponent(
+            familyId
+          )}/spouses?personId=${encodeURIComponent(personId)}`,
+          { method: "GET", cache: "no-store" }
+        );
+
+        const data = (await response.json()) as SpouseRelationshipsResponse;
+
+        if (!response.ok || !data.success) {
+          setChartSpouses([]);
+          setChartSpousesError(
+            data.error || "Failed to load spouse relationships."
+          );
+          return;
+        }
+
+        setChartSpouses(data.spouses || []);
+      } catch (error) {
+        setChartSpouses([]);
+        setChartSpousesError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load spouse relationships."
+        );
+      } finally {
+        setChartSpousesLoading(false);
+      }
+    },
+    [familyId]
+  );
+
+  React.useEffect(() => {
+    if (!chartActivePersonId) {
+      setChartSpouses([]);
+      return;
+    }
+
+    void loadChartSpouses(chartActivePersonId);
+  }, [chartActivePersonId, loadChartSpouses]);
+
+  async function updateChartSpouseStatus(
+    relationshipId: string,
+    status: SpouseRelationshipStatus
+  ) {
+    setSpouseStatusUpdatingId(relationshipId);
+    setChartSpousesError(null);
+
+    try {
+      const response = await fetch(
+        `/api/events/family-reunions/${encodeURIComponent(
+          familyId
+        )}/spouses`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ relationshipId, status }),
+        }
+      );
+
+      const data = (await response.json()) as SpouseRelationshipsResponse;
+
+      if (!response.ok || !data.success) {
+        setChartSpousesError(
+          data.error || "Failed to update spouse relationship."
+        );
+        return;
+      }
+
+      await loadChartSpouses(chartActivePersonId);
+    } catch (error) {
+      setChartSpousesError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update spouse relationship."
+      );
+    } finally {
+      setSpouseStatusUpdatingId(null);
+    }
+  }
 
   React.useEffect(() => {
     void loadFamily();
@@ -801,11 +931,18 @@ export default function FamilyReunionDetailPage() {
         setQuickCreateOverride(false);
       }
 
+      const savedAnchorPersonId = quickAnchorPersonId;
+      const savedRelationship = quickRelationship;
+
       await loadFamily();
       setGenerationRefreshKey((current) => current + 1);
       setChartEntryOpen(false);
 
-      if (data.personId) {
+      if (savedRelationship === "spouse") {
+        setChartActivePersonId(savedAnchorPersonId);
+        setQuickAnchorPersonId(savedAnchorPersonId);
+        await loadChartSpouses(savedAnchorPersonId);
+      } else if (data.personId) {
         setChartActivePersonId(data.personId);
         setQuickAnchorPersonId(data.personId);
       }
@@ -1122,6 +1259,7 @@ export default function FamilyReunionDetailPage() {
     ]);
     setBulkReviewing(false);
     setBulkSaving(false);
+    setBulkOtherParentId("");
     setBulkError(null);
     if (clearSuccess) {
       setBulkSuccess(null);
@@ -1144,6 +1282,7 @@ export default function FamilyReunionDetailPage() {
                     reviewState: "unreviewed" as BulkChildReviewState,
                     currentMatches: [],
                     otherMatches: [],
+                    coParentUnsafeCandidateIds: [],
                     selectedMode: null,
                     selectedExistingPersonId: null,
                     differentPersonConfirmed: false,
@@ -1204,6 +1343,7 @@ export default function FamilyReunionDetailPage() {
             reviewState: "unreviewed" as BulkChildReviewState,
             currentMatches: [],
             otherMatches: [],
+            coParentUnsafeCandidateIds: [],
             selectedMode: null,
             selectedExistingPersonId: null,
             differentPersonConfirmed: false,
@@ -1212,46 +1352,65 @@ export default function FamilyReunionDetailPage() {
         }
 
         try {
-          const params = new URLSearchParams({
-            q: query,
-            proposedParentId: chartActivePersonId,
-          });
+          async function fetchCandidatesForParent(parentId: string) {
+            const params = new URLSearchParams({
+              q: query,
+              proposedParentId: parentId,
+            });
 
-          const response = await fetch(
-            `/api/events/family-reunions/${encodeURIComponent(
-              familyId
-            )}/quick-add/candidates?${params.toString()}`,
-            { method: "GET", cache: "no-store" }
-          );
+            const response = await fetch(
+              `/api/events/family-reunions/${encodeURIComponent(
+                familyId
+              )}/quick-add/candidates?${params.toString()}`,
+              { method: "GET", cache: "no-store" }
+            );
 
-          const data =
-            (await response.json()) as QuickAddCandidatesResponse;
+            const data =
+              (await response.json()) as QuickAddCandidatesResponse;
 
-          if (!response.ok || !data.success) {
-            return {
-              ...row,
-              reviewState: "error" as BulkChildReviewState,
-              currentMatches: [],
-              otherMatches: [],
-              selectedMode: null,
-              selectedExistingPersonId: null,
-              differentPersonConfirmed: false,
-              error:
+            if (!response.ok || !data.success) {
+              throw new Error(
                 data.error ||
-                "Failed to review this child against existing people.",
-            };
+                  "Failed to review this child against existing people."
+              );
+            }
+
+            return data;
           }
 
-          const currentMatches = data.currentFamilyMatches || [];
-          const otherMatches = data.otherFamilyMatches || [];
+          const [primaryData, coParentData] = await Promise.all([
+            fetchCandidatesForParent(chartActivePersonId),
+            bulkOtherParentId
+              ? fetchCandidatesForParent(bulkOtherParentId)
+              : Promise.resolve(null),
+          ]);
+
+          const currentMatches = primaryData.currentFamilyMatches || [];
+          const otherMatches = primaryData.otherFamilyMatches || [];
           const hasMatches =
             currentMatches.length > 0 || otherMatches.length > 0;
+
+          const coParentUnsafeCandidateIds = coParentData
+            ? [
+                ...(coParentData.currentFamilyMatches || []),
+                ...(coParentData.otherFamilyMatches || []),
+              ]
+                .filter(
+                  (candidate) =>
+                    candidate.quickAddDecision ===
+                      "CYCLE_WOULD_BE_CREATED" ||
+                    candidate.quickAddDecision ===
+                      "ADVANCED_EDITOR_REQUIRED"
+                )
+                .map((candidate) => candidate.candidateId)
+            : [];
 
           return {
             ...row,
             reviewState: "reviewed" as BulkChildReviewState,
             currentMatches,
             otherMatches,
+            coParentUnsafeCandidateIds,
             selectedMode: hasMatches
               ? null
               : ("create_new" as BulkChildMode),
@@ -1265,6 +1424,7 @@ export default function FamilyReunionDetailPage() {
             reviewState: "error" as BulkChildReviewState,
             currentMatches: [],
             otherMatches: [],
+            coParentUnsafeCandidateIds: [],
             selectedMode: null,
             selectedExistingPersonId: null,
             differentPersonConfirmed: false,
@@ -1281,11 +1441,43 @@ export default function FamilyReunionDetailPage() {
     setBulkReviewing(false);
   }
 
+  function canUseBulkExistingCandidate(
+    row: BulkChildDraft,
+    candidate: QuickAddCandidate
+  ) {
+    const anchorDecisionAllowed =
+      candidate.quickAddDecision === "SAFE_TO_LINK" ||
+      (Boolean(bulkOtherParentId) &&
+        candidate.quickAddDecision === "ALREADY_LINKED");
+
+    if (!anchorDecisionAllowed) return false;
+
+    if (
+      bulkOtherParentId &&
+      row.coParentUnsafeCandidateIds.includes(candidate.candidateId)
+    ) {
+      return false;
+    }
+
+    const prospectiveParents = new Set(
+      candidate.biologicalParents.map((parent) => parent.id)
+    );
+    prospectiveParents.add(chartActivePersonId);
+
+    if (bulkOtherParentId) {
+      prospectiveParents.add(bulkOtherParentId);
+    }
+
+    return prospectiveParents.size <= 2;
+  }
+
   function selectBulkExistingPerson(
     rowId: string,
     candidate: QuickAddCandidate
   ) {
-    if (candidate.quickAddDecision !== "SAFE_TO_LINK") return;
+    const row = bulkChildren.find((item) => item.rowId === rowId);
+
+    if (!row || !canUseBulkExistingCandidate(row, candidate)) return;
 
     updateBulkChild(rowId, {
       selectedMode: "use_existing",
@@ -1357,6 +1549,7 @@ export default function FamilyReunionDetailPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             anchorPersonId: chartActivePersonId,
+            otherParentId: bulkOtherParentId || null,
             children: activeRows.map((row) => ({
               clientRowId: row.rowId,
               mode: row.selectedMode,
@@ -1695,6 +1888,86 @@ export default function FamilyReunionDetailPage() {
                           )}
                         </div>
 
+                        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-black uppercase tracking-[0.14em] text-rose-300">
+                                Spouses / Partners
+                              </p>
+                              <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                                Keep former spouses recorded. Change their
+                                status instead of deleting them so children
+                                from different marriages remain traceable.
+                              </p>
+                            </div>
+                          </div>
+
+                          {chartSpousesLoading ? (
+                            <p className="mt-3 text-xs text-slate-400">
+                              Loading spouse relationships...
+                            </p>
+                          ) : chartSpouses.length === 0 ? (
+                            <p className="mt-3 text-xs text-slate-500">
+                              No spouse or partner is recorded for this person.
+                              Use + Spouse below to add one.
+                            </p>
+                          ) : (
+                            <div className="mt-3 space-y-2">
+                              {chartSpouses.map((spouse) => (
+                                <div
+                                  key={spouse.relationshipId}
+                                  className="rounded-lg border border-slate-700 bg-slate-950 p-3"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-black text-white">
+                                        {spouse.fullName}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-slate-400">
+                                        {spouse.locationBucket ||
+                                          spouse.locationText ||
+                                          "Location not recorded"}
+                                      </p>
+                                    </div>
+
+                                    <select
+                                      value={spouse.status}
+                                      onChange={(event) =>
+                                        void updateChartSpouseStatus(
+                                          spouse.relationshipId,
+                                          event.target
+                                            .value as SpouseRelationshipStatus
+                                        )
+                                      }
+                                      disabled={
+                                        spouseStatusUpdatingId ===
+                                        spouse.relationshipId
+                                      }
+                                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                                    >
+                                      <option value="married">Married</option>
+                                      <option value="partner">Partner</option>
+                                      <option value="separated">
+                                        Separated
+                                      </option>
+                                      <option value="divorced">
+                                        Divorced
+                                      </option>
+                                      <option value="widowed">Widowed</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {chartSpousesError ? (
+                            <div className="mt-3 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
+                              {chartSpousesError}
+                            </div>
+                          ) : null}
+                        </div>
+
                         <div className="mt-5 grid gap-3 sm:grid-cols-3">
                           <button
                             type="button"
@@ -1773,6 +2046,54 @@ export default function FamilyReunionDetailPage() {
                                 "Generation labels will be derived after saving."
                               )}
                             </div>
+
+                            <label className="mt-4 block">
+                              <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                                Other Biological Parent (optional)
+                              </span>
+                              <select
+                                value={bulkOtherParentId}
+                                onChange={(event) => {
+                                  setBulkOtherParentId(event.target.value);
+                                  setBulkChildren((current) =>
+                                    current.map((row) => ({
+                                      ...row,
+                                      reviewState:
+                                        "unreviewed" as BulkChildReviewState,
+                                      currentMatches: [],
+                                      otherMatches: [],
+                                      coParentUnsafeCandidateIds: [],
+                                      selectedMode: null,
+                                      selectedExistingPersonId: null,
+                                      differentPersonConfirmed: false,
+                                      error: null,
+                                    }))
+                                  );
+                                  setBulkError(null);
+                                  setBulkSuccess(null);
+                                }}
+                                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
+                              >
+                                <option value="">
+                                  Only {chartActivePerson.fullName} is known as a biological parent
+                                </option>
+                                {chartSpouses.map((spouse) => (
+                                  <option
+                                    key={spouse.relationshipId}
+                                    value={spouse.spousePersonId}
+                                  >
+                                    {spouse.fullName} - {spouse.status}
+                                  </option>
+                                ))}
+                              </select>
+                              <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                                For children from a marriage or partnership,
+                                choose that spouse here. Divorced, separated,
+                                or widowed spouses remain selectable because
+                                they may still be the child's biological
+                                parent.
+                              </p>
+                            </label>
 
                             <div className="mt-4 space-y-4">
                               {bulkChildren.map((row, rowIndex) => {
@@ -1915,8 +2236,10 @@ export default function FamilyReunionDetailPage() {
 
                                             {matches.map((candidate) => {
                                               const canUse =
-                                                candidate.quickAddDecision ===
-                                                "SAFE_TO_LINK";
+                                                canUseBulkExistingCandidate(
+                                                  row,
+                                                  candidate
+                                                );
                                               const selected =
                                                 row.selectedMode ===
                                                   "use_existing" &&
@@ -1967,6 +2290,22 @@ export default function FamilyReunionDetailPage() {
                                                       % match
                                                     </span>
                                                   </div>
+
+                                                  {bulkOtherParentId &&
+                                                  !canUse &&
+                                                  (candidate.quickAddDecision ===
+                                                    "SAFE_TO_LINK" ||
+                                                    candidate.quickAddDecision ===
+                                                      "ALREADY_LINKED") ? (
+                                                    <p className="mt-2 text-xs text-amber-300">
+                                                      This existing person
+                                                      cannot be used with the
+                                                      selected other biological
+                                                      parent because it would
+                                                      create a cycle or exceed
+                                                      two biological parents.
+                                                    </p>
+                                                  ) : null}
 
                                                   {canUse ? (
                                                     <button

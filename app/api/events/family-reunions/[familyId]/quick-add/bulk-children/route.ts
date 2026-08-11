@@ -56,7 +56,8 @@ type BulkRpcRow = {
     clientRowId: string | null;
     mode: "create_new" | "use_existing";
     personId: string;
-    relationshipId: string;
+    relationshipId: string | null;
+    otherParentRelationshipId?: string | null;
     resultCode: string;
     message: string;
   }[];
@@ -85,6 +86,8 @@ export async function POST(
 
     const body = await req.json().catch(() => ({}));
     const anchorPersonId = cleanUuid(body.anchorPersonId);
+    const otherParentRaw = String(body.otherParentId || "").trim();
+    const otherParentId = otherParentRaw ? cleanUuid(otherParentRaw) : "";
     const rawChildren = Array.isArray(body.children)
       ? (body.children as BulkChildInput[])
       : [];
@@ -92,6 +95,23 @@ export async function POST(
     if (!anchorPersonId) {
       return noStore(
         { success: false, error: "Choose the parent for this batch." },
+        400
+      );
+    }
+
+    if (otherParentRaw && !otherParentId) {
+      return noStore(
+        { success: false, error: "Invalid other biological parent." },
+        400
+      );
+    }
+
+    if (otherParentId && otherParentId === anchorPersonId) {
+      return noStore(
+        {
+          success: false,
+          error: "The other biological parent must be a different person.",
+        },
         400
       );
     }
@@ -178,10 +198,11 @@ export async function POST(
     const supabase = supabaseAdmin();
 
     const { data, error } = await supabase.rpc(
-      "family_quick_entry_bulk_children",
+      "family_quick_entry_bulk_children_with_coparent",
       {
         p_family_id: familyId,
         p_anchor_person_id: anchorPersonId,
+        p_other_parent_id: otherParentId || null,
         p_children: children,
       }
     );
