@@ -332,6 +332,12 @@ export default function FamilyReunionDetailPage() {
   const [quickWriteSuccess, setQuickWriteSuccess] =
     React.useState<string | null>(null);
   const [quickCreateOverride, setQuickCreateOverride] = React.useState(false);
+  const [singleChildOtherParentId, setSingleChildOtherParentId] =
+    React.useState("");
+  const [singleChildBranchConfirmed, setSingleChildBranchConfirmed] =
+    React.useState(false);
+  const [quickCoParentDecisionByCandidateId, setQuickCoParentDecisionByCandidateId] =
+    React.useState<Record<string, QuickAddCandidate["quickAddDecision"]>>({});
   const [chartActivePersonId, setChartActivePersonId] = React.useState("");
   const [chartEntryOpen, setChartEntryOpen] = React.useState(false);
   const [bulkChildrenOpen, setBulkChildrenOpen] = React.useState(false);
@@ -594,7 +600,22 @@ export default function FamilyReunionDetailPage() {
       setBulkOtherParentId("");
       setBulkParentBranchConfirmed(false);
     }
-  }, [bulkOtherParentId, chartSpouses]);
+
+    if (
+      singleChildOtherParentId &&
+      !chartSpouses.some(
+        (spouse) => spouse.spousePersonId === singleChildOtherParentId
+      )
+    ) {
+      setSingleChildOtherParentId("");
+      setSingleChildBranchConfirmed(false);
+      setQuickCoParentDecisionByCandidateId({});
+    }
+  }, [
+    bulkOtherParentId,
+    chartSpouses,
+    singleChildOtherParentId,
+  ]);
 
   async function updateChartSpouseStatus(
     relationshipId: string,
@@ -806,6 +827,7 @@ export default function FamilyReunionDetailPage() {
       setQuickSearchError(null);
       setQuickCurrentMatches([]);
       setQuickOtherMatches([]);
+      setQuickCoParentDecisionByCandidateId({});
       return;
     }
 
@@ -814,34 +836,75 @@ export default function FamilyReunionDetailPage() {
       setQuickSearchError(null);
 
       try {
-        const params = new URLSearchParams({ q: query });
+        async function fetchCandidatesForParent(
+          proposedParentId?: string
+        ) {
+          const params = new URLSearchParams({ q: query });
 
-        if (quickRelationship === "child" && quickAnchorPersonId) {
-          params.set("proposedParentId", quickAnchorPersonId);
+          if (proposedParentId) {
+            params.set("proposedParentId", proposedParentId);
+          }
+
+          const response = await fetch(
+            `/api/events/family-reunions/${encodeURIComponent(
+              familyId
+            )}/quick-add/candidates?${params.toString()}`,
+            { method: "GET", cache: "no-store" }
+          );
+
+          const data =
+            (await response.json()) as QuickAddCandidatesResponse;
+
+          if (!response.ok || !data.success) {
+            throw new Error(
+              data.error || "Failed to search existing family records."
+            );
+          }
+
+          return data;
         }
 
-        const response = await fetch(
-          `/api/events/family-reunions/${encodeURIComponent(
-            familyId
-          )}/quick-add/candidates?${params.toString()}`,
-          { method: "GET", cache: "no-store" }
-        );
+        const primaryParentId =
+          quickRelationship === "child" && quickAnchorPersonId
+            ? quickAnchorPersonId
+            : undefined;
 
-        const data = (await response.json()) as QuickAddCandidatesResponse;
+        const useSingleChildCoParent =
+          chartEntryOpen &&
+          quickRelationship === "child" &&
+          singleChildBranchConfirmed &&
+          Boolean(singleChildOtherParentId);
+
+        const [primaryData, coParentData] = await Promise.all([
+          fetchCandidatesForParent(primaryParentId),
+          useSingleChildCoParent
+            ? fetchCandidatesForParent(singleChildOtherParentId)
+            : Promise.resolve(null),
+        ]);
 
         if (cancelled) return;
 
-        if (!response.ok || !data.success) {
-          setQuickSearchError(
-            data.error || "Failed to search existing family records."
-          );
-          setQuickCurrentMatches([]);
-          setQuickOtherMatches([]);
-          return;
-        }
+        setQuickCurrentMatches(primaryData.currentFamilyMatches || []);
+        setQuickOtherMatches(primaryData.otherFamilyMatches || []);
 
-        setQuickCurrentMatches(data.currentFamilyMatches || []);
-        setQuickOtherMatches(data.otherFamilyMatches || []);
+        if (coParentData) {
+          const decisions: Record<
+            string,
+            QuickAddCandidate["quickAddDecision"]
+          > = {};
+
+          for (const candidate of [
+            ...(coParentData.currentFamilyMatches || []),
+            ...(coParentData.otherFamilyMatches || []),
+          ]) {
+            decisions[candidate.candidateId] =
+              candidate.quickAddDecision;
+          }
+
+          setQuickCoParentDecisionByCandidateId(decisions);
+        } else {
+          setQuickCoParentDecisionByCandidateId({});
+        }
       } catch (error) {
         if (cancelled) return;
 
@@ -852,6 +915,7 @@ export default function FamilyReunionDetailPage() {
         );
         setQuickCurrentMatches([]);
         setQuickOtherMatches([]);
+        setQuickCoParentDecisionByCandidateId({});
       } finally {
         if (!cancelled) {
           setQuickSearching(false);
@@ -863,7 +927,15 @@ export default function FamilyReunionDetailPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [familyId, quickAnchorPersonId, quickName, quickRelationship]);
+  }, [
+    chartEntryOpen,
+    familyId,
+    quickAnchorPersonId,
+    quickName,
+    quickRelationship,
+    singleChildBranchConfirmed,
+    singleChildOtherParentId,
+  ]);
 
   function resetQuickNewPersonFields() {
     setQuickName("");
@@ -873,7 +945,56 @@ export default function FamilyReunionDetailPage() {
     setQuickLocationBucket("");
     setQuickCurrentMatches([]);
     setQuickOtherMatches([]);
+    setQuickCoParentDecisionByCandidateId({});
     setQuickCreateOverride(false);
+  }
+
+  function canUseSingleChildCandidate(
+    candidate: QuickAddCandidate
+  ) {
+    if (
+      !chartEntryOpen ||
+      quickRelationship !== "child" ||
+      !singleChildBranchConfirmed
+    ) {
+      return candidate.quickAddDecision === "SAFE_TO_LINK";
+    }
+
+    const anchorAllowed =
+      candidate.quickAddDecision === "SAFE_TO_LINK" ||
+      (Boolean(singleChildOtherParentId) &&
+        candidate.quickAddDecision === "ALREADY_LINKED");
+
+    if (!anchorAllowed) return false;
+
+    if (!singleChildOtherParentId) {
+      return candidate.quickAddDecision === "SAFE_TO_LINK";
+    }
+
+    const coParentDecision =
+      quickCoParentDecisionByCandidateId[candidate.candidateId];
+
+    if (
+      coParentDecision !== "SAFE_TO_LINK" &&
+      coParentDecision !== "ALREADY_LINKED"
+    ) {
+      return false;
+    }
+
+    if (
+      candidate.quickAddDecision === "ALREADY_LINKED" &&
+      coParentDecision === "ALREADY_LINKED"
+    ) {
+      return false;
+    }
+
+    const prospectiveParents = new Set(
+      candidate.biologicalParents.map((parent) => parent.id)
+    );
+    prospectiveParents.add(quickAnchorPersonId);
+    prospectiveParents.add(singleChildOtherParentId);
+
+    return prospectiveParents.size <= 2;
   }
 
   async function runQuickEntry(
@@ -885,6 +1006,18 @@ export default function FamilyReunionDetailPage() {
 
     if (!quickAnchorPersonId) {
       setQuickWriteError("Choose the family member to add to.");
+      return;
+    }
+
+    if (
+      chartEntryOpen &&
+      quickRelationship === "child" &&
+      chartSpouses.length > 0 &&
+      !singleChildBranchConfirmed
+    ) {
+      setQuickWriteError(
+        "Choose which parent branch this child belongs to first."
+      );
       return;
     }
 
@@ -903,35 +1036,112 @@ export default function FamilyReunionDetailPage() {
     setQuickWriting(true);
 
     try {
-      const response = await fetch(
-        `/api/events/family-reunions/${encodeURIComponent(
-          familyId
-        )}/quick-add/write`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            anchorPersonId: quickAnchorPersonId,
-            relationshipKind: quickRelationship,
-            mode,
-            existingPersonId: existingPersonId || null,
-            fullName: mode === "create_new" ? quickName.trim() : null,
-            sex: mode === "create_new" ? quickSex : null,
-            locationText:
-              mode === "create_new" ? quickLocationText.trim() : null,
-            locationScope:
-              mode === "create_new" ? quickLocationScope : null,
-            locationBucket:
-              mode === "create_new" ? quickLocationBucket.trim() : null,
-          }),
+      const useSingleChildBranchWrite =
+        chartEntryOpen &&
+        quickRelationship === "child" &&
+        singleChildBranchConfirmed;
+
+      let data: QuickEntryWriteResponse;
+
+      if (useSingleChildBranchWrite) {
+        const response = await fetch(
+          `/api/events/family-reunions/${encodeURIComponent(
+            familyId
+          )}/quick-add/bulk-children`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              anchorPersonId: quickAnchorPersonId,
+              otherParentId: singleChildOtherParentId || null,
+              children: [
+                {
+                  clientRowId: "single-chart-child",
+                  mode,
+                  existingPersonId: existingPersonId || null,
+                  fullName:
+                    mode === "create_new" ? quickName.trim() : null,
+                  sex:
+                    mode === "create_new" ? quickSex : "unspecified",
+                  locationText:
+                    mode === "create_new"
+                      ? quickLocationText.trim() || null
+                      : null,
+                  locationScope:
+                    mode === "create_new"
+                      ? quickLocationScope || null
+                      : null,
+                  locationBucket:
+                    mode === "create_new"
+                      ? quickLocationBucket.trim() || null
+                      : null,
+                },
+              ],
+            }),
+          }
+        );
+
+        const bulkData =
+          (await response.json()) as BulkChildrenWriteResponse;
+
+        if (!response.ok || !bulkData.success) {
+          setQuickWriteError(
+            bulkData.error || "Quick Entry failed."
+          );
+          return;
         }
-      );
 
-      const data = (await response.json()) as QuickEntryWriteResponse;
+        const result = bulkData.results?.[0];
 
-      if (!response.ok || !data.success) {
-        setQuickWriteError(data.error || "Quick Entry failed.");
-        return;
+        data = {
+          success: true,
+          resultCode: bulkData.resultCode,
+          message:
+            result?.message ||
+            bulkData.message ||
+            "Quick Entry saved.",
+          personId: result?.personId || null,
+          relationshipId: result?.relationshipId || null,
+        };
+      } else {
+        const response = await fetch(
+          `/api/events/family-reunions/${encodeURIComponent(
+            familyId
+          )}/quick-add/write`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              anchorPersonId: quickAnchorPersonId,
+              relationshipKind: quickRelationship,
+              mode,
+              existingPersonId: existingPersonId || null,
+              fullName:
+                mode === "create_new" ? quickName.trim() : null,
+              sex: mode === "create_new" ? quickSex : null,
+              locationText:
+                mode === "create_new"
+                  ? quickLocationText.trim()
+                  : null,
+              locationScope:
+                mode === "create_new" ? quickLocationScope : null,
+              locationBucket:
+                mode === "create_new"
+                  ? quickLocationBucket.trim()
+                  : null,
+            }),
+          }
+        );
+
+        data =
+          (await response.json()) as QuickEntryWriteResponse;
+
+        if (!response.ok || !data.success) {
+          setQuickWriteError(
+            data.error || "Quick Entry failed."
+          );
+          return;
+        }
       }
 
       setQuickWriteSuccess(data.message || "Quick Entry saved.");
@@ -951,6 +1161,9 @@ export default function FamilyReunionDetailPage() {
       await loadFamily();
       setGenerationRefreshKey((current) => current + 1);
       setChartEntryOpen(false);
+      setSingleChildOtherParentId("");
+      setSingleChildBranchConfirmed(false);
+      setQuickCoParentDecisionByCandidateId({});
 
       if (savedRelationship === "spouse") {
         setChartActivePersonId(savedAnchorPersonId);
@@ -1256,6 +1469,15 @@ export default function FamilyReunionDetailPage() {
         (spouse) => spouse.spousePersonId === bulkOtherParentId
       ) || null,
     [bulkOtherParentId, chartSpouses]
+  );
+
+  const selectedSingleChildOtherParent = React.useMemo(
+    () =>
+      chartSpouses.find(
+        (spouse) =>
+          spouse.spousePersonId === singleChildOtherParentId
+      ) || null,
+    [chartSpouses, singleChildOtherParentId]
   );
 
   const chartPeople = React.useMemo(
@@ -1680,6 +1902,19 @@ export default function FamilyReunionDetailPage() {
     }
   }
 
+  function selectSingleChildParentBranch(otherParentId: string) {
+    setSingleChildOtherParentId(otherParentId);
+    setSingleChildBranchConfirmed(true);
+    setQuickName("");
+    setQuickCurrentMatches([]);
+    setQuickOtherMatches([]);
+    setQuickCoParentDecisionByCandidateId({});
+    setQuickCreateOverride(false);
+    setQuickSearchError(null);
+    setQuickWriteError(null);
+    setQuickWriteSuccess(null);
+  }
+
   function activateChartEntry(
     personId: string,
     relationship: "child" | "spouse"
@@ -1690,7 +1925,10 @@ export default function FamilyReunionDetailPage() {
     setQuickName("");
     setQuickCurrentMatches([]);
     setQuickOtherMatches([]);
+    setQuickCoParentDecisionByCandidateId({});
     setQuickCreateOverride(false);
+    setSingleChildOtherParentId("");
+    setSingleChildBranchConfirmed(false);
     setQuickWriteError(null);
     setQuickWriteSuccess(null);
     setBulkChildrenOpen(false);
@@ -1896,6 +2134,9 @@ export default function FamilyReunionDetailPage() {
                           setQuickWriteSuccess(null);
                           setChartEntryOpen(false);
                           setBulkChildrenOpen(false);
+                          setSingleChildOtherParentId("");
+                          setSingleChildBranchConfirmed(false);
+                          setQuickCoParentDecisionByCandidateId({});
                           resetBulkChildren();
                         }}
                         className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
@@ -2630,6 +2871,121 @@ export default function FamilyReunionDetailPage() {
                               </button>
                             </div>
 
+                            {quickRelationship === "child" &&
+                            chartSpouses.length > 0 ? (
+                              <div className="mt-4">
+                                <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                                  Child belongs to which parent branch?
+                                </p>
+                                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                                  Choose the biological parent branch before
+                                  entering the child.
+                                </p>
+
+                                <div className="mt-3 grid gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      selectSingleChildParentBranch("")
+                                    }
+                                    className={`rounded-xl border p-3 text-left ${
+                                      singleChildBranchConfirmed &&
+                                      !singleChildOtherParentId
+                                        ? "border-cyan-300 bg-cyan-950/20"
+                                        : "border-slate-700 bg-slate-900"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-black text-white">
+                                          {chartActivePerson.fullName} only
+                                        </p>
+                                        <p className="mt-1 text-[11px] text-slate-400">
+                                          Other biological parent is unknown
+                                          or not recorded.
+                                        </p>
+                                      </div>
+                                      {singleChildBranchConfirmed &&
+                                      !singleChildOtherParentId ? (
+                                        <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-[10px] font-black uppercase text-cyan-300">
+                                          Selected
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </button>
+
+                                  {chartSpouses.map((spouse) => {
+                                    const selected =
+                                      singleChildBranchConfirmed &&
+                                      singleChildOtherParentId ===
+                                        spouse.spousePersonId;
+
+                                    return (
+                                      <button
+                                        key={`single-child-branch:${spouse.relationshipId}`}
+                                        type="button"
+                                        onClick={() =>
+                                          selectSingleChildParentBranch(
+                                            spouse.spousePersonId
+                                          )
+                                        }
+                                        className={`rounded-xl border p-3 text-left ${
+                                          selected
+                                            ? "border-amber-300 bg-amber-950/20"
+                                            : "border-slate-700 bg-slate-900"
+                                        }`}
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                          <div>
+                                            <p className="text-sm font-black text-white">
+                                              {chartActivePerson.fullName} +{" "}
+                                              {spouse.fullName}
+                                            </p>
+                                            <p className="mt-1 text-[11px] text-slate-400">
+                                              Other biological parent:{" "}
+                                              {spouse.fullName}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="rounded-full bg-rose-400/10 px-2 py-1 text-[10px] font-black uppercase text-rose-300">
+                                              {spouse.status}
+                                            </span>
+                                            {selected ? (
+                                              <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-300">
+                                                Selected
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+
+                                {!singleChildBranchConfirmed ? (
+                                  <div className="mt-3 rounded-lg border border-amber-700 bg-amber-950/20 p-3 text-xs text-amber-200">
+                                    Choose a parent branch before entering the
+                                    child.
+                                  </div>
+                                ) : (
+                                  <div className="mt-3 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300">
+                                      Child Being Added To
+                                    </p>
+                                    <p className="mt-1 text-sm font-black text-white">
+                                      {selectedSingleChildOtherParent
+                                        ? `${chartActivePerson.fullName} + ${selectedSingleChildOtherParent.fullName}`
+                                        : `${chartActivePerson.fullName} only`}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+
+                            {quickRelationship !== "child" ||
+                            chartSpouses.length === 0 ||
+                            singleChildBranchConfirmed ? (
+                              <>
                             <div className="mt-4 rounded-xl border border-slate-800 bg-slate-900 p-3 text-xs text-slate-300">
                               {quickRelationship === "child" &&
                               generationByPersonId[chartActivePerson.id] ? (
@@ -2703,15 +3059,31 @@ export default function FamilyReunionDetailPage() {
                                     const needsAdvanced =
                                       candidate.quickAddDecision ===
                                       "ADVANCED_EDITOR_REQUIRED";
-                                    const alreadyLinked =
+                                    const coParentDecision =
+                                      quickCoParentDecisionByCandidateId[
+                                        candidate.candidateId
+                                      ];
+                                    const branchAlreadyLinked =
+                                      quickRelationship === "child" &&
+                                      singleChildBranchConfirmed &&
+                                      Boolean(singleChildOtherParentId) &&
                                       candidate.quickAddDecision ===
-                                      "ALREADY_LINKED";
+                                        "ALREADY_LINKED" &&
+                                      coParentDecision === "ALREADY_LINKED";
+                                    const alreadyLinked =
+                                      quickRelationship === "child" &&
+                                      singleChildBranchConfirmed &&
+                                      Boolean(singleChildOtherParentId)
+                                        ? branchAlreadyLinked
+                                        : candidate.quickAddDecision ===
+                                          "ALREADY_LINKED";
                                     const canUse =
                                       quickRelationship === "spouse"
                                         ? candidate.candidateId !==
                                           quickAnchorPersonId
-                                        : candidate.quickAddDecision ===
-                                          "SAFE_TO_LINK";
+                                        : canUseSingleChildCandidate(
+                                            candidate
+                                          );
 
                                     return (
                                       <div
@@ -2783,6 +3155,22 @@ export default function FamilyReunionDetailPage() {
                                               II, III, IV, and middle names can be
                                               identity-significant.
                                             </p>
+                                          </div>
+                                        ) : null}
+
+                                        {quickRelationship === "child" &&
+                                        singleChildBranchConfirmed &&
+                                        Boolean(singleChildOtherParentId) &&
+                                        !canUse &&
+                                        !alreadyLinked &&
+                                        !hardCycle &&
+                                        !needsAdvanced ? (
+                                          <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
+                                            This existing person cannot be used
+                                            with the selected parent branch
+                                            because the other parent would
+                                            create a cycle or exceed two
+                                            biological parents.
                                           </div>
                                         ) : null}
 
@@ -2918,6 +3306,8 @@ export default function FamilyReunionDetailPage() {
                                 {quickWriteError}
                               </div>
                             ) : null}
+                              </>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -2944,6 +3334,9 @@ export default function FamilyReunionDetailPage() {
                             setQuickWriteSuccess(null);
                             setChartEntryOpen(false);
                             setBulkChildrenOpen(false);
+                            setSingleChildOtherParentId("");
+                            setSingleChildBranchConfirmed(false);
+                            setQuickCoParentDecisionByCandidateId({});
                             resetBulkChildren();
                           }}
                           className={`rounded-xl border p-4 text-left transition ${
@@ -2995,9 +3388,12 @@ export default function FamilyReunionDetailPage() {
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setAdvancedQuickEntryOpen((current) => !current)
-                  }
+                  onClick={() => {
+                    setAdvancedQuickEntryOpen((current) => !current);
+                    setSingleChildOtherParentId("");
+                    setSingleChildBranchConfirmed(false);
+                    setQuickCoParentDecisionByCandidateId({});
+                  }}
                   className="rounded-xl border border-slate-700 px-4 py-3 text-sm font-black text-slate-300"
                 >
                   {advancedQuickEntryOpen
