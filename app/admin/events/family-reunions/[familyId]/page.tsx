@@ -343,6 +343,8 @@ export default function FamilyReunionDetailPage() {
   const [bulkReviewing, setBulkReviewing] = React.useState(false);
   const [bulkSaving, setBulkSaving] = React.useState(false);
   const [bulkOtherParentId, setBulkOtherParentId] = React.useState("");
+  const [bulkParentBranchConfirmed, setBulkParentBranchConfirmed] =
+    React.useState(false);
   const [bulkError, setBulkError] = React.useState<string | null>(null);
   const [bulkSuccess, setBulkSuccess] = React.useState<string | null>(null);
 
@@ -581,6 +583,18 @@ export default function FamilyReunionDetailPage() {
 
     void loadChartSpouses(chartActivePersonId);
   }, [chartActivePersonId, loadChartSpouses]);
+
+  React.useEffect(() => {
+    if (
+      bulkOtherParentId &&
+      !chartSpouses.some(
+        (spouse) => spouse.spousePersonId === bulkOtherParentId
+      )
+    ) {
+      setBulkOtherParentId("");
+      setBulkParentBranchConfirmed(false);
+    }
+  }, [bulkOtherParentId, chartSpouses]);
 
   async function updateChartSpouseStatus(
     relationshipId: string,
@@ -1236,6 +1250,14 @@ export default function FamilyReunionDetailPage() {
     [chartActivePersonId, people]
   );
 
+  const selectedBulkOtherParent = React.useMemo(
+    () =>
+      chartSpouses.find(
+        (spouse) => spouse.spousePersonId === bulkOtherParentId
+      ) || null,
+    [bulkOtherParentId, chartSpouses]
+  );
+
   const chartPeople = React.useMemo(
     () =>
       [...people].sort((a, b) => {
@@ -1260,6 +1282,7 @@ export default function FamilyReunionDetailPage() {
     setBulkReviewing(false);
     setBulkSaving(false);
     setBulkOtherParentId("");
+    setBulkParentBranchConfirmed(false);
     setBulkError(null);
     if (clearSuccess) {
       setBulkSuccess(null);
@@ -1297,6 +1320,26 @@ export default function FamilyReunionDetailPage() {
     setBulkSuccess(null);
   }
 
+  function selectBulkParentBranch(otherParentId: string) {
+    setBulkOtherParentId(otherParentId);
+    setBulkParentBranchConfirmed(true);
+    setBulkChildren((current) =>
+      current.map((row) => ({
+        ...row,
+        reviewState: "unreviewed" as BulkChildReviewState,
+        currentMatches: [],
+        otherMatches: [],
+        coParentUnsafeCandidateIds: [],
+        selectedMode: null,
+        selectedExistingPersonId: null,
+        differentPersonConfirmed: false,
+        error: null,
+      }))
+    );
+    setBulkError(null);
+    setBulkSuccess(null);
+  }
+
   function addBulkChildRow() {
     setBulkChildren((current) =>
       current.length >= 20
@@ -1317,6 +1360,13 @@ export default function FamilyReunionDetailPage() {
   async function reviewBulkChildren() {
     if (!chartActivePersonId) {
       setBulkError("Choose the parent for this batch.");
+      return;
+    }
+
+    if (chartSpouses.length > 0 && !bulkParentBranchConfirmed) {
+      setBulkError(
+        "Choose which parent branch these children belong to before review."
+      );
       return;
     }
 
@@ -1503,6 +1553,13 @@ export default function FamilyReunionDetailPage() {
 
     if (!chartActivePersonId) {
       setBulkError("Choose the parent for this batch.");
+      return;
+    }
+
+    if (chartSpouses.length > 0 && !bulkParentBranchConfirmed) {
+      setBulkError(
+        "Choose which parent branch these children belong to before saving."
+      );
       return;
     }
 
@@ -2047,56 +2104,155 @@ export default function FamilyReunionDetailPage() {
                               )}
                             </div>
 
-                            <label className="mt-4 block">
-                              <span className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
-                                Other Biological Parent (optional)
-                              </span>
-                              <select
-                                value={bulkOtherParentId}
-                                onChange={(event) => {
-                                  setBulkOtherParentId(event.target.value);
-                                  setBulkChildren((current) =>
-                                    current.map((row) => ({
-                                      ...row,
-                                      reviewState:
-                                        "unreviewed" as BulkChildReviewState,
-                                      currentMatches: [],
-                                      otherMatches: [],
-                                      coParentUnsafeCandidateIds: [],
-                                      selectedMode: null,
-                                      selectedExistingPersonId: null,
-                                      differentPersonConfirmed: false,
-                                      error: null,
-                                    }))
-                                  );
-                                  setBulkError(null);
-                                  setBulkSuccess(null);
-                                }}
-                                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-white"
-                              >
-                                <option value="">
-                                  Only {chartActivePerson.fullName} is known as a biological parent
-                                </option>
-                                {chartSpouses.map((spouse) => (
-                                  <option
-                                    key={spouse.relationshipId}
-                                    value={spouse.spousePersonId}
-                                  >
-                                    {spouse.fullName} - {spouse.status}
-                                  </option>
-                                ))}
-                              </select>
-                              <p className="mt-2 text-[11px] leading-5 text-slate-500">
-                                For children from a marriage or partnership,
-                                choose that spouse here. Divorced, separated,
-                                or widowed spouses remain selectable because
-                                they may still be the child's biological
-                                parent.
+                            <div className="mt-4">
+                              <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">
+                                Children belong to which parent branch?
                               </p>
-                            </label>
+                              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                                Choose this before entering a large group of
+                                children. The selection controls which recorded
+                                spouse is stored as the other biological parent.
+                              </p>
 
+                              {chartSpouses.length === 0 ? (
+                                <div className="mt-3 rounded-xl border border-cyan-300/30 bg-cyan-950/10 p-4">
+                                  <p className="text-xs font-black uppercase tracking-[0.12em] text-cyan-300">
+                                    Parent Branch
+                                  </p>
+                                  <p className="mt-2 text-sm font-black text-white">
+                                    {chartActivePerson.fullName} only
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    No recorded spouse or partner is available
+                                    as the other biological parent.
+                                  </p>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mt-3 grid gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        selectBulkParentBranch("")
+                                      }
+                                      className={`rounded-xl border p-4 text-left transition ${
+                                        bulkParentBranchConfirmed &&
+                                        !bulkOtherParentId
+                                          ? "border-cyan-300 bg-cyan-950/20"
+                                          : "border-slate-700 bg-slate-950 hover:border-slate-500"
+                                      }`}
+                                    >
+                                      <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                          <p className="text-sm font-black text-white">
+                                            {chartActivePerson.fullName} only
+                                          </p>
+                                          <p className="mt-1 text-xs text-slate-400">
+                                            Other biological parent is unknown,
+                                            not recorded, or not one of the
+                                            spouses listed below.
+                                          </p>
+                                        </div>
+                                        {bulkParentBranchConfirmed &&
+                                        !bulkOtherParentId ? (
+                                          <span className="rounded-full bg-cyan-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-cyan-300">
+                                            Selected
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </button>
+
+                                    {chartSpouses.map((spouse) => {
+                                      const selected =
+                                        bulkParentBranchConfirmed &&
+                                        bulkOtherParentId ===
+                                          spouse.spousePersonId;
+
+                                      return (
+                                        <button
+                                          key={spouse.relationshipId}
+                                          type="button"
+                                          onClick={() =>
+                                            selectBulkParentBranch(
+                                              spouse.spousePersonId
+                                            )
+                                          }
+                                          className={`rounded-xl border p-4 text-left transition ${
+                                            selected
+                                              ? "border-amber-300 bg-amber-950/20"
+                                              : "border-slate-700 bg-slate-950 hover:border-slate-500"
+                                          }`}
+                                        >
+                                          <div className="flex flex-wrap items-start justify-between gap-3">
+                                            <div>
+                                              <p className="text-sm font-black text-white">
+                                                {chartActivePerson.fullName} +{" "}
+                                                {spouse.fullName}
+                                              </p>
+                                              <p className="mt-1 text-xs text-slate-400">
+                                                Other biological parent:{" "}
+                                                {spouse.fullName}
+                                              </p>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span className="rounded-full bg-rose-400/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-rose-300">
+                                                {spouse.status}
+                                              </span>
+                                              {selected ? (
+                                                <span className="rounded-full bg-amber-300/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-amber-300">
+                                                  Selected
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {!bulkParentBranchConfirmed ? (
+                                    <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/20 p-3 text-xs text-amber-200">
+                                      Choose a parent branch before entering or
+                                      reviewing the children.
+                                    </div>
+                                  ) : null}
+                                </>
+                              )}
+
+                              {chartSpouses.length === 0 ||
+                              bulkParentBranchConfirmed ? (
+                                <div className="mt-3 rounded-xl border border-emerald-800 bg-emerald-950/20 p-4">
+                                  <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-300">
+                                    Children Being Added To
+                                  </p>
+                                  <p className="mt-2 text-sm font-black text-white">
+                                    {selectedBulkOtherParent
+                                      ? `${chartActivePerson.fullName} + ${selectedBulkOtherParent.fullName}`
+                                      : `${chartActivePerson.fullName} only`}
+                                  </p>
+                                  {selectedBulkOtherParent ? (
+                                    <p className="mt-1 text-xs text-slate-400">
+                                      {selectedBulkOtherParent.fullName} is
+                                      recorded as the other biological parent.
+                                      Relationship status:{" "}
+                                      {selectedBulkOtherParent.status}.
+                                    </p>
+                                  ) : (
+                                    <p className="mt-1 text-xs text-slate-400">
+                                      No other biological parent will be added
+                                      by this batch.
+                                    </p>
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {chartSpouses.length === 0 ||
+                            bulkParentBranchConfirmed ? (
+                              <>
                             <div className="mt-4 space-y-4">
                               {bulkChildren.map((row, rowIndex) => {
+
                                 const matches = [
                                   ...row.currentMatches,
                                   ...row.otherMatches,
@@ -2409,6 +2565,8 @@ export default function FamilyReunionDetailPage() {
                                   : "Review Children"}
                               </button>
                             </div>
+                              </>
+                            ) : null}
 
                             {bulkError ? (
                               <div className="mt-4 rounded-lg border border-red-800 bg-red-950/30 p-3 text-xs text-red-200">
@@ -2425,12 +2583,19 @@ export default function FamilyReunionDetailPage() {
                             <button
                               type="button"
                               onClick={() => void saveBulkChildren()}
-                              disabled={bulkSaving || bulkReviewing}
+                              disabled={
+                                bulkSaving ||
+                                bulkReviewing ||
+                                (chartSpouses.length > 0 &&
+                                  !bulkParentBranchConfirmed)
+                              }
                               className="mt-4 w-full rounded-xl bg-amber-400 px-4 py-3 text-sm font-black text-slate-950 disabled:opacity-50"
                             >
                               {bulkSaving
                                 ? "Saving Entire Batch..."
-                                : "Save Reviewed Children"}
+                                : selectedBulkOtherParent
+                                ? `Save Children to ${chartActivePerson.fullName} + ${selectedBulkOtherParent.fullName}`
+                                : `Save Children to ${chartActivePerson.fullName}`}
                             </button>
                           </div>
                         ) : null}
