@@ -310,10 +310,20 @@ export default function DriverAvailabilityPingsPage() {
         );
       }
 
+      const sentLifecycle = Number(
+        result?.send_lifecycle_version ||
+          result?.ping?.lifecycle_version ||
+          1
+      );
+
       setSuccessMessage(
-        "Duty Check sent to " +
-          (selectedDriver?.driver_name || "driver") +
-          ". Response window: 3 minutes."
+        sentLifecycle >= 2
+          ? "Lifecycle v2 Duty Check sent to " +
+              (selectedDriver?.driver_name || "driver") +
+              ". The response timer begins when the device posts the Duty Check alert. Incentive enforcement is active for this check."
+          : "Legacy lifecycle v1 Duty Check sent to " +
+              (selectedDriver?.driver_name || "driver") +
+              ". This fallback check remains observation-only."
       );
       setReason("");
       await load();
@@ -394,12 +404,11 @@ export default function DriverAvailabilityPingsPage() {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="rounded-xl border border-amber-300 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900">
-                PRODUCTION SEND REMAINS LEGACY OBSERVATION MODE - Normal
-                dashboard sends still create lifecycle v1 checks and do not
-                affect incentives. Lifecycle v2 records are displayed with
-                their real alert, timer, missed-check, late-ack, and waiver
-                state while the Driver APK rollout is being completed.
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-900">
+                CAPABILITY-GATED DUTY CHECKS - A fresh V2 READY Driver device
+                receives lifecycle v2 with real missed-check and incentive
+                enforcement. Drivers that are not V2 READY automatically
+                remain on legacy lifecycle v1 observation mode.
               </div>
               <h1 className="mt-2 text-2xl font-bold text-slate-950 md:text-3xl">
                 Driver Duty Check
@@ -434,7 +443,9 @@ export default function DriverAvailabilityPingsPage() {
 
         <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-widest text-amber-800">
-            Send controlled Duty Check - legacy v1
+            {selectedDriver?.duty_check_v2_ready
+              ? "Send Duty Check - lifecycle v2 enforced"
+              : "Send Duty Check - legacy v1 fallback"}
           </div>
 
           <div className="mt-3 grid gap-4 lg:grid-cols-[1.4fr_1fr_auto]">
@@ -491,7 +502,11 @@ export default function DriverAvailabilityPingsPage() {
               }
               className="self-end rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {sending ? "Sending..." : "Send Duty Check"}
+              {sending
+                ? "Sending..."
+                : selectedDriver?.duty_check_v2_ready
+                  ? "Send V2 Duty Check"
+                  : "Send Legacy Duty Check"}
             </button>
           </div>
 
@@ -552,6 +567,12 @@ export default function DriverAvailabilityPingsPage() {
                   Reported capable:{" "}
                   {selectedDriver.duty_check_v2_capable ? "YES" : "NO"}
                 </div>
+                <div className="mt-1 text-[11px] font-semibold text-slate-700">
+                  Next send:{" "}
+                  {selectedDriver.duty_check_v2_ready
+                    ? "V2 ENFORCED"
+                    : "LEGACY V1 OBSERVATION"}
+                </div>
               </div>
               <div>
                 <div className="text-xs text-slate-500">Client version</div>
@@ -580,13 +601,12 @@ export default function DriverAvailabilityPingsPage() {
           ) : null}
 
           <div className="mt-3 text-xs text-amber-900">
-            Normal dashboard sends remain lifecycle v1 and observation-only.
-            V2 READY is display-only in this phase and does not change which
-            RPC is called. A client is V2 READY only when its explicit v2
-            capability, active device lock, version, and capability heartbeat
-            are all fresh within 120 seconds. Fixed response window: 180
-            seconds. Duplicate pending checks are rejected. Offline drivers
-            cannot be selected.
+            Send mode is selected on the server at click time. A driver must
+            still be online and V2 READY with a fresh active device lock,
+            client version, and capability heartbeat within 120 seconds to
+            receive lifecycle v2. Otherwise the same Send action safely falls
+            back to legacy lifecycle v1 observation mode. Fixed response
+            window: 180 seconds. Duplicate or unresolved checks are rejected.
           </div>
         </section>
 

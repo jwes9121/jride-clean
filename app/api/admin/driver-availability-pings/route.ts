@@ -745,10 +745,13 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      observation_mode: true,
+      observation_mode: false,
       send_lifecycle_version: 1,
+      send_lifecycle_mode: "capability_gated",
       v2_display_enabled: true,
-      incentive_enforcement_enabled: false,
+      v2_send_enabled_for_ready_devices: true,
+      legacy_v1_fallback_enabled: true,
+      incentive_enforcement_enabled: true,
       generated_at: new Date().toISOString(),
       summary: {
         ...counts,
@@ -1083,27 +1086,66 @@ export async function POST(request: NextRequest) {
       authorization.email ||
       authorization.role;
 
+    // JRIDE_DUTY_CHECK_CAPABILITY_GATED_SEND_V1
+    // V2 is allowed only when the same active device lock is currently
+    // fresh and explicitly reports the verified Duty Check v2 capability.
+    // All other drivers remain on legacy observation-only lifecycle v1.
+    const sendLifecycleVersion =
+      driver.duty_check_v2_ready === true ? 2 : 1;
+    const isV2Send = sendLifecycleVersion === 2;
+
     const notes = [
       reason,
       "",
       "Sent by: " + senderLabel,
       "Role: " + authorization.role,
       authorization.email ? "Email: " + authorization.email : "",
-      "Observation mode: no automatic incentive penalty",
+      "Duty Check lifecycle: v" + sendLifecycleVersion,
+      isV2Send
+        ? "Capability gate: V2 READY active device"
+        : "Capability gate: legacy v1 fallback",
+      isV2Send
+        ? "Incentive enforcement: enabled"
+        : "Observation mode: no automatic incentive penalty",
+      driver.client_version_name
+        ? "Driver client: " +
+          driver.client_version_name +
+          " (" +
+          String(driver.client_version_code ?? "-") +
+          ")"
+        : "",
+      driver.active_device_id
+        ? "Active device: " + driver.active_device_id
+        : "",
     ]
       .filter(Boolean)
       .join("\n");
 
-    const { data, error } = await admin.rpc(
-      "jride_create_driver_availability_ping",
-      {
-        p_driver_id: driverId,
-        p_created_by: createdBy,
-        p_creation_source: authorization.role,
-        p_notes: notes,
-        p_response_window_seconds: 180,
-      }
-    );
+    const createResult = isV2Send
+      ? await admin.rpc(
+          "jride_create_driver_availability_ping_v2",
+          {
+            p_driver_id: driverId,
+            p_created_by: createdBy,
+            p_creation_source: authorization.role,
+            p_notes: notes,
+            p_response_window_seconds: 180,
+            p_delivery_window_seconds: 180,
+          }
+        )
+      : await admin.rpc(
+          "jride_create_driver_availability_ping",
+          {
+            p_driver_id: driverId,
+            p_created_by: createdBy,
+            p_creation_source: authorization.role,
+            p_notes: notes,
+            p_response_window_seconds: 180,
+          }
+        );
+
+    const data = createResult.data;
+    const error = createResult.error;
 
     if (error) {
       return NextResponse.json(
@@ -1111,17 +1153,28 @@ export async function POST(request: NextRequest) {
           ok: false,
           code: "DUTY_CHECK_CREATE_FAILED",
           error: error.message,
+          send_lifecycle_version: sendLifecycleVersion,
+          capability_gated: true,
+          driver,
         },
         { status: 500 }
       );
     }
 
-    if (data?.code === "PING_ALREADY_PENDING") {
+    if (
+      data?.code === "PING_ALREADY_PENDING" ||
+      data?.code === "PING_ALREADY_UNRESOLVED"
+    ) {
       return NextResponse.json(
         {
           ...data,
           ok: false,
-          error: "This driver already has a pending Duty Check.",
+          error:
+            data?.code === "PING_ALREADY_UNRESOLVED"
+              ? "This driver has an unresolved missed Duty Check that must be acknowledged or waived first."
+              : "This driver already has a pending Duty Check.",
+          send_lifecycle_version: sendLifecycleVersion,
+          capability_gated: true,
           driver,
         },
         { status: 409 }
@@ -1132,7 +1185,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           ...data,
-          error: data?.message || data?.code || "Unable to create Duty Check.",
+          error:
+            data?.message ||
+            data?.code ||
+            "Unable to create Duty Check.",
+          send_lifecycle_version: sendLifecycleVersion,
+          capability_gated: true,
           driver,
         },
         { status: 400 }
@@ -1143,9 +1201,12 @@ export async function POST(request: NextRequest) {
       {
         ...data,
         driver,
-        observation_mode: true,
+        capability_gated: true,
+        send_lifecycle_version: sendLifecycleVersion,
+        observation_mode: !isV2Send,
         response_window_seconds: 180,
-        incentive_enforcement_enabled: false,
+        delivery_window_seconds: isV2Send ? 180 : null,
+        incentive_enforcement_enabled: isV2Send,
       },
       { status: 201 }
     );
