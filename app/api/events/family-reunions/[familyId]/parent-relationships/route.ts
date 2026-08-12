@@ -120,9 +120,23 @@ function mapWriteError(error: { code?: string | null; message?: string | null })
   return null;
 }
 
+async function loadFamilyContext(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  familyId: string
+) {
+  const { data, error } = await supabase
+    .from("families")
+    .select("id")
+    .eq("id", familyId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  return Boolean(data?.id);
+}
+
 async function loadChild(
   supabase: ReturnType<typeof supabaseAdmin>,
-  familyId: string,
   childPersonId: string
 ) {
   const { data, error } = await supabase
@@ -147,20 +161,10 @@ async function loadChild(
     };
   }
 
-  if (child.family_id !== familyId) {
-    return {
-      ok: false as const,
-      response: noStore(
-        {
-          success: false,
-          error:
-            "The selected person is not filed under this genealogy project.",
-        },
-        409
-      ),
-    };
-  }
-
+  // family_people.family_id is an organizational filing label, not a
+  // genealogy partition. A correction opened from one family project may
+  // legitimately target a biologically connected person filed under another
+  // family project.
   return {
     ok: true as const,
     child,
@@ -215,7 +219,15 @@ export async function GET(
     }
 
     const supabase = supabaseAdmin();
-    const childResult = await loadChild(supabase, familyId, childPersonId);
+
+    if (!(await loadFamilyContext(supabase, familyId))) {
+      return noStore(
+        { success: false, error: "Family reunion not found." },
+        404
+      );
+    }
+
+    const childResult = await loadChild(supabase, childPersonId);
 
     if (!childResult.ok) {
       return childResult.response;
@@ -470,7 +482,15 @@ export async function PATCH(
     }
 
     const supabase = supabaseAdmin();
-    const childResult = await loadChild(supabase, familyId, childPersonId);
+
+    if (!(await loadFamilyContext(supabase, familyId))) {
+      return noStore(
+        { success: false, error: "Family reunion not found." },
+        404
+      );
+    }
+
+    const childResult = await loadChild(supabase, childPersonId);
 
     if (!childResult.ok) {
       return childResult.response;
@@ -798,7 +818,15 @@ export async function DELETE(
     }
 
     const supabase = supabaseAdmin();
-    const childResult = await loadChild(supabase, familyId, childPersonId);
+
+    if (!(await loadFamilyContext(supabase, familyId))) {
+      return noStore(
+        { success: false, error: "Family reunion not found." },
+        404
+      );
+    }
+
+    const childResult = await loadChild(supabase, childPersonId);
 
     if (!childResult.ok) {
       return childResult.response;
