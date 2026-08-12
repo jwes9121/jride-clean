@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import SiblingEntryPanel from "./SiblingEntryPanel";
 
 type FamilyPerson = {
   id: string;
@@ -486,6 +487,10 @@ export default function FamilyReunionDetailPage() {
   const [parentPairError, setParentPairError] =
     React.useState<string | null>(null);
   const [parentPairSuccess, setParentPairSuccess] =
+    React.useState<string | null>(null);
+
+  const [siblingEntryOpen, setSiblingEntryOpen] = React.useState(false);
+  const [siblingSuccess, setSiblingSuccess] =
     React.useState<string | null>(null);
 
   const [bulkChildrenOpen, setBulkChildrenOpen] = React.useState(false);
@@ -2199,6 +2204,8 @@ export default function FamilyReunionDetailPage() {
   async function activateParentPairEntry(personId: string) {
     setChartActivePersonId(personId);
     setQuickAnchorPersonId(personId);
+    setSiblingEntryOpen(false);
+    setSiblingSuccess(null);
     setChartEntryOpen(false);
     setParentEntryOpen(false);
     resetParentEntryFields(true);
@@ -2548,6 +2555,8 @@ export default function FamilyReunionDetailPage() {
   function activateParentEntry(personId: string) {
     setChartActivePersonId(personId);
     setQuickAnchorPersonId(personId);
+    setSiblingEntryOpen(false);
+    setSiblingSuccess(null);
     setChartEntryOpen(false);
     setParentPairOpen(false);
     resetParentPair(true);
@@ -2699,6 +2708,8 @@ export default function FamilyReunionDetailPage() {
   ) {
     setChartActivePersonId(personId);
     setQuickAnchorPersonId(personId);
+    setSiblingEntryOpen(false);
+    setSiblingSuccess(null);
     setQuickRelationship(relationship);
     setQuickName("");
     setQuickCurrentMatches([]);
@@ -2919,6 +2930,8 @@ export default function FamilyReunionDetailPage() {
                           resetParentEntryFields(true);
                           setParentPairOpen(false);
                           resetParentPair(true);
+                          setSiblingEntryOpen(false);
+                          setSiblingSuccess(null);
                           setBulkChildrenOpen(false);
                           setSingleChildOtherParentId("");
                           setSingleChildBranchConfirmed(false);
@@ -3052,7 +3065,7 @@ export default function FamilyReunionDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
                           <button
                             type="button"
                             onClick={() =>
@@ -3073,6 +3086,24 @@ export default function FamilyReunionDetailPage() {
                             className="rounded-xl border border-fuchsia-300/40 bg-fuchsia-400/10 px-4 py-3 text-sm font-black text-fuchsia-200"
                           >
                             + Parents
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setChartEntryOpen(false);
+                              setParentEntryOpen(false);
+                              resetParentEntryFields(true);
+                              setParentPairOpen(false);
+                              resetParentPair(true);
+                              setBulkChildrenOpen(false);
+                              resetBulkChildren();
+                              setSiblingSuccess(null);
+                              setSiblingEntryOpen(true);
+                            }}
+                            className="rounded-xl border border-teal-300/40 bg-teal-400/10 px-4 py-3 text-sm font-black text-teal-200"
+                          >
+                            + Siblings
                           </button>
 
                           <button
@@ -3103,6 +3134,8 @@ export default function FamilyReunionDetailPage() {
                               resetParentEntryFields(true);
                               setParentPairOpen(false);
                               resetParentPair(true);
+                              setSiblingEntryOpen(false);
+                              setSiblingSuccess(null);
                               setBulkChildrenOpen(true);
                               resetBulkChildren();
                             }}
@@ -3128,6 +3161,40 @@ export default function FamilyReunionDetailPage() {
                           <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
                             {bulkSuccess}
                           </div>
+                        ) : null}
+
+                        {siblingSuccess && !siblingEntryOpen ? (
+                          <div className="mt-4 rounded-lg border border-emerald-800 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+                            {siblingSuccess}
+                          </div>
+                        ) : null}
+
+                        {siblingEntryOpen ? (
+                          <SiblingEntryPanel
+                            familyId={familyId}
+                            referencePersonId={chartActivePerson.id}
+                            referencePersonName={chartActivePerson.fullName}
+                            referenceGeneration={
+                              generationByPersonId[chartActivePerson.id] || null
+                            }
+                            onClose={() => {
+                              setSiblingEntryOpen(false);
+                              setSiblingSuccess(null);
+                            }}
+                            onSaved={async (message) => {
+                              const referencePersonId = chartActivePerson.id;
+                              setSiblingSuccess(message);
+                              setSiblingEntryOpen(false);
+                              await loadFamily();
+                              setGenerationRefreshKey((current) => current + 1);
+                              setChartActivePersonId(referencePersonId);
+                              setQuickAnchorPersonId(referencePersonId);
+
+                              if (expandedEventId) {
+                                await loadParticipation(expandedEventId);
+                              }
+                            }}
+                          />
                         ) : null}
 
                         {parentPairOpen ? (
@@ -4973,6 +5040,8 @@ export default function FamilyReunionDetailPage() {
                             resetParentEntryFields(true);
                             setParentPairOpen(false);
                             resetParentPair(true);
+                            setSiblingEntryOpen(false);
+                            setSiblingSuccess(null);
                             setBulkChildrenOpen(false);
                             setSingleChildOtherParentId("");
                             setSingleChildBranchConfirmed(false);
@@ -5034,6 +5103,8 @@ export default function FamilyReunionDetailPage() {
                     resetParentEntryFields(true);
                     setParentPairOpen(false);
                     resetParentPair(true);
+                    setSiblingEntryOpen(false);
+                    setSiblingSuccess(null);
                     setSingleChildOtherParentId("");
                     setSingleChildBranchConfirmed(false);
                     setQuickCoParentDecisionByCandidateId({});
