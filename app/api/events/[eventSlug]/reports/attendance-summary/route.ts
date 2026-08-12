@@ -5,6 +5,13 @@ import { requireStaff } from "@/lib/auth/requireStaff";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type AttendeeTypeRow = {
+  id: string;
+  type_key: string;
+  type_label: string | null;
+  is_primary: boolean | null;
+};
+
 type AttendeeRow = {
   id: string;
   attendee_type_id: string;
@@ -68,6 +75,24 @@ function isAbsent(row: AttendeeRow) {
   return !isCheckedIn(row) && !isDisqualified(row);
 }
 
+function humanizeTypeKey(value: string) {
+  return String(value || "attendee")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function typeLabel(row: AttendeeTypeRow | undefined | null) {
+  return String(row?.type_label || "").trim() || humanizeTypeKey(row?.type_key || "");
+}
+
+function breakdown(rows: AttendeeRow[]) {
+  return {
+    registered: rows.length,
+    checkedIn: rows.filter(isCheckedIn).length,
+    absent: rows.filter(isAbsent).length,
+  };
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: { eventSlug: string } }
@@ -107,22 +132,29 @@ export async function GET(
       );
     }
 
-    const { data: attendeeTypes, error: typeError } = await supabase
+    const { data: attendeeTypeData, error: typeError } = await supabase
       .from("event_attendee_types")
-      .select("id,type_key")
-      .eq("event_id", event.id);
+      .select("id,type_key,type_label,is_primary")
+      .eq("event_id", event.id)
+      .order("sort_order", { ascending: true });
 
     if (typeError) throw new Error(typeError.message);
 
-    const alumniTypeId =
-      (attendeeTypes || []).find((row) => row.type_key === "alumni")?.id || null;
+    const attendeeTypes =
+      (attendeeTypeData || []) as AttendeeTypeRow[];
 
-    const guestTypeId =
-      (attendeeTypes || []).find((row) => row.type_key === "guest")?.id || null;
+    const primaryType =
+      attendeeTypes.find((row) => row.is_primary === true) || null;
 
-    if (!alumniTypeId) {
+    const guestType =
+      attendeeTypes.find((row) => row.type_key === "guest") || null;
+
+    if (!primaryType?.id) {
       return NextResponse.json(
-        { success: false, error: "Alumni attendee type not found." },
+        {
+          success: false,
+          error: "Primary attendee type not found for this event.",
+        },
         { status: 500 }
       );
     }
@@ -157,21 +189,55 @@ export async function GET(
 
     const attendees = (attendeesResult.data || []) as AttendeeRow[];
 
-    const alumni = attendees.filter(
-      (row) => row.attendee_type_id === alumniTypeId
+    const typeById = new Map(
+      attendeeTypes.map((row) => [row.id, row])
     );
 
-    const guests = guestTypeId
-      ? attendees.filter((row) => row.attendee_type_id === guestTypeId)
+    const primaryAttendees = attendees.filter(
+      (row) => row.attendee_type_id === primaryType.id
+    );
+
+    const guestAttendees = guestType?.id
+      ? attendees.filter((row) => row.attendee_type_id === guestType.id)
       : [];
 
-    const alumniCheckedIn = alumni.filter(isCheckedIn);
-    const guestCheckedIn = guests.filter(isCheckedIn);
+    const otherAttendees = attendees.filter(
+      (row) =>
+        row.attendee_type_id !== primaryType.id &&
+        (!guestType?.id || row.attendee_type_id !== guestType.id)
+    );
 
-    const alumniAbsent = alumni.filter(isAbsent);
-    const guestAbsent = guests.filter(isAbsent);
+    const allCheckedIn = attendees.filter(isCheckedIn);
+    const allAbsent = attendees.filter(isAbsent);
+    const allDisqualified = attendees.filter(isDisqualified);
 
-    const disqualified = attendees.filter(isDisqualified);
+    const primarySummary = breakdown(primaryAttendees);
+    const guestSummary = breakdown(guestAttendees);
+    const otherSummary = breakdown(otherAttendees);
+
+    const attendanceRate =
+      attendees.length > 0
+        ? Number(
+            ((allCheckedIn.length / attendees.length) * 100).toFixed(2)
+          )
+        : 0;
+
+    const attendeeTypeSummary = attendeeTypes.map((attendeeType) => {
+      const rows = attendees.filter(
+        (row) => row.attendee_type_id === attendeeType.id
+      );
+
+      return {
+        attendeeTypeId: attendeeType.id,
+        typeKey: attendeeType.type_key,
+        typeLabel: typeLabel(attendeeType),
+        isPrimary: attendeeType.is_primary === true,
+        registered: rows.length,
+        checkedIn: rows.filter(isCheckedIn).length,
+        absent: rows.filter(isAbsent).length,
+        disqualified: rows.filter(isDisqualified).length,
+      };
+    });
 
     const batchMap = new Map<
       string,
@@ -184,7 +250,7 @@ export async function GET(
       }
     >();
 
-    for (const attendee of alumni) {
+    for (const attendee of primaryAttendees) {
       const groupValue = String(attendee.group_value || "Unknown");
 
       const current = batchMap.get(groupValue) || {
@@ -215,39 +281,35 @@ export async function GET(
       })
     );
 
-    const totalRegistered = alumni.length + guests.length;
-    const totalCheckedIn = alumniCheckedIn.length + guestCheckedIn.length;
-
-    const attendanceRate =
-      totalRegistered > 0
-        ? Number(((totalCheckedIn / totalRegistered) * 100).toFixed(2))
-        : 0;
-
-    const absentees = [...alumniAbsent, ...guestAbsent]
+    const absentees = allAbsent
       .sort((a, b) => {
-        const batchCompare = String(a.group_value || "").localeCompare(
+        const groupCompare = String(a.group_value || "").localeCompare(
           String(b.group_value || ""),
           undefined,
           { numeric: true, sensitivity: "base" }
         );
 
-        if (batchCompare !== 0) return batchCompare;
+        if (groupCompare !== 0) return groupCompare;
 
         return a.full_name.localeCompare(b.full_name, undefined, {
           sensitivity: "base",
         });
       })
-      .map((row) => ({
-        attendeeId: row.id,
-        attendeeType:
-          row.attendee_type_id === alumniTypeId ? "alumni" : "guest",
-        fullName: row.full_name,
-        mobileNumber: row.mobile_number,
-        groupValue: row.group_value,
-        registrationNumber: row.registration_number,
-        registrationSource: row.registration_source,
-        registeredAt: row.registered_at,
-      }));
+      .map((row) => {
+        const attendeeType = typeById.get(row.attendee_type_id);
+
+        return {
+          attendeeId: row.id,
+          attendeeType: attendeeType?.type_key || "attendee",
+          attendeeTypeLabel: typeLabel(attendeeType),
+          fullName: row.full_name,
+          mobileNumber: row.mobile_number,
+          groupValue: row.group_value,
+          registrationNumber: row.registration_number,
+          registrationSource: row.registration_source,
+          registeredAt: row.registered_at,
+        };
+      });
 
     const raffleWinners = (
       (raffleResult.data || []) as RaffleWinnerRow[]
@@ -287,28 +349,32 @@ export async function GET(
         slug: event.slug,
         eventDate: event.event_date,
         venue: event.venue,
-        groupLabel: event.group_label || "Batch",
+        groupLabel: event.group_label || "Group",
         status: event.status,
+        primaryAttendeeTypeKey: primaryType.type_key,
+        primaryAttendeeTypeLabel: typeLabel(primaryType),
+        guestAttendeeTypeLabel: guestType
+          ? typeLabel(guestType)
+          : null,
       },
       summary: {
-        alumni: {
-          registered: alumni.length,
-          checkedIn: alumniCheckedIn.length,
-          absent: alumniAbsent.length,
-        },
-        guests: {
-          registered: guests.length,
-          checkedIn: guestCheckedIn.length,
-          absent: guestAbsent.length,
-        },
+        primary: primarySummary,
+
+        // Backward-compatible alias for the existing standalone Reports page.
+        // That page historically called the primary attendee group "alumni".
+        alumni: primarySummary,
+
+        guests: guestSummary,
+        other: otherSummary,
         total: {
-          registered: totalRegistered,
-          checkedIn: totalCheckedIn,
-          absent: alumniAbsent.length + guestAbsent.length,
-          disqualified: disqualified.length,
+          registered: attendees.length,
+          checkedIn: allCheckedIn.length,
+          absent: allAbsent.length,
+          disqualified: allDisqualified.length,
           attendanceRate,
         },
       },
+      attendeeTypeSummary,
       batchSummary,
       absentees,
       raffleWinners,
