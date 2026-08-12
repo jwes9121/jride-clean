@@ -139,6 +139,25 @@ type WalkInResult = {
 // Helpers (all existing helpers preserved)
 // -----------------------------------------------------------------
 
+const DISQUALIFICATION_REASON_PRESETS = [
+  {
+    label: "Test registration",
+    value: "Test registration - exclude from production event records",
+  },
+  {
+    label: "Duplicate registration",
+    value: "Duplicate registration",
+  },
+  {
+    label: "Not eligible",
+    value: "Not eligible for this event",
+  },
+  {
+    label: "Invalid registration",
+    value: "Invalid registration",
+  },
+] as const;
+
 function formatCheckedIn(value: string | null) {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-PH", {
@@ -186,7 +205,7 @@ function badgeClass(row: HelpDeskResult) {
 }
 
 function badgeText(row: HelpDeskResult) {
-  if (row.isDisqualified) return "Needs Help Desk";
+  if (row.isDisqualified) return "Excluded / Disqualified";
   if (row.attendanceStatus === "checked_in") return "Checked In";
   return "Registered";
 }
@@ -509,7 +528,7 @@ export default function EventHelpDeskPage() {
 
       setDisqualifyOpen(false);
       setUndoOpen(false);
-      setNotice(disqualified ? "Attendee marked for Help Desk review." : "Disqualification cleared.");
+      setNotice(disqualified ? "Attendee excluded / disqualified." : "Eligibility restored.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Disqualification update failed.");
     } finally {
@@ -1067,7 +1086,7 @@ export default function EventHelpDeskPage() {
                         : "bg-red-700 text-white"
                     }`}
                   >
-                    {selected.isDisqualified ? "Undo Review" : "Disqualify"}
+                    {selected.isDisqualified ? "Restore Eligibility" : "Exclude / Disqualify"}
                   </button>
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-500">
@@ -1158,19 +1177,46 @@ export default function EventHelpDeskPage() {
       {disqualifyOpen ? (
         <div className={modalPanelClass}>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-red-300">
-            Disqualify
+            Exclude / Disqualify
           </p>
-          <h2 className="mt-2 text-3xl font-black">Mark for Help Desk review</h2>
+          <h2 className="mt-2 text-3xl font-black">Exclude this attendee?</h2>
           <p className="mt-3 text-slate-300">
-            A reason is required and will be shown to event staff.
+            Use this for test, duplicate, invalid, or ineligible registrations. The attendee stays searchable and auditable but is excluded from absentee and eligibility reporting.
           </p>
 
-          <textarea
+          <div className="mt-5">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Quick Reason
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {DISQUALIFICATION_REASON_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onClick={() => setDisqualifyReason(preset.value)}
+                  className={`rounded-xl border px-3 py-3 text-left text-sm font-black ${
+                    disqualifyReason === preset.value
+                      ? "border-red-300 bg-red-950/40 text-red-100"
+                      : "border-slate-700 bg-slate-950 text-slate-200"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="mt-5 block">
+            <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              Reason / Notes
+            </span>
+            <textarea
             value={disqualifyReason}
             onChange={(event) => setDisqualifyReason(event.target.value)}
             className="mt-5 min-h-32 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-red-300"
-            placeholder="Reason..."
+            placeholder="Choose a quick reason above or enter a custom reason..."
           />
+          </label>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <button
@@ -1187,7 +1233,7 @@ export default function EventHelpDeskPage() {
               disabled={actionLoading || !disqualifyReason.trim()}
               className="rounded-2xl bg-red-700 px-5 py-4 font-black text-white disabled:opacity-60"
             >
-              {actionLoading ? "Saving..." : "Disqualify"}
+              {actionLoading ? "Saving..." : "Exclude / Disqualify"}
             </button>
           </div>
         </div>
@@ -1197,11 +1243,11 @@ export default function EventHelpDeskPage() {
       {undoOpen ? (
         <div className={modalPanelClass}>
           <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-300">
-            Undo Review
+            Restore Eligibility
           </p>
-          <h2 className="mt-2 text-3xl font-black">Clear disqualification?</h2>
+          <h2 className="mt-2 text-3xl font-black">Restore this attendee?</h2>
           <p className="mt-3 text-slate-300">
-            This attendee will be treated as eligible again.
+            This attendee will be treated as eligible again and will return to attendance and absentee reporting as applicable.
           </p>
 
           {selected?.disqualificationReason ? (
