@@ -3253,10 +3253,20 @@ export default function FamilyReunionDetailPage() {
                                     </p>
                                     <p className="mt-2 text-xs leading-5 text-amber-100/80">
                                       Parent Pair Entry will not add a third
-                                      biological parent. Use Advanced Genealogy
-                                      Editor if one of the recorded relationships
-                                      needs correction.
+                                      biological parent. Review the recorded
+                                      parent relationships before changing this
+                                      branch.
                                     </p>
+                                    <Link
+                                      href={`/admin/events/family-reunions/${encodeURIComponent(
+                                        familyId
+                                      )}/parent-correction?personId=${encodeURIComponent(
+                                        chartActivePerson.id
+                                      )}`}
+                                      className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                    >
+                                      Review Parent Relationships
+                                    </Link>
                                   </div>
                                 ) : (
                                   <>
@@ -3710,10 +3720,19 @@ export default function FamilyReunionDetailPage() {
                                 </p>
                                 <p className="mt-2 text-xs leading-5 text-amber-100/80">
                                   Quick Parent Entry will not add a third
-                                  biological parent. Use Advanced Genealogy
-                                  Editor if one of the recorded relationships
-                                  needs correction.
+                                  biological parent. Review the recorded parent
+                                  relationships before changing this branch.
                                 </p>
+                                <Link
+                                  href={`/admin/events/family-reunions/${encodeURIComponent(
+                                    familyId
+                                  )}/parent-correction?personId=${encodeURIComponent(
+                                    chartActivePerson.id
+                                  )}`}
+                                  className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                >
+                                  Review Parent Relationships
+                                </Link>
                               </div>
                             ) : (
                               <>
@@ -4896,10 +4915,21 @@ export default function FamilyReunionDetailPage() {
                                               Existing record needs review before linking.
                                             </p>
                                             <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
-                                              This person already has two or more
-                                              biological parents. Review the relationship
-                                              in Advanced Genealogy Editor.
+                                              This person already has the maximum
+                                              recorded biological parents. Review those
+                                              parent relationships before linking this
+                                              existing record.
                                             </p>
+                                            <Link
+                                              href={`/admin/events/family-reunions/${encodeURIComponent(
+                                                familyId
+                                              )}/parent-correction?personId=${encodeURIComponent(
+                                                candidate.candidateId
+                                              )}`}
+                                              className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-200"
+                                            >
+                                              Review Parent Relationships
+                                            </Link>
                                           </div>
                                         ) : alreadyLinked ? (
                                           <p className="mt-3 text-xs text-slate-400">
@@ -5373,10 +5403,23 @@ export default function FamilyReunionDetailPage() {
                                     create an ancestry loop.
                                   </div>
                                 ) : needsAdvanced ? (
-                                  <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
-                                    This person already has two or more
-                                    biological parents. Review the relationship
-                                    in Advanced Genealogy Editor.
+                                  <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                    <p className="text-xs text-amber-200">
+                                      This person already has the maximum recorded
+                                      biological parents. Review those parent
+                                      relationships before linking this existing
+                                      record.
+                                    </p>
+                                    <Link
+                                      href={`/admin/events/family-reunions/${encodeURIComponent(
+                                        familyId
+                                      )}/parent-correction?personId=${encodeURIComponent(
+                                        candidate.candidateId
+                                      )}`}
+                                      className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                    >
+                                      Review Parent Relationships
+                                    </Link>
                                   </div>
                                 ) : canUse ? (
                                   <button
@@ -5469,9 +5512,21 @@ export default function FamilyReunionDetailPage() {
                                   create an ancestry loop.
                                 </div>
                               ) : needsAdvanced ? (
-                                <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-xs text-amber-200">
-                                  Review required. This person already has two
-                                  or more biological parents.
+                                <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                  <p className="text-xs text-amber-200">
+                                    Review required. This person already has the
+                                    maximum recorded biological parents.
+                                  </p>
+                                  <Link
+                                    href={`/admin/events/family-reunions/${encodeURIComponent(
+                                      familyId
+                                    )}/parent-correction?personId=${encodeURIComponent(
+                                      candidate.candidateId
+                                    )}`}
+                                    className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                  >
+                                    Review Parent Relationships
+                                  </Link>
                                 </div>
                               ) : alreadyLinked ? (
                                 <p className="mt-3 text-xs text-slate-400">
