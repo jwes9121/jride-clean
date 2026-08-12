@@ -6,15 +6,18 @@ import { useParams } from "next/navigation";
 
 type AdminTab =
   | "attendees"
+  | "groups"
   | "operations"
   | "reports"
   | "raffle"
   | "status";
 
 type AttendanceBreakdown = {
+  records: number;
   registered: number;
   checkedIn: number;
   absent: number;
+  disqualified: number;
 };
 
 type ReportEvent = {
@@ -36,10 +39,36 @@ type AttendeeTypeSummary = {
   typeKey: string;
   typeLabel: string;
   isPrimary: boolean;
+  records: number;
   registered: number;
   checkedIn: number;
   absent: number;
   disqualified: number;
+};
+
+type GroupSummaryRow = {
+  groupValue: string | null;
+  records: number;
+  registered: number;
+  checkedIn: number;
+  absent: number;
+  disqualified: number;
+};
+
+type RegistrantRow = {
+  attendeeId: string;
+  attendeeType: string;
+  attendeeTypeLabel: string;
+  fullName: string;
+  mobileNumber: string | null;
+  groupValue: string | null;
+  registrationNumber: string;
+  registrationSource: string | null;
+  registrationStatus: string | null;
+  attendanceStatus: string | null;
+  checkedInAt: string | null;
+  isDisqualified: boolean;
+  disqualificationReason: string | null;
 };
 
 type ReportsResponse = {
@@ -52,18 +81,13 @@ type ReportsResponse = {
     guests: AttendanceBreakdown;
     other: AttendanceBreakdown;
     total: AttendanceBreakdown & {
-      disqualified: number;
       attendanceRate: number;
     };
   };
   attendeeTypeSummary: AttendeeTypeSummary[];
-  batchSummary: Array<{
-    groupValue: string | null;
-    registered: number;
-    checkedIn: number;
-    absent: number;
-    disqualified: number;
-  }>;
+  batchSummary: GroupSummaryRow[];
+  groupSummary: GroupSummaryRow[];
+  registrants: RegistrantRow[];
   absentees: Array<{
     attendeeId: string;
     attendeeType: string;
@@ -133,6 +157,11 @@ const TABS: Array<{
     helper: "Search, edit, passes, walk-ins",
   },
   {
+    key: "groups",
+    label: "Registration Groups",
+    helper: "Batch 2001, Golden Jubilarians, regular, guests",
+  },
+  {
     key: "operations",
     label: "Live Operations",
     helper: "Check-in and checkpoint monitoring",
@@ -140,7 +169,7 @@ const TABS: Array<{
   {
     key: "reports",
     label: "Reports",
-    helper: "Attendance, absentees, raffle winners",
+    helper: "Eligible attendance, absentees, exclusions, raffle",
   },
   {
     key: "raffle",
@@ -172,6 +201,38 @@ function formatLabel(value: string | null | undefined) {
   return text
     .replace(/_/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function groupDisplayLabel(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "batch_2001_member") return "Batch 2001 Members";
+  if (normalized === "golden_jubilarian") return "Golden Jubilarians";
+  if (normalized === "regular_participant") return "Regular Participants";
+  if (normalized === "guest") return "Guests";
+
+  return formatLabel(value);
+}
+
+function registrationFormPath(
+  eventSlug: string,
+  groupValue: string | null | undefined
+) {
+  const normalized = String(groupValue || "").trim().toLowerCase();
+
+  if (normalized === "batch_2001_member") {
+    return `/events/${eventSlug}/register/batch-2001`;
+  }
+
+  if (normalized === "golden_jubilarian") {
+    return `/events/${eventSlug}/register/golden-jubilarian`;
+  }
+
+  if (normalized === "regular_participant") {
+    return `/events/${eventSlug}/register`;
+  }
+
+  return null;
 }
 
 function formatEventDate(value: string | null) {
@@ -254,15 +315,11 @@ function Metric({
   );
 }
 
-function ReportsPanel({ eventSlug }: { eventSlug: string }) {
+function useEventReports(eventSlug: string) {
   const [data, setData] = React.useState<ReportsResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [refreshKey, setRefreshKey] = React.useState(0);
-  const [section, setSection] = React.useState<
-    "overview" | "absentees" | "raffle"
-  >("overview");
-  const [search, setSearch] = React.useState("");
 
   React.useEffect(() => {
     if (!eventSlug) return;
@@ -294,6 +351,10 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
         if (
           !payload.event ||
           !payload.summary ||
+          !Array.isArray(payload.attendeeTypeSummary) ||
+          !Array.isArray(payload.batchSummary) ||
+          !Array.isArray(payload.groupSummary) ||
+          !Array.isArray(payload.registrants) ||
           !Array.isArray(payload.absentees) ||
           !Array.isArray(payload.raffleWinners)
         ) {
@@ -327,6 +388,328 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
     return () => controller.abort();
   }, [eventSlug, refreshKey]);
 
+  return {
+    data,
+    loading,
+    error,
+    refresh: () => setRefreshKey((current) => current + 1),
+  };
+}
+
+function RegistrationGroupsPanel({
+  eventSlug,
+}: {
+  eventSlug: string;
+}) {
+  const { data, loading, error, refresh } = useEventReports(eventSlug);
+  const [selectedGroup, setSelectedGroup] = React.useState("");
+  const [search, setSearch] = React.useState("");
+
+  React.useEffect(() => {
+    if (!data || selectedGroup) return;
+
+    const golden = data.groupSummary.find(
+      (row) =>
+        String(row.groupValue || "").toLowerCase() ===
+        "golden_jubilarian"
+    );
+
+    const first = golden || data.groupSummary[0];
+
+    if (first?.groupValue) {
+      setSelectedGroup(first.groupValue);
+    }
+  }, [data, selectedGroup]);
+
+  const selectedSummary = React.useMemo(
+    () =>
+      data?.groupSummary.find(
+        (row) => String(row.groupValue || "") === selectedGroup
+      ) || null,
+    [data, selectedGroup]
+  );
+
+  const selectedRegistrants = React.useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return (data?.registrants || [])
+      .filter(
+        (row) =>
+          String(row.groupValue || "") === selectedGroup
+      )
+      .filter((row) => {
+        if (!query) return true;
+
+        return [
+          row.fullName,
+          row.registrationNumber,
+          row.mobileNumber || "",
+          row.attendeeTypeLabel,
+          row.registrationStatus || "",
+          row.attendanceStatus || "",
+          row.disqualificationReason || "",
+        ].some((value) => value.toLowerCase().includes(query));
+      })
+      .sort((left, right) =>
+        left.registrationNumber.localeCompare(
+          right.registrationNumber,
+          undefined,
+          { numeric: true }
+        )
+      );
+  }, [data, search, selectedGroup]);
+
+  if (loading) {
+    return <PanelLoading label="Loading registration groups..." />;
+  }
+
+  if (error) {
+    return (
+      <div className="bg-slate-100 px-4 py-8 text-slate-950">
+        <div className="mx-auto max-w-7xl rounded-2xl border border-red-300 bg-red-50 p-6">
+          <p className="text-xl font-black text-red-900">
+            Registration groups could not be loaded
+          </p>
+          <p className="mt-2 text-red-800">{error}</p>
+          <button
+            type="button"
+            onClick={refresh}
+            className="mt-4 rounded-xl bg-red-900 px-4 py-3 font-black text-white"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const registrationPath = registrationFormPath(
+    data.event.slug,
+    selectedSummary?.groupValue
+  );
+
+  return (
+    <div className="bg-slate-100 px-4 py-6 text-slate-950">
+      <section className="mx-auto max-w-7xl">
+        <div className="rounded-3xl bg-slate-950 p-6 text-white shadow-xl">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-300">
+                Registration Groups
+              </p>
+              <h2 className="mt-2 text-3xl font-black">
+                {data.event.title}
+              </h2>
+              <p className="mt-2 text-slate-300">
+                Open each registration stream and review every record,
+                eligible attendee, and exclusion from one place.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={refresh}
+              className="rounded-xl bg-amber-300 px-4 py-3 font-black text-slate-950"
+            >
+              Refresh Groups
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {data.groupSummary.map((row) => {
+            const groupKey = String(row.groupValue || "");
+            const selected = groupKey === selectedGroup;
+
+            return (
+              <button
+                key={groupKey || "unknown"}
+                type="button"
+                onClick={() => {
+                  setSelectedGroup(groupKey);
+                  setSearch("");
+                }}
+                className={`rounded-2xl border p-5 text-left shadow-sm ${
+                  selected
+                    ? "border-amber-400 bg-amber-100"
+                    : "border-slate-200 bg-white hover:border-slate-400"
+                }`}
+              >
+                <p className="text-lg font-black">
+                  {groupDisplayLabel(row.groupValue)}
+                </p>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-2xl font-black">{row.records}</p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                      Records
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-emerald-700">
+                      {row.registered}
+                    </p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                      Eligible
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-red-700">
+                      {row.disqualified}
+                    </p>
+                    <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                      Excluded
+                    </p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedSummary ? (
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.12em] text-slate-500">
+                  Selected Registration Group
+                </p>
+                <h3 className="mt-2 text-2xl font-black">
+                  {groupDisplayLabel(selectedSummary.groupValue)}
+                </h3>
+                <p className="mt-2 text-sm text-slate-500">
+                  {selectedSummary.records} total records |{" "}
+                  {selectedSummary.registered} eligible |{" "}
+                  {selectedSummary.disqualified} excluded
+                </p>
+              </div>
+
+              {registrationPath ? (
+                <a
+                  href={registrationPath}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-black text-white"
+                >
+                  Open {groupDisplayLabel(selectedSummary.groupValue)} Registration
+                </a>
+              ) : null}
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <Metric
+                label="Total Records"
+                value={selectedSummary.records}
+              />
+              <Metric
+                label="Eligible Registered"
+                value={selectedSummary.registered}
+              />
+              <Metric
+                label="Checked In"
+                value={selectedSummary.checkedIn}
+              />
+              <Metric
+                label="Absent"
+                value={selectedSummary.absent}
+              />
+              <Metric
+                label="Excluded"
+                value={selectedSummary.disqualified}
+              />
+            </div>
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+              Use the <strong>Attendees</strong> tab for editing, pass
+              reissue, exclusion, or restoring eligibility. Search by the
+              pass number shown below.
+            </div>
+
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search this group by name, pass, mobile, or status..."
+              className="mt-5 w-full rounded-xl border border-slate-300 px-4 py-3"
+            />
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.1em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Pass</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Eligibility</th>
+                    <th className="px-4 py-3">Attendance</th>
+                    <th className="px-4 py-3">Mobile</th>
+                    <th className="px-4 py-3">Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedRegistrants.map((row) => (
+                    <tr
+                      key={row.attendeeId}
+                      className="border-t border-slate-100"
+                    >
+                      <td className="px-4 py-3 font-mono font-bold">
+                        {row.registrationNumber}
+                      </td>
+                      <td className="px-4 py-3 font-bold">
+                        {row.fullName}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.attendeeTypeLabel}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.isDisqualified ? (
+                          <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-800">
+                            EXCLUDED
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-800">
+                            ELIGIBLE
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatLabel(row.attendanceStatus)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.mobileNumber || "-"}
+                      </td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-slate-500">
+                        {row.disqualificationReason || "-"}
+                      </td>
+                    </tr>
+                  ))}
+                  {selectedRegistrants.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-8 text-center text-slate-500"
+                      >
+                        No matching records in this registration group.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function ReportsPanel({ eventSlug }: { eventSlug: string }) {
+  const { data, loading, error, refresh } = useEventReports(eventSlug);
+  const [section, setSection] = React.useState<
+    "overview" | "absentees" | "raffle"
+  >("overview");
+  const [search, setSearch] = React.useState("");
+
   const filteredAbsentees = React.useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -355,7 +738,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
           <p className="mt-2">{error}</p>
           <button
             type="button"
-            onClick={() => setRefreshKey((current) => current + 1)}
+            onClick={refresh}
             className="mt-4 rounded-xl bg-red-900 px-4 py-3 font-black text-white"
           >
             Retry Reports
@@ -392,7 +775,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
 
             <button
               type="button"
-              onClick={() => setRefreshKey((current) => current + 1)}
+              onClick={refresh}
               className="rounded-xl bg-amber-300 px-4 py-3 font-black text-slate-950"
             >
               Refresh Reports
@@ -433,8 +816,9 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
               </h3>
               <div className="mt-3 grid gap-4 md:grid-cols-3">
                 <Metric
-                  label={`${primaryLabel} Registered`}
+                  label={`Eligible ${primaryLabel}`}
                   value={data.summary.primary.registered}
+                  helper={`${data.summary.primary.records} total records; ${data.summary.primary.disqualified} excluded`}
                 />
                 <Metric
                   label={`${primaryLabel} Checked In`}
@@ -449,26 +833,33 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
 
             <section>
               <h3 className="text-xl font-black">Whole Event</h3>
-              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
                 <Metric
-                  label="All Registered"
+                  label="Eligible Registered"
                   value={data.summary.total.registered}
+                  helper="Excludes disqualified/test registrations"
                 />
                 <Metric
-                  label="All Checked In"
+                  label="Checked In"
                   value={data.summary.total.checkedIn}
                 />
                 <Metric
-                  label="All Absent"
+                  label="Absent"
                   value={data.summary.total.absent}
                 />
                 <Metric
-                  label="Disqualified"
+                  label="Excluded / Disqualified"
                   value={data.summary.total.disqualified}
+                />
+                <Metric
+                  label="Total Records"
+                  value={data.summary.total.records}
+                  helper="Eligible plus excluded records"
                 />
                 <Metric
                   label="Attendance Rate"
                   value={`${data.summary.total.attendanceRate}%`}
+                  helper="Checked in / eligible registered"
                 />
               </div>
             </section>
@@ -479,16 +870,21 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                   <h3 className="text-xl font-black">
                     Attendance by Registration Type
                   </h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Eligible counts exclude records marked Excluded /
+                    Disqualified.
+                  </p>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.1em] text-slate-500">
                       <tr>
                         <th className="px-4 py-3">Type</th>
-                        <th className="px-4 py-3">Registered</th>
+                        <th className="px-4 py-3">Total Records</th>
+                        <th className="px-4 py-3">Eligible</th>
                         <th className="px-4 py-3">Checked In</th>
                         <th className="px-4 py-3">Absent</th>
-                        <th className="px-4 py-3">Disqualified</th>
+                        <th className="px-4 py-3">Excluded</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -505,10 +901,13 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                               </span>
                             ) : null}
                           </td>
-                          <td className="px-4 py-3">{row.registered}</td>
+                          <td className="px-4 py-3">{row.records}</td>
+                          <td className="px-4 py-3 font-black text-emerald-700">
+                            {row.registered}
+                          </td>
                           <td className="px-4 py-3">{row.checkedIn}</td>
                           <td className="px-4 py-3">{row.absent}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 text-red-700">
                             {row.disqualified}
                           </td>
                         </tr>
@@ -526,7 +925,8 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                     {groupLabel} Summary
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    Primary attendee totals grouped by {groupLabel}.
+                    Primary attendee records grouped by {groupLabel}. Eligible
+                    excludes disqualified/test registrations.
                   </p>
                 </div>
                 <div className="overflow-x-auto">
@@ -534,10 +934,11 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                     <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.1em] text-slate-500">
                       <tr>
                         <th className="px-4 py-3">{groupLabel}</th>
-                        <th className="px-4 py-3">Registered</th>
+                        <th className="px-4 py-3">Total Records</th>
+                        <th className="px-4 py-3">Eligible</th>
                         <th className="px-4 py-3">Checked In</th>
                         <th className="px-4 py-3">Absent</th>
-                        <th className="px-4 py-3">Disqualified</th>
+                        <th className="px-4 py-3">Excluded</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -547,12 +948,15 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                           className="border-t border-slate-100"
                         >
                           <td className="px-4 py-3 font-bold">
-                            {row.groupValue || "Unknown"}
+                            {groupDisplayLabel(row.groupValue)}
                           </td>
-                          <td className="px-4 py-3">{row.registered}</td>
+                          <td className="px-4 py-3">{row.records}</td>
+                          <td className="px-4 py-3 font-black text-emerald-700">
+                            {row.registered}
+                          </td>
                           <td className="px-4 py-3">{row.checkedIn}</td>
                           <td className="px-4 py-3">{row.absent}</td>
-                          <td className="px-4 py-3">
+                          <td className="px-4 py-3 text-red-700">
                             {row.disqualified}
                           </td>
                         </tr>
@@ -571,8 +975,8 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
               <div>
                 <h3 className="text-xl font-black">Absentees</h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Registered attendees who are not checked in and are not
-                  disqualified.
+                  Eligible registered attendees who are not checked in.
+                  Excluded/disqualified records never appear here.
                 </p>
               </div>
               <button
@@ -640,7 +1044,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                         {row.fullName}
                       </td>
                       <td className="px-4 py-3">
-                        {row.groupValue || "-"}
+                        {groupDisplayLabel(row.groupValue)}
                       </td>
                       <td className="px-4 py-3">
                         {row.mobileNumber || "-"}
@@ -783,12 +1187,12 @@ export default function EventAdminControlPage() {
                 rel="noreferrer"
                 className="rounded-xl border border-amber-400 px-4 py-3 text-sm font-black text-amber-300"
               >
-                Open Registration
+                Open General Registration
               </a>
             </div>
           </div>
 
-          <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
             {TABS.map((tab) => {
               const selected = activeTab === tab.key;
 
@@ -828,6 +1232,9 @@ export default function EventAdminControlPage() {
       </header>
 
       {activeTab === "attendees" ? <HelpDeskPage /> : null}
+      {activeTab === "groups" ? (
+        <RegistrationGroupsPanel eventSlug={eventSlug} />
+      ) : null}
       {activeTab === "operations" ? <CommandCenterPage /> : null}
       {activeTab === "reports" ? (
         <ReportsPanel eventSlug={eventSlug} />

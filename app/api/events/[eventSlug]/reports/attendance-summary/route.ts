@@ -25,6 +25,7 @@ type AttendeeRow = {
   registered_at: string | null;
   checked_in_at: string | null;
   is_disqualified: boolean | null;
+  disqualification_reason: string | null;
 };
 
 type RaffleWinnerRow = {
@@ -71,8 +72,12 @@ function isDisqualified(row: AttendeeRow) {
   return row.is_disqualified === true;
 }
 
+function isEligible(row: AttendeeRow) {
+  return !isDisqualified(row);
+}
+
 function isAbsent(row: AttendeeRow) {
-  return !isCheckedIn(row) && !isDisqualified(row);
+  return isEligible(row) && !isCheckedIn(row);
 }
 
 function humanizeTypeKey(value: string) {
@@ -82,15 +87,59 @@ function humanizeTypeKey(value: string) {
 }
 
 function typeLabel(row: AttendeeTypeRow | undefined | null) {
-  return String(row?.type_label || "").trim() || humanizeTypeKey(row?.type_key || "");
+  return (
+    String(row?.type_label || "").trim() ||
+    humanizeTypeKey(row?.type_key || "")
+  );
 }
 
 function breakdown(rows: AttendeeRow[]) {
+  const eligible = rows.filter(isEligible);
+  const checkedIn = eligible.filter(isCheckedIn);
+  const absent = eligible.filter((row) => !isCheckedIn(row));
+  const disqualified = rows.filter(isDisqualified);
+
   return {
-    registered: rows.length,
-    checkedIn: rows.filter(isCheckedIn).length,
-    absent: rows.filter(isAbsent).length,
+    records: rows.length,
+    registered: eligible.length,
+    checkedIn: checkedIn.length,
+    absent: absent.length,
+    disqualified: disqualified.length,
   };
+}
+
+function buildGroupSummary(rows: AttendeeRow[]) {
+  const groupMap = new Map<
+    string,
+    {
+      groupValue: string;
+      rows: AttendeeRow[];
+    }
+  >();
+
+  for (const attendee of rows) {
+    const groupValue = String(attendee.group_value || "Unknown");
+
+    const current = groupMap.get(groupValue) || {
+      groupValue,
+      rows: [],
+    };
+
+    current.rows.push(attendee);
+    groupMap.set(groupValue, current);
+  }
+
+  return Array.from(groupMap.values())
+    .map((entry) => ({
+      groupValue: entry.groupValue,
+      ...breakdown(entry.rows),
+    }))
+    .sort((left, right) =>
+      left.groupValue.localeCompare(right.groupValue, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      })
+    );
 }
 
 export async function GET(
@@ -163,7 +212,7 @@ export async function GET(
       supabase
         .from("event_attendees")
         .select(
-          "id,attendee_type_id,full_name,mobile_number,group_value,registration_number,registration_source,registration_status,attendance_status,registered_at,checked_in_at,is_disqualified"
+          "id,attendee_type_id,full_name,mobile_number,group_value,registration_number,registration_source,registration_status,attendance_status,registered_at,checked_in_at,is_disqualified,disqualification_reason"
         )
         .eq("event_id", event.id)
         .is("merged_into", null)
@@ -207,18 +256,25 @@ export async function GET(
         (!guestType?.id || row.attendee_type_id !== guestType.id)
     );
 
-    const allCheckedIn = attendees.filter(isCheckedIn);
-    const allAbsent = attendees.filter(isAbsent);
+    const eligibleAttendees = attendees.filter(isEligible);
+    const eligibleCheckedIn = eligibleAttendees.filter(isCheckedIn);
+    const eligibleAbsent = eligibleAttendees.filter(
+      (row) => !isCheckedIn(row)
+    );
     const allDisqualified = attendees.filter(isDisqualified);
 
     const primarySummary = breakdown(primaryAttendees);
     const guestSummary = breakdown(guestAttendees);
     const otherSummary = breakdown(otherAttendees);
+    const totalSummary = breakdown(attendees);
 
     const attendanceRate =
-      attendees.length > 0
+      eligibleAttendees.length > 0
         ? Number(
-            ((allCheckedIn.length / attendees.length) * 100).toFixed(2)
+            (
+              (eligibleCheckedIn.length / eligibleAttendees.length) *
+              100
+            ).toFixed(2)
           )
         : 0;
 
@@ -232,56 +288,43 @@ export async function GET(
         typeKey: attendeeType.type_key,
         typeLabel: typeLabel(attendeeType),
         isPrimary: attendeeType.is_primary === true,
-        registered: rows.length,
-        checkedIn: rows.filter(isCheckedIn).length,
-        absent: rows.filter(isAbsent).length,
-        disqualified: rows.filter(isDisqualified).length,
+        ...breakdown(rows),
       };
     });
 
-    const batchMap = new Map<
-      string,
-      {
-        groupValue: string;
-        registered: number;
-        checkedIn: number;
-        absent: number;
-        disqualified: number;
-      }
-    >();
+    const batchSummary = buildGroupSummary(primaryAttendees);
+    const groupSummary = buildGroupSummary(attendees);
 
-    for (const attendee of primaryAttendees) {
-      const groupValue = String(attendee.group_value || "Unknown");
+    const registrants = attendees
+      .slice()
+      .sort((left, right) =>
+        left.registration_number.localeCompare(
+          right.registration_number,
+          undefined,
+          { numeric: true }
+        )
+      )
+      .map((row) => {
+        const attendeeType = typeById.get(row.attendee_type_id);
 
-      const current = batchMap.get(groupValue) || {
-        groupValue,
-        registered: 0,
-        checkedIn: 0,
-        absent: 0,
-        disqualified: 0,
-      };
+        return {
+          attendeeId: row.id,
+          attendeeType: attendeeType?.type_key || "attendee",
+          attendeeTypeLabel: typeLabel(attendeeType),
+          fullName: row.full_name,
+          mobileNumber: row.mobile_number,
+          groupValue: row.group_value,
+          registrationNumber: row.registration_number,
+          registrationSource: row.registration_source,
+          registrationStatus: row.registration_status,
+          attendanceStatus: row.attendance_status,
+          checkedInAt: row.checked_in_at,
+          isDisqualified: isDisqualified(row),
+          disqualificationReason: row.disqualification_reason,
+        };
+      });
 
-      current.registered += 1;
-
-      if (isCheckedIn(attendee)) {
-        current.checkedIn += 1;
-      } else if (isDisqualified(attendee)) {
-        current.disqualified += 1;
-      } else {
-        current.absent += 1;
-      }
-
-      batchMap.set(groupValue, current);
-    }
-
-    const batchSummary = Array.from(batchMap.values()).sort((a, b) =>
-      a.groupValue.localeCompare(b.groupValue, undefined, {
-        numeric: true,
-        sensitivity: "base",
-      })
-    );
-
-    const absentees = allAbsent
+    const absentees = eligibleAbsent
       .sort((a, b) => {
         const groupCompare = String(a.group_value || "").localeCompare(
           String(b.group_value || ""),
@@ -361,21 +404,23 @@ export async function GET(
         primary: primarySummary,
 
         // Backward-compatible alias for the existing standalone Reports page.
-        // That page historically called the primary attendee group "alumni".
+        // "registered" now means eligible registered records.
         alumni: primarySummary,
 
         guests: guestSummary,
         other: otherSummary,
         total: {
-          registered: attendees.length,
-          checkedIn: allCheckedIn.length,
-          absent: allAbsent.length,
+          ...totalSummary,
+          checkedIn: eligibleCheckedIn.length,
+          absent: eligibleAbsent.length,
           disqualified: allDisqualified.length,
           attendanceRate,
         },
       },
       attendeeTypeSummary,
       batchSummary,
+      groupSummary,
+      registrants,
       absentees,
       raffleWinners,
     });
