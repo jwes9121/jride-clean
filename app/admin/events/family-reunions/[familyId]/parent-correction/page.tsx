@@ -372,7 +372,8 @@ export default function ParentRelationshipCorrectionPage() {
 
   if (!childPersonId && !loading) {
     return (
-      <main className="mx-auto max-w-5xl px-4 py-8 text-white">
+      <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+        <div className="mx-auto max-w-5xl">
         <Link
           href={`/admin/events/family-reunions/${encodeURIComponent(
             familyId
@@ -392,12 +393,14 @@ export default function ParentRelationshipCorrectionPage() {
             Relationships from the affected person.
           </p>
         </div>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-8 text-white">
+    <main className="min-h-screen bg-slate-950 px-4 py-8 text-white">
+      <div className="mx-auto max-w-6xl">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <Link
@@ -411,7 +414,7 @@ export default function ParentRelationshipCorrectionPage() {
           <h1 className="mt-3 text-3xl font-black">
             Parent Relationship Correction
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
             Correct the recorded parent edges for one person. Generation
             is never edited here; tree placement is recalculated from the
             genealogy graph after every correction.
@@ -438,17 +441,17 @@ export default function ParentRelationshipCorrectionPage() {
       ) : null}
 
       {loading ? (
-        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400">
+        <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-300">
           Loading recorded parent relationships...
         </div>
       ) : (
         <>
           <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/60 p-5">
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-300">
               Person Being Corrected
             </p>
             <p className="mt-2 text-xl font-black">{childName}</p>
-            <p className="mt-2 text-sm text-slate-400">
+            <p className="mt-2 text-sm text-slate-300">
               {biologicalParentCount} biological parent
               {biologicalParentCount === 1 ? "" : "s"} currently
               recorded.
@@ -461,7 +464,7 @@ export default function ParentRelationshipCorrectionPage() {
                 <h2 className="text-xl font-black">
                   Recorded Parent Relationships
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-300">
                   Each correction targets one exact relationship row.
                   Cross-family parents remain valid genealogy links.
                 </p>
@@ -469,7 +472,7 @@ export default function ParentRelationshipCorrectionPage() {
             </div>
 
             {relationships.length === 0 ? (
-              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400">
+              <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-300">
                 No parent relationships are currently recorded for this
                 person.
               </div>
@@ -503,22 +506,22 @@ export default function ParentRelationshipCorrectionPage() {
                           </div>
 
                           {relationship.parentNickname ? (
-                            <p className="mt-1 text-sm text-slate-400">
+                            <p className="mt-1 text-sm text-slate-300">
                               "{relationship.parentNickname}"
                             </p>
                           ) : null}
 
-                          <p className="mt-3 text-sm text-slate-400">
+                          <p className="mt-3 text-sm text-slate-300">
                             Filed under: {familyLabel(relationship)}
                           </p>
-                          <p className="mt-1 text-sm text-slate-500">
+                          <p className="mt-1 text-sm text-slate-300">
                             {locationLabel(
                               relationship.locationText,
                               relationship.locationBucket
                             )}
                           </p>
 
-                          <p className="mt-3 font-mono text-[10px] text-slate-600">
+                          <p className="mt-3 font-mono text-[10px] text-slate-400">
                             Relationship ID:{" "}
                             {relationship.relationshipId}
                           </p>
@@ -536,7 +539,7 @@ export default function ParentRelationshipCorrectionPage() {
                           </button>
 
                           <div className="rounded-xl border border-slate-700 bg-slate-950 p-3">
-                            <label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                            <label className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
                               Relationship Type
                             </label>
                             <select
@@ -603,7 +606,7 @@ export default function ParentRelationshipCorrectionPage() {
                               <p className="text-sm font-black text-cyan-200">
                                 Replace {relationship.parentName}
                               </p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
+                              <p className="mt-1 text-xs leading-5 text-slate-300">
                                 Search existing people across family
                                 projects. The existing relationship type
                                 stays{" "}
@@ -617,7 +620,7 @@ export default function ParentRelationshipCorrectionPage() {
                             <button
                               type="button"
                               onClick={closeReplacement}
-                              className="text-xs font-black text-slate-400"
+                              className="text-xs font-black text-slate-300"
                             >
                               Close
                             </button>
@@ -671,7 +674,7 @@ export default function ParentRelationshipCorrectionPage() {
                                         <p className="font-black">
                                           {candidate.fullName}
                                         </p>
-                                        <p className="mt-1 text-xs text-slate-500">
+                                        <p className="mt-1 text-xs text-slate-300">
                                           {candidate.organizationalFamily
                                             ?.name ||
                                             candidate
@@ -731,7 +734,7 @@ export default function ParentRelationshipCorrectionPage() {
 
           <section className="mt-8 rounded-3xl border border-slate-800 bg-slate-900/60 p-5">
             <h2 className="text-lg font-black">Safety Rules</h2>
-            <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-400">
+            <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-300">
               <li>
                 Parent replacement keeps the existing relationship row
                 and relationship type.
@@ -770,7 +773,7 @@ export default function ParentRelationshipCorrectionPage() {
                   Replace {pendingAction.relationship.parentName} with{" "}
                   {pendingAction.candidate.fullName}?
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-slate-400">
+                <p className="mt-3 text-sm leading-6 text-slate-300">
                   The relationship type remains{" "}
                   {relationshipTypeLabel(
                     pendingAction.relationship.relationshipType
@@ -785,7 +788,7 @@ export default function ParentRelationshipCorrectionPage() {
                 <h2 className="mt-3 text-xl font-black">
                   Change relationship type?
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-slate-400">
+                <p className="mt-3 text-sm leading-6 text-slate-300">
                   {pendingAction.relationship.parentName}{" -> "}{childName}
                   {" will change from "}
                   {relationshipTypeLabel(
@@ -805,7 +808,7 @@ export default function ParentRelationshipCorrectionPage() {
                 <h2 className="mt-3 text-xl font-black text-red-200">
                   Remove this parent relationship?
                 </h2>
-                <p className="mt-3 text-sm leading-6 text-slate-400">
+                <p className="mt-3 text-sm leading-6 text-slate-300">
                   This removes only the relationship edge from{" "}
                   {pendingAction.relationship.parentName} to {childName}.
                   Neither person will be deleted.
@@ -839,6 +842,7 @@ export default function ParentRelationshipCorrectionPage() {
           </div>
         </div>
       ) : null}
+      </div>
     </main>
   );
 }
