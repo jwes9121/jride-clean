@@ -181,9 +181,10 @@ export default function SiblingEntryPanel({
 
         if (parents.length === 1) {
           setSelectedParentIds([parents[0].id]);
-        } else if (parents.length === 2) {
-          setSelectedParentIds(parents.map((parent) => parent.id));
         } else {
+          // Two-parent branches are intentionally not preselected.
+          // The operator must explicitly choose full siblings or one
+          // biological parent for a half-sibling branch.
           setSelectedParentIds([]);
         }
       } catch (caught) {
@@ -663,7 +664,8 @@ export default function SiblingEntryPanel({
             </p>
             <p className="mt-1 text-[11px] leading-5 text-slate-500">
               Both parents means full siblings on the recorded branch. Choosing
-              one parent allows a half-sibling branch.
+              one parent allows a half-sibling branch. When two parents are
+              recorded, no branch is selected automatically.
             </p>
 
             <div className="mt-3 grid gap-2">
@@ -714,6 +716,19 @@ export default function SiblingEntryPanel({
                 );
               })}
             </div>
+
+            {biologicalParents.length === 2 &&
+            selectedParentIds.length === 0 ? (
+              <div className="mt-3 rounded-xl border border-amber-700 bg-amber-950/20 p-3">
+                <p className="text-xs font-black text-amber-200">
+                  Choose the sibling branch before reviewing or saving.
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-amber-100/80">
+                  Select both parents for full siblings, or select exactly one
+                  parent for a half-sibling branch.
+                </p>
+              </div>
+            ) : null}
           </div>
 
           {selectedParentIds.length > 0 ? (
