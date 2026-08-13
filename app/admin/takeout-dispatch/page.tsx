@@ -69,11 +69,13 @@ const NEXT_ACTIONS = [
   { label: "Cancelled", status: "cancelled" },
 ];
 
+// JRIDE_TAKEOUT_DRIVER_ACCEPTED_DISPATCH_VISIBILITY_V2
 const DISPATCH_VISIBLE = new Set([
   "vendor_accepted",
   "preparing",
   "pickup_ready",
   "driver_assigned",
+  "driver_accepted",
   "driver_fee_proposed",
   "customer_confirmed",
   "rider_arrived_vendor",
@@ -82,6 +84,17 @@ const DISPATCH_VISIBLE = new Set([
 ]);
 
 const TERMINAL = new Set(["completed", "cancelled", "canceled"]);
+
+// Keep manual assignment eligibility aligned with the current backend
+// /api/admin/takeout-dispatch/assign guard. Visibility and assignability
+// are intentionally separate: driver_accepted stays visible but is not
+// manually assignable through this button.
+const MANUAL_ASSIGNABLE = new Set([
+  "vendor_accepted",
+  "preparing",
+  "pickup_ready",
+  "driver_assigned",
+]);
 
 function money(v: any) {
   const n = Number(v || 0);
@@ -124,7 +137,7 @@ function statusClass(status: string | null, stuck: boolean) {
   if (s === "vendor_pending") return "border-slate-300 bg-slate-50 text-slate-700";
   if (s === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (s === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
-  if (s === "driver_assigned" || s === "rider_arrived_vendor" || s === "driver_fee_proposed" || s === "customer_confirmed") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (s === "driver_assigned" || s === "driver_accepted" || s === "rider_arrived_vendor" || s === "driver_fee_proposed" || s === "customer_confirmed") return "border-blue-300 bg-blue-50 text-blue-800";
   if (s === "picked_up" || s === "delivering") return "border-purple-300 bg-purple-50 text-purple-800";
   if (s === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
   if (s === "cancelled") return "border-zinc-300 bg-zinc-50 text-zinc-700";
@@ -133,6 +146,10 @@ function statusClass(status: string | null, stuck: boolean) {
 
 function dispatchVisible(order: TakeoutOrder) {
   return DISPATCH_VISIBLE.has(orderStatus(order));
+}
+
+function manualAssignable(order: TakeoutOrder) {
+  return MANUAL_ASSIGNABLE.has(orderStatus(order));
 }
 
 function activeVisible(order: TakeoutOrder) {
@@ -222,7 +239,7 @@ export default function TakeoutDispatchPage() {
       if (s === "vendor_accepted") next.vendor_accepted += 1;
       if (s === "preparing") next.preparing += 1;
       if (s === "pickup_ready") next.pickup_ready += 1;
-      if (s === "driver_assigned" || s === "driver_fee_proposed" || s === "customer_confirmed" || s === "rider_arrived_vendor") next.driver_assigned += 1;
+      if (s === "driver_assigned" || s === "driver_accepted" || s === "driver_fee_proposed" || s === "customer_confirmed" || s === "rider_arrived_vendor") next.driver_assigned += 1;
       if (s === "picked_up" || s === "delivering") next.picked_up += 1;
       if (s === "completed") next.completed += 1;
       if (s === "cancelled" || s === "canceled") next.cancelled += 1;
@@ -251,7 +268,7 @@ export default function TakeoutDispatchPage() {
       if (filter === "unassigned") return activeVisible(order) && !order.assigned_driver_id;
       if (filter === "cash") return dispatchVisible(order) && !!order.cash_required;
       if (filter === "stuck") return dispatchVisible(order) && !!order.is_stuck;
-      if (filter === "driver_assigned") return ["driver_assigned", "driver_fee_proposed", "customer_confirmed", "rider_arrived_vendor"].includes(s);
+      if (filter === "driver_assigned") return ["driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "rider_arrived_vendor"].includes(s);
       if (filter === "picked_up") return s === "picked_up" || s === "delivering";
       if (filter === "cancelled") return s === "cancelled" || s === "canceled";
       return s === filter;
@@ -382,7 +399,14 @@ export default function TakeoutDispatchPage() {
                                 </option>
                               ))}
                             </select>
-                            <button className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => assign(o.id)} disabled={!selectedDrivers[o.id] || !dispatchVisible(o)}>
+                            <button
+                              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                              onClick={() => assign(o.id)}
+                              disabled={
+                                !selectedDrivers[o.id] ||
+                                !manualAssignable(o)
+                              }
+                            >
                               Assign
                             </button>
                           </div>

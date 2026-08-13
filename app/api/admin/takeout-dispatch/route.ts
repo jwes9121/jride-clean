@@ -105,7 +105,7 @@ function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: num
     (status === "vendor_accepted" && updateAgeMinutes >= 10) ||
     (status === "preparing" && ageMinutes >= 30) ||
     (status === "pickup_ready" && updateAgeMinutes >= 20) ||
-    (status === "driver_assigned" && updateAgeMinutes >= 20) ||
+    ((status === "driver_assigned" || status === "driver_accepted") && updateAgeMinutes >= 20) ||
     (status === "rider_arrived_vendor" && updateAgeMinutes >= 15) ||
     (status === "picked_up" && updateAgeMinutes >= 30) ||
     (status === "delivering" && updateAgeMinutes >= 30);
@@ -114,7 +114,7 @@ function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: num
   if (status === "pickup_ready") priority = stuck ? 1 : 10;
   else if (status === "requested") priority = stuck ? 2 : 15;
   else if (status === "vendor_accepted") priority = stuck ? 2 : 16;
-  else if (status === "driver_assigned") priority = stuck ? 3 : 18;
+  else if (status === "driver_assigned" || status === "driver_accepted") priority = stuck ? 3 : 18;
   else if (status === "rider_arrived_vendor") priority = stuck ? 4 : 20;
   else if (status === "preparing") priority = stuck ? 5 : 25;
   else if (status === "picked_up" || status === "delivering") priority = stuck ? 6 : 30;
@@ -323,7 +323,12 @@ export async function GET(req: NextRequest) {
     vendor_accepted: orders.filter((o: any) => o.vendor_status === "vendor_accepted").length,
     preparing: orders.filter((o: any) => o.vendor_status === "preparing").length,
     pickup_ready: orders.filter((o: any) => o.vendor_status === "pickup_ready").length,
-    driver_assigned: orders.filter((o: any) => o.vendor_status === "driver_assigned").length,
+    // JRIDE_TAKEOUT_DRIVER_ACCEPTED_DISPATCH_VISIBILITY_V2
+    driver_assigned: orders.filter(
+      (o: any) =>
+        o.vendor_status === "driver_assigned" ||
+        o.vendor_status === "driver_accepted"
+    ).length,
     picked_up: orders.filter((o: any) => o.vendor_status === "picked_up" || o.vendor_status === "delivering").length,
     completed: orders.filter((o: any) => o.status === "completed").length,
     cancelled: orders.filter((o: any) => o.status === "cancelled").length,
