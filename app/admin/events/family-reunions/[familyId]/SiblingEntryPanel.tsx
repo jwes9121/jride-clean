@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 
 type QuickAddDecision =
   | "NO_PARENT_PROPOSED"
@@ -305,6 +306,28 @@ export default function SiblingEntryPanel({
     return prospectiveParents.size <= 2;
   }
 
+  function candidateNeedsParentCorrection(review: CandidateReview) {
+    if (review.candidate.candidateId === referencePersonId) return false;
+
+    const decisions = selectedParentIds.map(
+      (parentId) => review.decisionsByParentId[parentId]
+    );
+
+    if (decisions.some((decision) => !decision)) return false;
+    if (decisions.includes("CYCLE_WOULD_BE_CREATED")) return false;
+
+    if (decisions.includes("ADVANCED_EDITOR_REQUIRED")) {
+      return true;
+    }
+
+    const prospectiveParents = new Set(
+      review.candidate.biologicalParents.map((parent) => parent.id)
+    );
+    selectedParentIds.forEach((parentId) => prospectiveParents.add(parentId));
+
+    return prospectiveParents.size > 2;
+  }
+
   function candidateStatusText(review: CandidateReview) {
     if (review.candidate.candidateId === referencePersonId) {
       return "The selected person cannot be added as their own sibling.";
@@ -317,7 +340,7 @@ export default function SiblingEntryPanel({
     if (
       decisions.some((decision) => !decision)
     ) {
-      return "This possible match could not be safely evaluated against every selected biological parent. Review it in Advanced Genealogy Editor instead of linking it here.";
+      return "This possible match could not be safely evaluated against every selected biological parent. Do not link it from Sibling Entry until the review data is complete.";
     }
 
     if (decisions.includes("CYCLE_WOULD_BE_CREATED")) {
@@ -325,7 +348,7 @@ export default function SiblingEntryPanel({
     }
 
     if (decisions.includes("ADVANCED_EDITOR_REQUIRED")) {
-      return "This existing record needs Advanced Genealogy Editor because the selected branch would exceed the biological-parent limit.";
+      return "This existing record needs parent relationship review because the selected branch would exceed the biological-parent limit.";
     }
 
     if (decisions.every((decision) => decision === "ALREADY_LINKED")) {
@@ -843,14 +866,17 @@ export default function SiblingEntryPanel({
                             <div className="rounded-lg border border-red-800 bg-red-950/20 p-3 text-xs text-red-200">
                               Exact-name record found. New-person creation is
                               disabled for this sibling row. Use a safe existing
-                              record below or review the relationship in Advanced
-                              Genealogy Editor.
+                              record below. Blocked matches show the exact reason,
+                              and Parent Correction appears only for
+                              biological-parent-limit cases.
                             </div>
                           ) : null}
 
                           {row.candidateReviews.map((review) => {
                             const candidate = review.candidate;
                             const canUse = canUseCandidate(review);
+                            const needsParentCorrection =
+                              candidateNeedsParentCorrection(review);
                             const selected =
                               row.selectedMode === "use_existing" &&
                               row.selectedExistingPersonId === candidate.candidateId;
@@ -904,6 +930,19 @@ export default function SiblingEntryPanel({
                                 <p className={`mt-2 text-xs ${canUse ? "text-emerald-300" : "text-amber-300"}`}>
                                   {candidateStatusText(review)}
                                 </p>
+
+                                {needsParentCorrection ? (
+                                  <Link
+                                    href={`/admin/events/family-reunions/${encodeURIComponent(
+                                      familyId
+                                    )}/parent-correction?personId=${encodeURIComponent(
+                                      candidate.candidateId
+                                    )}`}
+                                    className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                  >
+                                    Review Parent Relationships
+                                  </Link>
+                                ) : null}
 
                                 {canUse ? (
                                   <button

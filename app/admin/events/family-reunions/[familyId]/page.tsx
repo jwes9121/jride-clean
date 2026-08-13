@@ -265,7 +265,10 @@ type BulkChildDraft = {
   reviewState: BulkChildReviewState;
   currentMatches: QuickAddCandidate[];
   otherMatches: QuickAddCandidate[];
-  coParentUnsafeCandidateIds: string[];
+  coParentDecisionByCandidateId: Record<
+    string,
+    QuickAddCandidate["quickAddDecision"]
+  >;
   selectedMode: BulkChildMode | null;
   selectedExistingPersonId: string | null;
   differentPersonConfirmed: boolean;
@@ -370,7 +373,7 @@ function createBulkChildDraft(): BulkChildDraft {
     reviewState: "unreviewed",
     currentMatches: [],
     otherMatches: [],
-    coParentUnsafeCandidateIds: [],
+    coParentDecisionByCandidateId: {},
     selectedMode: null,
     selectedExistingPersonId: null,
     differentPersonConfirmed: false,
@@ -1782,7 +1785,7 @@ export default function FamilyReunionDetailPage() {
                     reviewState: "unreviewed" as BulkChildReviewState,
                     currentMatches: [],
                     otherMatches: [],
-                    coParentUnsafeCandidateIds: [],
+                    coParentDecisionByCandidateId: {},
                     selectedMode: null,
                     selectedExistingPersonId: null,
                     differentPersonConfirmed: false,
@@ -1806,7 +1809,7 @@ export default function FamilyReunionDetailPage() {
         reviewState: "unreviewed" as BulkChildReviewState,
         currentMatches: [],
         otherMatches: [],
-        coParentUnsafeCandidateIds: [],
+        coParentDecisionByCandidateId: {},
         selectedMode: null,
         selectedExistingPersonId: null,
         differentPersonConfirmed: false,
@@ -1870,7 +1873,7 @@ export default function FamilyReunionDetailPage() {
             reviewState: "unreviewed" as BulkChildReviewState,
             currentMatches: [],
             otherMatches: [],
-            coParentUnsafeCandidateIds: [],
+            coParentDecisionByCandidateId: {},
             selectedMode: null,
             selectedExistingPersonId: null,
             differentPersonConfirmed: false,
@@ -1917,27 +1920,27 @@ export default function FamilyReunionDetailPage() {
           const hasMatches =
             currentMatches.length > 0 || otherMatches.length > 0;
 
-          const coParentUnsafeCandidateIds = coParentData
-            ? [
-                ...(coParentData.currentFamilyMatches || []),
-                ...(coParentData.otherFamilyMatches || []),
-              ]
-                .filter(
-                  (candidate) =>
-                    candidate.quickAddDecision ===
-                      "CYCLE_WOULD_BE_CREATED" ||
-                    candidate.quickAddDecision ===
-                      "ADVANCED_EDITOR_REQUIRED"
-                )
-                .map((candidate) => candidate.candidateId)
-            : [];
+          const coParentDecisionByCandidateId = coParentData
+            ? (Object.fromEntries(
+                [
+                  ...(coParentData.currentFamilyMatches || []),
+                  ...(coParentData.otherFamilyMatches || []),
+                ].map((candidate) => [
+                  candidate.candidateId,
+                  candidate.quickAddDecision,
+                ])
+              ) as Record<
+                string,
+                QuickAddCandidate["quickAddDecision"]
+              >)
+            : {};
 
           return {
             ...row,
             reviewState: "reviewed" as BulkChildReviewState,
             currentMatches,
             otherMatches,
-            coParentUnsafeCandidateIds,
+            coParentDecisionByCandidateId,
             selectedMode: hasMatches
               ? null
               : ("create_new" as BulkChildMode),
@@ -1951,7 +1954,7 @@ export default function FamilyReunionDetailPage() {
             reviewState: "error" as BulkChildReviewState,
             currentMatches: [],
             otherMatches: [],
-            coParentUnsafeCandidateIds: [],
+            coParentDecisionByCandidateId: {},
             selectedMode: null,
             selectedExistingPersonId: null,
             differentPersonConfirmed: false,
@@ -1979,9 +1982,14 @@ export default function FamilyReunionDetailPage() {
 
     if (!anchorDecisionAllowed) return false;
 
+    const coParentDecision = bulkOtherParentId
+      ? row.coParentDecisionByCandidateId[candidate.candidateId]
+      : undefined;
+
     if (
-      bulkOtherParentId &&
-      row.coParentUnsafeCandidateIds.includes(candidate.candidateId)
+      coParentDecision &&
+      coParentDecision !== "SAFE_TO_LINK" &&
+      coParentDecision !== "ALREADY_LINKED"
     ) {
       return false;
     }
@@ -4364,6 +4372,39 @@ export default function FamilyReunionDetailPage() {
                                                   "use_existing" &&
                                                 row.selectedExistingPersonId ===
                                                   candidate.candidateId;
+                                              const coParentDecision =
+                                                bulkOtherParentId
+                                                  ? row
+                                                      .coParentDecisionByCandidateId[
+                                                      candidate.candidateId
+                                                    ]
+                                                  : undefined;
+                                              const hardCycle =
+                                                candidate.quickAddDecision ===
+                                                  "CYCLE_WOULD_BE_CREATED" ||
+                                                coParentDecision ===
+                                                  "CYCLE_WOULD_BE_CREATED";
+                                              const prospectiveParents =
+                                                new Set(
+                                                  candidate.biologicalParents.map(
+                                                    (parent) => parent.id
+                                                  )
+                                                );
+                                              prospectiveParents.add(
+                                                chartActivePersonId
+                                              );
+                                              if (bulkOtherParentId) {
+                                                prospectiveParents.add(
+                                                  bulkOtherParentId
+                                                );
+                                              }
+                                              const needsParentCorrection =
+                                                !hardCycle &&
+                                                (candidate.quickAddDecision ===
+                                                  "ADVANCED_EDITOR_REQUIRED" ||
+                                                  coParentDecision ===
+                                                    "ADVANCED_EDITOR_REQUIRED" ||
+                                                  prospectiveParents.size > 2);
 
                                               return (
                                                 <div
@@ -4371,11 +4412,9 @@ export default function FamilyReunionDetailPage() {
                                                   className={`rounded-lg border p-3 ${
                                                     selected
                                                       ? "border-emerald-300 bg-emerald-950/20"
-                                                      : candidate.quickAddDecision ===
-                                                        "CYCLE_WOULD_BE_CREATED"
+                                                      : hardCycle
                                                       ? "border-red-800 bg-red-950/20"
-                                                      : candidate.quickAddDecision ===
-                                                        "ADVANCED_EDITOR_REQUIRED"
+                                                      : needsParentCorrection
                                                       ? "border-amber-800 bg-amber-950/20"
                                                       : "border-slate-700 bg-slate-950"
                                                   }`}
@@ -4410,21 +4449,6 @@ export default function FamilyReunionDetailPage() {
                                                     </span>
                                                   </div>
 
-                                                  {bulkOtherParentId &&
-                                                  !canUse &&
-                                                  (candidate.quickAddDecision ===
-                                                    "SAFE_TO_LINK" ||
-                                                    candidate.quickAddDecision ===
-                                                      "ALREADY_LINKED") ? (
-                                                    <p className="mt-2 text-xs text-amber-300">
-                                                      This existing person
-                                                      cannot be used with the
-                                                      selected other biological
-                                                      parent because it would
-                                                      create a cycle or exceed
-                                                      two biological parents.
-                                                    </p>
-                                                  ) : null}
 
                                                   {canUse ? (
                                                     <button
@@ -4441,25 +4465,48 @@ export default function FamilyReunionDetailPage() {
                                                         ? "Existing Person Selected"
                                                         : `Use Existing ${candidate.fullName}`}
                                                     </button>
+                                                  ) : hardCycle ? (
+                                                    <p className="mt-2 text-xs text-red-300">
+                                                      This existing record cannot
+                                                      be linked to this child
+                                                      branch because it would
+                                                      create an ancestry cycle.
+                                                      Parent Correction is not
+                                                      offered for cycle conflicts.
+                                                    </p>
+                                                  ) : needsParentCorrection ? (
+                                                    <div className="mt-2 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                                      <p className="text-xs text-amber-300">
+                                                        This existing person's
+                                                        recorded biological parents
+                                                        conflict with the selected
+                                                        parent branch.
+                                                      </p>
+                                                      <Link
+                                                        href={`/admin/events/family-reunions/${encodeURIComponent(
+                                                          familyId
+                                                        )}/parent-correction?personId=${encodeURIComponent(
+                                                          candidate.candidateId
+                                                        )}`}
+                                                        className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                                      >
+                                                        Review Parent Relationships
+                                                      </Link>
+                                                    </div>
                                                   ) : candidate.quickAddDecision ===
                                                     "ALREADY_LINKED" ? (
                                                     <p className="mt-2 text-xs text-slate-400">
                                                       This relationship already
                                                       exists.
                                                     </p>
-                                                  ) : candidate.quickAddDecision ===
-                                                    "CYCLE_WOULD_BE_CREATED" ? (
-                                                    <p className="mt-2 text-xs text-red-300">
-                                                      This existing record cannot
-                                                      be linked here because it
-                                                      would create an ancestry
-                                                      cycle.
-                                                    </p>
                                                   ) : (
                                                     <p className="mt-2 text-xs text-amber-300">
-                                                      Review this existing
-                                                      record in Advanced
-                                                      Genealogy Editor.
+                                                      This existing person cannot
+                                                      be linked safely from Bulk
+                                                      Children. No correction
+                                                      shortcut is shown because the
+                                                      block reason is not a
+                                                      biological-parent-limit case.
                                                     </p>
                                                   )}
                                                 </div>
