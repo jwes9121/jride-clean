@@ -60,7 +60,13 @@ type RegistrationResponse = {
 };
 
 function cleanPhone(value: string) {
-  return value.replace(/[^0-9]/g, "");
+  const digits = value.replace(/[^0-9]/g, "");
+
+  if (/^09[0-9]{9}$/.test(digits)) return digits;
+  if (/^639[0-9]{9}$/.test(digits)) return "0" + digits.slice(2);
+  if (/^9[0-9]{9}$/.test(digits)) return "0" + digits;
+
+  return "";
 }
 
 function YesNo({
@@ -554,10 +560,9 @@ export default function BatchTwoThousandOneRegistrationPage() {
                     ? "border-red-400"
                     : "border-slate-700"
                 }`}
-                placeholder="09171234567"
+                placeholder="09171234567 or +639171234567"
                 type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
+                inputMode="tel"
                 autoComplete="tel"
               />
               {fieldErrors["primary-mobile-number"] ? (

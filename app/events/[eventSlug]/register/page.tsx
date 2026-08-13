@@ -48,7 +48,13 @@ const relationships = ["Spouse", "Partner", "Child", "Relative", "Friend", "Othe
 const MAX_GUESTS = 3;
 
 function cleanPhone(value: string) {
-  return value.replace(/[^0-9]/g, "");
+  const digits = value.replace(/[^0-9]/g, "");
+
+  if (/^09[0-9]{9}$/.test(digits)) return digits;
+  if (/^639[0-9]{9}$/.test(digits)) return "0" + digits.slice(2);
+  if (/^9[0-9]{9}$/.test(digits)) return "0" + digits;
+
+  return "";
 }
 
 export default function EventRegistrationPage() {
@@ -408,10 +414,9 @@ export default function EventRegistrationPage() {
                 value={mobileNumber}
                 onChange={(event) => setMobileNumber(event.target.value)}
                 className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
-                placeholder="09171234567"
+                placeholder="09171234567 or +639171234567"
                 type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
+                inputMode="tel"
                 autoComplete="tel"
               />
             </label>
@@ -554,8 +559,7 @@ export default function EventRegistrationPage() {
                           className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-amber-300"
                           placeholder="Optional"
                           type="tel"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
+                          inputMode="tel"
                           autoComplete="tel"
                         />
                       </label>

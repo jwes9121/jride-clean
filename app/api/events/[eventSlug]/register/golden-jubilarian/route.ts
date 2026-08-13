@@ -45,7 +45,13 @@ function cleanText(value: unknown) {
 }
 
 function cleanPhone(value: unknown) {
-  return String(value || "").replace(/[^0-9]/g, "");
+  const digits = String(value || "").replace(/[^0-9]/g, "");
+
+  if (/^09[0-9]{9}$/.test(digits)) return digits;
+  if (/^639[0-9]{9}$/.test(digits)) return "0" + digits.slice(2);
+  if (/^9[0-9]{9}$/.test(digits)) return "0" + digits;
+
+  return "";
 }
 
 function noStore(body: unknown, status = 200) {
