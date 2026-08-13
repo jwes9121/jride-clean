@@ -189,6 +189,17 @@ export async function POST(
           );
         }
 
+        if (message.includes("FAMILY_BIOLOGICAL_PARENT_LIMIT_EXCEEDED")) {
+          return noStore(
+            {
+              success: false,
+              resultCode: "BIOLOGICAL_PARENT_LIMIT",
+              error: "This person already has two biological parents.",
+            },
+            409
+          );
+        }
+
         if (message.toLowerCase().includes("duplicate")) {
           return noStore(
             {
