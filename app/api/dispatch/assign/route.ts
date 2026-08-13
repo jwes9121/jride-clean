@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  getDrivingRoadMetricsToTarget,
+  getDrivingRoadRoute,
+} from "@/lib/routing/mapboxRoad";
+import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
 
 function text(v: unknown): string {
   return String(v ?? "").trim();
@@ -41,7 +46,18 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+function finiteNum(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function haversineKmForTakeoutRankingOnly(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
   const r = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -405,6 +421,9 @@ export async function POST(req: NextRequest) {
     const bookingDbId = text((booking as any).id);
     const currentStatus = cleanStatus((booking as any).status);
     const currentDriverId = text((booking as any).assigned_driver_id || (booking as any).driver_id);
+    const isTakeoutBooking =
+      cleanStatus((booking as any).service_type || (booking as any).booking_type) ===
+      "takeout";
 
     if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
       return NextResponse.json(
@@ -574,6 +593,72 @@ export async function POST(req: NextRequest) {
           { status: 409 }
         );
       }
+
+      if (!isTakeoutBooking) {
+        const pickupLat = finiteNum((booking as any).pickup_lat);
+        const pickupLng = finiteNum((booking as any).pickup_lng);
+        const driverLat = finiteNum((driverLocation.row as any)?.lat);
+        const driverLng = finiteNum((driverLocation.row as any)?.lng);
+
+        if (
+          pickupLat == null ||
+          pickupLng == null ||
+          driverLat == null ||
+          driverLng == null
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "road_distance_coordinates_missing",
+              booking_id: bookingDbId,
+              booking_code: text((booking as any).booking_code),
+              driver_id: explicitDriverId,
+            },
+            { status: 409 }
+          );
+        }
+
+        const roadMetric = await getDrivingRoadRoute(
+          { lat: driverLat, lng: driverLng },
+          { lat: pickupLat, lng: pickupLng }
+        );
+
+        if (!roadMetric) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "road_distance_unavailable",
+              message:
+                "Driver cannot be assigned until driving-road distance to pickup is available.",
+              booking_id: bookingDbId,
+              booking_code: text((booking as any).booking_code),
+              driver_id: explicitDriverId,
+            },
+            { status: 503 }
+          );
+        }
+
+        if (roadMetric.distanceKm > RIDE_PICKUP_NORMAL_MAX_KM) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: emergencyMode
+                ? "emergency_pickup_pricing_not_configured"
+                : "pickup_distance_exceeds_normal_limit",
+              message: emergencyMode
+                ? "This driver is more than 10 km from pickup by road. Emergency pickup pricing beyond 10 km is not configured."
+                : "This driver is more than 10 km from pickup by road and is not eligible for normal assignment.",
+              booking_id: bookingDbId,
+              booking_code: text((booking as any).booking_code),
+              driver_id: explicitDriverId,
+              road_distance_km: Number(roadMetric.distanceKm.toFixed(2)),
+              normal_max_pickup_km: RIDE_PICKUP_NORMAL_MAX_KM,
+              emergency_mode: emergencyMode,
+            },
+            { status: 409 }
+          );
+        }
+      }
     }
 
     let chosenDriverId = explicitDriverId;
@@ -596,17 +681,58 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const pickupLat = num((booking as any).pickup_lat);
-      const pickupLng = num((booking as any).pickup_lng);
+      const pickupLat = finiteNum((booking as any).pickup_lat);
+      const pickupLng = finiteNum((booking as any).pickup_lng);
+      const latestDriverRows = keepLatestDriverLocationRows(drivers || []);
 
-      const ranked = keepLatestDriverLocationRows(drivers || [])
+      if (!isTakeoutBooking && (pickupLat == null || pickupLng == null)) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "road_distance_coordinates_missing",
+            booking_id: bookingDbId,
+            booking_code: text((booking as any).booking_code),
+          },
+          { status: 409 }
+        );
+      }
+
+      const roadMetrics =
+        !isTakeoutBooking && pickupLat != null && pickupLng != null
+          ? await getDrivingRoadMetricsToTarget(
+              { lat: pickupLat, lng: pickupLng },
+              latestDriverRows
+                .map((row: any) => ({
+                  id: text(row?.driver_id),
+                  lat: finiteNum(row?.lat),
+                  lng: finiteNum(row?.lng),
+                }))
+                .filter(
+                  (
+                    row
+                  ): row is { id: string; lat: number; lng: number } =>
+                    !!row.id && row.lat != null && row.lng != null
+                )
+            )
+          : new Map();
+
+      const ranked = latestDriverRows
         .map((row: any) => {
           const eligibility = evaluateDriverLocationEligibility(row);
           const driverTown = text(row?.town).toLowerCase();
           const sameTown = driverTown === baseTown.toLowerCase();
           const lat = num(row?.lat);
           const lng = num(row?.lng);
-          const distKm = haversineKm(lat, lng, pickupLat, pickupLng);
+          const candidateDriverId = text(row?.driver_id);
+          const roadMetric = roadMetrics.get(candidateDriverId);
+          const distKm = isTakeoutBooking
+            ? haversineKmForTakeoutRankingOnly(
+                lat,
+                lng,
+                pickupLat ?? 0,
+                pickupLng ?? 0
+              )
+            : roadMetric?.distanceKm ?? Number.POSITIVE_INFINITY;
 
           const vehicleCapacity = evaluateVehicleCapacity(booking, row, row);
 
@@ -615,6 +741,7 @@ export async function POST(req: NextRequest) {
             eligibility,
             sameTown,
             distKm,
+            roadMetric: roadMetric ?? null,
             townPriority: sameTown ? 0 : 1,
             vehiclePriority: vehicleCapacity.ok ? vehicleCapacity.vehicle_priority : 99,
           };
@@ -629,7 +756,7 @@ export async function POST(req: NextRequest) {
           return bUpdated - aUpdated;
         });
 
-            let eligibleDriverId = "";
+      let eligibleDriverId = "";
       const assignDiagnostics: any[] = [];
 
       for (const row of ranked) {
@@ -640,7 +767,10 @@ export async function POST(req: NextRequest) {
           town: row?.town ?? null,
           status: row?.status ?? null,
           updated_at: row?.updated_at ?? null,
-          distKm: row?.distKm ?? null,
+          distKm: Number.isFinite(row?.distKm) ? row.distKm : null,
+          distance_basis: isTakeoutBooking
+            ? "haversine_takeout_ranking_only"
+            : "mapbox_driving_road",
           eligibility: row?.eligibility ?? null,
           rejected_at: null,
           rejected_reason: null,
@@ -658,6 +788,30 @@ export async function POST(req: NextRequest) {
           diag.rejected_reason = "candidate_is_excluded_driver";
           assignDiagnostics.push(diag);
           continue;
+        }
+
+        if (!isTakeoutBooking) {
+          const roadMetric = row?.roadMetric ?? null;
+          diag.road_distance_km = roadMetric
+            ? Number(roadMetric.distanceKm.toFixed(2))
+            : null;
+          diag.normal_max_pickup_km = RIDE_PICKUP_NORMAL_MAX_KM;
+
+          if (!roadMetric) {
+            diag.rejected_at = "road_distance";
+            diag.rejected_reason = "road_distance_unavailable";
+            assignDiagnostics.push(diag);
+            continue;
+          }
+
+          if (roadMetric.distanceKm > RIDE_PICKUP_NORMAL_MAX_KM) {
+            diag.rejected_at = "road_distance";
+            diag.rejected_reason = emergencyMode
+              ? "emergency_pickup_pricing_not_configured"
+              : "pickup_distance_exceeds_normal_limit";
+            assignDiagnostics.push(diag);
+            continue;
+          }
         }
 
         if (!row?.eligibility?.assignEligible) {
@@ -719,7 +873,7 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-            if (!eligibleDriverId) {
+      if (!eligibleDriverId) {
         console.error("[JRIDE_ASSIGN_DIAG]", JSON.stringify({
           booking_id: bookingDbId,
           booking_code: text((booking as any).booking_code),
@@ -731,6 +885,24 @@ export async function POST(req: NextRequest) {
           ranked_driver_rows: ranked.length,
           assignDiagnostics,
         }));
+
+        if (
+          !isTakeoutBooking &&
+          latestDriverRows.length > 0 &&
+          roadMetrics.size === 0
+        ) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "road_distance_unavailable",
+              message:
+                "No ride driver can be assigned until driving-road distance is available.",
+              town: baseTown || null,
+              normal_max_pickup_km: RIDE_PICKUP_NORMAL_MAX_KM,
+            },
+            { status: 503 }
+          );
+        }
 
         return NextResponse.json(
           {
@@ -750,7 +922,6 @@ export async function POST(req: NextRequest) {
     }
 
     const nowIso = new Date().toISOString();
-    const isTakeoutBooking = cleanStatus((booking as any).service_type || (booking as any).booking_type) === "takeout";
     const takeoutDriverAcceptExpiresIso = new Date(Date.now() + TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
     const rideDriverAcceptExpiresIso = new Date(Date.now() + RIDE_DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
 

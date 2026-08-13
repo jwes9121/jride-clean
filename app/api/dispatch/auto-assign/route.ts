@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
+import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
 
 type DriverRow = {
   driver_id: string;
@@ -105,7 +107,7 @@ function allowedTownsForBooking(bookingTown: string, emergencyMode: boolean): st
   return [town, ...getNearbyTowns(town)];
 }
 
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+function haversineKmForTakeoutRankingOnly(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const r = 6371;
   const dLat = toRad(lat2 - lat1);
@@ -119,74 +121,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return r * c;
 }
-
-function mapboxMatrixToken(): string {
-  return String(
-    process.env.MAPBOX_ACCESS_TOKEN ||
-      process.env.MAPBOX_TOKEN ||
-      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
-      process.env.NEXT_PUBLIC_MAPBOX_TOKEN ||
-      ""
-  ).trim();
-}
-
-async function getRoadDurationsSeconds(
-  target: { lat: number; lng: number },
-  drivers: DriverRow[]
-): Promise<Map<string, number>> {
-  const token = mapboxMatrixToken();
-  if (!token || !drivers.length) return new Map();
-
-  const candidates = drivers
-    .map((d) => ({
-      driver_id: text(d.driver_id),
-      lat: num(d.lat),
-      lng: num(d.lng),
-    }))
-    .filter((d) => d.driver_id && d.lat != null && d.lng != null)
-    .slice(0, 24);
-
-  if (!candidates.length) return new Map();
-
-  const allCoords = [
-    ...candidates.map((d) => `${d.lng},${d.lat}`),
-    `${target.lng},${target.lat}`,
-  ].join(";");
-
-  const destinationIndex = candidates.length;
-
-  const url =
-    `https://api.mapbox.com/directions-matrix/v1/mapbox/driving/${allCoords}` +
-    `?sources=${candidates.map((_, idx) => idx).join(",")}` +
-    `&destinations=${destinationIndex}` +
-    `&annotations=duration` +
-    `&access_token=${encodeURIComponent(token)}`;
-
-  try {
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      console.error("[AUTO_ASSIGN_MAPBOX_MATRIX_ERROR]", res.status, await res.text());
-      return new Map();
-    }
-
-    const json = (await res.json()) as { durations?: (number | null)[][] };
-    const durations = Array.isArray(json?.durations) ? json.durations : [];
-
-    const out = new Map<string, number>();
-    candidates.forEach((driver, idx) => {
-      const value = durations[idx]?.[0];
-      if (typeof value === "number" && Number.isFinite(value)) {
-        out.set(driver.driver_id, value);
-      }
-    });
-
-    return out;
-  } catch (e: any) {
-    console.error("[AUTO_ASSIGN_MAPBOX_MATRIX_EXCEPTION]", String(e?.message || e));
-    return new Map();
-  }
-}
-
 
 function isAssignableAutoAssignState(booking: BookingRow): boolean {
   const status = norm(booking?.status);
@@ -233,7 +167,7 @@ function effectiveMinWalletRequired(v: any): number {
   return Math.max(250, n);
 }
 
-function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pickupLng: number | null): number {
+function compareDriversForTakeoutFallback(a: DriverRow, b: DriverRow, pickupLat: number | null, pickupLng: number | null): number {
   const aLat = num(a.lat);
   const aLng = num(a.lng);
   const bLat = num(b.lat);
@@ -243,8 +177,8 @@ function compareDrivers(a: DriverRow, b: DriverRow, pickupLat: number | null, pi
   const bHasCoords = bLat != null && bLng != null && pickupLat != null && pickupLng != null;
 
   if (aHasCoords && bHasCoords) {
-    const aKm = haversineKm(aLat as number, aLng as number, pickupLat as number, pickupLng as number);
-    const bKm = haversineKm(bLat as number, bLng as number, pickupLat as number, pickupLng as number);
+    const aKm = haversineKmForTakeoutRankingOnly(aLat as number, aLng as number, pickupLat as number, pickupLng as number);
+    const bKm = haversineKmForTakeoutRankingOnly(bLat as number, bLng as number, pickupLat as number, pickupLng as number);
     if (aKm !== bKm) return aKm - bKm;
   } else if (aHasCoords && !bHasCoords) {
   
@@ -278,6 +212,8 @@ type MatchDebug = {
   rejected_wrong_vehicle_count: number;
   rejected_low_wallet_count: number;
   rejected_wallet_locked_count: number;
+  rejected_road_distance_unavailable_count: number;
+  rejected_road_distance_over_limit_count: number;
   eligible_count: number;
   chosen_driver_id: string | null;
   chosen_driver_town: string | null;
@@ -373,6 +309,7 @@ async function matchSingle(
   const targetCoords = assignmentTargetCoords(booking);
   const pickupLat = targetCoords.lat;
   const pickupLng = targetCoords.lng;
+  const isTakeoutBooking = norm(booking?.service_type) === "takeout";
 
   const debug: MatchDebug = {
     booking_id: booking?.id ?? null,
@@ -392,6 +329,8 @@ async function matchSingle(
     rejected_wrong_vehicle_count: 0,
     rejected_low_wallet_count: 0,
     rejected_wallet_locked_count: 0,
+    rejected_road_distance_unavailable_count: 0,
+    rejected_road_distance_over_limit_count: 0,
     eligible_count: 0,
     chosen_driver_id: null,
     chosen_driver_town: null,
@@ -621,52 +560,154 @@ async function matchSingle(
     eligible.push(d);
   }
 
-  const roadDurations =
-    pickupLat != null && pickupLng != null
-      ? await getRoadDurationsSeconds({ lat: pickupLat, lng: pickupLng }, eligible)
-      : new Map<string, number>();
-
-  eligible.sort((a, b) => {
-    const aId = text(a.driver_id);
-    const bId = text(b.driver_id);
-    const aRoad = roadDurations.get(aId);
-    const bRoad = roadDurations.get(bId);
-
-    if (aRoad != null && bRoad != null && aRoad !== bRoad) return aRoad - bRoad;
-    if (aRoad != null && bRoad == null) return -1;
-    if (aRoad == null && bRoad != null) return 1;
-
-    return compareDrivers(a, b, pickupLat, pickupLng);
-  });
-
-  debug.eligible_count = eligible.length;
-
-  if (eligible.length === 0) {
+  if (!isTakeoutBooking && (pickupLat == null || pickupLng == null)) {
     return {
       assigned: false,
-      reason: emergencyMode ? "NO_ELIGIBLE_DRIVERS_IN_EMERGENCY_TOWNS" : "NO_ELIGIBLE_LOCAL_DRIVERS",
+      reason: "ROAD_DISTANCE_COORDINATES_MISSING",
+      decision: "blocked",
+      debug,
+    };
+  }
+
+  const roadMetrics =
+    pickupLat != null && pickupLng != null
+      ? await getDrivingRoadMetricsToTarget(
+          { lat: pickupLat, lng: pickupLng },
+          eligible
+            .map((driver) => ({
+              id: text(driver.driver_id),
+              lat: num(driver.lat),
+              lng: num(driver.lng),
+            }))
+            .filter(
+              (
+                driver
+              ): driver is { id: string; lat: number; lng: number } =>
+                !!driver.id && driver.lat != null && driver.lng != null
+            )
+        )
+      : new Map();
+
+  let eligibleForSelection = eligible;
+
+  if (!isTakeoutBooking) {
+    if (eligible.length > 0 && roadMetrics.size === 0) {
+      debug.rejected_road_distance_unavailable_count = eligible.length;
+      return {
+        assigned: false,
+        reason: "ROAD_DISTANCE_UNAVAILABLE",
+        decision: "blocked",
+        debug,
+      };
+    }
+
+    eligibleForSelection = eligible.filter((driver) => {
+      const roadMetric = roadMetrics.get(text(driver.driver_id));
+
+      if (!roadMetric) {
+        debug.rejected_road_distance_unavailable_count++;
+        return false;
+      }
+
+      if (roadMetric.distanceKm > RIDE_PICKUP_NORMAL_MAX_KM) {
+        debug.rejected_road_distance_over_limit_count++;
+        return false;
+      }
+
+      return true;
+    });
+
+    eligibleForSelection.sort((a, b) => {
+      const aRoad = roadMetrics.get(text(a.driver_id));
+      const bRoad = roadMetrics.get(text(b.driver_id));
+
+      const aKm = aRoad?.distanceKm ?? Number.POSITIVE_INFINITY;
+      const bKm = bRoad?.distanceKm ?? Number.POSITIVE_INFINITY;
+
+      if (aKm !== bKm) return aKm - bKm;
+
+      const aMs = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const bMs = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      if (aMs !== bMs) return bMs - aMs;
+
+      return text(a.driver_id).localeCompare(text(b.driver_id));
+    });
+  } else {
+    eligibleForSelection.sort((a, b) => {
+      const aRoad = roadMetrics.get(text(a.driver_id));
+      const bRoad = roadMetrics.get(text(b.driver_id));
+      const aDuration = aRoad?.durationSeconds ?? null;
+      const bDuration = bRoad?.durationSeconds ?? null;
+
+      if (
+        aDuration != null &&
+        bDuration != null &&
+        aDuration !== bDuration
+      ) {
+        return aDuration - bDuration;
+      }
+      if (aDuration != null && bDuration == null) return -1;
+      if (aDuration == null && bDuration != null) return 1;
+
+      return compareDriversForTakeoutFallback(a, b, pickupLat, pickupLng);
+    });
+  }
+
+  debug.eligible_count = eligibleForSelection.length;
+
+  if (eligibleForSelection.length === 0) {
+    return {
+      assigned: false,
+      reason: !isTakeoutBooking && debug.rejected_road_distance_over_limit_count > 0
+        ? "NO_ELIGIBLE_DRIVERS_WITHIN_10KM_ROAD"
+        : emergencyMode
+          ? "NO_ELIGIBLE_DRIVERS_IN_EMERGENCY_TOWNS"
+          : "NO_ELIGIBLE_LOCAL_DRIVERS",
       decision: "skipped",
       debug,
     };
   }
 
-  const chosen = eligible[0];
+  const chosen = eligibleForSelection[0];
   debug.chosen_driver_id = chosen.driver_id;
   debug.chosen_driver_town = text(chosen.town) || null;
   debug.chosen_driver_vehicle_type = normalizeVehicleType(chosen.vehicle_type) || null;
 
+  const chosenRoadMetric = roadMetrics.get(text(chosen.driver_id)) ?? null;
   const chosenLat = num(chosen.lat);
   const chosenLng = num(chosen.lng);
-  if (chosenLat != null && chosenLng != null && pickupLat != null && pickupLng != null) {
+
+  if (chosenRoadMetric) {
     debug.chosen_driver_distance_km = Number(
-      haversineKm(chosenLat, chosenLng, pickupLat, pickupLng).toFixed(2)
+      chosenRoadMetric.distanceKm.toFixed(2)
+    );
+  } else if (
+    isTakeoutBooking &&
+    chosenLat != null &&
+    chosenLng != null &&
+    pickupLat != null &&
+    pickupLng != null
+  ) {
+    debug.chosen_driver_distance_km = Number(
+      haversineKmForTakeoutRankingOnly(
+        chosenLat,
+        chosenLng,
+        pickupLat,
+        pickupLng
+      ).toFixed(2)
     );
   }
 
   (debug as any).chosen_driver_road_duration_seconds =
-    roadDurations.get(text(chosen.driver_id)) ?? null;
-  (debug as any).driver_selection_metric =
-    roadDurations.size > 0 ? "mapbox_road_duration" : "haversine_fallback";
+    chosenRoadMetric?.durationSeconds ?? null;
+  (debug as any).normal_max_pickup_km = isTakeoutBooking
+    ? null
+    : RIDE_PICKUP_NORMAL_MAX_KM;
+  (debug as any).driver_selection_metric = isTakeoutBooking
+    ? chosenRoadMetric
+      ? "mapbox_road_duration"
+      : "haversine_fallback_takeout_only"
+    : "mapbox_road_distance";
 
   const nowIso = isoNow();
 

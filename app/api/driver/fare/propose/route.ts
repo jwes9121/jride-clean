@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createSupabaseServiceClient } from "@supabase/supabase-js";
+import {
+  computeRidePickupFee,
+  isNormalRidePickupDistance,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+} from "@/lib/pricing/pickupFee";
 
 type ProposeBody = {
   booking_code?: string;
@@ -49,18 +54,6 @@ function serviceSupabase() {
       autoRefreshToken: false,
     },
   });
-}
-
-function pickupDistanceFee(km: number): number {
-  const freeKm = 1.5;
-  const blockKm = 0.5;
-  const feePerBlock = 20;
-
-  const chargeableKm = Math.max(0, km - freeKm);
-  if (chargeableKm <= 0) return 0;
-
-  const blocks = Math.ceil(chargeableKm / blockKm);
-  return blocks * feePerBlock;
 }
 
 function estimateEtaMinutes(distanceKm: number | null): number | null {
@@ -163,12 +156,13 @@ async function getRoadDistance(
   const meters = Number(route?.distance ?? NaN);
   const seconds = Number(route?.duration ?? NaN);
 
-  if (!Number.isFinite(meters) || meters <= 0) {
+  if (!Number.isFinite(meters) || meters < 0) {
     throw new Error("ROAD_DISTANCE_NOT_AVAILABLE");
   }
 
   return {
-    distanceKm: Number((meters / 1000).toFixed(2)),
+    // Keep the raw Mapbox road distance for pricing boundaries.
+    distanceKm: meters / 1000,
     durationMinutes:
       Number.isFinite(seconds) && seconds > 0
         ? Math.max(1, Math.ceil(seconds / 60))
@@ -317,32 +311,65 @@ export async function POST(req: Request) {
       }
     }
 
+    if (driverLat == null || driverLng == null) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "DRIVER_LOCATION_UNAVAILABLE",
+          message: "A current driver location is required to calculate road pickup distance.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
     let driverToPickupKm: number | null = null;
     let pickupEtaMinutes: number | null = null;
     let pickupFee = 0;
 
-    if (driverLat != null && driverLng != null) {
-      try {
-        const road = await getRoadDistance(driverLng, driverLat, pickupLng, pickupLat);
-        driverToPickupKm = road.distanceKm;
-        pickupEtaMinutes = road.durationMinutes ?? estimateEtaMinutes(road.distanceKm);
-        pickupFee = pickupDistanceFee(road.distanceKm);
-      } catch (e: any) {
-        console.warn("[FARE_PROPOSE_DRIVER_TO_PICKUP_DISTANCE_FALLBACK]", {
-          booking_code: (booking as any).booking_code ?? null,
-          driver_id: effectiveDriverId,
-          message: String(e?.message ?? e),
-        });
-        driverToPickupKm = null;
-        pickupEtaMinutes = null;
-        pickupFee = 0;
+    try {
+      const road = await getRoadDistance(driverLng, driverLat, pickupLng, pickupLat);
+
+      if (!isNormalRidePickupDistance(road.distanceKm)) {
+        const isEmergency = Boolean((booking as any).is_emergency);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: isEmergency
+              ? "EMERGENCY_PICKUP_PRICING_REQUIRED"
+              : "PICKUP_DISTANCE_EXCEEDS_NORMAL_LIMIT",
+            message: isEmergency
+              ? "Pickup road distance is over 10 km. An Emergency Booking pricing rule is required before fare proposal."
+              : "Pickup road distance exceeds the 10 km normal-assignment limit.",
+            driver_to_pickup_km: Number(road.distanceKm.toFixed(2)),
+            normal_max_pickup_km: RIDE_PICKUP_NORMAL_MAX_KM,
+          },
+          { status: 409, headers: noStoreHeaders() }
+        );
       }
+
+      driverToPickupKm = Number(road.distanceKm.toFixed(2));
+      pickupEtaMinutes = road.durationMinutes ?? estimateEtaMinutes(road.distanceKm);
+      pickupFee = computeRidePickupFee(road.distanceKm);
+    } catch (e: any) {
+      console.warn("[FARE_PROPOSE_DRIVER_TO_PICKUP_ROAD_DISTANCE_FAILED]", {
+        booking_code: (booking as any).booking_code ?? null,
+        driver_id: effectiveDriverId,
+        message: String(e?.message ?? e),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "ROAD_DISTANCE_UNAVAILABLE",
+          message: "Road pickup distance could not be calculated. Fare proposal was not submitted.",
+        },
+        { status: 503, headers: noStoreHeaders() }
+      );
     }
 
     let tripDistanceKm: number | null = null;
     try {
       const roadTrip = await getRoadDistance(pickupLng, pickupLat, dropoffLng, dropoffLat);
-      tripDistanceKm = roadTrip.distanceKm;
+      tripDistanceKm = Number(roadTrip.distanceKm.toFixed(2));
     } catch (e: any) {
       console.warn("[FARE_PROPOSE_TRIP_DISTANCE_FALLBACK]", {
         booking_code: (booking as any).booking_code ?? null,
@@ -409,7 +436,7 @@ export async function POST(req: Request) {
           assigned_driver_id: assignedDriverId || null,
           booking_driver_id: bookingDriverId || null,
           target_status: "fare_proposed",
-        update_payload: updatePayload,
+          update_payload: updatePayload,
         },
         { status: 500, headers: noStoreHeaders() }
       );

@@ -8,8 +8,11 @@ import {
   PASSENGER_RESPONSE_MIN_LEAD_SECONDS,
   PASSENGER_RESPONSE_TIMEOUT_SECONDS,
 } from "@/lib/advance-booking/constants";
-import { pickupDistanceKm } from "@/lib/advance-booking/distance";
 import { computeFare } from "@/lib/advance-booking/pricing";
+import {
+  isNormalRidePickupDistance,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+} from "@/lib/pricing/pickupFee";
 import type {
   DepartureOption,
   VehicleType,
@@ -33,6 +36,59 @@ function validCoordinate(lat: number, lng: number): boolean {
 function isOnlineStatus(value: unknown): boolean {
   const status = String(value || "").trim().toLowerCase();
   return ["online", "available", "idle", "waiting"].includes(status);
+}
+
+function text(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function getMapboxToken(): string {
+  const candidates = [
+    process.env.MAPBOX_ACCESS_TOKEN,
+    process.env.MAPBOX_TOKEN,
+    process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN,
+    process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
+  ];
+
+  for (const candidate of candidates) {
+    const token = text(candidate);
+    if (token) return token;
+  }
+
+  return "";
+}
+
+async function getRoadDistance(
+  fromLng: number,
+  fromLat: number,
+  toLng: number,
+  toLat: number
+): Promise<number> {
+  const token = getMapboxToken();
+  if (!token) {
+    throw new Error("ROAD_DISTANCE_TOKEN_MISSING");
+  }
+
+  const url =
+    "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+    `${fromLng},${fromLat};${toLng},${toLat}` +
+    `?alternatives=false&overview=false&steps=false&access_token=${encodeURIComponent(token)}`;
+
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`ROAD_DISTANCE_FETCH_FAILED_${response.status}`);
+  }
+
+  const json: any = await response.json().catch(() => ({}));
+  const route = Array.isArray(json?.routes) ? json.routes[0] : null;
+  const meters = Number(route?.distance ?? NaN);
+
+  if (!Number.isFinite(meters) || meters < 0) {
+    throw new Error("ROAD_DISTANCE_NOT_AVAILABLE");
+  }
+
+  // Keep raw road distance for exact pricing-band boundaries.
+  return meters / 1000;
 }
 
 export async function POST(req: NextRequest) {
@@ -211,9 +267,42 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const departureDistance = pickupDistanceKm(
-    departureLat, departureLng, pickupLat, pickupLng
-  );
+  let departureDistance: number;
+  try {
+    departureDistance = await getRoadDistance(
+      departureLng,
+      departureLat,
+      pickupLng,
+      pickupLat
+    );
+  } catch (error: any) {
+    console.warn("[advance-booking:fare-proposal:road-distance]", {
+      queue_entry_id: queueEntryId,
+      driver_id: auth.driverId,
+      message: String(error?.message ?? error),
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ROAD_DISTANCE_UNAVAILABLE",
+        message: "Road pickup distance could not be calculated. Fare proposal was not submitted.",
+      },
+      { status: 503, headers: noStoreHeaders() }
+    );
+  }
+
+  if (!isNormalRidePickupDistance(departureDistance)) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "PICKUP_DISTANCE_EXCEEDS_NORMAL_LIMIT",
+        message: "Pickup road distance exceeds the 10 km normal-assignment limit.",
+        departure_distance_km: Number(departureDistance.toFixed(2)),
+        normal_max_pickup_km: RIDE_PICKUP_NORMAL_MAX_KM,
+      },
+      { status: 409, headers: noStoreHeaders() }
+    );
+  }
 
   const pricing = computeFare({
     tripDistanceKm: tripDistance,
@@ -229,7 +318,7 @@ export async function POST(req: NextRequest) {
       p_departure_option: departureOption,
       p_departure_lat: departureLat,
       p_departure_lng: departureLng,
-      p_departure_distance_km: pricing.pickupDistanceKm,
+      p_departure_distance_km: Number(pricing.pickupDistanceKm.toFixed(2)),
       p_pickup_fee: pricing.pickupFee,
       p_ride_fare: pricing.rideFare,
       p_night_premium: pricing.nightPremium,

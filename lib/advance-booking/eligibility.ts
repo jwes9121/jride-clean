@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { MAX_SIMULTANEOUS_OFFERS } from "./constants";
-import { pickupDistanceKm } from "./distance";
+import {
+  getDrivingRoadMetricsToTarget,
+  getDrivingRoadRoute,
+} from "@/lib/routing/mapboxRoad";
+import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
 import type { EligibilityInput, EligibilityResult, VehicleType } from "./types";
 
 const LOCATION_FRESHNESS_WINDOW_MS = 10 * 60 * 1000;
@@ -120,18 +124,30 @@ export async function checkDriverEligibility(
     return { eligible: false, reason: "Driver already received this offer." };
   }
 
-  const distanceToPickupKm = pickupDistanceKm(
-  driverLat,
-  driverLng,
-  pickupLat,
-  pickupLng
-);
+  const roadMetric = await getDrivingRoadRoute(
+    { lat: driverLat, lng: driverLng },
+    { lat: pickupLat, lng: pickupLng }
+  );
+
+  if (!roadMetric) {
+    return {
+      eligible: false,
+      reason: "Road distance to pickup is unavailable.",
+    };
+  }
+
+  if (roadMetric.distanceKm > RIDE_PICKUP_NORMAL_MAX_KM) {
+    return {
+      eligible: false,
+      reason: `Driver is more than ${RIDE_PICKUP_NORMAL_MAX_KM} km from pickup by road.`,
+    };
+  }
 
   return {
     eligible: true,
     driverLat,
     driverLng,
-    distanceToPickupKm: Math.round(distanceToPickupKm * 100) / 100,
+    distanceToPickupKm: Math.round(roadMetric.distanceKm * 100) / 100,
   };
 }
 
@@ -234,7 +250,7 @@ export async function findNearestEligibleDrivers(
 
   // Step 5: filter in memory using the same rules as checkDriverEligibility.
   // Require both live location status and drivers.driver_status to be online.
-  const candidates: Array<{ driverId: string; distanceKm: number }> = [];
+  const candidates: Array<{ driverId: string; driverLat: number; driverLng: number }> = [];
 
   for (const loc of onlineLocs) {
     const driverId = String(loc.driver_id);
@@ -273,14 +289,37 @@ export async function findNearestEligibleDrivers(
     const driverLat = Number(loc.lat);
     const driverLng = Number(loc.lng);
 
-    // Reuse existing pickupDistanceKm() -- no Haversine duplication
     candidates.push({
       driverId,
-      distanceKm: pickupDistanceKm(driverLat, driverLng, pickupLat, pickupLng),
+      driverLat,
+      driverLng,
     });
   }
 
+  const roadMetrics = await getDrivingRoadMetricsToTarget(
+    { lat: pickupLat, lng: pickupLng },
+    candidates.map((candidate) => ({
+      id: candidate.driverId,
+      lat: candidate.driverLat,
+      lng: candidate.driverLng,
+    }))
+  );
+
   return candidates
+    .map((candidate) => {
+      const roadMetric = roadMetrics.get(candidate.driverId);
+      if (!roadMetric) return null;
+      if (roadMetric.distanceKm > RIDE_PICKUP_NORMAL_MAX_KM) return null;
+
+      return {
+        driverId: candidate.driverId,
+        distanceKm: roadMetric.distanceKm,
+      };
+    })
+    .filter(
+      (candidate): candidate is { driverId: string; distanceKm: number } =>
+        candidate !== null
+    )
     .sort((a, b) => a.distanceKm - b.distanceKm)
     .slice(0, maxDrivers);
 }
