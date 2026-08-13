@@ -6058,6 +6058,7 @@ export default function FamilyReunionDetailPage() {
             </section>
 
             <section className="mt-8">
+              {/* jride-family-roster-parent-correction-link-v1 */}
               <h2 className="text-xl font-black">Project Roster</h2>
               <p className="mt-1 text-sm text-slate-400">
                 {people.length} people filed under this genealogy project.
@@ -6086,6 +6087,19 @@ export default function FamilyReunionDetailPage() {
                         {person.locationBucket}
                       </span>
                     ) : null}
+
+                    <div className="mt-3">
+                      <Link
+                        href={`/admin/events/family-reunions/${encodeURIComponent(
+                          familyId
+                        )}/parent-correction?personId=${encodeURIComponent(
+                          person.id
+                        )}`}
+                        className="inline-flex rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                      >
+                        Review Parent Relationships
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </div>
