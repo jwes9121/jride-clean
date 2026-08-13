@@ -28,6 +28,13 @@ type AttendeeRow = {
   disqualification_reason: string | null;
 };
 
+// JRIDE_EVENT_COMPANION_CONTEXT_V1
+type GuestLinkRow = {
+  primary_attendee_id: string;
+  guest_attendee_id: string;
+  relationship: string | null;
+};
+
 type RaffleWinnerRow = {
   id: string;
   status: string;
@@ -208,7 +215,7 @@ export async function GET(
       );
     }
 
-    const [attendeesResult, raffleResult] = await Promise.all([
+    const [attendeesResult, raffleResult, guestLinksResult] = await Promise.all([
       supabase
         .from("event_attendees")
         .select(
@@ -226,6 +233,14 @@ export async function GET(
         )
         .eq("event_id", event.id)
         .order("created_at", { ascending: false }),
+
+      supabase
+        .from("event_guest_links")
+        .select(
+          "primary_attendee_id,guest_attendee_id,relationship"
+        )
+        .eq("event_id", event.id)
+        .order("created_at", { ascending: true }),
     ]);
 
     if (attendeesResult.error) {
@@ -236,11 +251,82 @@ export async function GET(
       throw new Error(raffleResult.error.message);
     }
 
+    if (guestLinksResult.error) {
+      throw new Error(guestLinksResult.error.message);
+    }
+
     const attendees = (attendeesResult.data || []) as AttendeeRow[];
 
     const typeById = new Map(
       attendeeTypes.map((row) => [row.id, row])
     );
+
+    const attendeeById = new Map(
+      attendees.map((row) => [row.id, row])
+    );
+
+    const primaryLinkByGuestId = new Map<string, GuestLinkRow>();
+    const companionLinksByPrimaryId = new Map<string, GuestLinkRow[]>();
+
+    for (const link of (guestLinksResult.data || []) as GuestLinkRow[]) {
+      primaryLinkByGuestId.set(link.guest_attendee_id, link);
+
+      const current =
+        companionLinksByPrimaryId.get(link.primary_attendee_id) || [];
+
+      current.push(link);
+      companionLinksByPrimaryId.set(link.primary_attendee_id, current);
+    }
+
+    function companionContext(attendeeId: string) {
+      const primaryLink = primaryLinkByGuestId.get(attendeeId) || null;
+      const primary = primaryLink
+        ? attendeeById.get(primaryLink.primary_attendee_id) || null
+        : null;
+
+      const companionOf = primary
+        ? {
+            attendeeId: primary.id,
+            fullName: primary.full_name,
+            registrationNumber: primary.registration_number,
+            groupValue: primary.group_value,
+            relationship: primaryLink?.relationship || null,
+          }
+        : null;
+
+      const companions = (
+        companionLinksByPrimaryId.get(attendeeId) || []
+      )
+        .map((link) => {
+          const guest = attendeeById.get(link.guest_attendee_id);
+
+          if (!guest) return null;
+
+          return {
+            attendeeId: guest.id,
+            fullName: guest.full_name,
+            registrationNumber: guest.registration_number,
+            groupValue: guest.group_value,
+            relationship: link.relationship || null,
+          };
+        })
+        .filter(
+          (
+            value
+          ): value is {
+            attendeeId: string;
+            fullName: string;
+            registrationNumber: string;
+            groupValue: string | null;
+            relationship: string | null;
+          } => Boolean(value)
+        );
+
+      return {
+        companionOf,
+        companions,
+      };
+    }
 
     const primaryAttendees = attendees.filter(
       (row) => row.attendee_type_id === primaryType.id
@@ -321,6 +407,7 @@ export async function GET(
           checkedInAt: row.checked_in_at,
           isDisqualified: isDisqualified(row),
           disqualificationReason: row.disqualification_reason,
+          ...companionContext(row.id),
         };
       });
 
@@ -351,6 +438,7 @@ export async function GET(
           registrationNumber: row.registration_number,
           registrationSource: row.registration_source,
           registeredAt: row.registered_at,
+          ...companionContext(row.id),
         };
       });
 

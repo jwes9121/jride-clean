@@ -55,6 +55,14 @@ type GroupSummaryRow = {
   disqualified: number;
 };
 
+type CompanionRelationship = {
+  attendeeId: string;
+  fullName: string;
+  registrationNumber: string;
+  groupValue: string | null;
+  relationship: string | null;
+};
+
 type RegistrantRow = {
   attendeeId: string;
   attendeeType: string;
@@ -69,6 +77,8 @@ type RegistrantRow = {
   checkedInAt: string | null;
   isDisqualified: boolean;
   disqualificationReason: string | null;
+  companionOf: CompanionRelationship | null;
+  companions: CompanionRelationship[];
 };
 
 type ReportsResponse = {
@@ -98,6 +108,8 @@ type ReportsResponse = {
     registrationNumber: string;
     registrationSource: string | null;
     registeredAt: string | null;
+    companionOf: CompanionRelationship | null;
+    companions: CompanionRelationship[];
   }>;
   raffleWinners: Array<{
     winnerId: string;
@@ -212,6 +224,61 @@ function groupDisplayLabel(value: string | null | undefined) {
   if (normalized === "guest") return "Guests";
 
   return formatLabel(value);
+}
+
+function CompanionContextCell({
+  companionOf,
+  companions,
+}: {
+  companionOf: CompanionRelationship | null;
+  companions: CompanionRelationship[];
+}) {
+  if (companionOf) {
+    return (
+      <div className="min-w-[220px]">
+        <span className="rounded-full bg-violet-100 px-2 py-1 text-[10px] font-black text-violet-800">
+          COMPANION
+        </span>
+        <div className="mt-2 font-bold text-slate-900">
+          Of {companionOf.fullName}
+        </div>
+        <div className="mt-1 text-xs text-slate-500">
+          {groupDisplayLabel(companionOf.groupValue)}
+          {companionOf.relationship
+            ? ` | ${companionOf.relationship}`
+            : ""}
+        </div>
+        <div className="mt-1 font-mono text-[11px] text-slate-400">
+          {companionOf.registrationNumber}
+        </div>
+      </div>
+    );
+  }
+
+  if (companions.length > 0) {
+    return (
+      <div className="min-w-[220px]">
+        <span className="rounded-full bg-sky-100 px-2 py-1 text-[10px] font-black text-sky-800">
+          PRIMARY
+        </span>
+        <div className="mt-2 text-xs font-bold text-slate-700">
+          {companions.length === 1 ? "Companion:" : "Companions:"}
+        </div>
+        <div className="mt-1 space-y-1 text-xs text-slate-600">
+          {companions.map((companion) => (
+            <div key={companion.attendeeId}>
+              <span className="font-bold">{companion.fullName}</span>
+              {companion.relationship
+                ? ` (${companion.relationship})`
+                : ""}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return <span className="text-slate-400">-</span>;
 }
 
 function registrationFormPath(
@@ -448,6 +515,16 @@ function RegistrationGroupsPanel({
           row.registrationStatus || "",
           row.attendanceStatus || "",
           row.disqualificationReason || "",
+          row.companionOf?.fullName || "",
+          row.companionOf?.registrationNumber || "",
+          row.companionOf?.groupValue || "",
+          row.companionOf?.relationship || "",
+          ...row.companions.flatMap((companion) => [
+            companion.fullName,
+            companion.registrationNumber,
+            companion.groupValue || "",
+            companion.relationship || "",
+          ]),
         ].some((value) => value.toLowerCase().includes(query));
       })
       .sort((left, right) =>
@@ -640,6 +717,7 @@ function RegistrationGroupsPanel({
                     <th className="px-4 py-3">Pass</th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Companion / Primary</th>
                     <th className="px-4 py-3">Eligibility</th>
                     <th className="px-4 py-3">Attendance</th>
                     <th className="px-4 py-3">Mobile</th>
@@ -660,6 +738,12 @@ function RegistrationGroupsPanel({
                       </td>
                       <td className="px-4 py-3">
                         {row.attendeeTypeLabel}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <CompanionContextCell
+                          companionOf={row.companionOf}
+                          companions={row.companions}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         {row.isDisqualified ? (
@@ -686,7 +770,7 @@ function RegistrationGroupsPanel({
                   {selectedRegistrants.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         className="px-4 py-8 text-center text-slate-500"
                       >
                         No matching records in this registration group.
@@ -722,6 +806,16 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
         row.mobileNumber || "",
         row.groupValue || "",
         row.attendeeTypeLabel,
+        row.companionOf?.fullName || "",
+        row.companionOf?.registrationNumber || "",
+        row.companionOf?.groupValue || "",
+        row.companionOf?.relationship || "",
+        ...row.companions.flatMap((companion) => [
+          companion.fullName,
+          companion.registrationNumber,
+          companion.groupValue || "",
+          companion.relationship || "",
+        ]),
       ].some((value) => value.toLowerCase().includes(query))
     );
   }, [data, search]);
@@ -989,6 +1083,10 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                       groupLabel,
                       "Registration Number",
                       "Name",
+                      "Companion Of",
+                      "Primary Category",
+                      "Relationship",
+                      "Companions",
                       "Mobile",
                       "Registration Source",
                       "Registered At",
@@ -998,6 +1096,20 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                       row.groupValue,
                       row.registrationNumber,
                       row.fullName,
+                      row.companionOf?.fullName || "",
+                      row.companionOf
+                        ? groupDisplayLabel(row.companionOf.groupValue)
+                        : "",
+                      row.companionOf?.relationship || "",
+                      row.companions
+                        .map(
+                          (companion) =>
+                            companion.fullName +
+                            (companion.relationship
+                              ? ` (${companion.relationship})`
+                              : "")
+                        )
+                        .join(" | "),
                       row.mobileNumber,
                       formatLabel(row.registrationSource),
                       formatDateTime(row.registeredAt),
@@ -1025,6 +1137,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                     <th className="px-4 py-3">Pass</th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">{groupLabel}</th>
+                    <th className="px-4 py-3">Companion / Primary</th>
                     <th className="px-4 py-3">Mobile</th>
                   </tr>
                 </thead>
@@ -1046,6 +1159,12 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                       <td className="px-4 py-3">
                         {groupDisplayLabel(row.groupValue)}
                       </td>
+                      <td className="px-4 py-3 align-top">
+                        <CompanionContextCell
+                          companionOf={row.companionOf}
+                          companions={row.companions}
+                        />
+                      </td>
                       <td className="px-4 py-3">
                         {row.mobileNumber || "-"}
                       </td>
@@ -1054,7 +1173,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
                   {filteredAbsentees.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="px-4 py-8 text-center text-slate-500"
                       >
                         No matching absentees.
