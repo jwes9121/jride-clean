@@ -790,10 +790,29 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-// JRIDE_NO_IMMEDIATE_EXPIRED_DRIVER_REUSE_V1
-// If the previously assigned driver timed out, keep that driver excluded.
-// If no other eligible local driver exists, leave the booking searching.
-// A dispatcher may still manually assign later when appropriate.
+// JRIDE_TAKEOUT_EXPIRED_DRIVER_REUSE_SCOPE_V2
+// Preserve the existing ride fallback behavior.
+// Only Takeout keeps the previously expired driver excluded.
+if (
+  !result.assigned &&
+  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
+  expiredDriverId &&
+  norm((booking as any).service_type) !== "takeout"
+) {
+  console.log("[AUTO_ASSIGN_FALLBACK] Retrying previously expired ride driver allowed", {
+    booking_code: (booking as any).booking_code,
+    expired_driver_id: expiredDriverId,
+  });
+
+  result = await matchSingle(
+    supabase,
+    booking as BookingRow,
+    excludeDriverIds
+  );
+}
+
+// For Takeout, no retry with the expired driver is allowed here.
+// If no other eligible same-town driver exists, the booking stays searching.
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -910,10 +929,29 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-// JRIDE_NO_IMMEDIATE_EXPIRED_DRIVER_REUSE_V1
-// If the previously assigned driver timed out, keep that driver excluded.
-// If no other eligible local driver exists, leave the booking searching.
-// A dispatcher may still manually assign later when appropriate.
+// JRIDE_TAKEOUT_EXPIRED_DRIVER_REUSE_SCOPE_V2
+// Preserve the existing ride fallback behavior.
+// Only Takeout keeps the previously expired driver excluded.
+if (
+  !result.assigned &&
+  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
+  expiredDriverId &&
+  norm((booking as any).service_type) !== "takeout"
+) {
+  console.log("[AUTO_ASSIGN_FALLBACK] Retrying previously expired ride driver allowed", {
+    booking_code: (booking as any).booking_code,
+    expired_driver_id: expiredDriverId,
+  });
+
+  result = await matchSingle(
+    supabase,
+    booking as BookingRow,
+    excludeDriverIds
+  );
+}
+
+// For Takeout, no retry with the expired driver is allowed here.
+// If no other eligible same-town driver exists, the booking stays searching.
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
