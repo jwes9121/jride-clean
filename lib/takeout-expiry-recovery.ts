@@ -1,5 +1,108 @@
 import type { NextRequest } from "next/server";
 
+// JRIDE_TAKEOUT_DRIVER_ACCEPT_EXPIRY_RECOVERY_V1
+export type TakeoutDriverAcceptanceResetResult = {
+  didReset: boolean;
+  bookingId: string | null;
+  bookingCode: string | null;
+  error: string | null;
+};
+
+export async function resetExpiredTakeoutDriverAcceptance(
+  serviceSupabase: any,
+  params: {
+    bookingId?: string | null;
+    bookingCode?: string | null;
+    expiredDriverId: string;
+  }
+): Promise<TakeoutDriverAcceptanceResetResult> {
+  const bookingId = String(params.bookingId || "").trim() || null;
+  const bookingCode = String(params.bookingCode || "").trim() || null;
+  const expiredDriverId = String(params.expiredDriverId || "").trim();
+
+  if ((!bookingId && !bookingCode) || !expiredDriverId) {
+    return {
+      didReset: false,
+      bookingId,
+      bookingCode,
+      error: "MISSING_BOOKING_OR_DRIVER_ID",
+    };
+  }
+
+  const nowIso = new Date().toISOString();
+
+  let resetQuery = serviceSupabase
+    .from("bookings")
+    .update({
+      status: "searching",
+      vendor_status: "vendor_accepted",
+      customer_status: "vendor_accepted",
+      driver_status: null,
+      driver_id: null,
+      assigned_driver_id: null,
+      assigned_at: null,
+      driver_accept_expires_at: null,
+      takeout_driver_accept_expires_at: null,
+      takeout_fee_proposal_expires_at: null,
+      driver_fee_proposal_expires_at: null,
+      takeout_pricing_status: null,
+      takeout_delivery_fee: null,
+      takeout_service_fee: null,
+      takeout_total_payable: null,
+      takeout_cash_collection_required: null,
+      takeout_fee_proposed_by_driver_id: null,
+      takeout_fee_proposed_at: null,
+      takeout_fee_expires_at: null,
+      takeout_customer_confirmed_at: null,
+      last_expired_driver_id: expiredDriverId,
+      updated_at: nowIso,
+      // takeout_route_plan intentionally preserved.
+    })
+    .eq("service_type", "takeout")
+    .eq("status", "assigned")
+    .eq("assigned_driver_id", expiredDriverId)
+    .eq("driver_status", "driver_assigned")
+    .is("takeout_customer_confirmed_at", null)
+    .is("takeout_fee_proposed_at", null)
+    .is("takeout_delivery_fee", null)
+    .lte("driver_accept_expires_at", nowIso);
+
+  resetQuery = bookingCode
+    ? resetQuery.eq("booking_code", bookingCode)
+    : resetQuery.eq("id", bookingId as string);
+
+  const resetRes = await resetQuery
+    .select("id,booking_code")
+    .limit(1);
+
+  if (resetRes.error) {
+    return {
+      didReset: false,
+      bookingId,
+      bookingCode,
+      error: resetRes.error.message,
+    };
+  }
+
+  if (!Array.isArray(resetRes.data) || resetRes.data.length === 0) {
+    return {
+      didReset: false,
+      bookingId,
+      bookingCode,
+      error: null,
+    };
+  }
+
+  const row = resetRes.data[0] as any;
+
+  return {
+    didReset: true,
+    bookingId: String(row?.id || bookingId || "") || null,
+    bookingCode: String(row?.booking_code || bookingCode || "") || null,
+    error: null,
+  };
+}
+
 export type TakeoutFeeProposalResetResult = {
   didReset: boolean;
   bookingId: string | null;
@@ -153,6 +256,7 @@ export async function recordTakeoutExpiryLifecycleEvent(
     reassignmentSuccess: boolean;
     dispatchStatus: number | null;
     statusBefore: string;
+    expiryType?: "driver_accept_window" | "fare_proposal_window";
   }
 ) {
   const lifecycleRes = await serviceSupabase.rpc(
@@ -172,7 +276,7 @@ export async function recordTakeoutExpiryLifecycleEvent(
       p_actor_id: null,
       p_meta: {
         reason: params.reason,
-        expiry_type: "fare_proposal_window",
+        expiry_type: params.expiryType || "fare_proposal_window",
         reassignment_attempted: params.reassignmentAttempted,
         reassignment_success: params.reassignmentSuccess,
         dispatch_status: params.dispatchStatus,

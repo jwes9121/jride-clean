@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -210,19 +210,63 @@ export async function GET(req: NextRequest) {
         vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
       };
 
+      // JRIDE_TAKEOUT_VENDOR_TIMEOUT_ATOMIC_GUARD_V1
       const expiredUpdate = await serviceSupabase
         .from("bookings")
         .update(expiredPatch)
         .in("id", expiredIds)
-        .eq("service_type", "takeout");
+        .eq("service_type", "takeout")
+        .or(
+          "vendor_status.is.null,vendor_status.eq.vendor_pending,vendor_status.eq.requested"
+        )
+        .is("assigned_driver_id", null)
+        .select("id");
 
       if (!expiredUpdate.error) {
-        const expiredSet = new Set(expiredIds);
+        const actuallyExpiredIds = new Set(
+          (expiredUpdate.data || [])
+            .map((row: any) => text(row?.id))
+            .filter(Boolean)
+        );
+
         rawRows = rawRows.map((row: any) =>
-          expiredSet.has(text(row?.id))
-            ? { ...row, ...expiredPatch, updated_at: new Date().toISOString() }
+          actuallyExpiredIds.has(text(row?.id))
+            ? {
+                ...row,
+                ...expiredPatch,
+                updated_at: new Date().toISOString(),
+              }
             : row
         );
+
+        const skippedExpiredIds = expiredIds.filter(
+          (id) => !actuallyExpiredIds.has(id)
+        );
+
+        if (skippedExpiredIds.length) {
+          const refreshRes = await serviceSupabase
+            .from("bookings")
+            .select(TAKEOUT_ORDER_SELECT)
+            .in("id", skippedExpiredIds)
+            .eq("service_type", "takeout");
+
+          if (
+            !refreshRes.error &&
+            Array.isArray(refreshRes.data)
+          ) {
+            const freshById = new Map(
+              refreshRes.data.map((row: any) => [
+                text(row?.id),
+                row,
+              ])
+            );
+
+            rawRows = rawRows.map((row: any) => {
+              const fresh = freshById.get(text(row?.id));
+              return fresh || row;
+            });
+          }
+        }
       }
     }
 

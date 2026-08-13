@@ -3,6 +3,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import {
   logTakeoutFeeProposalExpired,
   recordTakeoutExpiryLifecycleEvent,
+  resetExpiredTakeoutDriverAcceptance,
   resetExpiredTakeoutFeeProposal,
   triggerTakeoutFeeProposalReassign,
 } from "@/lib/takeout-expiry-recovery";
@@ -319,86 +320,104 @@ async function jrideTriggerRideAutoReassign(req: NextRequest, row: any, driverId
   } catch {}
 }
 
-async function jrideTriggerTakeoutAutoReassign(req: NextRequest, row: any, driverId: string, reason: string) {
-  const bookingCode = jrideActiveTripText(row?.booking_code ?? row?.bookingCode);
-  const bookingId = jrideActiveTripText(row?.id ?? row?.booking_id ?? row?.bookingId);
+async function jrideTriggerTakeoutAutoReassign(
+  req: NextRequest,
+  row: any,
+  driverId: string,
+  reason: string
+) {
+  const bookingCode = jrideActiveTripText(
+    row?.booking_code ?? row?.bookingCode
+  );
+  const bookingId = jrideActiveTripText(
+    row?.id ?? row?.booking_id ?? row?.bookingId
+  );
+
   if ((!bookingCode && !bookingId) || !driverId) return;
 
   try {
     const serviceSupabase = createServiceSupabase();
-    const nowIso = new Date().toISOString();
 
-    let resetQuery = serviceSupabase
-      .from("bookings")
-      .update({
-        status: "searching",
-        vendor_status: "vendor_accepted",
-        customer_status: "vendor_accepted",
-        driver_status: null,
-        driver_id: null,
-        assigned_driver_id: null,
-        assigned_at: null,
-        driver_accept_expires_at: null,
-        takeout_driver_accept_expires_at: null,
-        takeout_fee_proposal_expires_at: null,
-        driver_fee_proposal_expires_at: null,
-        takeout_pricing_status: null,
-        takeout_delivery_fee: null,
-        takeout_service_fee: null,
-        takeout_total_payable: null,
-        takeout_cash_collection_required: null,
-        takeout_fee_proposed_by_driver_id: null,
-        takeout_fee_proposed_at: null,
-        takeout_fee_expires_at: null,
-        takeout_customer_confirmed_at: null,
-        last_expired_driver_id: driverId,
-        updated_at: nowIso,
+    const resetResult =
+      await resetExpiredTakeoutDriverAcceptance(
+        serviceSupabase,
+        {
+          bookingId,
+          bookingCode,
+          expiredDriverId: driverId,
+        }
+      );
+
+    if (
+      resetResult.error ||
+      !resetResult.didReset ||
+      !resetResult.bookingId
+    ) {
+      if (resetResult.error) {
+        console.error(
+          "[JRIDE_TAKEOUT_DRIVER_ACCEPT_RESET_FAILED]",
+          JSON.stringify({
+            bookingCode: bookingCode || null,
+            bookingId: bookingId || null,
+            driverId,
+            reason,
+            error: resetResult.error,
+          })
+        );
+      }
+      return;
+    }
+
+    const reassignResult =
+      await triggerTakeoutFeeProposalReassign(
+        req,
+        resetResult.bookingId,
+        driverId,
+        reason
+      );
+
+    const reassignmentSuccess =
+      !!reassignResult.payload?.assigned;
+
+    await recordTakeoutExpiryLifecycleEvent(
+      serviceSupabase,
+      {
+        bookingId: resetResult.bookingId,
+        bookingCode: resetResult.bookingCode,
+        expiredDriverId: driverId,
+        townRaw: jrideActiveTripText(row?.town) || null,
+        reason,
+        reassignmentAttempted: reassignResult.attempted,
+        reassignmentSuccess,
+        dispatchStatus: reassignResult.status,
+        statusBefore: statusOf(row?.status) || "unknown",
+        expiryType: "driver_accept_window",
+      }
+    );
+
+    console.log(
+      "[JRIDE_TAKEOUT_DRIVER_ACCEPT_EXPIRED]",
+      JSON.stringify({
+        bookingCode: resetResult.bookingCode,
+        expiredDriverId: driverId,
+        reassigned: reassignmentSuccess,
+        dispatchStatus: reassignResult.status,
+        dispatchPayload: reassignResult.payload,
+        reason,
       })
-      .eq("service_type", "takeout")
-      .in("status", ["requested", "assigned", "accepted"])
-      .is("takeout_customer_confirmed_at", null)
-      .in("takeout_pricing_status", ["driver_fee_proposed", "pricing_pending"]);
-
-    resetQuery = bookingCode
-      ? resetQuery.eq("booking_code", bookingCode)
-      : resetQuery.eq("id", bookingId);
-
-    const resetRes = await resetQuery.select("id,booking_code").limit(1);
-
-    if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
-      console.error("[JRIDE_TAKEOUT_EXPIRE_RESET_FAILED]", JSON.stringify({
+    );
+  } catch (err: any) {
+    console.error(
+      "[JRIDE_TAKEOUT_DRIVER_ACCEPT_RECOVERY_FAILED]",
+      JSON.stringify({
         bookingCode: bookingCode || null,
         bookingId: bookingId || null,
         driverId,
         reason,
-        error: resetRes.error?.message || null,
-      }));
-      return;
-    }
-
-    const resetBookingCode = jrideActiveTripText((resetRes.data[0] as any)?.booking_code ?? bookingCode);
-
-    const assignRes = await fetch(new URL("/api/dispatch/auto-assign", req.nextUrl.origin), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        mode: "single",
-        bookingCode: resetBookingCode,
-        exclude_driver_ids: [driverId],
-        autoReassignReason: reason,
-      }),
-      cache: "no-store",
-    });
-
-    const assignPayload = await assignRes.json().catch(() => null);
-    console.log("[JRIDE_TAKEOUT_EXPIRE_REASSIGN]", JSON.stringify({
-      bookingCode: resetBookingCode,
-      excludedDriverId: driverId,
-      reason,
-      status: assignRes.status,
-      result: assignPayload,
-    }));
-  } catch {}
+        error: String(err?.message ?? err),
+      })
+    );
+  }
 }
 async function triggerSharedTakeoutFeeProposalRecovery(
   req: NextRequest,
