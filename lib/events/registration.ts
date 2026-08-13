@@ -10,6 +10,17 @@ import type {
 } from "./types";
 import { validateRegistration } from "./validation";
 
+function registrationNumberForPrefix(
+  regSequence: number,
+  prefix: string | undefined
+) {
+  const normalizedPrefix = String(prefix || "").trim();
+
+  if (!normalizedPrefix) return null;
+
+  return `${normalizedPrefix}-${String(regSequence).padStart(6, "0")}`;
+}
+
 async function getEvent(supabase: SupabaseClient, eventSlug: string) {
   const { data, error } = await supabase
     .from("events")
@@ -105,9 +116,15 @@ async function insertGuest(
     relationship: string;
     source: string;
     registeredBy?: string;
+    registrationPrefix?: string;
   }
 ): Promise<RegisteredGuestResult> {
   const nextNumber = await nextRegistrationNumber(supabase, input.eventId);
+  const registrationNumber =
+    registrationNumberForPrefix(
+      nextNumber.regSequence,
+      input.registrationPrefix
+    ) || nextNumber.registrationNumber;
 
   const { data: guest, error } = await supabase
     .from("event_attendees")
@@ -120,7 +137,7 @@ async function insertGuest(
       group_value: "Guest",
       registration_source: input.source,
       reg_sequence: nextNumber.regSequence,
-      registration_number: nextNumber.registrationNumber,
+      registration_number: registrationNumber,
       created_by: input.registeredBy || null,
     })
     .select("id,registration_number,qr_token,full_name")
@@ -211,6 +228,11 @@ export async function registerAttendee(
     );
     const guestTypeId = await getAttendeeTypeId(supabase, event.id, "guest");
     const nextNumber = await nextRegistrationNumber(supabase, event.id);
+    const primaryRegistrationNumber =
+      registrationNumberForPrefix(
+        nextNumber.regSequence,
+        context.primaryRegistrationPrefix
+      ) || nextNumber.registrationNumber;
 
     const { data: attendee, error: insertError } = await supabase
       .from("event_attendees")
@@ -224,7 +246,7 @@ export async function registerAttendee(
         nickname: cleaned.nickname || null,
         registration_source: context.source,
         reg_sequence: nextNumber.regSequence,
-        registration_number: nextNumber.registrationNumber,
+        registration_number: primaryRegistrationNumber,
         created_by: context.registeredBy || null,
       })
       .select("id,full_name,registration_number,qr_token")
@@ -245,6 +267,7 @@ export async function registerAttendee(
         relationship: guest.relationship,
         source: context.source,
         registeredBy: context.registeredBy,
+        registrationPrefix: context.guestRegistrationPrefix,
       });
 
       guestResults.push(result);

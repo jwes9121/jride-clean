@@ -32,6 +32,8 @@ export interface EventRegistrationRequest {
 export interface RegistrationContext {
   source: RegistrationSource;
   registeredBy?: string;
+  primaryRegistrationPrefix?: string;
+  guestRegistrationPrefix?: string;
 }
 
 export interface RegistrationError {

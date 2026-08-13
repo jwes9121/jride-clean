@@ -122,6 +122,8 @@ export async function POST(
       },
       {
         source: "online",
+        primaryRegistrationPrefix: "B2BM",
+        guestRegistrationPrefix: "B2BG",
       }
     );
 
