@@ -790,22 +790,10 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-if (
-  !result.assigned &&
-  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
-  expiredDriverId
-) {
-  console.log("[AUTO_ASSIGN_FALLBACK] Retrying with previously expired driver allowed", {
-    booking_code: (booking as any).booking_code,
-    expired_driver_id: expiredDriverId,
-  });
-
-  result = await matchSingle(
-    supabase,
-    booking as BookingRow,
-    excludeDriverIds
-  );
-}
+// JRIDE_NO_IMMEDIATE_EXPIRED_DRIVER_REUSE_V1
+// If the previously assigned driver timed out, keep that driver excluded.
+// If no other eligible local driver exists, leave the booking searching.
+// A dispatcher may still manually assign later when appropriate.
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -922,22 +910,10 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-if (
-  !result.assigned &&
-  result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
-  expiredDriverId
-) {
-  console.log("[AUTO_ASSIGN_FALLBACK] Retrying with previously expired driver allowed", {
-    booking_code: (booking as any).booking_code,
-    expired_driver_id: expiredDriverId,
-  });
-
-  result = await matchSingle(
-    supabase,
-    booking as BookingRow,
-    excludeDriverIds
-  );
-}
+// JRIDE_NO_IMMEDIATE_EXPIRED_DRIVER_REUSE_V1
+// If the previously assigned driver timed out, keep that driver excluded.
+// If no other eligible local driver exists, leave the booking searching.
+// A dispatcher may still manually assign later when appropriate.
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
