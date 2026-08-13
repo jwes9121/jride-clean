@@ -6011,10 +6011,12 @@ export default function FamilyReunionDetailPage() {
             </section>
 
             <section className="mt-8">
-              <h2 className="text-xl font-black">Family Members</h2>
+              <h2 className="text-xl font-black">Project Roster</h2>
               <p className="mt-1 text-sm text-slate-400">
-                {people.length} people currently assigned to this genealogy
-                project.
+                {people.length} people filed under this genealogy project.
+                <br />
+                The full family tree may also display biologically connected
+                relatives filed under other family projects.
               </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
