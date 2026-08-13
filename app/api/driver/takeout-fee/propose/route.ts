@@ -568,6 +568,8 @@ const passengerLng =
         driver_fee_proposal_expires_at: expiresIso,
         takeout_route_plan: routePlan,
         takeout_pricing_snapshot: snapshot,
+        // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+        updated_at: nowIso,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")

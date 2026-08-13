@@ -196,8 +196,10 @@ export async function POST(req: NextRequest) {
         driver_id: proposedDriverId,
         takeout_pricing_status: "customer_confirmed",
         takeout_customer_confirmed_at: nowIso,
-        vendor_status: "driver_assigned",
-        customer_status: "driver_assigned",
+        // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+        // Passenger confirmation must not move the driver workflow backward.
+        // Preserve the existing vendor/customer movement state.
+        updated_at: nowIso,
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")

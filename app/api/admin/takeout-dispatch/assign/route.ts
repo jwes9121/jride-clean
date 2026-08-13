@@ -252,6 +252,8 @@ export async function POST(req: NextRequest) {
     vendor_status: "driver_assigned",
     customer_status: "driver_assigned",
     driver_status: "driver_assigned",
+    // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+    updated_at: nowIso,
   };
 
   const up = await admin

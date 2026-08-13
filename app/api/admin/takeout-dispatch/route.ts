@@ -103,7 +103,8 @@ function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: num
   const stuck =
     (status === "requested" && ageMinutes >= 10) ||
     (status === "vendor_accepted" && updateAgeMinutes >= 10) ||
-    (status === "preparing" && ageMinutes >= 30) ||
+    // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+    (status === "preparing" && updateAgeMinutes >= 30) ||
     (status === "pickup_ready" && updateAgeMinutes >= 20) ||
     ((status === "driver_assigned" || status === "driver_accepted") && updateAgeMinutes >= 20) ||
     (status === "rider_arrived_vendor" && updateAgeMinutes >= 15) ||

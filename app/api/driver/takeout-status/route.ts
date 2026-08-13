@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
@@ -180,6 +180,8 @@ export async function POST(req: NextRequest) {
     vendor_status: nextStatus,
     customer_status: nextStatus,
     driver_status: nextStatus,
+    // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+    updated_at: new Date().toISOString(),
   };
 
   if (nextStatus === "driver_accepted") {

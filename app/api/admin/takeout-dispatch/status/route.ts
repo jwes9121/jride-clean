@@ -173,6 +173,8 @@ export async function POST(req: NextRequest) {
     status: canonicalTakeoutStatus(nextStatus, row),
     vendor_status: nextStatus,
     customer_status: nextStatus === "requested" ? "requested" : nextStatus,
+    // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+    updated_at: new Date().toISOString(),
   };
 
   if (nextStatus === "arrived_customer_cash") {

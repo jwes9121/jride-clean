@@ -1023,7 +1023,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       });
     }
 
-    const patch: any = { vendor_status: normalizedNext };
+    // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
+    // Every meaningful Takeout workflow transition advances updated_at so
+    // dispatch age/stuck calculations measure the current stage, not booking age.
+    const patch: any = {
+      vendor_status: normalizedNext,
+      updated_at: new Date().toISOString(),
+    };
 
     // JRIDE_TAKEOUT_VENDOR_ACCEPTANCE_FLOW_V1
     // Vendor state is separate from driver movement and passenger pricing.
