@@ -659,9 +659,18 @@ export default function SiblingEntryPanel({
             More than two biological parents are recorded.
           </p>
           <p className="mt-2 text-xs leading-5 text-amber-100/80">
-            Review this branch in Advanced Genealogy Editor before adding
-            siblings.
+            Correct the recorded parent relationships before adding siblings.
           </p>
+          <Link
+            href={`/admin/events/family-reunions/${encodeURIComponent(
+              familyId
+            )}/parent-correction?personId=${encodeURIComponent(
+              referencePersonId
+            )}`}
+            className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+          >
+            Review Parent Relationships
+          </Link>
         </div>
       ) : null}
 

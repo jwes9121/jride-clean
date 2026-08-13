@@ -2591,7 +2591,7 @@ export default function FamilyReunionDetailPage() {
       parentChildSummary.biologicalParentCount >= 2
     ) {
       setParentWriteError(
-        "This person already has two biological parents. Use Advanced Genealogy Editor for corrections."
+        "This person already has two biological parents. Use Review Parent Relationships to correct the recorded parent edges."
       );
       return;
     }
@@ -2912,7 +2912,7 @@ export default function FamilyReunionDetailPage() {
 
               {people.length === 0 ? (
                 <p className="mt-5 text-sm text-slate-400">
-                  Add the first family member in Advanced Genealogy Editor.
+                  Add the first family member in Genealogy Editor below.
                 </p>
               ) : (
                 <>
@@ -3492,12 +3492,26 @@ export default function FamilyReunionDetailPage() {
                                                               ancestry cycle.
                                                             </p>
                                                           ) : (
-                                                            <p className="mt-2 text-xs text-amber-300">
-                                                              Review this
-                                                              relationship in
-                                                              Advanced Genealogy
-                                                              Editor.
-                                                            </p>
+                                                            <div className="mt-2 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                                              <p className="text-xs text-amber-300">
+                                                                The selected child
+                                                                needs parent
+                                                                relationship review
+                                                                before another
+                                                                biological parent can
+                                                                be linked.
+                                                              </p>
+                                                              <Link
+                                                                href={`/admin/events/family-reunions/${encodeURIComponent(
+                                                                  familyId
+                                                                )}/parent-correction?personId=${encodeURIComponent(
+                                                                  chartActivePerson.id
+                                                                )}`}
+                                                                className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                                              >
+                                                                Review Parent Relationships
+                                                              </Link>
+                                                            </div>
                                                           )}
                                                         </div>
                                                       );
@@ -3853,12 +3867,24 @@ export default function FamilyReunionDetailPage() {
                                             </p>
                                           ) : candidate.quickParentDecision ===
                                             "ADVANCED_EDITOR_REQUIRED" ? (
-                                            <p className="mt-3 text-xs text-amber-300">
-                                              The selected child already has two
-                                              biological parents. Review the
-                                              relationship in Advanced Genealogy
-                                              Editor.
-                                            </p>
+                                            <div className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3">
+                                              <p className="text-xs text-amber-300">
+                                                The selected child already has two
+                                                biological parents. Review the
+                                                recorded parent relationships
+                                                before changing this branch.
+                                              </p>
+                                              <Link
+                                                href={`/admin/events/family-reunions/${encodeURIComponent(
+                                                  familyId
+                                                )}/parent-correction?personId=${encodeURIComponent(
+                                                  chartActivePerson.id
+                                                )}`}
+                                                className="mt-3 inline-flex rounded-lg border border-amber-400 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200"
+                                              >
+                                                Review Parent Relationships
+                                              </Link>
+                                            </div>
                                           ) : candidate.quickParentDecision ===
                                             "ALREADY_LINKED" ? (
                                             <p className="mt-3 text-xs text-slate-400">
