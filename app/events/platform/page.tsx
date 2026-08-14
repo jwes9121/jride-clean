@@ -18,13 +18,14 @@ type FeatureCard = {
   bullets: string[];
   screenshotLabel: string;
   imageSrc: string;
+  imageFit?: "cover" | "contain";
 };
 
 const occasions: Occasion[] = [
   { label: "Traditional & Cultural Occasions" },
   { label: "Weddings" },
   { label: "Birthdays" },
-  { label: "Reunions" },
+  { label: "Family Reunions" },
   { label: "Alumni Homecomings" },
   { label: "School Programs" },
   { label: "LGU Activities" },
@@ -80,6 +81,19 @@ const features: FeatureCard[] = [
     ],
     screenshotLabel: "Guest list on Event Pass",
     imageSrc: "/platform/guest-registration.png",
+  },
+  {
+    title: "Family Reunion & Genealogy",
+    description:
+      "Build and preserve family relationships for reunion events with an interactive genealogy view.",
+    bullets: [
+      "Family tree view up to 5 generations",
+      "Biological, spouse, full-sibling, and half-sibling branches",
+      "Cross-family genealogy links with organizer-controlled corrections",
+    ],
+    screenshotLabel: "Five-generation family tree",
+    imageSrc: "/platform/family-reunion-genealogy.png",
+    imageFit: "contain",
   },
   {
     title: "Check-in Scanner",
@@ -210,9 +224,11 @@ const perfectFor = [
 function PlatformPreview({
   label,
   imageSrc,
+  imageFit = "cover",
 }: {
   label: string;
   imageSrc: string;
+  imageFit?: "cover" | "contain";
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
@@ -231,7 +247,11 @@ function PlatformPreview({
           alt={`${label} preview`}
           fill
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          className="object-cover object-top"
+          className={
+            imageFit === "contain"
+              ? "object-contain object-center"
+              : "object-cover object-top"
+          }
         />
       </div>
     </div>
@@ -342,7 +362,11 @@ export default function JRideEventsPlatformPage() {
                 key={feature.title}
                 className="rounded-3xl border border-slate-800 bg-slate-900 p-5"
               >
-                <PlatformPreview label={feature.screenshotLabel} imageSrc={feature.imageSrc} />
+                <PlatformPreview
+                  label={feature.screenshotLabel}
+                  imageSrc={feature.imageSrc}
+                  imageFit={feature.imageFit}
+                />
 
                 <h3 className="mt-4 text-lg font-black">{feature.title}</h3>
                 <p className="mt-2 text-sm text-slate-400">
