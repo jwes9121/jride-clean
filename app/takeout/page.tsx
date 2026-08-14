@@ -12,6 +12,18 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type ApiResp = any;
 
+type PassengerSessionProbe =
+  | { state: "valid"; json: any; status: number }
+  | { state: "invalid"; json: any; status: number }
+  | { state: "temporary_failure"; json: any; status: number };
+
+class TakeoutAuthenticationRequiredError extends Error {
+  constructor() {
+    super("TAKEOUT_AUTH_REDIRECT");
+    this.name = "TakeoutAuthenticationRequiredError";
+  }
+}
+
 function cls(...s: Array<string | false | null | undefined>) {
   return s.filter(Boolean).join(" ");
 }
@@ -271,11 +283,8 @@ async function postJson(url: string, body: any) {
         requestHeaders.Authorization.trim().length > 0,
     });
 
-    throw new Error(
-      j?.message ||
-        j?.error ||
-        "Passenger session could not be verified for this request."
-    );
+    redirectPassengerToLogin();
+    throw new TakeoutAuthenticationRequiredError();
   }
 
   if (!res.ok || (j && j.ok === false)) {
@@ -437,12 +446,18 @@ function currentPassengerAuthHeaders(): HeadersInit {
       window.localStorage.getItem("jride_passenger_token") ||
       window.localStorage.getItem("jride_access_token") ||
       "";
+    const nativeDeviceId =
+      window.localStorage.getItem("jride_native_device_id") ||
+      window.sessionStorage.getItem("jride_native_device_id") ||
+      "";
+
     if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+    if (nativeDeviceId.trim()) headers["x-device-id"] = nativeDeviceId.trim();
   }
   return headers;
 }
 
-function logoutPassengerProfile() {
+function redirectPassengerToLogin() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_NAME);
   window.localStorage.removeItem(LS_TAKEOUT_CUSTOMER_PHONE);
@@ -450,7 +465,82 @@ function logoutPassengerProfile() {
   window.localStorage.removeItem("jride_access_token");
   window.sessionStorage.removeItem(LS_TAKEOUT_CUSTOMER_NAME);
   window.sessionStorage.removeItem(LS_TAKEOUT_CUSTOMER_PHONE);
-  window.location.href = "/passenger-login?callbackUrl=/takeout";
+  window.sessionStorage.removeItem("jride_passenger_token");
+  window.sessionStorage.removeItem("jride_access_token");
+  window.location.replace("/passenger-login?callbackUrl=/takeout");
+}
+
+function logoutPassengerProfile() {
+  redirectPassengerToLogin();
+}
+
+function waitMs(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function waitForInitialAndroidAuthBridge(): Promise<void> {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  if (document.readyState === "complete") {
+    await waitMs(600);
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      resolve();
+    };
+
+    window.addEventListener(
+      "load",
+      () => window.setTimeout(finish, 600),
+      { once: true }
+    );
+    window.setTimeout(finish, 5000);
+  });
+}
+
+async function probePassengerSession(allowInitialBridgeSync = false): Promise<PassengerSessionProbe> {
+  const probeOnce = async (): Promise<PassengerSessionProbe> => {
+    try {
+      const res = await fetch("/api/public/auth/session", {
+        method: "GET",
+        cache: "no-store",
+        headers: currentPassengerAuthHeaders(),
+      });
+      const j = await res.json().catch(() => null);
+
+      if (res.status === 401 || (res.ok && j?.authed !== true)) {
+        return { state: "invalid", json: j, status: res.status };
+      }
+
+      if (res.ok && j?.authed === true) {
+        return { state: "valid", json: j, status: res.status };
+      }
+
+      return { state: "temporary_failure", json: j, status: res.status };
+    } catch {
+      return { state: "temporary_failure", json: null, status: 0 };
+    }
+  };
+
+  if (allowInitialBridgeSync) {
+    // Existing Android builds inject the native token at WebView onPageFinished.
+    // Give that bridge one bounded synchronization window before deciding the
+    // passenger is signed out, so the web patch remains backward-compatible.
+    await waitForInitialAndroidAuthBridge();
+  }
+
+  const first = await probeOnce();
+  if (allowInitialBridgeSync && first.state === "invalid") {
+    await waitMs(1200);
+    return probeOnce();
+  }
+
+  return first;
 }
 
 async function fetchOptionalJson(url: string, init?: RequestInit): Promise<any> {
@@ -505,13 +595,6 @@ function extractPassengerAutofill(source: any) {
     ),
   };
 }
-function hasSignedInUser(source: any): boolean {
-  const root = source || {};
-  const user = root.user || root.session?.user || root.data?.user || root.account || null;
-  if (!user || typeof user !== "object") return false;
-  return !!firstString(user.id, user.sub, user.email, user.name);
-}
-
 function cleanDeliveryAddressLabel(v: any): string {
   const s = String(v || "").trim();
   if (!s) return "";
@@ -903,7 +986,7 @@ export default function TakeoutPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [autofillNote, setAutofillNote] = useState("");
-  const [authState, setAuthState] = useState<"unknown" | "guest" | "signed_in_profile" | "signed_in_unverified" | "signed_in_missing_profile">("unknown");
+  const [authState, setAuthState] = useState<"unknown" | "guest" | "auth_check_failed" | "signed_in_profile" | "signed_in_unverified" | "signed_in_missing_profile">("unknown");
 
   // Phase 2B.0 - DB-backed addresses (pilot via device_key)
   const [deviceKey, setDeviceKey] = useState("");
@@ -1274,34 +1357,40 @@ function selectedAddressTown(
   }
 
 
-  async function loadPassengerAutofill() {
-    // Authentication status is shown to the passenger, but customer name/phone must come from a real passenger profile.
-    // Do not use email display names as passenger names.
+  async function loadPassengerAutofill(allowInitialBridgeSync = false) {
+    // /api/public/auth/session is authoritative. A signed-out or invalid session
+    // must leave Takeout immediately instead of falling back to a guest workflow.
+    const passengerProbe = await probePassengerSession(allowInitialBridgeSync);
+
+    if (passengerProbe.state === "invalid") {
+      setCustomerName("");
+      setCustomerPhone("");
+      setAuthState("guest");
+      setAutofillNote("Passenger sign-in is required. Redirecting to login...");
+      redirectPassengerToLogin();
+      return;
+    }
+
+    if (passengerProbe.state === "temporary_failure") {
+      setAuthState("auth_check_failed");
+      setAutofillNote(
+        "JRide could not verify your sign-in right now. Check your connection and try again."
+      );
+      return;
+    }
+
+    const passengerSession = passengerProbe.json;
     const authHeaders = currentPassengerAuthHeaders();
 
-const session = await fetchOptionalJson(
-  "/api/auth/session",
-  { headers: authHeaders }
-);
+    const [session, contact] = await Promise.all([
+      fetchOptionalJson("/api/auth/session", { headers: authHeaders }),
+      fetchOptionalJson("/api/takeout/passenger-contact", { headers: authHeaders }),
+    ]);
 
-const passengerSession = await fetchOptionalJson(
-  "/api/public/auth/session",
-  { headers: authHeaders }
-);
+    // The authoritative passenger session already proved the user is signed in.
+    // Other sources are used only to fill profile fields.
+    const signedIn = passengerSession?.authed === true;
 
-const contact = await fetchOptionalJson(
-  "/api/takeout/passenger-contact",
-  { headers: authHeaders }
-);
-    const signedIn =
-      hasSignedInUser(passengerSession) ||
-      hasSignedInUser(session) ||
-      contact?.signed_in === true ||
-      contact?.authenticated === true ||
-      !!firstString(contact?.user_id, contact?.passenger_id, contact?.profile?.id, contact?.data?.id);
-
-    // /api/public/auth/session is the authoritative frontend verification
-    // contract. A complete profile is not the same as approved verification.
     const passengerVerificationKnown =
       passengerSession?.authed === true &&
       typeof passengerSession?.verified === "boolean";
@@ -1316,18 +1405,9 @@ const contact = await fetchOptionalJson(
     if (passengerSession?.profile) profileSources.push(passengerSession.profile);
     if (passengerSession?.data) profileSources.push(passengerSession.data);
     if (passengerSession?.full_name || passengerSession?.phone || passengerSession?.email || passengerSession?.address) profileSources.push(passengerSession);
-
-    const profile = null;
-    if (profile) profileSources.push(profile);
-
-    const publicProfile = null;
-    if (publicProfile) profileSources.push(publicProfile);
-
-    const passengerMe = null;
-    if (passengerMe) profileSources.push(passengerMe);
-
-    const publicPassengerMe = null;
-    if (publicPassengerMe) profileSources.push(publicPassengerMe);
+    if (session?.user) profileSources.push(session.user);
+    if (session?.profile) profileSources.push(session.profile);
+    if (session?.data) profileSources.push(session.data);
 
     let profileName = "";
     let profilePhone = "";
@@ -1374,12 +1454,11 @@ const contact = await fetchOptionalJson(
         "Signed in, but a complete passenger name and phone were not found. Booking is blocked until the profile is fixed."
       );
     } else {
+      // Defensive fallback: this should not be reachable after a valid authoritative probe.
       setCustomerName("");
       setCustomerPhone("");
       setAuthState("guest");
-      setAutofillNote(
-        "Not signed in. Sign in with your passenger phone number and password to book."
-      );
+      redirectPassengerToLogin();
     }
   }
 
@@ -1590,8 +1669,39 @@ const contact = await fetchOptionalJson(
   useEffect(() => {
     const dk = getOrCreateDeviceKey();
     setDeviceKey(dk);
-    refreshAddresses(dk).catch(() => undefined);
-    loadPassengerAutofill().catch(() => undefined);
+    loadPassengerAutofill(true).catch(() => {
+      setAuthState("auth_check_failed");
+      setAutofillNote(
+        "JRide could not verify your sign-in right now. Check your connection and try again."
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!deviceKey || authState !== "signed_in_profile") return;
+    refreshAddresses(deviceKey).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceKey, authState]);
+
+  useEffect(() => {
+    const revalidate = () => {
+      if (document.visibilityState !== "visible") return;
+      loadPassengerAutofill().catch(() => {
+        setAuthState("auth_check_failed");
+        setAutofillNote(
+          "JRide could not verify your sign-in right now. Check your connection and try again."
+        );
+      });
+    };
+
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+
+    return () => {
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1895,6 +2005,25 @@ const contact = await fetchOptionalJson(
 
   async function submit() {
     try {
+      const passengerProbe = await probePassengerSession();
+      if (passengerProbe.state === "invalid") {
+        redirectPassengerToLogin();
+        return;
+      }
+      if (passengerProbe.state === "temporary_failure") {
+        setResult(
+          "JRide could not verify your sign-in right now. Check your connection and try again."
+        );
+        return;
+      }
+      if (passengerProbe.json?.verified !== true) {
+        setAuthState("signed_in_unverified");
+        setResult(
+          "Passenger verification is required before placing a takeout order."
+        );
+        return;
+      }
+
       if (vendorClosed) {
         setResult("Cannot place order: vendor is currently closed. Please try again later.");
         return;
@@ -2051,6 +2180,7 @@ const contact = await fetchOptionalJson(
       setPremiumPackagingSelections({});
       setReceiptRequested(false);
     } catch (e: any) {
+      if (e instanceof TakeoutAuthenticationRequiredError) return;
       const msg = String(e?.message || "Unknown error");
       if (msg.includes("closed") || msg.includes("unavailable") || msg.includes("TAKEOUT_VENDOR_CLOSED")) {
         setVendorClosed(true);
@@ -2059,6 +2189,52 @@ const contact = await fetchOptionalJson(
     } finally {
       setBusy(false);
     }
+  }
+
+  if (authState === "unknown") {
+    return (
+      <div className="mx-auto max-w-md p-6">
+        <div className="rounded-xl border border-slate-700 bg-slate-950 p-5 text-sm text-slate-100 shadow">
+          <div className="font-semibold">Checking your JRide sign-in...</div>
+          <div className="mt-2 text-xs text-slate-300">Takeout will open after your passenger session is verified.</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === "auth_check_failed") {
+    return (
+      <div className="mx-auto max-w-md p-6">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950 shadow">
+          <div className="font-semibold">Unable to verify your sign-in</div>
+          <div className="mt-2 text-xs">
+            JRide could not verify your passenger session right now. Your saved login has not been erased. Check your connection and try again.
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthState("unknown");
+              loadPassengerAutofill().catch(() => {
+                setAuthState("auth_check_failed");
+              });
+            }}
+            className="mt-4 rounded bg-black px-4 py-2 text-xs font-semibold text-white"
+          >
+            Retry sign-in check
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (authState === "guest") {
+    return (
+      <div className="mx-auto max-w-md p-6">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950 shadow">
+          Redirecting to JRide Passenger Login...
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -2109,19 +2285,7 @@ const contact = await fetchOptionalJson(
         </div>
       </div>
 
-      {authState === "guest" ? (
-        <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="font-semibold">Sign in required</div>
-              <div className="text-xs">Only verified JRide passengers with profile name and phone can place takeout orders.</div>
-            </div>
-            <a href="/passenger-login?callbackUrl=/takeout" className="rounded bg-black px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800">
-              Sign in to book
-            </a>
-          </div>
-        </div>
-      ) : authState === "signed_in_unverified" ? (
+      {authState === "signed_in_unverified" ? (
         <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="font-semibold">Passenger verification required</div>
           <div className="text-xs">
@@ -2755,14 +2919,7 @@ const contact = await fetchOptionalJson(
           </div>
 
           {autofillNote && authState !== "signed_in_profile" ? (
-  <div
-    className={cls(
-      "md:col-span-2 rounded border p-2 text-xs",
-      authState === "guest"
-        ? "border-amber-300 bg-amber-50 text-amber-900"
-        : "border-sky-200 bg-sky-50 text-sky-900"
-    )}
-  >
+  <div className="md:col-span-2 rounded border border-sky-200 bg-sky-50 p-2 text-xs text-sky-900">
     {autofillNote}
   </div>
 ) : null}

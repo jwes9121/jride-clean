@@ -43,21 +43,34 @@ function createAnonSupabase() {
 }
 
 async function getUserFromCookieOrBearer(req: NextRequest) {
+  const token = getBearerToken(req);
+  const deviceId = getDeviceId(req);
+
+  if (token && deviceId) {
+    const anonSupabase = createAnonSupabase();
+    const bearerUserRes = await anonSupabase.auth.getUser(token);
+    if (bearerUserRes.data?.user) {
+      return { user: bearerUserRes.data.user, authMode: "bearer" as const };
+    }
+
+    // Android/native requests provide both bearer token and device id. For those
+    // requests the bearer identity is authoritative; do not hide an invalid
+    // native session behind a browser cookie that happens to exist in WebView.
+    return { user: null, authMode: "none" as const };
+  }
+
   const cookieSupabase = createClient();
   const cookieUserRes = await cookieSupabase.auth.getUser();
   if (cookieUserRes.data?.user) {
     return { user: cookieUserRes.data.user, authMode: "cookie" as const };
   }
 
-  const token = getBearerToken(req);
-  if (!token) {
-    return { user: null, authMode: "none" as const };
-  }
-
-  const anonSupabase = createAnonSupabase();
-  const bearerUserRes = await anonSupabase.auth.getUser(token);
-  if (bearerUserRes.data?.user) {
-    return { user: bearerUserRes.data.user, authMode: "bearer" as const };
+  if (token) {
+    const anonSupabase = createAnonSupabase();
+    const bearerUserRes = await anonSupabase.auth.getUser(token);
+    if (bearerUserRes.data?.user) {
+      return { user: bearerUserRes.data.user, authMode: "bearer" as const };
+    }
   }
 
   return { user: null, authMode: "none" as const };
@@ -171,7 +184,7 @@ export async function GET(req: NextRequest) {
             error: "DEVICE_SESSION_VALIDATE_FAILED",
             message: validateRes.error.message,
           },
-          { status: 401, headers }
+          { status: 503, headers }
         );
       }
 

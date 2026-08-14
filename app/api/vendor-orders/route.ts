@@ -304,6 +304,11 @@ function getBearerToken(req: NextRequest): string | null {
   return token || null;
 }
 
+function getPassengerDeviceId(req: NextRequest): string | null {
+  const deviceId = cleanString(req.headers.get("x-device-id"));
+  return deviceId || null;
+}
+
 function isTruthyVerification(v: unknown): boolean {
   if (v === true) return true;
   if (typeof v === "number") return v > 0;
@@ -433,6 +438,38 @@ async function requireVerifiedTakeoutPassenger(req: NextRequest, admin: any): Pr
         message: "Please sign in with a verified passenger account before placing a takeout order.",
       }),
     };
+  }
+
+  const bearerToken = getBearerToken(req);
+  const deviceId = getPassengerDeviceId(req);
+  if (bearerToken && deviceId && userId) {
+    const deviceSessionRes = await admin.rpc("jride_passenger_validate_device_session", {
+      p_user_id: userId,
+      p_device_id: deviceId,
+    });
+
+    if (deviceSessionRes.error) {
+      return {
+        ok: false,
+        response: json(503, {
+          ok: false,
+          error: "DEVICE_SESSION_VALIDATE_FAILED",
+          message: "Passenger session validation is temporarily unavailable. Please try again.",
+        }),
+      };
+    }
+
+    const deviceSession = deviceSessionRes.data as any;
+    if (!deviceSession?.ok) {
+      return {
+        ok: false,
+        response: json(401, {
+          ok: false,
+          error: deviceSession?.error || "ACCOUNT_ACTIVE_ON_ANOTHER_DEVICE",
+          message: "Your passenger session is no longer active. Please sign in again.",
+        }),
+      };
+    }
   }
 
   const profile = await findPassengerProfile(admin, userId, email, authPhone);
