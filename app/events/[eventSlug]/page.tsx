@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -52,6 +53,38 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
     .select("hero_title,hero_subtitle,registration_message,theme_color")
     .eq("event_id", event.id)
     .maybeSingle();
+
+  const admin = supabaseAdmin();
+  const { data: familyLink } = await admin
+    .from("family_reunion_events")
+    .select("family_id")
+    .eq("event_id", event.id)
+    .maybeSingle();
+
+  let publicFamilyTree:
+    | {
+        familyId: string;
+        familyName: string;
+      }
+    | null = null;
+
+  if (familyLink?.family_id) {
+    const { data: linkedFamily } = await admin
+      .from("families")
+      .select("id,name,display_root_person_id")
+      .eq("id", familyLink.family_id)
+      .maybeSingle();
+
+    if (
+      linkedFamily?.id &&
+      linkedFamily.display_root_person_id
+    ) {
+      publicFamilyTree = {
+        familyId: linkedFamily.id,
+        familyName: linkedFamily.name,
+      };
+    }
+  }
 
   const eventDate = formatEventDate(event.event_date);
   const remainingDays = daysUntil(event.event_date);
@@ -108,7 +141,11 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-4">
+        <div
+          className={`mt-8 grid gap-4 md:grid-cols-2 ${
+            publicFamilyTree ? "lg:grid-cols-5" : "lg:grid-cols-4"
+          }`}
+        >
           <a
             href={`/events/${event.slug}/register`}
             className="rounded-2xl border border-amber-400 bg-amber-400 p-5 text-slate-950 transition hover:opacity-90"
@@ -116,6 +153,20 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
             <h2 className="text-xl font-black">Register</h2>
             <p className="mt-2 text-sm font-semibold">Register for this event</p>
           </a>
+
+          {publicFamilyTree ? (
+            <a
+              href={`/events/${event.slug}/family-tree`}
+              className="rounded-2xl border border-cyan-300/40 bg-cyan-950/20 p-5 transition hover:border-cyan-300"
+            >
+              <h2 className="text-xl font-black text-cyan-200">
+                Family Tree
+              </h2>
+              <p className="mt-2 text-sm font-semibold text-cyan-100/80">
+                {publicFamilyTree.familyName} - read-only genealogy up to 5 generations
+              </p>
+            </a>
+          ) : null}
 
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
             <h2 className="text-xl font-bold">Program</h2>
