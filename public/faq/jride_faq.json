@@ -1,0 +1,1068 @@
+{
+  "version": 6,
+  "entries": [
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Ride Booking",
+        "tl": "Pag-book ng Ride",
+        "ilo": "Panag-book ti Ride"
+      },
+      "question": {
+        "en": "How do I book a ride?",
+        "tl": "Paano ako mag-book ng ride?",
+        "ilo": "Kasanoak nga ag-book iti ride?"
+      },
+      "answer": {
+        "en": "Open Book Ride. Choose the town and vehicle, set the passenger count, then set the exact pickup and destination pins. Submit the booking and wait for a driver. When the driver sends the Proposed Fare, review it and tap Accept. The ride proceeds only after you accept the Proposed Fare.",
+        "tl": "Buksan ang Book Ride. Piliin ang bayan at sasakyan, ilagay ang bilang ng pasahero, at itakda ang eksaktong pickup at destination pins. I-submit ang booking at hintayin ang driver. Kapag nagpadala ang driver ng Proposed Fare, tingnan ito at pindutin ang Accept. Magpapatuloy lang ang ride pagkatapos mong tanggapin ang Proposed Fare.",
+        "ilo": "Luktam ti Book Ride. Pilien ti ili ken lugan, ikabil ti bilang dagiti pasahero, ken ikabil ti eksakto a pickup ken destination pins. I-submit ti booking ken urayen ti driver. No mangipatulod ti driver iti Proposed Fare, kitaem ken i-tap ti Accept. Agtuloy laeng ti ride kalpasan nga inawatmo ti Proposed Fare."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Ride Booking",
+        "tl": "Pag-book ng Ride",
+        "ilo": "Panag-book ti Ride"
+      },
+      "question": {
+        "en": "Why does JRide use a Proposed Fare?",
+        "tl": "Bakit gumagamit ang JRide ng Proposed Fare?",
+        "ilo": "Apay nga usaren ti JRide ti Proposed Fare?"
+      },
+      "answer": {
+        "en": "JRide uses a Proposed Fare because distance alone does not always reflect the actual trip conditions in the province. Unlike many flatter routes, local trips can involve steep elevation, different road conditions, difficult routes, and destinations where a driver may have to return to the main route without another passenger. The applicable LGU fare matrix can also change from time to time, including changes related to fuel prices and other operating costs. Drivers must stay updated and use the current applicable LGU fare matrix when submitting the normal Proposed Fare. JRide then adds the applicable pickup-distance fee, night adjustment, and PHP15 convenience/platform fee. The passenger sees the total and must accept it before the trip proceeds.",
+        "tl": "Gumagamit ang JRide ng Proposed Fare dahil hindi laging sapat ang distansya lamang para maipakita ang tunay na kondisyon ng biyahe sa probinsya. Hindi tulad ng maraming mas patag na ruta, may mga biyahe dito na may matarik na elevation, iba't ibang kondisyon ng kalsada, mahirap na ruta, at mga destinasyon kung saan maaaring bumalik ang driver sa main route nang walang kasunod na pasahero. Maaari ring magbago paminsan-minsan ang naaangkop na LGU fare matrix, kabilang ang mga pagbabago dahil sa presyo ng gasolina at iba pang operating costs. Kailangang updated ang driver at gamitin ang kasalukuyang applicable LGU fare matrix sa pag-submit ng normal Proposed Fare. Idadagdag ng JRide ang applicable pickup-distance fee, night adjustment, at PHP15 convenience/platform fee. Makikita ng passenger ang total at kailangan niya itong tanggapin bago magpatuloy ang biyahe.",
+        "ilo": "Usaren ti JRide ti Proposed Fare gapu ta saan a kanayon a ti distansia laeng ti mangipakita iti pudno a kondisyon ti biyahe iti probinsia. Saan a kas kadagiti adu a naladladag a ruta, adda dagiti biyahe ditoy a napangato wenno natadem ti elevation, agduduma ti kondisyon ti dalan, narigat ti ruta, ken adda dagiti destinasyon a mabalin nga agsubli ti driver iti main route nga awan ti sumaruno a pasahero. Mabalin met nga agbaliw ti maipakat nga LGU fare matrix manipud tiempo iti tiempo, karaman dagiti panagbaliw ti presyo ti gasolina ken dadduma a gastos iti operasyon. Masapul nga updated ti driver ken usarenna ti agdama a maipakat nga LGU fare matrix no mangisubmit iti normal Proposed Fare. Inayon ti JRide ti maipakat a pickup-distance fee, night adjustment, ken PHP15 convenience/platform fee. Makita ti passenger ti total ken masapul nga awatenna daytoy sakbay nga agtuloy ti biyahe."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Fare and Pickup",
+        "tl": "Fare at Pickup",
+        "ilo": "Fare ken Pickup"
+      },
+      "question": {
+        "en": "How is the pickup distance fee computed?",
+        "tl": "Paano kinukuwenta ang pickup distance fee?",
+        "ilo": "Kasano a makompyut ti pickup distance fee?"
+      },
+      "answer": {
+        "en": "JRide uses the driving-road route from the assigned driver to your pickup pin, not a straight-line radius. The first 1.5 km is free. From over 1.5 km through 6.5 km, PHP 20 is added for each started 500 m block. From over 6.5 km through 10 km, PHP 10 is added for each started 500 m block. More than 10 km is not a normal assignment.",
+        "tl": "Gamit ng JRide ang tunay na driving-road route mula sa assigned driver papunta sa pickup pin mo, hindi straight-line radius. Libre ang unang 1.5 km. Lampas 1.5 km hanggang 6.5 km, PHP 20 ang dagdag sa bawat nagsimulang 500 m. Lampas 6.5 km hanggang 10 km, PHP 10 ang dagdag sa bawat nagsimulang 500 m. Lampas 10 km ay hindi normal assignment.",
+        "ilo": "Usaren ti JRide ti driving-road route manipud iti assigned driver agingga iti pickup pin mo, saan a straight-line radius. Libre ti umuna a 1.5 km. No lumabes iti 1.5 km agingga 6.5 km, PHP 20 ti mainayon kada nagsimula a 500 m. No lumabes iti 6.5 km agingga 10 km, PHP 10 ti mainayon kada nagsimula a 500 m. Nasurok 10 km ket saan a normal assignment."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Fare and Pickup",
+        "tl": "Fare at Pickup",
+        "ilo": "Fare ken Pickup"
+      },
+      "question": {
+        "en": "What is the night rate?",
+        "tl": "Ano ang night rate?",
+        "ilo": "Ania ti night rate?"
+      },
+      "answer": {
+        "en": "For a regular ride, 5:00 AM to 7:59 PM uses the normal fare. From 8:00 PM to 10:59 PM, the normal ride fare is doubled. From 11:00 PM to 4:59 AM, PHP 100 is added to the normal ride fare. JRide applies the night rule; do not add it yourself.",
+        "tl": "Para sa regular ride, normal fare mula 5:00 AM hanggang 7:59 PM. Mula 8:00 PM hanggang 10:59 PM, dinodoble ang normal ride fare. Mula 11:00 PM hanggang 4:59 AM, dinadagdagan ng PHP 100 ang normal ride fare. JRide ang nag-aapply ng night rule.",
+        "ilo": "Para iti regular ride, normal fare manipud 5:00 AM agingga 7:59 PM. Manipud 8:00 PM agingga 10:59 PM, mamindua ti normal ride fare. Manipud 11:00 PM agingga 4:59 AM, mainayon ti PHP 100 iti normal ride fare. JRide ti mangipakat iti night rule."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Location and Map",
+        "tl": "Location at Mapa",
+        "ilo": "Location ken Mapa"
+      },
+      "question": {
+        "en": "Why is the map pin important?",
+        "tl": "Bakit mahalaga ang map pin?",
+        "ilo": "Apay a napateg ti map pin?"
+      },
+      "answer": {
+        "en": "Many addresses in the province name only a barangay, sitio, road, or general area. They may not point to the exact house or building. Place the map pin on the exact pickup or delivery location so the driver can find you faster.",
+        "tl": "Maraming address sa probinsya ang barangay, sitio, kalsada, o pangkalahatang lugar lang. Hindi nito laging tinuturo ang eksaktong bahay o building. Ilagay ang map pin sa eksaktong pickup o delivery location para mas mabilis kang mahanap ng driver.",
+        "ilo": "Adadu nga address iti probinsia ket barangay, sitio, kalsada, wenno general area laeng. Saan a kanayon nga ipakitana ti eksakto a balay wenno building. Ikabil ti map pin iti eksakto a pickup wenno delivery location tapno napardas a masarakan ka ti driver."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Account and Verification",
+        "tl": "Account at Verification",
+        "ilo": "Account ken Verification"
+      },
+      "question": {
+        "en": "Can an unverified passenger book a ride?",
+        "tl": "Makakapag-book ba ang unverified passenger?",
+        "ilo": "Mabalin kadi nga ag-book ti unverified passenger?"
+      },
+      "answer": {
+        "en": "An unverified passenger can use one regular ride booking only. After that, verification is required for more bookings and for services that require a verified account.",
+        "tl": "Ang unverified passenger ay puwedeng gumamit ng isang regular ride booking lamang. Pagkatapos nito, kailangan na ang verification para sa susunod na bookings at sa mga service na nangangailangan ng verified account.",
+        "ilo": "Ti unverified passenger ket mabalin laeng iti maysa a regular ride booking. Kalpasanna, masapul ti verification para kadagiti sumaruno a booking ken serbisyo a kasapulan ti verified account."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Account and Verification",
+        "tl": "Account at Verification",
+        "ilo": "Account ken Verification"
+      },
+      "question": {
+        "en": "How long will verification take?",
+        "tl": "Gaano katagal ang verification?",
+        "ilo": "Kasano kabayag ti verification?"
+      },
+      "answer": {
+        "en": "There is no fixed waiting time. It depends on how many verification requests are already in line when you submit. JRide checks that accounts belong to real people to reduce fake bookings.",
+        "tl": "Walang nakatakdang oras. Depende ito sa dami ng verification requests na nakapila noong nagsumite ka. Tinitiyak ng JRide na totoong tao ang gumagamit ng account para mabawasan ang fake bookings.",
+        "ilo": "Awan ti fixed a panaguray. Agdepende daytoy iti bilang dagiti verification request a nakapila idi nagsubmit ka. Kitaen ti JRide a pudno a tao ti agus-usar iti account tapno mabassitan dagiti fake booking."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "How do I book Takeout?",
+        "tl": "Paano ako mag-book ng Takeout?",
+        "ilo": "Kasanoak nga ag-book iti Takeout?"
+      },
+      "answer": {
+        "en": "Open Takeout and select the town first. JRide shows the available vendors in that town. Choose a vendor and items, check your delivery address and exact map pin, then submit the order. The vendor has a maximum of 5 minutes to accept. Only after vendor acceptance will JRide look for a driver. After a driver accepts, wait for the Proposed Delivery Fare or Total Bill and accept it before the delivery proceeds.",
+        "tl": "Buksan ang Takeout at piliin muna ang bayan. Ipapakita ng JRide ang mga available na vendor sa bayang iyon. Pumili ng vendor at mga item, tingnan ang delivery address at eksaktong map pin, pagkatapos ay i-submit ang order. May maximum na 5 minuto ang vendor para tanggapin ito. Pagkatapos lamang tanggapin ng vendor saka maghahanap ang JRide ng driver. Kapag may driver nang tumanggap, hintayin ang Proposed Delivery Fare o Total Bill at tanggapin ito bago magpatuloy ang delivery.",
+        "ilo": "Luktam ti Takeout ken pilien nga umuna ti ili. Ipakita ti JRide dagiti available a vendor iti dayta nga ili. Pilien ti vendor ken dagiti item, kitaen ti delivery address ken eksakto a map pin, kalpasanna i-submit ti order. Adda maximum a 5 minutos ti vendor tapno awaten daytoy. Kalpasan laeng nga inawat ti vendor saka agbiruk ti JRide iti driver. No adda driver nga umawat, urayen ti Proposed Delivery Fare wenno Total Bill ken awaten daytoy sakbay nga agtuloy ti delivery."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "What is the whole Takeout process?",
+        "tl": "Ano ang buong proseso ng Takeout?",
+        "ilo": "Ania ti sibubukel a proseso ti Takeout?"
+      },
+      "answer": {
+        "en": "1. Choose your town first so JRide can show the vendors available in that town. 2. Choose a vendor and items, check your delivery address and exact map pin, then submit the order. 3. The vendor has a maximum of 5 minutes to accept. If the vendor does not accept within 5 minutes, JRide cancels the order. You can reorder or choose another vendor. 4. After vendor acceptance, JRide looks for a driver based on the order amount. For PHP500 or below, JRide finds the nearest eligible driver to the vendor or store. The driver goes to the vendor and pays for the order upfront using the driver's own money. For orders above PHP500, JRide finds the nearest eligible driver to the customer's pinned location. The driver collects the order money from the customer first, then goes to the vendor or store. This protects drivers from having to advance large amounts of personal money. 5. After the driver accepts, the driver submits a Proposed Delivery Fare based on the applicable LGU fare matrix. JRide adds the PHP15 convenience/platform fee. JRide also adds the applicable night rate and a pickup-distance fee when the road-route pickup distance exceeds the first 1.5 km free pickup distance. JRide calculates these applicable charges. The driver should not add them manually. 6. The customer has a maximum of 5 minutes to accept the Proposed Delivery Fare or Total Bill. The delivery proceeds only after acceptance. If the customer does not accept within 5 minutes, the current driver assignment expires and JRide routes the booking to the next eligible available driver. 7. After acceptance, for PHP500 or below the driver proceeds to the vendor. For orders above PHP500, the driver first goes to the customer's pinned location to collect the order money, then goes to the vendor. 8. The driver collects the correct order and delivers it to the customer's pinned delivery location. 9. The Takeout trip is complete only after the customer receives the correct order and the total amount due is fully settled.",
+        "tl": "1. Piliin muna ang bayan para maipakita ng JRide ang mga available na vendor sa bayang iyon. 2. Pumili ng vendor at mga item, tingnan ang delivery address at eksaktong map pin, pagkatapos ay i-submit ang order. 3. May maximum na 5 minuto ang vendor para tanggapin ang order. Kapag hindi tinanggap sa loob ng 5 minuto, kakanselahin ng JRide ang order. Maaari kang umorder muli o pumili ng ibang vendor. 4. Kapag tinanggap na ng vendor, maghahanap ang JRide ng driver batay sa halaga ng order. Kung PHP500 pababa, hahanapin ang pinakamalapit na eligible na driver sa vendor o store. Pupunta ang driver sa vendor at babayaran niya ang order nang buo gamit muna ang sarili niyang pera. Kung higit sa PHP500, hahanapin ang pinakamalapit na eligible na driver sa pinned location ng customer. Kukunin muna ng driver ang perang pambayad sa customer bago pumunta sa vendor o store. Ito ay para hindi mapilit ang driver na mag-abono ng malaking halaga ng sariling pera. 5. Kapag tinanggap ng driver ang booking, magbibigay siya ng Proposed Delivery Fare batay sa naaangkop na LGU fare matrix. Idadagdag ng JRide ang PHP15 convenience/platform fee. Idadagdag din ng JRide ang applicable night rate at pickup-distance fee kapag ang road-route pickup distance ay lumampas sa unang 1.5 km na libre. Ang JRide ang nagkakalkula ng mga bayad na ito. Hindi dapat manu-manong idagdag ng driver ang mga ito. 6. May maximum na 5 minuto ang customer para tanggapin ang Proposed Delivery Fare o Total Bill. Magpapatuloy lamang ang delivery pagkatapos itong tanggapin. Kapag hindi tinanggap sa loob ng 5 minuto, mag-e-expire ang kasalukuyang driver assignment at ira-route ng JRide ang booking sa susunod na eligible at available na driver. 7. Kapag tinanggap na, kung PHP500 pababa ang order, pupunta ang driver sa vendor. Kung higit sa PHP500, pupunta muna ang driver sa pinned location ng customer para kunin ang pambayad bago pumunta sa vendor. 8. Kukunin ng driver ang tamang order at ihahatid ito sa pinned delivery location ng customer. 9. Kumpleto lamang ang Takeout trip kapag natanggap ng customer ang tamang order at kumpleto nang nabayaran ang lahat ng dapat bayaran.",
+        "ilo": "1. Pilien nga umuna ti ili tapno maipakita ti JRide dagiti available a vendor iti dayta nga ili. 2. Pilien ti vendor ken dagiti item, kitaen ti delivery address ken eksakto a map pin, kalpasanna i-submit ti order. 3. Adda maximum a 5 minutos ti vendor tapno awaten ti order. No saan nga awaten iti uneg ti 5 minutos, kanselaen ti JRide ti order. Mabalin nga ag-order manen wenno mangpili iti sabali a vendor. 4. No inawat ti vendor ti order, agbiruk ti JRide iti driver a naibatay iti gatad ti order. No PHP500 wenno nababbaba, agbiruk ti JRide iti kaasitgan nga eligible a driver iti vendor wenno store. Mapan ti driver iti vendor ket bayadanna ti order nga umuna babaen iti bukodna a kuarta. No nasurok ngem PHP500, agbiruk ti JRide iti kaasitgan nga eligible a driver iti pinned location ti customer. Alaen nga umuna ti driver ti kuarta a pagbayad manipud iti customer sakbay a mapan iti vendor wenno store. Daytoy ket tumulong tapno saan a mapilitan ti driver nga ag-abono iti dakkel a personal a kuarta. 5. No inawat ti driver ti booking, mangipatulod isuna iti Proposed Delivery Fare a naibatay iti maiyanatup nga LGU fare matrix. Inayon ti JRide ti PHP15 convenience/platform fee. Inayon met ti JRide ti maipakat a night rate ken pickup-distance fee no ti road-route pickup distance ket lumabes iti umuna a 1.5 km a libre. Ti JRide ti mangkalkula kadagitoy a bayad. Saan koma nga inayon ti driver dagitoy a manual. 6. Adda maximum a 5 minutos ti customer tapno awaten ti Proposed Delivery Fare wenno Total Bill. Agtuloy laeng ti delivery no naawat daytoy. No saan nga awaten iti uneg ti 5 minutos, mag-expire ti agdama a driver assignment ket i-route ti JRide ti booking iti sumaruno nga eligible ken available a driver. 7. No naawat, no PHP500 wenno nababbaba ti order, mapan ti driver iti vendor. No nasurok ngem PHP500, mapan nga umuna ti driver iti pinned location ti customer tapno alaenna ti pagbayad sakbay a mapan iti vendor. 8. Alaen ti driver ti umno nga order ket ideliverna iti pinned delivery location ti customer. 9. Maibilang laeng a kompleto ti Takeout trip no naawat ti customer ti umno nga order ken nabukel a nabayadan ti amin a kasapulan a bayad."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "How long does the vendor have to accept?",
+        "tl": "Gaano katagal puwedeng tanggapin ng vendor ang order?",
+        "ilo": "Kasano kabayag ti oras ti vendor nga umawat iti order?"
+      },
+      "answer": {
+        "en": "The vendor has a maximum of 5 minutes to accept the order. If the vendor does not accept within 5 minutes, JRide cancels the order. You can reorder or choose another vendor.",
+        "tl": "May maximum na 5 minuto ang vendor para tanggapin ang order. Kapag hindi ito tinanggap sa loob ng 5 minuto, kakanselahin ng JRide ang order. Maaari kang umorder muli o pumili ng ibang vendor.",
+        "ilo": "Adda maximum a 5 minutos ti vendor tapno awaten ti order. No saan nga awaten ti vendor iti uneg ti 5 minutos, kanselaen ti JRide ti order. Mabalin nga ag-order manen wenno mangpili iti sabali a vendor."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "How does Advance Booking work?",
+        "tl": "Paano gumagana ang Advance Booking?",
+        "ilo": "Kasano ti Advance Booking?"
+      },
+      "answer": {
+        "en": "Advance Booking can only be made through the JRide passenger app. Schedule the ride 2 to 24 hours ahead. JRide looks for an eligible driver. When a driver takes the booking, the driver selects a departure point and submits the normal Proposed Fare based on the applicable LGU fare matrix. JRide adds the road pickup fee, night adjustment when applicable, and platform fee. After the driver submits the fare, the customer has a maximum of 30 minutes to accept it. If the customer does not accept within 30 minutes, the proposal expires and the booking is cancelled or routed to another eligible driver depending on availability. The Advance Booking proceeds only after the customer accepts the Proposed Fare.",
+        "tl": "Ang Advance Booking ay maaari lamang gawin sa JRide passenger app. I-schedule ang ride 2 hanggang 24 oras bago ang biyahe. Maghahanap ang JRide ng eligible driver. Kapag kinuha ng driver ang booking, pipili siya ng departure point at mag-submit ng normal Proposed Fare batay sa applicable LGU fare matrix. Idadagdag ng JRide ang road pickup fee, night adjustment kung applicable, at platform fee. Pagkatapos mag-submit ng fare ang driver, may maximum na 30 minuto ang customer para tanggapin ito. Kapag hindi tinanggap sa loob ng 30 minuto, mag-e-expire ang proposal at kakanselahin ang booking o ira-route sa ibang eligible driver depende sa availability. Magpapatuloy lamang ang Advance Booking pagkatapos tanggapin ng customer ang Proposed Fare.",
+        "ilo": "Ti Advance Booking ket mabalin laeng nga aramiden iti JRide passenger app. I-schedule ti ride 2 agingga 24 nga oras sakbay ti biyahe. Agbiruk ti JRide iti eligible driver. No alaen ti driver ti booking, pilienna ti departure point ken mangisubmit iti normal Proposed Fare a naibatay iti maipakat nga LGU fare matrix. Inayon ti JRide ti road pickup fee, night adjustment no maipakat, ken platform fee. Kalpasan nga naisubmit ti driver ti fare, adda maximum a 30 minutos ti customer tapno awaten daytoy. No saan nga awaten iti uneg ti 30 minutos, mag-expire ti proposal ket makansela ti booking wenno ma-route iti sabali nga eligible driver depende iti availability. Agtuloy laeng ti Advance Booking kalpasan nga inawat ti customer ti Proposed Fare."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "How long do I have to accept an Advance Booking Proposed Fare?",
+        "tl": "Gaano katagal ko puwedeng tanggapin ang Advance Booking Proposed Fare?",
+        "ilo": "Kasano kabayag ti oras ko tapno awaten ti Advance Booking Proposed Fare?"
+      },
+      "answer": {
+        "en": "After the driver submits the Advance Booking Proposed Fare, you have a maximum of 30 minutes to accept it. If you do not accept within 30 minutes, the proposal expires and the booking is cancelled or routed to another eligible driver depending on availability. The booking does not proceed until you accept the Proposed Fare.",
+        "tl": "Pagkatapos mag-submit ang driver ng Advance Booking Proposed Fare, may maximum na 30 minuto ka para tanggapin ito. Kapag hindi mo tinanggap sa loob ng 30 minuto, mag-e-expire ang proposal at kakanselahin ang booking o ira-route sa ibang eligible driver depende sa availability. Hindi magpapatuloy ang booking hangga't hindi mo tinatanggap ang Proposed Fare.",
+        "ilo": "Kalpasan nga naisubmit ti driver ti Advance Booking Proposed Fare, adda maximum a 30 minutos mo tapno awaten daytoy. No saanmo nga awaten iti uneg ti 30 minutos, mag-expire ti proposal ket makansela ti booking wenno ma-route iti sabali nga eligible driver depende iti availability. Saan nga agtuloy ti booking agingga a saanmo pay nga awaten ti Proposed Fare."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "Does the night rate apply to Advance Booking?",
+        "tl": "May night rate ba ang Advance Booking?",
+        "ilo": "Maipakat kadi ti night rate iti Advance Booking?"
+      },
+      "answer": {
+        "en": "Yes. Advance Booking uses the scheduled pickup time. If that time is in the night-rate period, JRide applies the same night rule used for a regular ride.",
+        "tl": "Oo. Ang scheduled pickup time ang basehan ng Advance Booking. Kung nasa night-rate period ang oras na iyon, iaapply ng JRide ang parehong night rule ng regular ride.",
+        "ilo": "Wen. Ti scheduled pickup time ti basehan ti Advance Booking. No adda dayta iti night-rate period, ipakat ti JRide ti isu met laeng a night rule ti regular ride."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Common Problems",
+        "tl": "Karaniwang Problema",
+        "ilo": "Kadawyan a Problema"
+      },
+      "question": {
+        "en": "What if no driver is available?",
+        "tl": "Paano kung walang available na driver?",
+        "ilo": "Kasano no awan ti available a driver?"
+      },
+      "answer": {
+        "en": "Keep the booking screen open and follow the status shown by JRide. Normal assignments follow the allowed town and distance rules. Do not create repeated duplicate bookings while an active booking is still being processed.",
+        "tl": "Panatilihing bukas ang booking screen at sundin ang status na ipinapakita ng JRide. Ang normal assignment ay sumusunod sa allowed town at distance rules. Huwag gumawa ng paulit-ulit na duplicate booking habang may active booking na pinoproseso.",
+        "ilo": "Talinaed a nakalukat ti booking screen ken suroten ti status nga ipakita ti JRide. Ti normal assignment ket sumurot iti allowed town ken distance rules. Saan nga agaramid iti adu a duplicate booking bayat nga adda pay active booking a maiproseso."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Common Problems",
+        "tl": "Karaniwang Problema",
+        "ilo": "Kadawyan a Problema"
+      },
+      "question": {
+        "en": "What should I check before I accept a fare?",
+        "tl": "Ano ang dapat kong tingnan bago tanggapin ang fare?",
+        "ilo": "Ania ti kitaek sakbay nga awatek ti fare?"
+      },
+      "answer": {
+        "en": "Check the Proposed Fare, pickup distance fee, night adjustment if any, platform fee, and Total to Pay. Accept only after you understand the amount shown.",
+        "tl": "Tingnan ang Proposed Fare, pickup distance fee, night adjustment kung mayroon, platform fee, at Total to Pay. Tanggapin lamang kapag malinaw sa iyo ang halagang ipinapakita.",
+        "ilo": "Kitaen ti Proposed Fare, pickup distance fee, night adjustment no adda, platform fee, ken Total to Pay. Awaten laeng no nalawag kenka ti gatad nga naipakita."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Common Problems",
+        "tl": "Mga Karaniwang Problema",
+        "ilo": "Dagiti Kadawyan a Parikut"
+      },
+      "question": {
+        "en": "What if I have a problem, dispute, or other question?",
+        "tl": "Paano kung may problema, dispute, o iba pang tanong?",
+        "ilo": "Kasano no adda parikut, dispute, wenno sabali pay a saludsod?"
+      },
+      "answer": {
+        "en": "If you have a booking problem, fare dispute, account concern, or another service question, message the official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nInclude your booking code when available and briefly explain what happened. Our staff monitors messages and responds to genuine concerns as soon as possible.",
+        "tl": "Kung may booking problem, fare dispute, account concern, o ibang tanong tungkol sa serbisyo, mag-message sa official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIsama ang booking code kung available at maikling ipaliwanag ang nangyari. Minomonitor ng aming staff ang messages at tumutugon sa mga totoong concern sa lalong madaling panahon.",
+        "ilo": "No adda booking problem, fare dispute, account concern, wenno sabali a saludsod maipanggep iti serbisyo, ag-message iti official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIkabil ti booking code no adda ken ilawlawag iti ababa ti napasamak. Mamonitor ti staff-mi dagiti messages ken sumungbat kadagiti pudno a concern iti kabaelanda a kapardasan."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Why is there a PHP15 convenience fee?",
+        "tl": "Bakit may PHP15 convenience fee?",
+        "ilo": "Apay nga adda PHP15 convenience fee?"
+      },
+      "answer": {
+        "en": "The PHP15 convenience fee was not decided in one meeting or overnight. JRide discussed it through several consultations with drivers, passengers, LGU representatives, and other stakeholders. Part of the fee supports the applicable TODA share, and part helps fund driver incentives and service improvements. The goal is to help keep the service sustainable while improving the experience for passengers and drivers.",
+        "tl": "Ang PHP15 convenience fee ay hindi napagdesisyunan sa isang meeting lamang o biglaan. Tinalakay ito ng JRide sa ilang konsultasyon kasama ang drivers, passengers, LGU representatives, at iba pang stakeholders. Bahagi ng fee ay para sa applicable TODA share, at bahagi rin nito ay tumutulong sa driver incentives at pagpapabuti ng serbisyo. Layunin nitong makatulong na mapanatili at mapaganda ang serbisyo para sa passengers at drivers.",
+        "ilo": "Ti PHP15 convenience fee ket saan a napagdesisyonan iti maymaysa laeng a meeting wenno dagus. Naitutungtong daytoy ti JRide iti adu a konsultasyon kadagiti drivers, passengers, LGU representatives, ken dadduma pay a stakeholders. Paset ti fee ket mapan iti maipakat a TODA share, ken paset met ket tumulong iti driver incentives ken panagpasayaat ti serbisyo. Ti panggep ket tapno agtalinaed a sustainable ti serbisyo ken mapasayaat ti experience dagiti passengers ken drivers."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Was there consultation before JRide started operating?",
+        "tl": "May consultation ba bago nagsimulang mag-operate ang JRide?",
+        "ilo": "Adda kadi consultation sakbay a nangrugi nga ag-operate ti JRide?"
+      },
+      "answer": {
+        "en": "Yes. Before launching, JRide conducted information drives, discussions, and consultations with LGUs and their representatives, drivers, passengers, and other stakeholders for almost a year. These discussions helped shape the operating procedures, fares, driver responsibilities, and other parts of the service.",
+        "tl": "Oo. Bago inilunsad ang JRide, nagsagawa ito ng information drives, discussions, at consultations kasama ang mga LGU at kanilang representatives, drivers, passengers, at iba pang stakeholders sa loob ng halos isang taon. Nakatulong ang mga konsultasyong ito sa pagbuo ng operating procedures, fares, driver responsibilities, at iba pang bahagi ng serbisyo.",
+        "ilo": "Wen. Sakbay a na-launch ti JRide, nangaramid daytoy iti information drives, discussions, ken consultations kadagiti LGU ken representatives-da, drivers, passengers, ken dadduma pay a stakeholders iti dandani maysa a tawen. Nakatulong dagitoy a panagtutungtong iti panagurnos ti operating procedures, fares, driver responsibilities, ken dadduma a paset ti serbisyo."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Does JRide have permits to operate?",
+        "tl": "May permit ba ang JRide para mag-operate?",
+        "ilo": "Adda kadi permit ti JRide nga ag-operate?"
+      },
+      "answer": {
+        "en": "Yes. JRide currently has permits to operate in Lamut, Lagawe, Hingyon, and Banaue. Expansion to nearby areas will be announced once the required local preparations and requirements are completed.",
+        "tl": "Oo. Sa kasalukuyan, may permit ang JRide na mag-operate sa Lamut, Lagawe, Hingyon, at Banaue. Ang expansion sa mga kalapit na lugar ay iaanunsyo kapag nakumpleto na ang kinakailangang local preparations at requirements.",
+        "ilo": "Wen. Iti agdama, adda permit ti JRide nga ag-operate iti Lamut, Lagawe, Hingyon, ken Banaue. Ti expansion kadagiti asideg a lugar ket maiwaragawag no nakompleto dagiti kasapulan a local preparations ken requirements."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Where can I book a Ride or Takeout?",
+        "tl": "Saan ako puwedeng mag-book ng Ride o Takeout?",
+        "ilo": "Sadinoak a mabalin nga ag-book iti Ride wenno Takeout?"
+      },
+      "answer": {
+        "en": "You can use the JRide passenger app or the official JRide web services.\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride on the Web:\nhttps://app.jride.net/ride\n\nOrder Takeout on the Web:\nhttps://app.jride.net/takeout\n\nAdvance Booking is available through the JRide passenger app.",
+        "tl": "Maaari mong gamitin ang JRide passenger app o ang official JRide web services.\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride sa Web:\nhttps://app.jride.net/ride\n\nOrder Takeout sa Web:\nhttps://app.jride.net/takeout\n\nAng Advance Booking ay available sa JRide passenger app.",
+        "ilo": "Mabalinmo nga usaren ti JRide passenger app wenno dagiti official JRide web services.\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride iti Web:\nhttps://app.jride.net/ride\n\nOrder Takeout iti Web:\nhttps://app.jride.net/takeout\n\nTi Advance Booking ket available iti JRide passenger app."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Can Apple and Windows users use JRide?",
+        "tl": "Maaari bang gumamit ng JRide ang Apple at Windows users?",
+        "ilo": "Mabalin kadi nga agusar iti JRide dagiti Apple ken Windows users?"
+      },
+      "answer": {
+        "en": "Yes. JRide Ride and Takeout services can be accessed through a modern web browser. Apple users can use Safari or Google Chrome. Windows users can use Microsoft Edge, Google Chrome, Firefox, or another modern browser.\n\nBook a Ride on the Web:\nhttps://app.jride.net/ride\n\nOrder Takeout on the Web:\nhttps://app.jride.net/takeout\n\nAdvance Booking is available through the JRide passenger app.",
+        "tl": "Oo. Maaaring gamitin ang JRide Ride at Takeout services sa modern web browser. Ang Apple users ay maaaring gumamit ng Safari o Google Chrome. Ang Windows users ay maaaring gumamit ng Microsoft Edge, Google Chrome, Firefox, o ibang modern browser.\n\nBook a Ride sa Web:\nhttps://app.jride.net/ride\n\nOrder Takeout sa Web:\nhttps://app.jride.net/takeout\n\nAng Advance Booking ay available sa JRide passenger app.",
+        "ilo": "Wen. Mabalin nga usaren ti JRide Ride ken Takeout services babaen iti modern web browser. Dagiti Apple users ket mabalin nga agusar iti Safari wenno Google Chrome. Dagiti Windows users ket mabalin nga agusar iti Microsoft Edge, Google Chrome, Firefox, wenno sabali a modern browser.\n\nBook a Ride iti Web:\nhttps://app.jride.net/ride\n\nOrder Takeout iti Web:\nhttps://app.jride.net/takeout\n\nTi Advance Booking ket available iti JRide passenger app."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Where can I send feedback or suggestions?",
+        "tl": "Saan ako puwedeng magpadala ng feedback o suggestions?",
+        "ilo": "Sadinoak a mabalin nga mangipatulod iti feedback wenno suggestions?"
+      },
+      "answer": {
+        "en": "We welcome feedback and suggestions that can help improve JRide. Send them to our official email:\ninfo@jride.net\n\nBriefly explain your suggestion or experience so our team can review it properly.",
+        "tl": "Welcome sa JRide ang feedback at suggestions na makakatulong upang mapaganda pa ang serbisyo. Ipadala ito sa aming official email:\ninfo@jride.net\n\nMaglagay ng maikling paliwanag tungkol sa iyong suggestion o experience para ma-review ito nang maayos ng aming team.",
+        "ilo": "Awaten ti JRide dagiti feedback ken suggestions a makatulong iti panagpasayaat ti serbisyo. Ipatulod daytoy iti official email-mi:\ninfo@jride.net\n\nMangited iti ababa a pannakailawlawag ti suggestion wenno experience tapno ma-review daytoy ti team."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Can I apply for a job at JRide?",
+        "tl": "Maaari ba akong mag-apply ng trabaho sa JRide?",
+        "ilo": "Mabalin kadi nga ag-applyak iti trabaho iti JRide?"
+      },
+      "answer": {
+        "en": "Yes. You may send your resume to info@jride.net for future employment opportunities. Include your work experience, skills, current email address, and updated contact number. When a position becomes available that matches your qualifications or field of experience, JRide may contact you for further evaluation. Submitting a resume does not guarantee employment, but it allows JRide to consider your application when a suitable position becomes available.",
+        "tl": "Oo. Maaari mong ipadala ang iyong resume sa info@jride.net para sa future employment opportunities. Isama ang iyong work experience, skills, current email address, at updated contact number. Kapag may available na position na tugma sa iyong qualifications o field of experience, maaaring makipag-ugnayan ang JRide sa iyo para sa susunod na evaluation. Ang pagpapadala ng resume ay hindi garantiya ng trabaho, ngunit maaari naming isaalang-alang ang iyong application kapag may angkop na position.",
+        "ilo": "Wen. Mabalinmo nga ipatulod ti resume-mo iti info@jride.net para kadagiti future employment opportunities. Ikabil ti work experience, skills, agdama nga email address, ken updated contact number. No adda available a position a maitunos iti qualifications wenno field of experience-mo, mabalin nga kontaken ka ti JRide para iti sumaruno nga evaluation. Ti panangipatulod iti resume ket saan a garantiya ti trabaho, ngem mabalin a maikonsidera ti application-mo no adda maitutop a position."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Does JRide offer services aside from Ride and Takeout?",
+        "tl": "May ibang serbisyo ba ang JRide bukod sa Ride at Takeout?",
+        "ilo": "Adda kadi dadduma a serbisyo ti JRide malaksid iti Ride ken Takeout?"
+      },
+      "answer": {
+        "en": "Yes. JRide Corporation also provides custom software development services for businesses, organizations, institutions, associations, and government entities. Depending on the client's needs, JRide can develop websites, online portals, web-based information and management systems, registration and record systems, dashboards, reporting tools, workflow systems, and other custom digital solutions. The features, cost, development period, and technical requirements depend on the scope of each project. For inquiries, email info@jride.net.",
+        "tl": "Oo. Nagbibigay din ang JRide Corporation ng custom software development services para sa businesses, organizations, institutions, associations, at government entities. Depende sa pangangailangan ng client, maaaring gumawa ang JRide ng websites, online portals, web-based information at management systems, registration at record systems, dashboards, reporting tools, workflow systems, at iba pang custom digital solutions. Ang features, cost, development period, at technical requirements ay depende sa scope ng bawat project. Para sa inquiries, mag-email sa info@jride.net.",
+        "ilo": "Wen. Mangted met ti JRide Corporation iti custom software development services para kadagiti businesses, organizations, institutions, associations, ken government entities. Depende iti kasapulan ti client, mabalin a mangaramid ti JRide iti websites, online portals, web-based information ken management systems, registration ken record systems, dashboards, reporting tools, workflow systems, ken dadduma pay a custom digital solutions. Ti features, cost, development period, ken technical requirements ket agdepende iti scope ti tunggal project. Para iti inquiries, ag-email iti info@jride.net."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "Does JRide provide software assistance for events?",
+        "tl": "Nagbibigay ba ang JRide ng software assistance para sa events?",
+        "ilo": "Mangted kadi ti JRide iti software assistance para kadagiti events?"
+      },
+      "answer": {
+        "en": "Yes. JRide Corporation provides digital event solutions for private and public events such as birthdays, weddings, family reunions, alumni gatherings, community activities, and other celebrations or organized events. Depending on the event, JRide can provide tools for registration, attendee or guest management, check-in, event information, raffles, reports, and other event-management needs.\n\nFor more information, visit the JRide Events Platform:\nhttps://app.jride.net/events/platform",
+        "tl": "Oo. Nagbibigay ang JRide Corporation ng digital event solutions para sa private at public events tulad ng birthdays, weddings, family reunions, alumni gatherings, community activities, at iba pang celebrations o organized events. Depende sa event, maaaring magbigay ang JRide ng tools para sa registration, attendee o guest management, check-in, event information, raffles, reports, at iba pang event-management needs.\n\nPara sa karagdagang impormasyon, bisitahin ang JRide Events Platform:\nhttps://app.jride.net/events/platform",
+        "ilo": "Wen. Mangted ti JRide Corporation iti digital event solutions para kadagiti private ken public events kas iti birthdays, weddings, family reunions, alumni gatherings, community activities, ken dadduma pay a celebrations wenno organized events. Depende iti event, mabalin a mangted ti JRide iti tools para iti registration, attendee wenno guest management, check-in, event information, raffles, reports, ken dadduma pay a event-management needs.\n\nPara iti ad-adu pay nga impormasyon, bisitaen ti JRide Events Platform:\nhttps://app.jride.net/events/platform"
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "JRide Information and Contact",
+        "tl": "Impormasyon at Contact ng JRide",
+        "ilo": "Impormasyon ken Contact ti JRide"
+      },
+      "question": {
+        "en": "What are JRide's official contact channels?",
+        "tl": "Ano ang official contact channels ng JRide?",
+        "ilo": "Ania dagiti official contact channels ti JRide?"
+      },
+      "answer": {
+        "en": "Official JRide Website:\nhttps://jride.net/\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride:\nhttps://app.jride.net/ride\n\nOrder Takeout:\nhttps://app.jride.net/takeout\n\nJRide Events Platform:\nhttps://app.jride.net/events/platform\n\nOfficial Email:\ninfo@jride.net\n\nOfficial Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nFor booking problems, disputes, or urgent service concerns, message the official JRide Facebook Page. For feedback, suggestions, software inquiries, or job applications, use the official email.",
+        "tl": "Official JRide Website:\nhttps://jride.net/\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride:\nhttps://app.jride.net/ride\n\nOrder Takeout:\nhttps://app.jride.net/takeout\n\nJRide Events Platform:\nhttps://app.jride.net/events/platform\n\nOfficial Email:\ninfo@jride.net\n\nOfficial Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nPara sa booking problems, disputes, o urgent service concerns, mag-message sa official JRide Facebook Page. Para sa feedback, suggestions, software inquiries, o job applications, gamitin ang official email.",
+        "ilo": "Official JRide Website:\nhttps://jride.net/\n\nPassenger App - Google Play:\nhttps://play.google.com/store/apps/details?id=com.jride.app\n\nBook a Ride:\nhttps://app.jride.net/ride\n\nOrder Takeout:\nhttps://app.jride.net/takeout\n\nJRide Events Platform:\nhttps://app.jride.net/events/platform\n\nOfficial Email:\ninfo@jride.net\n\nOfficial Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nPara kadagiti booking problems, disputes, wenno urgent service concerns, ag-message iti official JRide Facebook Page. Para iti feedback, suggestions, software inquiries, wenno job applications, usaren ti official email."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Getting Ready",
+        "tl": "Paghahanda",
+        "ilo": "Panagsagana"
+      },
+      "question": {
+        "en": "What should I do before going online?",
+        "tl": "Ano ang dapat kong gawin bago mag-online?",
+        "ilo": "Ania ti aramidek sakbay nga ag-online?"
+      },
+      "answer": {
+        "en": "Turn on mobile data, GPS/location, and JRide location permission. Make sure your driver account is the correct one, your location is fresh, and your wallet meets the required minimum shown by the app.",
+        "tl": "I-on ang mobile data, GPS/location, at JRide location permission. Siguraduhing tama ang driver account, sariwa ang location, at pasok ang wallet sa required minimum na ipinapakita ng app.",
+        "ilo": "I-on ti mobile data, GPS/location, ken JRide location permission. Siguraduen a husto ti driver account, fresh ti location, ken umdas ti wallet iti required minimum nga ipakita ti app."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Getting Ready",
+        "tl": "Paghahanda",
+        "ilo": "Panagsagana"
+      },
+      "question": {
+        "en": "Why should I check battery optimization?",
+        "tl": "Bakit ko dapat tingnan ang battery optimization?",
+        "ilo": "Apay a masapul a kitaek ti battery optimization?"
+      },
+      "answer": {
+        "en": "Some phones restrict apps in the background to save battery. If JRide warns that battery optimization is on, use the Battery Settings option in the app and allow JRide to keep working in the background so location updates are not interrupted.",
+        "tl": "May mga phone na naghihigpit sa apps sa background para makatipid ng baterya. Kapag nagbabala ang JRide na naka-on ang battery optimization, gamitin ang Battery Settings option sa app at payagang tumakbo ang JRide sa background para hindi maputol ang location updates.",
+        "ilo": "Adda dagiti telepono a manglimit iti apps iti background tapno makatipid iti baterya. No ibaga ti JRide a naka-on ti battery optimization, usaren ti Battery Settings option iti app ken palubosan ti JRide nga agtrabaho iti background tapno saan a maputed dagiti location update."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Ride Offers",
+        "tl": "Ride Offers",
+        "ilo": "Ride Offers"
+      },
+      "question": {
+        "en": "What do I do when I receive a ride offer?",
+        "tl": "Ano ang gagawin ko kapag may ride offer?",
+        "ilo": "Ania ti aramidek no adda ride offer?"
+      },
+      "answer": {
+        "en": "Read the pickup, destination, vehicle, passenger count, and town details. Accept only if you can take the trip. After accepting, follow the app status and prepare the Proposed Fare when requested.",
+        "tl": "Basahin ang pickup, destination, vehicle, passenger count, at town details. Tanggapin lang kung kaya mong kunin ang biyahe. Pagkatapos tanggapin, sundin ang app status at ihanda ang Proposed Fare kapag hinihingi.",
+        "ilo": "Basaen ti pickup, destination, vehicle, passenger count, ken town details. Awaten laeng no kabaelam ti biyahe. Kalpasan nga inawatmo, suroten ti app status ken isagana ti Proposed Fare no kiddawen."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Ride Offers",
+        "tl": "Ride Offers",
+        "ilo": "Ride Offers"
+      },
+      "question": {
+        "en": "How do I accept or pass a ride offer?",
+        "tl": "Paano ko tatanggapin o ipa-pass ang ride offer?",
+        "ilo": "Kasano nga awatek wenno i-pass ti ride offer?"
+      },
+      "answer": {
+        "en": "When an offer appears, review the pickup, destination, passenger count, vehicle, and town details. Tap Accept only if you can take the trip. If you cannot take it, use Pass when available. Respond within the time shown by the app because an expired offer may be sent to another driver.",
+        "tl": "Kapag lumabas ang offer, tingnan ang pickup, destination, passenger count, vehicle, at town details. Pindutin ang Accept kung kaya mong kunin ang biyahe. Kung hindi, gamitin ang Pass kapag available. Sumagot sa loob ng oras na ipinapakita ng app dahil maaaring mapunta sa ibang driver ang expired na offer.",
+        "ilo": "No makita ti offer, kitaen ti pickup, destination, passenger count, vehicle, ken town details. I-tap ti Accept no kabaelam ti biyahe. No saan, usaren ti Pass no available. Sumungbat iti uneg ti oras nga ipakita ti app ta mabalin a maited iti sabali a driver ti expired nga offer."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Ride Offers",
+        "tl": "Ride Offers",
+        "ilo": "Ride Offers"
+      },
+      "question": {
+        "en": "Can I accept another booking while I still have an active trip?",
+        "tl": "Puwede ba akong tumanggap ng ibang booking habang may active trip pa ako?",
+        "ilo": "Mabalin kadi nga awatek ti sabali a booking no adda pay active trip ko?"
+      },
+      "answer": {
+        "en": "No. JRide checks whether you already have an active trip before assignment. Finish the current trip correctly before taking another booking.",
+        "tl": "Hindi. Tinitingnan ng JRide kung may active trip ka pa bago mag-assign. Tapusin nang tama ang kasalukuyang trip bago tumanggap ng panibagong booking.",
+        "ilo": "Saan. Kitaen ti JRide no adda pay active trip mo sakbay ti assignment. Ilpasmo a husto ti agdama a trip sakbay nga umawat iti sabali a booking."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Ride and Takeout Timers",
+        "tl": "Oras para sa Ride at Takeout",
+        "ilo": "Oras para iti Ride ken Takeout"
+      },
+      "question": {
+        "en": "How long do I have to accept a Ride or Takeout notification?",
+        "tl": "Gaano katagal ang oras ko para tanggapin ang Ride o Takeout notification?",
+        "ilo": "Kasano kabayag ti oras ko a mangawat iti Ride wenno Takeout notification?"
+      },
+      "answer": {
+        "en": "You have a maximum of 5 minutes to accept a Regular Ride or Takeout notification. If you do not accept within 5 minutes, the offer expires and JRide routes it to the next eligible available driver under the normal assignment rules.",
+        "tl": "May maximum na 5 minuto ka para tanggapin ang Regular Ride o Takeout notification. Kapag hindi mo ito tinanggap sa loob ng 5 minuto, mag-e-expire ang offer at iruruta ito ng JRide sa susunod na eligible at available na driver ayon sa normal assignment rules.",
+        "ilo": "Adda maximum a 5 minutos mo a mangawat iti Regular Ride wenno Takeout notification. No saanmo nga awaten iti uneg ti 5 minutos, mag-expire ti offer ken iruta ti JRide iti sumaruno nga eligible ken available a driver babaen ti normal assignment rules."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Ride and Takeout Timers",
+        "tl": "Oras para sa Ride at Takeout",
+        "ilo": "Oras para iti Ride ken Takeout"
+      },
+      "question": {
+        "en": "How long do I have to submit the Proposed Fare or Delivery Fare?",
+        "tl": "Gaano katagal ang oras ko para i-submit ang Proposed Fare o Delivery Fare?",
+        "ilo": "Kasano kabayag ti oras ko a mangi-submit iti Proposed Fare wenno Delivery Fare?"
+      },
+      "answer": {
+        "en": "For a Regular Ride or Takeout, submit the Proposed Fare or Proposed Delivery Fare within a maximum of 5 minutes after the app asks for it. If you do not submit within 5 minutes, the current assignment expires and JRide routes the booking to the next eligible available driver. Advance Booking is different and keeps its own 10-minute fare-preparation window.",
+        "tl": "Para sa Regular Ride o Takeout, i-submit ang Proposed Fare o Proposed Delivery Fare sa loob ng maximum na 5 minuto pagkatapos itong hingin ng app. Kapag hindi mo ito na-submit sa loob ng 5 minuto, mag-e-expire ang kasalukuyang assignment at ira-route ng JRide ang booking sa susunod na eligible at available na driver. Iba ang Advance Booking at mayroon itong sariling 10-minute fare-preparation window.",
+        "ilo": "Para iti Regular Ride wenno Takeout, i-submit ti Proposed Fare wenno Proposed Delivery Fare iti uneg ti maximum a 5 minutos kalpasan a kiddawen daytoy ti app. No saanmo nga i-submit iti uneg ti 5 minutos, mag-expire ti agdama nga assignment ket i-route ti JRide ti booking iti sumaruno nga eligible ken available a driver. Sabali ti Advance Booking ken adda bukodna a 10-minute fare-preparation window."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Proposed Fare",
+        "tl": "Proposed Fare",
+        "ilo": "Proposed Fare"
+      },
+      "question": {
+        "en": "How do I enter the Proposed Fare?",
+        "tl": "Paano ako maglalagay ng Proposed Fare?",
+        "ilo": "Kasanoak nga mangikabil iti Proposed Fare?"
+      },
+      "answer": {
+        "en": "Enter the normal ride fare based on the current applicable LGU fare matrix. Keep yourself updated when the LGU fare matrix changes. Do not manually add the pickup-distance fee, night adjustment, or PHP15 convenience/platform fee because JRide calculates those parts. The passenger must accept the resulting fare before the trip proceeds.",
+        "tl": "Ilagay ang normal ride fare batay sa kasalukuyang applicable LGU fare matrix. Panatilihing updated ang sarili kapag may pagbabago sa LGU fare matrix. Huwag manu-manong idagdag ang pickup-distance fee, night adjustment, o PHP15 convenience/platform fee dahil JRide ang nagkakalkula ng mga ito. Kailangang tanggapin ng passenger ang resulting fare bago magpatuloy ang biyahe.",
+        "ilo": "Ilagay ti normal ride fare a naibatay iti agdama a maipakat nga LGU fare matrix. Masapul nga updated ka no adda panagbaliw iti LGU fare matrix. Saanmo nga inayon a manual ti pickup-distance fee, night adjustment, wenno PHP15 convenience/platform fee ta ti JRide ti mangkalkula kadagitoy. Masapul nga awaten ti passenger ti resulting fare sakbay nga agtuloy ti biyahe."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Proposed Fare",
+        "tl": "Proposed Fare",
+        "ilo": "Proposed Fare"
+      },
+      "question": {
+        "en": "Why does JRide use a Proposed Fare?",
+        "tl": "Bakit gumagamit ang JRide ng Proposed Fare?",
+        "ilo": "Apay nga usaren ti JRide ti Proposed Fare?"
+      },
+      "answer": {
+        "en": "Distance alone does not always reflect the actual trip conditions in the province. Elevation, road condition, route difficulty, destination, and the possibility of returning to the main route without another passenger can affect the normal ride fare. The applicable LGU fare matrix can also be updated from time to time, including changes related to fuel prices and other operating costs. Drivers are responsible for staying updated and using the current applicable LGU fare matrix when submitting the normal Proposed Fare.",
+        "tl": "Hindi laging sapat ang distansya lamang para maipakita ang tunay na kondisyon ng biyahe sa probinsya. Maaaring makaapekto sa normal ride fare ang elevation, kondisyon ng kalsada, hirap ng ruta, destinasyon, at posibilidad na bumalik sa main route nang walang kasunod na pasahero. Maaari ring ma-update paminsan-minsan ang applicable LGU fare matrix, kabilang ang mga pagbabago dahil sa presyo ng gasolina at iba pang operating costs. Responsibilidad ng driver na manatiling updated at gamitin ang kasalukuyang applicable LGU fare matrix sa pag-submit ng normal Proposed Fare.",
+        "ilo": "Saan a kanayon a ti distansia laeng ti mangipakita iti pudno a kondisyon ti biyahe iti probinsia. Mabalin a makaapekto iti normal ride fare ti elevation, kondisyon ti dalan, kinarigat ti ruta, destinasyon, ken ti posibilidad nga agsubli iti main route nga awan ti sumaruno a pasahero. Mabalin met nga ma-update ti maipakat nga LGU fare matrix manipud tiempo iti tiempo, karaman dagiti panagbaliw ti presyo ti gasolina ken dadduma a gastos iti operasyon. Responsibilidad ti driver nga agtalinaed nga updated ken usaren ti agdama a maipakat nga LGU fare matrix no mangisubmit iti normal Proposed Fare."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Proposed Fare",
+        "tl": "Proposed Fare",
+        "ilo": "Proposed Fare"
+      },
+      "question": {
+        "en": "When should I start going to the passenger pickup pin?",
+        "tl": "Kailan ako dapat pumunta sa pickup pin ng pasahero?",
+        "ilo": "Kaanoak nga mapan iti pickup pin ti pasahero?"
+      },
+      "answer": {
+        "en": "Start going to the pickup pin only after the passenger accepts the Proposed Fare. Before acceptance, do not treat the trip as ready for pickup. After acceptance, follow the passenger's pinned location and the active booking details.",
+        "tl": "Pumunta lamang sa pickup pin pagkatapos tanggapin ng pasahero ang Proposed Fare. Bago ito tanggapin, huwag ituring na ready for pickup ang trip. Pagkatapos tanggapin, sundin ang pinned location at active booking details ng pasahero.",
+        "ilo": "Mapanka laeng iti pickup pin kalpasan nga inawat ti pasahero ti Proposed Fare. Sakbay ti acceptance, saanmo pay a ibilang a ready for pickup ti trip. Kalpasan ti acceptance, surotem ti pinned location ken active booking details ti pasahero."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Passenger Contact",
+        "tl": "Pakikipag-ugnayan sa Pasahero",
+        "ilo": "Panagkontak iti Pasahero"
+      },
+      "question": {
+        "en": "When may I contact the passenger or customer?",
+        "tl": "Kailan ako puwedeng makipag-ugnayan sa pasahero o customer?",
+        "ilo": "Kaanoak a mabalin a makikontak iti pasahero wenno customer?"
+      },
+      "answer": {
+        "en": "Contact the passenger or customer only for an active booking. You may reach out while the Proposed Fare is still waiting and the passenger has not accepted or cancelled, or after acceptance when you need clarification about the pinned location, pickup point, delivery point, or other booking details. Keep the conversation limited to the active booking.",
+        "tl": "Makipag-ugnayan lamang sa pasahero o customer para sa active booking. Maaari kang kumontak habang naghihintay pa ang Proposed Fare at hindi pa ito tinatanggap o kinakansela ng pasahero, o pagkatapos tanggapin kung kailangan ng paglilinaw tungkol sa pinned location, pickup point, delivery point, o ibang booking details. Limitahan ang usapan sa active booking.",
+        "ilo": "Makikontak laeng iti pasahero wenno customer para iti active booking. Mabalinka a makikontak kabayatan a pending pay ti Proposed Fare ken saan pay nga inawat wenno kinansela ti pasahero, wenno kalpasan ti acceptance no kasapulan ti klaripikasion maipanggep iti pinned location, pickup point, delivery point, wenno dadduma a booking details. Limitarem ti panagsarita iti active booking."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Pickup Distance",
+        "tl": "Pickup Distance",
+        "ilo": "Pickup Distance"
+      },
+      "question": {
+        "en": "How is the pickup fee measured?",
+        "tl": "Paano sinusukat ang pickup fee?",
+        "ilo": "Kasano a marukod ti pickup fee?"
+      },
+      "answer": {
+        "en": "JRide uses the driving-road route from your location or selected departure point to the passenger pickup pin. It is not based on a straight-line radius.",
+        "tl": "Gamit ng JRide ang driving-road route mula sa location mo o napili mong departure point papunta sa pickup pin ng passenger. Hindi ito straight-line radius.",
+        "ilo": "Usaren ti JRide ti driving-road route manipud iti location mo wenno napili a departure point agingga iti pickup pin ti passenger. Saan daytoy a straight-line radius."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Pickup Distance",
+        "tl": "Pickup Distance",
+        "ilo": "Pickup Distance"
+      },
+      "question": {
+        "en": "What are the pickup fee tiers?",
+        "tl": "Ano ang pickup fee tiers?",
+        "ilo": "Ania dagiti pickup fee tiers?"
+      },
+      "answer": {
+        "en": "The first 1.5 km is free. From over 1.5 km through 6.5 km, PHP 20 is charged for each started 500 m block. From over 6.5 km through 10 km, PHP 10 is charged for each started 500 m block. A normal assignment does not go beyond 10 km.",
+        "tl": "Libre ang unang 1.5 km. Lampas 1.5 km hanggang 6.5 km, PHP 20 sa bawat nagsimulang 500 m. Lampas 6.5 km hanggang 10 km, PHP 10 sa bawat nagsimulang 500 m. Ang normal assignment ay hindi lalampas sa 10 km.",
+        "ilo": "Libre ti umuna a 1.5 km. No lumabes iti 1.5 km agingga 6.5 km, PHP 20 kada nagsimula a 500 m. No lumabes iti 6.5 km agingga 10 km, PHP 10 kada nagsimula a 500 m. Ti normal assignment ket saan a lumabes iti 10 km."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Night Trips",
+        "tl": "Night Trips",
+        "ilo": "Biyahe iti Rabii"
+      },
+      "question": {
+        "en": "Do I calculate the night rate myself?",
+        "tl": "Ako ba ang magkokompyut ng night rate?",
+        "ilo": "Siak kadi ti mangkompyut iti night rate?"
+      },
+      "answer": {
+        "en": "No. Enter the normal LGU-based Proposed Fare. JRide applies the night adjustment based on the applicable booking time. This prevents the night rate from being added twice.",
+        "tl": "Hindi. Ilagay ang normal LGU-based Proposed Fare. JRide ang mag-aapply ng night adjustment batay sa naaangkop na booking time. Para hindi madoble ang night rate.",
+        "ilo": "Saan. Ikabil ti normal LGU-based Proposed Fare. JRide ti mangipakat iti night adjustment a nakabase iti maipakat a booking time. Tapno saan a mamindua ti night rate."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Night Trips",
+        "tl": "Night Trips",
+        "ilo": "Biyahe iti Rabii"
+      },
+      "question": {
+        "en": "What are the current night periods?",
+        "tl": "Ano ang kasalukuyang night periods?",
+        "ilo": "Ania dagiti agdama a night periods?"
+      },
+      "answer": {
+        "en": "5:00 AM to 7:59 PM uses the normal fare. 8:00 PM to 10:59 PM doubles the normal ride fare. 11:00 PM to 4:59 AM adds PHP 100 to the normal ride fare.",
+        "tl": "5:00 AM hanggang 7:59 PM ay normal fare. 8:00 PM hanggang 10:59 PM ay double ng normal ride fare. 11:00 PM hanggang 4:59 AM ay may dagdag na PHP 100 sa normal ride fare.",
+        "ilo": "5:00 AM agingga 7:59 PM ket normal fare. 8:00 PM agingga 10:59 PM ket mamindua ti normal ride fare. 11:00 PM agingga 4:59 AM ket adda nayon a PHP 100 iti normal ride fare."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "What do I do after I TAKE an Advance Booking?",
+        "tl": "Ano ang gagawin ko pagkatapos kong i-TAKE ang Advance Booking?",
+        "ilo": "Ania ti aramidek kalpasan nga inalak ti Advance Booking?"
+      },
+      "answer": {
+        "en": "Choose your departure source: Current GPS, Home, or Other. Enter the normal Proposed Fare based on the current applicable LGU fare matrix. JRide calculates the driving-road pickup distance, pickup fee, night adjustment, and platform fee. Submit the fare within the 10-minute fare-preparation window. After you submit it, the customer has a maximum of 30 minutes to accept the Proposed Fare. Do not proceed until the customer accepts.",
+        "tl": "Piliin ang departure source: Current GPS, Home, o Other. Ilagay ang normal Proposed Fare batay sa kasalukuyang applicable LGU fare matrix. JRide ang nagkakalkula ng driving-road pickup distance, pickup fee, night adjustment, at platform fee. I-submit ang fare sa loob ng 10-minute fare-preparation window. Pagkatapos mong i-submit, may maximum na 30 minuto ang customer para tanggapin ang Proposed Fare. Huwag magpatuloy hangga't hindi ito tinatanggap ng customer.",
+        "ilo": "Pilien ti departure source: Current GPS, Home, wenno Other. Ilagay ti normal Proposed Fare a naibatay iti agdama a maipakat nga LGU fare matrix. Ti JRide ti mangkalkula iti driving-road pickup distance, pickup fee, night adjustment, ken platform fee. I-submit ti fare iti uneg ti 10-minute fare-preparation window. Kalpasan nga naisubmitmo, adda maximum a 30 minutos ti customer tapno awaten ti Proposed Fare. Saan nga agtuloy agingga a saan pay nga awaten ti customer."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "What does Current GPS mean in Advance Booking?",
+        "tl": "Ano ang Current GPS sa Advance Booking?",
+        "ilo": "Ania ti Current GPS iti Advance Booking?"
+      },
+      "answer": {
+        "en": "Current GPS uses your recent live driver location as the departure point. Keep JRide online and location enabled so the location is fresh.",
+        "tl": "Ginagamit ng Current GPS ang recent live driver location mo bilang departure point. Panatilihing online ang JRide at naka-on ang location para sariwa ang location.",
+        "ilo": "Usaren ti Current GPS ti recent live driver location mo kas departure point. Talinaed a online ti JRide ken naka-on ti location tapno fresh ti location."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "What does Home mean in Advance Booking?",
+        "tl": "Ano ang Home sa Advance Booking?",
+        "ilo": "Ania ti Home iti Advance Booking?"
+      },
+      "answer": {
+        "en": "Home uses the saved driver home location as the departure point. Use it only when that is where you expect to leave from for the scheduled ride.",
+        "tl": "Ginagamit ng Home ang naka-save na driver home location bilang departure point. Gamitin ito kung doon ka talaga manggagaling para sa scheduled ride.",
+        "ilo": "Usaren ti Home ti naka-save a driver home location kas departure point. Usarem daytoy no sadiay ka talaga nga aggapu para iti scheduled ride."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "How long do I have to prepare and submit the Advance Booking fare?",
+        "tl": "Gaano katagal ang oras ko para ihanda at i-submit ang Advance Booking fare?",
+        "ilo": "Kasano kabayag ti oras ko a mangisagana ken mangi-submit iti Advance Booking fare?"
+      },
+      "answer": {
+        "en": "After you TAKE the Advance Booking, the fare-preparation window is 10 minutes. Within that time, choose the departure source, enter the normal LGU-based Proposed Fare, and submit it. If the window expires, the claim can expire and the booking may move to another driver.",
+        "tl": "Pagkatapos mong i-TAKE ang Advance Booking, 10 minuto ang fare-preparation window. Sa loob ng oras na iyon, piliin ang departure source, ilagay ang normal LGU-based Proposed Fare, at i-submit ito. Kapag nag-expire ang window, maaaring mag-expire ang claim at mapunta ang booking sa ibang driver.",
+        "ilo": "Kalpasan nga i-TAKE mo ti Advance Booking, 10 minutos ti fare-preparation window. Iti uneg dayta nga oras, pilien ti departure source, ikabil ti normal LGU-based Proposed Fare, ken i-submit daytoy. No mag-expire ti window, mabalin a mag-expire ti claim ken mapan ti booking iti sabali a driver."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Advance Booking",
+        "tl": "Advance Booking",
+        "ilo": "Advance Booking"
+      },
+      "question": {
+        "en": "How long does the customer have to accept my Advance Booking fare?",
+        "tl": "Gaano katagal puwedeng tanggapin ng customer ang Advance Booking fare ko?",
+        "ilo": "Kasano kabayag ti oras ti customer tapno awaten ti Advance Booking fare ko?"
+      },
+      "answer": {
+        "en": "After you submit the Advance Booking Proposed Fare, the customer has a maximum of 30 minutes to accept it. If the customer does not accept within 30 minutes, the proposal expires and the booking is cancelled or routed to another eligible driver depending on availability. Do not start the scheduled trip until the customer has accepted the Proposed Fare.",
+        "tl": "Pagkatapos mong i-submit ang Advance Booking Proposed Fare, may maximum na 30 minuto ang customer para tanggapin ito. Kapag hindi tinanggap sa loob ng 30 minuto, mag-e-expire ang proposal at kakanselahin ang booking o ira-route sa ibang eligible driver depende sa availability. Huwag simulan ang scheduled trip hangga't hindi tinatanggap ng customer ang Proposed Fare.",
+        "ilo": "Kalpasan nga naisubmitmo ti Advance Booking Proposed Fare, adda maximum a 30 minutos ti customer tapno awaten daytoy. No saan nga awaten iti uneg ti 30 minutos, mag-expire ti proposal ket makansela ti booking wenno ma-route iti sabali nga eligible driver depende iti availability. Saan nga irugi ti scheduled trip agingga a saan pay nga awaten ti customer ti Proposed Fare."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "What is the whole Takeout process for a driver?",
+        "tl": "Ano ang buong proseso ng Takeout para sa driver?",
+        "ilo": "Ania ti sibubukel a proseso ti Takeout para iti driver?"
+      },
+      "answer": {
+        "en": "1. The vendor must accept the customer's order first. The vendor has a maximum of 5 minutes. If the vendor does not accept within 5 minutes, JRide cancels the order. 2. After vendor acceptance, JRide chooses the driver based on the order amount. For PHP500 or below, JRide finds the nearest eligible driver to the vendor or store. If you accept, you go to the vendor and pay for the order upfront using your own money. For orders above PHP500, JRide finds the nearest eligible driver to the customer's pinned location. If you accept, you collect the order money from the customer first, then go to the vendor or store. 3. You have a maximum of 5 minutes to accept the Takeout notification. If you do not accept within 5 minutes, the offer expires and JRide routes it to the next eligible available driver. 4. After acceptance, submit the Proposed Delivery Fare based on the applicable LGU fare matrix within the 5-minute fare-proposal window. Do not manually add the PHP15 convenience/platform fee, night rate, or pickup-distance fee. JRide calculates those applicable charges. 5. The customer has a maximum of 5 minutes to accept the Proposed Delivery Fare or Total Bill. Do not proceed until the customer accepts. If the customer does not accept within 5 minutes, your assignment expires and JRide routes the booking to the next eligible available driver. 6. After customer acceptance, for PHP500 or below proceed to the vendor and pay the order upfront. For orders above PHP500, go first to the customer's pinned location, collect the order money, then proceed to the vendor. 7. Collect the correct order and deliver it to the customer's pinned location. 8. Complete the Takeout trip only after the customer receives the correct order and the total amount due is fully settled.",
+        "tl": "1. Kailangang tanggapin muna ng vendor ang order ng customer. May maximum na 5 minuto ang vendor. Kapag hindi tinanggap sa loob ng 5 minuto, kakanselahin ng JRide ang order. 2. Pagkatapos tanggapin ng vendor, pipili ang JRide ng driver batay sa halaga ng order. Kung PHP500 pababa, hahanapin ang pinakamalapit na eligible na driver sa vendor o store. Kapag tinanggap mo ang offer, pupunta ka sa vendor at babayaran mo ang order nang buo gamit muna ang sarili mong pera. Kung higit sa PHP500, hahanapin ang pinakamalapit na eligible na driver sa pinned location ng customer. Kapag tinanggap mo ang offer, kukunin mo muna ang pambayad sa customer bago pumunta sa vendor o store. 3. May maximum na 5 minuto ka para tanggapin ang Takeout notification. Kapag hindi mo tinanggap sa loob ng 5 minuto, mag-e-expire ang offer at ira-route ito ng JRide sa susunod na eligible at available na driver. 4. Pagkatapos tanggapin, i-submit ang Proposed Delivery Fare batay sa naaangkop na LGU fare matrix sa loob ng 5-minute fare-proposal window. Huwag manu-manong idagdag ang PHP15 convenience/platform fee, night rate, o pickup-distance fee. JRide ang nagkakalkula ng mga applicable na bayad na ito. 5. May maximum na 5 minuto ang customer para tanggapin ang Proposed Delivery Fare o Total Bill. Huwag magpatuloy hangga't hindi ito tinatanggap ng customer. Kapag hindi tinanggap sa loob ng 5 minuto, mag-e-expire ang assignment mo at ira-route ng JRide ang booking sa susunod na eligible at available na driver. 6. Pagkatapos tanggapin ng customer, kung PHP500 pababa, pumunta sa vendor at bayaran ang order nang buo. Kung higit sa PHP500, pumunta muna sa pinned location ng customer, kunin ang pambayad, pagkatapos ay pumunta sa vendor. 7. Kunin ang tamang order at ihatid ito sa pinned location ng customer. 8. I-complete lamang ang Takeout trip kapag natanggap ng customer ang tamang order at kumpleto nang nabayaran ang lahat ng dapat bayaran.",
+        "ilo": "1. Masapul nga awaten nga umuna ti vendor ti order ti customer. Adda maximum a 5 minutos ti vendor. No saan nga awaten iti uneg ti 5 minutos, kanselaen ti JRide ti order. 2. Kalpasan ti vendor acceptance, pilien ti JRide ti driver a naibatay iti gatad ti order. No PHP500 wenno nababbaba, agbiruk ti JRide iti kaasitgan nga eligible a driver iti vendor wenno store. No awatem ti offer, mapanka iti vendor ket bayadam ti order nga umuna babaen iti bukodmo a kuarta. No nasurok ngem PHP500, agbiruk ti JRide iti kaasitgan nga eligible a driver iti pinned location ti customer. No awatem ti offer, alaem nga umuna ti pagbayad manipud iti customer sakbay a mapanka iti vendor wenno store. 3. Adda maximum a 5 minutos mo tapno awaten ti Takeout notification. No saanmo nga awaten iti uneg ti 5 minutos, mag-expire ti offer ket i-route ti JRide daytoy iti sumaruno nga eligible ken available a driver. 4. Kalpasan nga inawatmo, i-submit ti Proposed Delivery Fare a naibatay iti maiyanatup nga LGU fare matrix iti uneg ti 5-minute fare-proposal window. Saanmo nga inayon a manual ti PHP15 convenience/platform fee, night rate, wenno pickup-distance fee. Ti JRide ti mangkalkula kadagitoy a maipakat a bayad. 5. Adda maximum a 5 minutos ti customer tapno awaten ti Proposed Delivery Fare wenno Total Bill. Saan nga agtuloy agingga a saan pay nga awaten ti customer. No saan nga awaten iti uneg ti 5 minutos, mag-expire ti assignment mo ket i-route ti JRide ti booking iti sumaruno nga eligible ken available a driver. 6. Kalpasan ti customer acceptance, no PHP500 wenno nababbaba, mapan iti vendor ken bayadan ti order nga umuna. No nasurok ngem PHP500, mapan nga umuna iti pinned location ti customer, alaen ti pagbayad, kalpasanna mapan iti vendor. 7. Alaen ti umno nga order ken ideliver daytoy iti pinned location ti customer. 8. I-complete laeng ti Takeout trip no naawat ti customer ti umno nga order ken nabukel a nabayadan ti amin a kasapulan a bayad."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "Why do I sometimes go to the vendor first and sometimes to the customer first?",
+        "tl": "Bakit minsan sa vendor muna ako pupunta at minsan sa customer muna?",
+        "ilo": "Apay a no dadduma vendor ti umuna a papanak, ngem no dadduma customer?"
+      },
+      "answer": {
+        "en": "JRide uses a PHP500 order-value rule to protect drivers from having to advance large amounts of personal money. For PHP500 or below, JRide selects the nearest eligible driver to the vendor or store, and that driver pays for the order upfront using the driver's own money. For orders above PHP500, JRide selects the nearest eligible driver to the customer's pinned location. The driver collects the order money from the customer first, then proceeds to the vendor or store.",
+        "tl": "Gumagamit ang JRide ng PHP500 order-value rule para hindi mapilit ang driver na mag-abono ng malaking halaga ng sariling pera. Kung PHP500 pababa, pinipili ng JRide ang pinakamalapit na eligible na driver sa vendor o store, at babayaran ng driver ang order nang buo gamit muna ang sarili niyang pera. Kung higit sa PHP500, pinipili ng JRide ang pinakamalapit na eligible na driver sa pinned location ng customer. Kukunin muna ng driver ang pambayad sa customer bago pumunta sa vendor o store.",
+        "ilo": "Usaren ti JRide ti PHP500 order-value rule tapno saan a mapilitan ti driver nga ag-abono iti dakkel a personal a kuarta. No PHP500 wenno nababbaba, pilien ti JRide ti kaasitgan nga eligible a driver iti vendor wenno store, ket bayadan ti driver ti order nga umuna babaen iti bukodna a kuarta. No nasurok ngem PHP500, pilien ti JRide ti kaasitgan nga eligible a driver iti pinned location ti customer. Alaen nga umuna ti driver ti pagbayad manipud iti customer sakbay a mapan iti vendor wenno store."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "When will I receive a Takeout job?",
+        "tl": "Kailan ako makakatanggap ng Takeout job?",
+        "ilo": "Kaanoak a makaawat iti Takeout job?"
+      },
+      "answer": {
+        "en": "The vendor must accept the customer order first. The vendor has a maximum of 5 minutes. After vendor acceptance, JRide searches for an eligible driver based on the order amount: PHP500 or below uses the vendor/store as the driver-search point; above PHP500 uses the customer's pinned location.",
+        "tl": "Kailangang tanggapin muna ng vendor ang order ng customer. May maximum na 5 minuto ang vendor. Pagkatapos tanggapin ng vendor, maghahanap ang JRide ng eligible na driver batay sa halaga ng order: kung PHP500 pababa, vendor/store ang basehan ng paghahanap; kung higit sa PHP500, pinned location ng customer ang basehan.",
+        "ilo": "Masapul nga awaten nga umuna ti vendor ti order ti customer. Adda maximum a 5 minutos ti vendor. Kalpasan ti vendor acceptance, agbiruk ti JRide iti eligible a driver a naibatay iti gatad ti order: no PHP500 wenno nababbaba, vendor/store ti pagbasaran; no nasurok ngem PHP500, pinned location ti customer ti pagbasaran."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Takeout",
+        "tl": "Takeout",
+        "ilo": "Takeout"
+      },
+      "question": {
+        "en": "How do I submit the Takeout delivery fare?",
+        "tl": "Paano ko isusumite ang Takeout delivery fare?",
+        "ilo": "Kasano nga i-submit ko ti Takeout delivery fare?"
+      },
+      "answer": {
+        "en": "After you accept the Takeout notification, submit the Proposed Delivery Fare based on the applicable LGU fare matrix within the 5-minute fare-proposal window. JRide adds the PHP15 convenience/platform fee and, when applicable, the night rate and pickup-distance fee beyond the first 1.5 km free road pickup distance. JRide calculates these applicable charges. The driver should not add them manually. Wait for the customer to accept the Proposed Delivery Fare or Total Bill before you proceed.",
+        "tl": "Pagkatapos mong tanggapin ang Takeout notification, i-submit ang Proposed Delivery Fare batay sa naaangkop na LGU fare matrix sa loob ng 5-minute fare-proposal window. Idadagdag ng JRide ang PHP15 convenience/platform fee at, kung applicable, ang night rate at pickup-distance fee lampas sa unang 1.5 km na libreng road pickup distance. JRide ang nagkakalkula ng mga applicable na bayad na ito. Hindi dapat manu-manong idagdag ng driver ang mga ito. Hintayin munang tanggapin ng customer ang Proposed Delivery Fare o Total Bill bago magpatuloy.",
+        "ilo": "Kalpasan nga awatem ti Takeout notification, i-submit ti Proposed Delivery Fare a naibatay iti maiyanatup nga LGU fare matrix iti uneg ti 5-minute fare-proposal window. Inayon ti JRide ti PHP15 convenience/platform fee ken, no maipakat, ti night rate ken pickup-distance fee kalpasan ti umuna a 1.5 km a libre a road pickup distance. Ti JRide ti mangkalkula kadagitoy a maipakat a bayad. Saan koma nga inayon ti driver dagitoy a manual. Urayen nga awaten ti customer ti Proposed Delivery Fare wenno Total Bill sakbay nga agtuloy."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Location and GPS",
+        "tl": "Location at GPS",
+        "ilo": "Location ken GPS"
+      },
+      "question": {
+        "en": "Why must my location stay on?",
+        "tl": "Bakit kailangang naka-on ang location ko?",
+        "ilo": "Apay a masapul a naka-on ti location ko?"
+      },
+      "answer": {
+        "en": "JRide uses your location to know whether you are available, rank eligible drivers, calculate road pickup distance, and help the passenger track the trip. Keep location permission and GPS on while you are working.",
+        "tl": "Ginagamit ng JRide ang location mo para malaman kung available ka, pumili ng eligible drivers, kalkulahin ang road pickup distance, at tulungan ang passenger sa tracking. Panatilihing naka-on ang location permission at GPS habang naka-duty.",
+        "ilo": "Usaren ti JRide ti location mo tapno maammoan no available ka, agpili iti eligible drivers, mangkalkula iti road pickup distance, ken tumulong iti passenger tracking. Talinaed a naka-on ti location permission ken GPS bayat nga ag-duty ka."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Location and GPS",
+        "tl": "Location at GPS",
+        "ilo": "Location ken GPS"
+      },
+      "question": {
+        "en": "What if the app says my GPS is stale or unavailable?",
+        "tl": "Paano kung stale o unavailable ang GPS ko?",
+        "ilo": "Kasano no stale wenno unavailable ti GPS ko?"
+      },
+      "answer": {
+        "en": "Make sure GPS and mobile data are on, JRide has location permission, and the app is allowed to run in the background. Go online again if needed and wait for the location to refresh before accepting work that needs a fresh location.",
+        "tl": "Siguraduhing naka-on ang GPS at mobile data, may location permission ang JRide, at puwedeng tumakbo ang app sa background. Mag-online ulit kung kailangan at hintaying mag-refresh ang location bago tumanggap ng work na kailangan ng fresh location.",
+        "ilo": "Siguraduen a naka-on ti GPS ken mobile data, adda location permission ti JRide, ken mabalin nga agtaray ti app iti background. Ag-online manen no kasapulan ken urayen ti location refresh sakbay nga umawat iti work a kasapulan ti fresh location."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Trip Procedure",
+        "tl": "Trip Procedure",
+        "ilo": "Proseso ti Trip"
+      },
+      "question": {
+        "en": "When should I tap Start Trip?",
+        "tl": "Kailan ko pipindutin ang Start Trip?",
+        "ilo": "Kaanoak nga i-tap ti Start Trip?"
+      },
+      "answer": {
+        "en": "Tap Start Trip only when the passenger is already with you and the ride is beginning. Follow the status order shown by the app. Do not skip lifecycle steps.",
+        "tl": "Pindutin ang Start Trip kapag kasama mo na ang passenger at magsisimula na ang biyahe. Sundin ang tamang status order sa app. Huwag laktawan ang lifecycle steps.",
+        "ilo": "I-tap ti Start Trip no adda kenkan ti passenger ken mangrugi ti biyahe. Suroten ti husto a status order iti app. Saan nga laktawan dagiti lifecycle steps."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Trip Procedure",
+        "tl": "Trip Procedure",
+        "ilo": "Proseso ti Trip"
+      },
+      "question": {
+        "en": "When is a Ride trip completed?",
+        "tl": "Kailan completed ang Ride trip?",
+        "ilo": "Kaano a completed ti Ride trip?"
+      },
+      "answer": {
+        "en": "Complete the Ride only after the passenger has safely arrived at the destination and the fare has been settled. Do not tap Complete or Drop Off early.",
+        "tl": "I-complete lamang ang Ride pagkatapos makarating nang ligtas ang pasahero sa destination at settled na ang fare. Huwag pindutin nang maaga ang Complete o Drop Off.",
+        "ilo": "I-complete laeng ti Ride kalpasan a nakadanon a sitatalged ti pasahero iti destination ken nasettled ti fare. Saan nga i-tap nga nasapa ti Complete wenno Drop Off."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Trip Procedure",
+        "tl": "Trip Procedure",
+        "ilo": "Trip Procedure"
+      },
+      "question": {
+        "en": "When is a Takeout trip completed?",
+        "tl": "Kailan completed ang Takeout trip?",
+        "ilo": "Kaano a completed ti Takeout trip?"
+      },
+      "answer": {
+        "en": "Complete the Takeout trip only after the customer has received the correct order and the total amount due has been settled. Do not mark the delivery complete before both are done.",
+        "tl": "I-complete lamang ang Takeout trip pagkatapos matanggap ng customer ang tamang order at settled na ang buong halagang dapat bayaran. Huwag i-mark na complete ang delivery bago mangyari ang dalawang ito.",
+        "ilo": "I-complete laeng ti Takeout trip kalpasan nga naawat ti customer ti husto nga order ken nasettled ti amin a bayad. Saan nga i-mark a complete ti delivery sakbay a naaramid dagitoy a dua."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Account and Wallet",
+        "tl": "Account at Wallet",
+        "ilo": "Account ken Wallet"
+      },
+      "question": {
+        "en": "Why can I be blocked from an assignment?",
+        "tl": "Bakit puwede akong hindi ma-assign?",
+        "ilo": "Apay a mabalin a saanak nga ma-assign?"
+      },
+      "answer": {
+        "en": "JRide checks your online status, recent location, town and vehicle eligibility, active-trip status, and wallet requirement before assignment. Read the message shown by the app if an assignment is blocked.",
+        "tl": "Tinitingnan ng JRide ang online status, recent location, town at vehicle eligibility, active trip, at wallet requirement bago mag-assign. Basahin ang message sa app kung na-block ang assignment.",
+        "ilo": "Kitaen ti JRide ti online status, recent location, town ken vehicle eligibility, active trip, ken wallet requirement sakbay ti assignment. Basaen ti message iti app no na-block ti assignment."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Problems and Help",
+        "tl": "Problema at Tulong",
+        "ilo": "Problema ken Tulong"
+      },
+      "question": {
+        "en": "What should I do if a booking does not proceed?",
+        "tl": "Ano ang gagawin ko kung hindi nagpapatuloy ang booking?",
+        "ilo": "Ania ti aramidek no saan nga agtuloy ti booking?"
+      },
+      "answer": {
+        "en": "Read the status and error message first. Check your data connection, GPS, and whether the passenger still needs to accept a fare. Do not create or force duplicate actions. If the problem continues, contact the dispatcher and give the booking code.",
+        "tl": "Basahin muna ang status at error message. Tingnan ang data connection, GPS, at kung kailangan pang tanggapin ng passenger ang fare. Huwag gumawa o pilitin ang duplicate actions. Kung tuloy ang problema, kontakin ang dispatcher at ibigay ang booking code.",
+        "ilo": "Basaen nga umuna ti status ken error message. Kitaen ti data connection, GPS, ken no masapul pay nga awaten ti passenger ti fare. Saan nga agaramid wenno mangpilit iti duplicate actions. No agtultuloy ti problema, kontakem ti dispatcher ken ited ti booking code."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Problems and Help",
+        "tl": "Problema at Tulong",
+        "ilo": "Problema ken Tulong"
+      },
+      "question": {
+        "en": "When should I contact the dispatcher?",
+        "tl": "Kailan ako dapat makipag-ugnayan sa dispatcher?",
+        "ilo": "Kaanoak a masapul nga kontakem ti dispatcher?"
+      },
+      "answer": {
+        "en": "Contact the dispatcher when the app cannot resolve an urgent booking problem, a safety concern, a payment or fare dispute, or a trip that will not complete or cancel correctly. Keep the booking code and your driver ID ready.",
+        "tl": "Kontakin ang dispatcher kapag hindi maresolba ng app ang urgent booking problem, safety concern, payment o fare dispute, o trip na hindi ma-complete o ma-cancel nang tama. Ihanda ang booking code at driver ID mo.",
+        "ilo": "Kontakem ti dispatcher no saan a maresolba ti app ti urgent booking problem, safety concern, payment wenno fare dispute, wenno trip a saan a ma-complete wenno ma-cancel a husto. Isaganam ti booking code ken driver ID mo."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Problems and Help",
+        "tl": "Mga Problema at Tulong",
+        "ilo": "Dagiti Parikut ken Tulong"
+      },
+      "question": {
+        "en": "How do I report a passenger or customer?",
+        "tl": "Paano ako mag-report ng pasahero o customer?",
+        "ilo": "Kasanoak a mangireport iti pasahero wenno customer?"
+      },
+      "answer": {
+        "en": "Send the report through the official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nInclude the booking code, a screenshot of the trip details when available, and a short factual description of what happened. JRide will review the booking records and information from both sides independently before deciding what action is appropriate. Do not post the passenger's private information publicly.",
+        "tl": "Ipadala ang report sa official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIsama ang booking code, screenshot ng trip details kung available, at maikling factual na paliwanag ng nangyari. Independent na rerepasuhin ng JRide ang booking records at impormasyon mula sa magkabilang panig bago magdesisyon kung anong action ang angkop. Huwag i-post sa publiko ang private information ng passenger.",
+        "ilo": "Ipatulod ti report iti official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIkabil ti booking code, screenshot ti trip details no adda, ken ababa ken factual a pannakailawlawag ti napasamak. Independent a repasuen ti JRide dagiti booking records ken impormasyon manipud kadagiti dua a partido sakbay a mangikeddeng iti maitutop nga action. Saan nga ipablaak iti publiko ti private information ti passenger."
+      }
+    }
+  ],
+  "generated_note": "JRide Help & FAQ v6. Adds clickable external web/email links, Advance Booking 30-minute passenger fare response, Proposed Fare rationale, consultation/permit/convenience-fee information, official channels, jobs, custom software services, event technology services, and Apple/Windows browser access."
+}
