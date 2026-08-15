@@ -27,6 +27,67 @@ function isUuid(v: string) {
   return /^[0-9a-fA-F]{8}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{4}\-[0-9a-fA-F]{12}$/.test(v);
 }
 
+function assignmentGuardResponse(
+  message: unknown,
+  extra: Record<string, unknown>
+) {
+  const raw = String(message ?? "");
+
+  if (raw.includes("DRIVER_ROSTER_INELIGIBLE:")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "DRIVER_ROSTER_INELIGIBLE",
+        error: "driver_roster_ineligible",
+        message: "Driver is not active on the JRide roster.",
+        ...extra,
+      },
+      { status: 409 }
+    );
+  }
+
+  if (raw.includes("DRIVER_WALLET_LOCKED:")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "DRIVER_WALLET_LOCKED",
+        error: "driver_wallet_locked",
+        message: "Driver wallet is locked.",
+        ...extra,
+      },
+      { status: 409 }
+    );
+  }
+
+  if (raw.includes("DRIVER_WALLET_BELOW_MINIMUM:")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "DRIVER_WALLET_BELOW_MINIMUM",
+        error: "driver_wallet_below_minimum",
+        message: "Driver wallet balance is below the minimum required for new bookings.",
+        ...extra,
+      },
+      { status: 409 }
+    );
+  }
+
+  if (raw.includes("DRIVER_WALLET_NOT_FOUND:")) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "DRIVER_WALLET_NOT_FOUND",
+        error: "driver_not_found",
+        message: "Driver record was not found.",
+        ...extra,
+      },
+      { status: 404 }
+    );
+  }
+
+  return null;
+}
+
 export async function POST(req: Request) {
   const gate = await requireStaff();
   if (!gate.ok) {
@@ -82,6 +143,15 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (upd.error) {
+    const guardResponse = assignmentGuardResponse(
+      upd.error.message,
+      { booking_code, driver_id }
+    );
+
+    if (guardResponse) {
+      return guardResponse;
+    }
+
     return NextResponse.json(
       { ok: false, code: "UPDATE_FAILED", message: upd.error.message, booking_code, driver_id },
       { status: 500 }
