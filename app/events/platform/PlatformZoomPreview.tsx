@@ -4,8 +4,11 @@ import * as React from "react";
 import Image from "next/image";
 
 type Props = {
+  title: string;
   label: string;
   imageSrc: string;
+  imageFit?: "cover" | "contain";
+  liveDemoHref?: string;
 };
 
 const MIN_ZOOM = 75;
@@ -13,9 +16,12 @@ const MAX_ZOOM = 250;
 const ZOOM_STEP = 25;
 const DEFAULT_ZOOM = 125;
 
-export default function GenealogyPlatformPreview({
+export default function PlatformZoomPreview({
+  title,
   label,
   imageSrc,
+  imageFit = "cover",
+  liveDemoHref,
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const [zoom, setZoom] = React.useState(DEFAULT_ZOOM);
@@ -59,7 +65,7 @@ export default function GenealogyPlatformPreview({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="group block w-full cursor-zoom-in overflow-hidden rounded-2xl border border-cyan-300/30 bg-slate-950 text-left transition hover:border-cyan-300"
+        className="group block w-full cursor-zoom-in overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 text-left transition hover:border-cyan-300"
         aria-label={`Enlarge ${label} preview`}
       >
         <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
@@ -80,7 +86,11 @@ export default function GenealogyPlatformPreview({
             alt={`${label} preview`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-contain object-center"
+            className={
+              imageFit === "contain"
+                ? "object-contain object-center"
+                : "object-cover object-top"
+            }
           />
         </div>
       </button>
@@ -101,10 +111,10 @@ export default function GenealogyPlatformPreview({
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-300">
-                  Family Reunion & Genealogy
+                  {title}
                 </p>
                 <p className="mt-1 text-sm font-bold text-white">
-                  Expanding five-generation showcase
+                  {label}
                 </p>
               </div>
 
@@ -141,14 +151,16 @@ export default function GenealogyPlatformPreview({
                   Reset
                 </button>
 
-                <a
-                  href="/events/ifugao-family-reunion-showcase/family-tree"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-slate-950"
-                >
-                  Open Live Demo
-                </a>
+                {liveDemoHref ? (
+                  <a
+                    href={liveDemoHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-lg bg-amber-400 px-3 py-2 text-xs font-black text-slate-950"
+                  >
+                    Open Live Demo
+                  </a>
+                ) : null}
 
                 <button
                   type="button"
@@ -165,7 +177,7 @@ export default function GenealogyPlatformPreview({
                 className="relative mx-auto min-w-full"
                 style={{
                   width: `${zoom}%`,
-                  aspectRatio: "1352 / 795",
+                  aspectRatio: "4 / 3",
                 }}
               >
                 <Image
@@ -180,7 +192,7 @@ export default function GenealogyPlatformPreview({
             </div>
 
             <div className="border-t border-slate-800 px-4 py-3 text-xs text-slate-400">
-              Use the zoom controls above, then scroll horizontally or vertically to inspect individual family branches. Press Escape to close.
+              Use the zoom controls above, then scroll horizontally or vertically to inspect the preview. Press Escape to close.
             </div>
           </div>
         </div>

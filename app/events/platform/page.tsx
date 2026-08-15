@@ -1,7 +1,7 @@
 ﻿import * as React from "react";
 import Image from "next/image";
 import type { Metadata } from "next";
-import GenealogyPlatformPreview from "./GenealogyPlatformPreview";
+import PlatformZoomPreview from "./PlatformZoomPreview";
 
 export const metadata: Metadata = {
   title: "JRide Events | Powerful Event Management for All Kinds of Occasions",
@@ -20,7 +20,6 @@ type FeatureCard = {
   screenshotLabel: string;
   imageSrc: string;
   imageFit?: "cover" | "contain";
-  zoomable?: boolean;
   liveDemoHref?: string;
 };
 
@@ -97,7 +96,6 @@ const features: FeatureCard[] = [
     screenshotLabel: "Five-generation family tree",
     imageSrc: "/platform/family-reunion-genealogy.png",
     imageFit: "contain",
-    zoomable: true,
     liveDemoHref:
       "/events/ifugao-family-reunion-showcase/family-tree",
   },
@@ -227,42 +225,6 @@ const perfectFor = [
   "Private Occasions",
 ];
 
-function PlatformPreview({
-  label,
-  imageSrc,
-  imageFit = "cover",
-}: {
-  label: string;
-  imageSrc: string;
-  imageFit?: "cover" | "contain";
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950">
-      <div className="flex items-center gap-2 border-b border-slate-800 px-3 py-2">
-        <span className="h-2 w-2 rounded-full bg-red-400" />
-        <span className="h-2 w-2 rounded-full bg-amber-300" />
-        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-        <span className="ml-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
-          Platform preview
-        </span>
-      </div>
-
-      <div className="relative aspect-[4/3] w-full bg-slate-950">
-        <Image
-          src={imageSrc}
-          alt={`${label} preview`}
-          fill
-          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-          className={
-            imageFit === "contain"
-              ? "object-contain object-center"
-              : "object-cover object-top"
-          }
-        />
-      </div>
-    </div>
-  );
-}
 
 export default function JRideEventsPlatformPage() {
   return (
@@ -368,18 +330,13 @@ export default function JRideEventsPlatformPage() {
                 key={feature.title}
                 className="rounded-3xl border border-slate-800 bg-slate-900 p-5"
               >
-                {feature.zoomable ? (
-                  <GenealogyPlatformPreview
-                    label={feature.screenshotLabel}
-                    imageSrc={feature.imageSrc}
-                  />
-                ) : (
-                  <PlatformPreview
-                    label={feature.screenshotLabel}
-                    imageSrc={feature.imageSrc}
-                    imageFit={feature.imageFit}
-                  />
-                )}
+                <PlatformZoomPreview
+                  title={feature.title}
+                  label={feature.screenshotLabel}
+                  imageSrc={feature.imageSrc}
+                  imageFit={feature.imageFit}
+                  liveDemoHref={feature.liveDemoHref}
+                />
 
                 <h3 className="mt-4 text-lg font-black">{feature.title}</h3>
                 <p className="mt-2 text-sm text-slate-400">
