@@ -18,6 +18,7 @@ type DriverWalletRow = {
   wallet_balance: number | null;
   min_wallet_required: number | null;
   wallet_locked: boolean | null;
+  roster_status: string | null;
 };
 
 type BookingRow = {
@@ -210,6 +211,7 @@ type MatchDebug = {
   rejected_excluded_count: number;
   rejected_wrong_town_count: number;
   rejected_wrong_vehicle_count: number;
+  rejected_roster_ineligible_count: number;
   rejected_low_wallet_count: number;
   rejected_wallet_locked_count: number;
   rejected_road_distance_unavailable_count: number;
@@ -327,6 +329,7 @@ async function matchSingle(
     rejected_excluded_count: 0,
     rejected_wrong_town_count: 0,
     rejected_wrong_vehicle_count: 0,
+    rejected_roster_ineligible_count: 0,
     rejected_low_wallet_count: 0,
     rejected_wallet_locked_count: 0,
     rejected_road_distance_unavailable_count: 0,
@@ -422,7 +425,7 @@ async function matchSingle(
   if (driverIds.length > 0) {
     const { data: walletRows, error: walletError } = await supabase
       .from("drivers")
-      .select("id, wallet_balance, min_wallet_required, wallet_locked")
+      .select("id, wallet_balance, min_wallet_required, wallet_locked, roster_status")
       .in("id", driverIds);
 
     if (walletError) {
@@ -526,9 +529,16 @@ async function matchSingle(
     }
 
     const wallet = walletByDriverId.get(text(d.driver_id));
+    const rosterStatus = norm(wallet?.roster_status);
+    const rosterEligible = !rosterStatus || rosterStatus === "active";
     const walletLocked = Boolean(wallet?.wallet_locked);
     const walletBalance = num(wallet?.wallet_balance) ?? 0;
     const walletMinRequired = effectiveMinWalletRequired(wallet?.min_wallet_required);
+
+    if (!rosterEligible) {
+      debug.rejected_roster_ineligible_count++;
+      continue;
+    }
 
     if (walletLocked) {
       debug.rejected_wallet_locked_count++;

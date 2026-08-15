@@ -194,11 +194,17 @@ async function isDriverWalletEligible(supabase: any, driverId: string) {
   const balance = num((data as any).wallet_balance);
   const minRequired = effectiveMinWalletRequired((data as any).min_wallet_required);
   const walletLocked = Boolean((data as any).wallet_locked);
-  const eligible = !walletLocked && balance >= minRequired;
+  const rosterStatus = cleanStatus((data as any).roster_status) || null;
+  const rosterEligible = rosterStatus === null || rosterStatus === "active";
+  const walletEligible = !walletLocked && balance >= minRequired;
+  const eligible = rosterEligible && walletEligible;
 
   return {
     ok: true as const,
     eligible,
+    rosterStatus,
+    rosterEligible,
+    walletEligible,
     balance,
     minRequired,
     walletLocked,
@@ -559,7 +565,19 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (!explicitEligibility.eligible) {
+      if (!explicitEligibility.rosterEligible) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "driver_roster_ineligible",
+            driver_id: explicitDriverId,
+            roster_status: explicitEligibility.rosterStatus,
+          },
+          { status: 409 }
+        );
+      }
+
+      if (!explicitEligibility.walletEligible) {
         return NextResponse.json(
           {
             ok: false,
@@ -848,7 +866,14 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        if (!eligibility.eligible) {
+        if (!eligibility.rosterEligible) {
+          diag.rejected_at = "roster_status";
+          diag.rejected_reason = "driver_roster_ineligible";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
+        if (!eligibility.walletEligible) {
           diag.rejected_at = "wallet_balance";
           diag.rejected_reason = "wallet_not_eligible";
           assignDiagnostics.push(diag);
