@@ -1,6 +1,7 @@
 ﻿import * as React from "react";
 import Image from "next/image";
 import type { Metadata } from "next";
+import GenealogyPlatformPreview from "./GenealogyPlatformPreview";
 
 export const metadata: Metadata = {
   title: "JRide Events | Powerful Event Management for All Kinds of Occasions",
@@ -19,6 +20,8 @@ type FeatureCard = {
   screenshotLabel: string;
   imageSrc: string;
   imageFit?: "cover" | "contain";
+  zoomable?: boolean;
+  liveDemoHref?: string;
 };
 
 const occasions: Occasion[] = [
@@ -94,6 +97,9 @@ const features: FeatureCard[] = [
     screenshotLabel: "Five-generation family tree",
     imageSrc: "/platform/family-reunion-genealogy.png",
     imageFit: "contain",
+    zoomable: true,
+    liveDemoHref:
+      "/events/ifugao-family-reunion-showcase/family-tree",
   },
   {
     title: "Check-in Scanner",
@@ -362,11 +368,18 @@ export default function JRideEventsPlatformPage() {
                 key={feature.title}
                 className="rounded-3xl border border-slate-800 bg-slate-900 p-5"
               >
-                <PlatformPreview
-                  label={feature.screenshotLabel}
-                  imageSrc={feature.imageSrc}
-                  imageFit={feature.imageFit}
-                />
+                {feature.zoomable ? (
+                  <GenealogyPlatformPreview
+                    label={feature.screenshotLabel}
+                    imageSrc={feature.imageSrc}
+                  />
+                ) : (
+                  <PlatformPreview
+                    label={feature.screenshotLabel}
+                    imageSrc={feature.imageSrc}
+                    imageFit={feature.imageFit}
+                  />
+                )}
 
                 <h3 className="mt-4 text-lg font-black">{feature.title}</h3>
                 <p className="mt-2 text-sm text-slate-400">
@@ -384,6 +397,17 @@ export default function JRideEventsPlatformPage() {
                     </li>
                   ))}
                 </ul>
+
+                {feature.liveDemoHref ? (
+                  <a
+                    href={feature.liveDemoHref}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 inline-flex rounded-xl border border-cyan-300/40 bg-cyan-950/20 px-4 py-2.5 text-xs font-black text-cyan-200 transition hover:border-cyan-300"
+                  >
+                    Open Live Family Tree Demo
+                  </a>
+                ) : null}
               </div>
             ))}
           </div>
