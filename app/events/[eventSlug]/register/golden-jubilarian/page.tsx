@@ -193,7 +193,7 @@ export default function GoldenJubilarianRegistrationPage() {
     }
     if (joinFunWalk === null) return "Please answer whether you will join the Fun Walk.";
     if (joinFunWalk === true) {
-      if (ticketNumber.trim().length < 3 || claimCode.trim().length < 8) {
+      if (!ticketNumber.trim() || claimCode.trim().length < 8) {
         return "Ticket Number and Private Claim Code are required to join the Fun Walk.";
       }
     }
@@ -218,7 +218,7 @@ export default function GoldenJubilarianRegistrationPage() {
 
       if (companion.joinFunWalk === true) {
         if (
-          companion.ticketNumber.trim().length < 3 ||
+          !companion.ticketNumber.trim() ||
           companion.claimCode.trim().length < 8
         ) {
           return `Companion ${i + 1}: Ticket Number and Private Claim Code are required to join the Fun Walk.`;
@@ -555,7 +555,7 @@ export default function GoldenJubilarianRegistrationPage() {
                                       })
                                     }
                                     className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
-                                    placeholder="e.g. FR-002"
+                                    placeholder="Regular: 344 | Sponsor: SP-033"
                                     autoCapitalize="characters"
                                   />
                                 </label>
@@ -614,7 +614,7 @@ export default function GoldenJubilarianRegistrationPage() {
                       value={ticketNumber}
                       onChange={(event) => setTicketNumber(event.target.value)}
                       className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 uppercase text-white outline-none focus:border-amber-300"
-                      placeholder="e.g. FR-001"
+                      placeholder="Regular: 344 | Sponsor: SP-033"
                       autoCapitalize="characters"
                     />
                   </label>

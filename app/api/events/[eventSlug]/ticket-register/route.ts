@@ -90,6 +90,7 @@ function statusForResultCode(resultCode: string) {
       return 429;
 
     case "DUPLICATE_MOBILE":
+    case "DUPLICATE_NAME":
     case "TICKET_UNAVAILABLE":
     case "EVENT_NOT_OPEN":
     case "REGISTRATION_NOT_STARTED":

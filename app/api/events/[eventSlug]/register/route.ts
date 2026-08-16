@@ -103,6 +103,8 @@ function statusForResultCode(resultCode: string) {
 
     case "DUPLICATE_MOBILE":
     case "DUPLICATE_MOBILE_IN_SUBMISSION":
+    case "DUPLICATE_NAME":
+    case "DUPLICATE_NAME_IN_SUBMISSION":
     case "DUPLICATE_TICKET_IN_SUBMISSION":
     case "TICKET_UNAVAILABLE":
     case "EVENT_NOT_OPEN":
