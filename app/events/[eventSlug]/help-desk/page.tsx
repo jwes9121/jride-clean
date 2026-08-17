@@ -115,24 +115,15 @@ type DisqualifyResponse = {
   error?: string;
 };
 
-// Walk-in registration result
-type WalkInRegisteredGuest = {
-  attendeeId: string;
-  fullName: string;
-  registrationNumber: string;
-  passUrl: string;
-  relationship: string;
-};
-
+// Manual ticket registration result
 type WalkInResult = {
   attendeeId: string;
   fullName: string;
+  ticketNumber: string;
   registrationNumber: string;
   eventPassUrl: string;
-  guests: WalkInRegisteredGuest[];
   checkedIn: boolean;
   checkedInAt: string | null;
-  checkInError: string | null;
 };
 
 // -----------------------------------------------------------------
@@ -250,14 +241,13 @@ export default function EventHelpDeskPage() {
   const [disqualifyReason, setDisqualifyReason] = React.useState("");
   const [undoOpen, setUndoOpen] = React.useState(false);
 
-  // Walk-in registration state (new)
+  // Manual issued-ticket registration state
   const [walkInOpen, setWalkInOpen] = React.useState(false);
+  const [walkInTicketNumber, setWalkInTicketNumber] = React.useState("");
+  const [walkInClaimCode, setWalkInClaimCode] = React.useState("");
   const [walkInName, setWalkInName] = React.useState("");
   const [walkInMobile, setWalkInMobile] = React.useState("");
   const [walkInGroup, setWalkInGroup] = React.useState("");
-  const [walkInHasCompanion, setWalkInHasCompanion] = React.useState(false);
-  const [walkInCompanionName, setWalkInCompanionName] = React.useState("");
-  const [walkInCompanionRelationship, setWalkInCompanionRelationship] = React.useState("Companion");
   const [walkInLoading, setWalkInLoading] = React.useState(false);
   const [walkInError, setWalkInError] = React.useState("");
   const [walkInResult, setWalkInResult] = React.useState<WalkInResult | null>(null);
@@ -537,19 +527,18 @@ export default function EventHelpDeskPage() {
   }
 
   // -----------------------------------------------------------------
-  // Walk-in registration (new)
+  // Manual issued-ticket registration
   // -----------------------------------------------------------------
 
   function openWalkIn() {
     setWalkInOpen(true);
     setWalkInResult(null);
     setWalkInError("");
+    setWalkInTicketNumber("");
+    setWalkInClaimCode("");
     setWalkInName("");
     setWalkInMobile("");
     setWalkInGroup(groupValues.length > 0 ? groupValues[0].value : "");
-    setWalkInHasCompanion(false);
-    setWalkInCompanionName("");
-    setWalkInCompanionRelationship("Companion");
   }
 
   function closeWalkIn() {
@@ -559,19 +548,34 @@ export default function EventHelpDeskPage() {
   }
 
   async function submitWalkIn() {
+    const ticketNumber = walkInTicketNumber.trim().toUpperCase();
+    const claimCode = walkInClaimCode.trim().toUpperCase();
     const name = walkInName.trim();
     const mobile = cleanPhone(walkInMobile);
     const group = walkInGroup.trim();
 
-    if (!name) { setWalkInError("Full name is required."); return; }
+    if (!ticketNumber) {
+      setWalkInError("Ticket number is required.");
+      return;
+    }
+
+    if (!claimCode) {
+      setWalkInError("Claim code is required.");
+      return;
+    }
+
+    if (!name) {
+      setWalkInError("Full name is required.");
+      return;
+    }
+
     if (!mobile || mobile.length < 10) {
       setWalkInError("A valid Philippine mobile number is required (at least 10 digits).");
       return;
     }
-    if (!group) { setWalkInError(`${groupLabel} is required.`); return; }
 
-    if (walkInHasCompanion && !walkInCompanionName.trim()) {
-      setWalkInError("Companion name is required when companion is selected.");
+    if (!group) {
+      setWalkInError(`${groupLabel} is required.`);
       return;
     }
 
@@ -579,20 +583,17 @@ export default function EventHelpDeskPage() {
     setWalkInError("");
 
     try {
-      const guests = walkInHasCompanion
-        ? [{ fullName: walkInCompanionName.trim(), relationship: walkInCompanionRelationship.trim() || "Companion" }]
-        : [];
-
       const res = await fetch(
         `/api/events/${eventSlug}/help-desk/register`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            ticketNumber,
+            claimCode,
             fullName: name,
             mobileNumber: mobile,
             groupValue: group,
-            guests,
           }),
         }
       );
@@ -600,28 +601,29 @@ export default function EventHelpDeskPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const msg = data.error?.message || data.error || "Registration failed.";
+        const msg =
+          data.error?.message ||
+          data.message ||
+          data.error ||
+          "Manual ticket registration failed.";
         throw new Error(msg);
       }
 
       setWalkInResult({
         attendeeId: data.attendeeId,
         fullName: name,
+        ticketNumber: data.ticket?.ticketNumber || ticketNumber,
         registrationNumber: data.registrationNumber,
         eventPassUrl: data.eventPassUrl,
-        guests: (data.guests || []).map((g: any) => ({
-          attendeeId: g.attendeeId,
-          fullName: g.fullName,
-          registrationNumber: g.registrationNumber,
-          passUrl: g.passUrl,
-          relationship: g.relationship,
-        })),
         checkedIn: data.checkedIn === true,
         checkedInAt: data.checkedInAt || null,
-        checkInError: data.checkInError || null,
       });
     } catch (err) {
-      setWalkInError(err instanceof Error ? err.message : "Registration failed.");
+      setWalkInError(
+        err instanceof Error
+          ? err.message
+          : "Manual ticket registration failed."
+      );
     } finally {
       setWalkInLoading(false);
     }
@@ -630,12 +632,11 @@ export default function EventHelpDeskPage() {
   function registerAnother() {
     setWalkInResult(null);
     setWalkInError("");
+    setWalkInTicketNumber("");
+    setWalkInClaimCode("");
     setWalkInName("");
     setWalkInMobile("");
     setWalkInGroup(groupValues.length > 0 ? groupValues[0].value : "");
-    setWalkInHasCompanion(false);
-    setWalkInCompanionName("");
-    setWalkInCompanionRelationship("Companion");
   }
 
   // -----------------------------------------------------------------
@@ -662,7 +663,7 @@ export default function EventHelpDeskPage() {
           </p>
           <h1 className="mt-3 text-4xl font-black">Help Desk and Registration</h1>
           <p className="mt-2 text-slate-300">
-            Search existing attendees or register walk-ins for this event.
+            Search existing attendees or manually register issued-ticket holders.
           </p>
 
           {/* Search row + Register Walk-in button */}
@@ -686,7 +687,7 @@ export default function EventHelpDeskPage() {
               onClick={openWalkIn}
               className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950 hover:bg-amber-200"
             >
-              + Register Walk-in
+              + Register Ticket Holder
             </button>
           </div>
 
@@ -1282,16 +1283,16 @@ export default function EventHelpDeskPage() {
         </div>
       ) : null}
 
-      {/* Walk-in Registration panel (new) */}
+      {/* Manual Ticket Registration panel */}
       {walkInOpen ? (
         <div className={`${modalPanelClass} max-h-[90vh] overflow-y-auto`}>
           <div className="flex items-start justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.25em] text-amber-300">
-                Walk-in Registration
+                Manual Ticket Registration
               </p>
               <h2 className="mt-2 text-3xl font-black">
-                {walkInResult ? "Registered" : "New Attendee"}
+                {walkInResult ? "Registered" : "Verify Issued Ticket"}
               </h2>
             </div>
             <button
@@ -1303,48 +1304,44 @@ export default function EventHelpDeskPage() {
             </button>
           </div>
 
-          {/* Success state */}
           {walkInResult ? (
             <div className="mt-5">
               <div className="rounded-2xl border border-emerald-700 bg-emerald-900/40 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
-                  Registration Complete
+                  Ticket Claimed and Registration Complete
                 </p>
-                <p className="mt-2 text-2xl font-black">{walkInResult.fullName}</p>
+                <p className="mt-2 text-2xl font-black">
+                  {walkInResult.fullName}
+                </p>
+                <p className="mt-2 text-sm font-black uppercase tracking-[0.15em] text-slate-400">
+                  Issued Ticket
+                </p>
+                <p className="mt-1 font-mono text-lg font-bold text-white">
+                  {walkInResult.ticketNumber}
+                </p>
+                <p className="mt-3 text-sm font-black uppercase tracking-[0.15em] text-slate-400">
+                  Event Pass
+                </p>
                 <p className="mt-1 font-mono text-lg font-bold text-amber-300">
                   {walkInResult.registrationNumber}
                 </p>
 
-                {walkInResult.checkedIn ? (
-                  <div className="mt-4 rounded-2xl border border-emerald-500 bg-emerald-500/15 p-4">
-                    <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">
-                      Checked In
-                    </p>
-                    <p className="mt-2 text-lg font-black text-white">
-                      Proceed to the venue.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-amber-500 bg-amber-500/15 p-4">
-                    <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">
-                      Check-in Required
-                    </p>
-                    <p className="mt-2 font-bold text-white">
-                      Please scan the Event Pass QR at the gate.
-                    </p>
-                    {walkInResult.checkInError ? (
-                      <p className="mt-2 text-sm text-slate-300">
-                        {walkInResult.checkInError}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
+                <div className="mt-4 rounded-2xl border border-amber-500 bg-amber-500/15 p-4">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">
+                    Not Checked In Yet
+                  </p>
+                  <p className="mt-2 font-bold text-white">
+                    Scan the Event Pass QR at the event gate to record attendance.
+                  </p>
+                </div>
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => window.open(walkInResult.eventPassUrl, "_blank")}
+                  onClick={() =>
+                    window.open(walkInResult.eventPassUrl, "_blank")
+                  }
                   className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950"
                 >
                   Print Pass
@@ -1359,32 +1356,13 @@ export default function EventHelpDeskPage() {
                 </a>
               </div>
 
-              {walkInResult.guests.length > 0 ? (
-                <div className="mt-5">
-                  <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
-                    Companion Registered
-                  </p>
-                  {walkInResult.guests.map((g) => (
-                    <div key={g.attendeeId} className="mt-3 rounded-2xl border border-slate-700 bg-slate-950 p-4">
-                      <p className="font-black">{g.fullName}</p>
-                      <p className="mt-1 font-mono text-sm font-bold text-amber-300">
-                        {g.registrationNumber}
-                      </p>
-                      <p className="mt-1 text-sm text-slate-400">
-                        Registered as a companion. Not eligible for raffle. Uses the primary attendee for gate entry.
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={registerAnother}
                   className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950"
                 >
-                  Register Another
+                  Register Another Ticket
                 </button>
                 <button
                   type="button"
@@ -1396,16 +1374,48 @@ export default function EventHelpDeskPage() {
               </div>
             </div>
           ) : (
-            /* Form state */
             <div className="mt-5 grid gap-4">
               {walkInError ? (
-                <p className="rounded-2xl bg-red-900/40 border border-red-700 px-4 py-3 text-sm font-bold text-red-300">
+                <p className="rounded-2xl border border-red-700 bg-red-900/40 px-4 py-3 text-sm font-bold text-red-300">
                   {walkInError}
                 </p>
               ) : null}
 
+              <div className="rounded-2xl border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
+                Verify the physical issued ticket and claim code before registering.
+                One issued ticket registers one attendee.
+              </div>
+
               <label className="block">
-                <span className="text-sm font-bold text-slate-200">Full Name *</span>
+                <span className="text-sm font-bold text-slate-200">
+                  Ticket Number *
+                </span>
+                <input
+                  value={walkInTicketNumber}
+                  onChange={(e) => setWalkInTicketNumber(e.target.value)}
+                  placeholder="Regular: 344 or FR-344 | Sponsor: SP-033"
+                  autoCapitalize="characters"
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-200">
+                  Claim Code *
+                </span>
+                <input
+                  value={walkInClaimCode}
+                  onChange={(e) => setWalkInClaimCode(e.target.value)}
+                  placeholder="Enter the ticket claim code"
+                  autoCapitalize="characters"
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 font-mono text-white outline-none focus:border-amber-300"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-200">
+                  Full Name *
+                </span>
                 <input
                   value={walkInName}
                   onChange={(e) => setWalkInName(e.target.value)}
@@ -1415,7 +1425,9 @@ export default function EventHelpDeskPage() {
               </label>
 
               <label className="block">
-                <span className="text-sm font-bold text-slate-200">Mobile Number *</span>
+                <span className="text-sm font-bold text-slate-200">
+                  Mobile Number *
+                </span>
                 <input
                   value={walkInMobile}
                   onChange={(e) => setWalkInMobile(e.target.value)}
@@ -1426,7 +1438,9 @@ export default function EventHelpDeskPage() {
               </label>
 
               <label className="block">
-                <span className="text-sm font-bold text-slate-200">{groupLabel} *</span>
+                <span className="text-sm font-bold text-slate-200">
+                  {groupLabel} *
+                </span>
                 <select
                   value={walkInGroup}
                   onChange={(e) => setWalkInGroup(e.target.value)}
@@ -1440,63 +1454,6 @@ export default function EventHelpDeskPage() {
                   ))}
                 </select>
               </label>
-
-              {/* Companion section */}
-              <div className="rounded-2xl border border-slate-700 p-4">
-                <p className="text-sm font-bold text-slate-200">Has Companion?</p>
-                <div className="mt-3 flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={!walkInHasCompanion}
-                      onChange={() => setWalkInHasCompanion(false)}
-                      className="accent-amber-300"
-                    />
-                    <span className="font-semibold">No</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      checked={walkInHasCompanion}
-                      onChange={() => setWalkInHasCompanion(true)}
-                      className="accent-amber-300"
-                    />
-                    <span className="font-semibold">Yes</span>
-                  </label>
-                </div>
-
-                {walkInHasCompanion ? (
-                  <div className="mt-4 grid gap-3">
-                    <label className="block">
-                      <span className="text-sm font-bold text-slate-200">Companion Name *</span>
-                      <input
-                        value={walkInCompanionName}
-                        onChange={(e) => setWalkInCompanionName(e.target.value)}
-                        placeholder="Enter companion name"
-                        className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-bold text-slate-200">Relationship</span>
-                      <select
-                        value={walkInCompanionRelationship}
-                        onChange={(e) => setWalkInCompanionRelationship(e.target.value)}
-                        className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-4 text-white outline-none focus:border-amber-300"
-                      >
-                        <option value="Spouse">Spouse</option>
-                        <option value="Child">Child</option>
-                        <option value="Partner">Partner</option>
-                        <option value="Relative">Relative</option>
-                        <option value="Friend">Friend</option>
-                        <option value="Companion">Companion</option>
-                      </select>
-                    </label>
-                    <p className="text-xs text-slate-400">
-                      Companion will be registered as a guest. Separate attendance record created. Not eligible for raffle.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
 
               <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 <button
@@ -1513,7 +1470,7 @@ export default function EventHelpDeskPage() {
                   disabled={walkInLoading}
                   className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950 disabled:opacity-60"
                 >
-                  {walkInLoading ? "Registering..." : "Register"}
+                  {walkInLoading ? "Checking Ticket..." : "Verify and Register"}
                 </button>
               </div>
             </div>

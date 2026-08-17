@@ -28,6 +28,11 @@ type AttendeeRow = {
   disqualification_reason: string | null;
 };
 
+type TicketClaimRow = {
+  claimed_attendee_id: string | null;
+  ticket_number: string;
+};
+
 // JRIDE_EVENT_COMPANION_CONTEXT_V1
 type GuestLinkRow = {
   primary_attendee_id: string;
@@ -215,7 +220,7 @@ export async function GET(
       );
     }
 
-    const [attendeesResult, raffleResult, guestLinksResult] = await Promise.all([
+    const [attendeesResult, raffleResult, guestLinksResult, ticketsResult] = await Promise.all([
       supabase
         .from("event_attendees")
         .select(
@@ -241,6 +246,12 @@ export async function GET(
         )
         .eq("event_id", event.id)
         .order("created_at", { ascending: true }),
+
+      supabase
+        .from("event_tickets")
+        .select("claimed_attendee_id,ticket_number")
+        .eq("event_id", event.id)
+        .not("claimed_attendee_id", "is", null),
     ]);
 
     if (attendeesResult.error) {
@@ -255,7 +266,20 @@ export async function GET(
       throw new Error(guestLinksResult.error.message);
     }
 
+    if (ticketsResult.error) {
+      throw new Error(ticketsResult.error.message);
+    }
+
     const attendees = (attendeesResult.data || []) as AttendeeRow[];
+
+    const issuedTicketByAttendeeId = new Map(
+      ((ticketsResult.data || []) as TicketClaimRow[])
+        .filter((row) => Boolean(row.claimed_attendee_id))
+        .map((row) => [
+          String(row.claimed_attendee_id),
+          String(row.ticket_number || ""),
+        ])
+    );
 
     const typeById = new Map(
       attendeeTypes.map((row) => [row.id, row])
@@ -402,6 +426,8 @@ export async function GET(
           groupValue: row.group_value,
           registrationNumber: row.registration_number,
           registrationSource: row.registration_source,
+          issuedTicketNumber:
+            issuedTicketByAttendeeId.get(row.id) || null,
           registrationStatus: row.registration_status,
           attendanceStatus: row.attendance_status,
           checkedInAt: row.checked_in_at,

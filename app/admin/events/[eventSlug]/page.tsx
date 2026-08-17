@@ -72,6 +72,7 @@ type RegistrantRow = {
   groupValue: string | null;
   registrationNumber: string;
   registrationSource: string | null;
+  issuedTicketNumber: string | null;
   registrationStatus: string | null;
   attendanceStatus: string | null;
   checkedInAt: string | null;
@@ -222,6 +223,21 @@ function groupDisplayLabel(value: string | null | undefined) {
   if (normalized === "golden_jubilarian") return "Golden Jubilarians";
   if (normalized === "regular_participant") return "Regular Participants";
   if (normalized === "guest") return "Guests";
+
+  return formatLabel(value);
+}
+
+function isManualRegistrationSource(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "manual_ticket" || normalized === "walk_in";
+}
+
+function registrationSourceLabel(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (normalized === "manual_ticket") return "MANUAL TICKET";
+  if (normalized === "walk_in") return "WALK-IN (NO TICKET)";
+  if (normalized === "online") return "ONLINE";
 
   return formatLabel(value);
 }
@@ -514,6 +530,8 @@ function RegistrationGroupsPanel({
           row.attendeeTypeLabel,
           row.registrationStatus || "",
           row.attendanceStatus || "",
+          row.registrationSource || "",
+          row.issuedTicketNumber || "",
           row.disqualificationReason || "",
           row.companionOf?.fullName || "",
           row.companionOf?.registrationNumber || "",
@@ -717,6 +735,8 @@ function RegistrationGroupsPanel({
                     <th className="px-4 py-3">Pass</th>
                     <th className="px-4 py-3">Name</th>
                     <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Source</th>
+                    <th className="px-4 py-3">Issued Ticket</th>
                     <th className="px-4 py-3">Companion / Primary</th>
                     <th className="px-4 py-3">Eligibility</th>
                     <th className="px-4 py-3">Attendance</th>
@@ -738,6 +758,20 @@ function RegistrationGroupsPanel({
                       </td>
                       <td className="px-4 py-3">
                         {row.attendeeTypeLabel}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-black ${
+                            isManualRegistrationSource(row.registrationSource)
+                              ? "bg-amber-100 text-amber-900"
+                              : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {registrationSourceLabel(row.registrationSource)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-mono font-bold">
+                        {row.issuedTicketNumber || "-"}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <CompanionContextCell
@@ -770,7 +804,7 @@ function RegistrationGroupsPanel({
                   {selectedRegistrants.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={10}
                         className="px-4 py-8 text-center text-slate-500"
                       >
                         No matching records in this registration group.
@@ -790,9 +824,38 @@ function RegistrationGroupsPanel({
 function ReportsPanel({ eventSlug }: { eventSlug: string }) {
   const { data, loading, error, refresh } = useEventReports(eventSlug);
   const [section, setSection] = React.useState<
-    "overview" | "absentees" | "raffle"
+    "overview" | "manual" | "absentees" | "raffle"
   >("overview");
   const [search, setSearch] = React.useState("");
+
+  const manualRegistrants = React.useMemo(
+    () =>
+      (data?.registrants || []).filter((row) =>
+        isManualRegistrationSource(row.registrationSource)
+      ),
+    [data]
+  );
+
+  const filteredManualRegistrants = React.useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) return manualRegistrants;
+
+    return manualRegistrants.filter((row) =>
+      [
+        row.fullName,
+        row.registrationNumber,
+        row.mobileNumber || "",
+        row.groupValue || "",
+        row.attendeeTypeLabel,
+        row.registrationSource || "",
+        row.issuedTicketNumber || "",
+        row.registrationStatus || "",
+        row.attendanceStatus || "",
+        row.companionOf?.fullName || "",
+      ].some((value) => value.toLowerCase().includes(query))
+    );
+  }, [manualRegistrants, search]);
 
   const filteredAbsentees = React.useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -880,6 +943,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
         <div className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {[
             ["overview", "Overview"],
+            ["manual", `Manual Registrations (${manualRegistrants.length})`],
             ["absentees", `Absentees (${data.absentees.length})`],
             ["raffle", `Raffle Winners (${data.raffleWinners.length})`],
           ].map(([key, label]) => (
@@ -888,7 +952,7 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
               type="button"
               onClick={() =>
                 setSection(
-                  key as "overview" | "absentees" | "raffle"
+                  key as "overview" | "manual" | "absentees" | "raffle"
                 )
               }
               className={`rounded-xl px-4 py-3 text-sm font-black ${
@@ -1063,6 +1127,83 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
           </div>
         ) : null}
 
+        {section === "manual" ? (
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h3 className="text-xl font-black">Manual Registrations</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Staff-assisted records. MANUAL TICKET records claimed an issued
+                  FR/SP ticket. Legacy WALK-IN records did not claim a ticket.
+                </p>
+              </div>
+              <div className="rounded-xl bg-amber-100 px-4 py-3 text-sm font-black text-amber-900">
+                {manualRegistrants.length} manual record{manualRegistrants.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search manual registrations by name, pass, mobile, source, category, or status..."
+              className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-3"
+            />
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.1em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Pass</th>
+                    <th className="px-4 py-3">Issued Ticket</th>
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Source</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">{groupLabel}</th>
+                    <th className="px-4 py-3">Mobile</th>
+                    <th className="px-4 py-3">Registration</th>
+                    <th className="px-4 py-3">Attendance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredManualRegistrants.map((row) => (
+                    <tr key={row.attendeeId} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono font-bold">
+                        {row.registrationNumber}
+                      </td>
+                      <td className="px-4 py-3 font-mono font-bold">
+                        {row.issuedTicketNumber || "-"}
+                      </td>
+                      <td className="px-4 py-3 font-bold">{row.fullName}</td>
+                      <td className="px-4 py-3">
+                        <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-900">
+                          {registrationSourceLabel(row.registrationSource)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{row.attendeeTypeLabel}</td>
+                      <td className="px-4 py-3">
+                        {groupDisplayLabel(row.groupValue)}
+                      </td>
+                      <td className="px-4 py-3">{row.mobileNumber || "-"}</td>
+                      <td className="px-4 py-3">
+                        {formatLabel(row.registrationStatus)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatLabel(row.attendanceStatus)}
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredManualRegistrants.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                        No matching manual registrations.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
         {section === "absentees" ? (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
