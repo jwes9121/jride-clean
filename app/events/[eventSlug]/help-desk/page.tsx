@@ -115,6 +115,20 @@ type DisqualifyResponse = {
   error?: string;
 };
 
+type ManualCheckInResponse = {
+  success: boolean;
+  reason?: string;
+  attendeeId?: string;
+  fullName?: string;
+  registrationNumber?: string;
+  registrationSource?: string | null;
+  attendanceStatus?: string;
+  checkedInAt?: string | null;
+  alreadyCheckedIn?: boolean;
+  message?: string;
+  error?: string;
+};
+
 // Manual ticket registration result
 type WalkInResult = {
   attendeeId: string;
@@ -239,6 +253,7 @@ export default function EventHelpDeskPage() {
   const [disqualifyOpen, setDisqualifyOpen] = React.useState(false);
   const [disqualifyReason, setDisqualifyReason] = React.useState("");
   const [undoOpen, setUndoOpen] = React.useState(false);
+  const [manualCheckInOpen, setManualCheckInOpen] = React.useState(false);
 
   // Manual issued-ticket registration state
   const [walkInOpen, setWalkInOpen] = React.useState(false);
@@ -526,6 +541,59 @@ export default function EventHelpDeskPage() {
   }
 
   // -----------------------------------------------------------------
+  // Manual attendance check-in for QR fallback
+  // -----------------------------------------------------------------
+
+  async function submitManualCheckIn() {
+    if (!selected) return;
+
+    setActionLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const res = await fetch(
+        `/api/events/${eventSlug}/attendees/${selected.attendeeId}/manual-check-in`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const data = (await res.json()) as ManualCheckInResponse;
+
+      if (!res.ok || !data.success) {
+        throw new Error(
+          data.message ||
+            data.error ||
+            "Manual attendance check-in failed."
+        );
+      }
+
+      updateSelected({
+        attendanceStatus: data.attendanceStatus || "checked_in",
+        checkedInAt: data.checkedInAt || new Date().toISOString(),
+      });
+
+      setManualCheckInOpen(false);
+
+      setNotice(
+        data.registrationSource === "online"
+          ? "Manual check-in recorded. The original online registration was preserved, so raffle eligibility is preserved if the attendee otherwise meets the raffle rules."
+          : "Manual check-in recorded. The original registration source was preserved."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Manual attendance check-in failed."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  // -----------------------------------------------------------------
   // Manual issued-ticket registration
   // -----------------------------------------------------------------
 
@@ -650,7 +718,12 @@ export default function EventHelpDeskPage() {
   const modalPanelClass =
     "fixed inset-x-0 bottom-0 z-50 mx-auto max-w-2xl rounded-t-3xl border border-slate-700 bg-slate-900 p-5 text-white shadow-2xl";
 
-  const modalBackdrop = editOpen || disqualifyOpen || undoOpen || walkInOpen;
+  const modalBackdrop =
+    editOpen ||
+    disqualifyOpen ||
+    undoOpen ||
+    manualCheckInOpen ||
+    walkInOpen;
 
   // -----------------------------------------------------------------
   // Render
@@ -1064,7 +1137,7 @@ export default function EventHelpDeskPage() {
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">
                   Actions
                 </p>
-                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
                   <button
                     type="button"
                     onClick={openEditModal}
@@ -1081,6 +1154,17 @@ export default function EventHelpDeskPage() {
                   >
                     Reissue Pass
                   </button>
+                  {selected.attendanceStatus !== "checked_in" &&
+                  !selected.isDisqualified ? (
+                    <button
+                      type="button"
+                      onClick={() => setManualCheckInOpen(true)}
+                      disabled={actionLoading}
+                      className="rounded-2xl bg-emerald-700 px-4 py-3 font-black text-white disabled:opacity-60"
+                    >
+                      Manual Check-In
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     onClick={selected.isDisqualified ? () => setUndoOpen(true) : openDisqualifyModal}
@@ -1095,13 +1179,54 @@ export default function EventHelpDeskPage() {
                   </button>
                 </div>
                 <p className="mt-3 text-sm font-semibold text-slate-500">
-                  Changes apply only to this attendee record.
+                  Use Manual Check-In only when the attendee is physically present but the Event Pass QR cannot be scanned or retrieved. This records attendance without changing the original registration source.
                 </p>
               </div>
             </div>
           ) : null}
         </div>
       </section>
+
+      {manualCheckInOpen && selected ? (
+        <div className={modalPanelClass}>
+          <p className="text-xs font-black uppercase tracking-[0.25em] text-emerald-300">
+            QR Fallback
+          </p>
+          <h2 className="mt-2 text-3xl font-black">
+            Manually check in this attendee?
+          </h2>
+          <div className="mt-5 rounded-2xl border border-slate-700 bg-slate-950 p-4">
+            <p className="text-xl font-black text-white">
+              {selected.fullName}
+            </p>
+            <p className="mt-2 font-mono text-sm font-bold text-amber-300">
+              {selected.registrationNumber}
+            </p>
+          </div>
+          <p className="mt-4 text-slate-300">
+            Confirm only if this person is physically present at the event and the QR code cannot be scanned or retrieved. This records attendance immediately and preserves the original registration source.
+          </p>
+
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setManualCheckInOpen(false)}
+              disabled={actionLoading}
+              className="rounded-2xl border border-slate-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={submitManualCheckIn}
+              disabled={actionLoading}
+              className="rounded-2xl bg-emerald-600 px-5 py-4 font-black text-white disabled:opacity-60"
+            >
+              {actionLoading ? "Checking In..." : "Confirm Manual Check-In"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Edit modal -- unchanged */}
       {editOpen ? (
