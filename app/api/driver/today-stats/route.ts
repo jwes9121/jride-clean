@@ -80,15 +80,34 @@ function serviceType(row: AnyRow): ServiceKey {
 }
 
 
-function mergedOnlineMinutes(rows: AnyRow[], windowStart: Date, windowEnd: Date): number {
+function manilaNextDayStart(date: Date): Date {
+  const start = new Date(`${manilaDateKey(date)}T00:00:00+08:00`);
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000);
+}
+
+function mergedFreshOnlineMinutes(rows: AnyRow[], windowStart: Date, windowEnd: Date): number {
   const intervals = rows
     .map((row) => {
-      const startMs = new Date(String(row.login_at || "")).getTime();
-      const endMs = row.logout_at ? new Date(String(row.logout_at)).getTime() : windowEnd.getTime();
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return null;
+      const loginAt = new Date(String(row.login_at || ""));
+      const startMs = loginAt.getTime();
+      if (!Number.isFinite(startMs)) return null;
+
+      // A presence session is credited only on the Manila calendar day
+      // when that session started. This makes Today reset at midnight and
+      // prevents a stale multi-day session from fabricating later days.
+      const loginDayEndMs = manilaNextDayStart(loginAt).getTime();
+
+      const explicitEndMs = row.logout_at
+        ? new Date(String(row.logout_at)).getTime()
+        : row.last_seen_at
+          ? new Date(String(row.last_seen_at)).getTime()
+          : startMs;
+
+      if (!Number.isFinite(explicitEndMs)) return null;
 
       const start = Math.max(startMs, windowStart.getTime());
-      const end = Math.min(endMs, windowEnd.getTime());
+      const end = Math.min(explicitEndMs, loginDayEndMs, windowEnd.getTime());
+
       if (end <= start) return null;
 
       return { start, end };
@@ -185,10 +204,10 @@ export async function GET(req: NextRequest) {
         ride_completed: rideCompleted,
         takeout_completed: takeoutCompleted,
         total_completed: rideCompleted + takeoutCompleted,
-        today_online_minutes: mergedOnlineMinutes(sessionRows, dayStart, now),
-        week_online_minutes: mergedOnlineMinutes(sessionRows, weekStart, now),
-        month_online_minutes: mergedOnlineMinutes(sessionRows, monthStart, now),
-        session_source: "driver_presence_sessions_merged_intervals_v1",
+        today_online_minutes: mergedFreshOnlineMinutes(sessionRows, dayStart, now),
+        week_online_minutes: mergedFreshOnlineMinutes(sessionRows, weekStart, now),
+        month_online_minutes: mergedFreshOnlineMinutes(sessionRows, monthStart, now),
+        session_source: "driver_presence_sessions_fresh_login_day_v2",
         session_error: sessionsRes.error?.message || null,
         source: "bookings_completed_driver_today_v2",
       })
