@@ -301,7 +301,7 @@ export default function IncentiveAwardsPage() {
             ) : (
               cycleOptions.map((item) => (
                 <option key={item.cycle_number} value={String(item.cycle_number)}>
-                  {formatCycleLabel(item.cycle_number, item.cycle_weeks)} Â·{" "}
+                  {formatCycleLabel(item.cycle_number, item.cycle_weeks)} -{" "}
                   {formatShortDate(item.cycle_start)} - {formatShortDate(item.cycle_end)}
                 </option>
               ))
@@ -322,12 +322,12 @@ export default function IncentiveAwardsPage() {
       {policyFilter && selectedCycle ? (
         <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           <span className="font-semibold">
-            Showing {policyFilter} Â·{" "}
+            Showing {policyFilter} -{" "}
             {formatCycleLabel(selectedCycle.cycle_number, selectedCycle.cycle_weeks)}
           </span>
-          {" Â· "}
+          {" - "}
           {formatShortDate(selectedCycle.cycle_start)} - {formatShortDate(selectedCycle.cycle_end)}
-          {" Â· "}
+          {" - "}
           {filteredRows.length} claimable driver{filteredRows.length === 1 ? "" : "s"}
         </div>
       ) : null}
