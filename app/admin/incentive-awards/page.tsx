@@ -96,7 +96,8 @@ export default function IncentiveAwardsPage() {
   const [message, setMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const [policyFilter, setPolicyFilter] = React.useState("");
+  const [policyFilter, setPolicyFilter] = React.useState("WEEKLY");
+  const [cycleFilter, setCycleFilter] = React.useState("");
   const [awardingKey, setAwardingKey] = React.useState("");
   const [remarksByKey, setRemarksByKey] = React.useState<Record<string, string>>({});
   const [submittingKey, setSubmittingKey] = React.useState("");
@@ -130,9 +131,78 @@ export default function IncentiveAwardsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policyFilter]);
 
+  const cycleOptions = React.useMemo(() => {
+    if (!policyFilter) return [];
+
+    const byCycle = new Map<
+      number,
+      {
+        cycle_number: number;
+        cycle_weeks: number;
+        cycle_start: string;
+        cycle_end: string;
+      }
+    >();
+
+    for (const row of rows) {
+      const cycleNumber = Number(row.cycle_number || 0);
+      if (!cycleNumber) continue;
+      byCycle.set(cycleNumber, {
+        cycle_number: cycleNumber,
+        cycle_weeks: Number(row.cycle_weeks || 0),
+        cycle_start: row.cycle_start,
+        cycle_end: row.cycle_end,
+      });
+    }
+
+    for (const award of history) {
+      const cycleNumber = Number(award.cycle_number || 0);
+      if (!cycleNumber || byCycle.has(cycleNumber)) continue;
+      byCycle.set(cycleNumber, {
+        cycle_number: cycleNumber,
+        cycle_weeks: Number(award.cycle_weeks || 0),
+        cycle_start: award.cycle_start,
+        cycle_end: award.cycle_end,
+      });
+    }
+
+    return Array.from(byCycle.values()).sort(
+      (a, b) => b.cycle_number - a.cycle_number
+    );
+  }, [rows, history, policyFilter]);
+
+  React.useEffect(() => {
+    if (!policyFilter) {
+      if (cycleFilter) setCycleFilter("");
+      return;
+    }
+
+    if (cycleOptions.length === 0) {
+      if (cycleFilter) setCycleFilter("");
+      return;
+    }
+
+    const stillAvailable = cycleOptions.some(
+      (item) => String(item.cycle_number) === cycleFilter
+    );
+
+    if (!stillAvailable) {
+      setCycleFilter(String(cycleOptions[0].cycle_number));
+    }
+  }, [policyFilter, cycleOptions, cycleFilter]);
+
+  const selectedCycle =
+    cycleOptions.find((item) => String(item.cycle_number) === cycleFilter) || null;
+
   const filteredRows = rows.filter((r) => {
+    if (cycleFilter && String(r.cycle_number) !== cycleFilter) return false;
     if (!search.trim()) return true;
     return String(r.driver_name || "").toLowerCase().includes(search.trim().toLowerCase());
+  });
+
+  const filteredHistory = history.filter((a) => {
+    if (cycleFilter && String(a.cycle_number) !== cycleFilter) return false;
+    return true;
   });
 
   const groupedByDriver: Record<string, ClaimableRow[]> = {};
@@ -205,7 +275,10 @@ export default function IncentiveAwardsPage() {
         />
         <select
           value={policyFilter}
-          onChange={(e) => setPolicyFilter(e.target.value)}
+          onChange={(e) => {
+            setPolicyFilter(e.target.value);
+            setCycleFilter("");
+          }}
           className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
         >
           <option value="">All incentives</option>
@@ -215,6 +288,27 @@ export default function IncentiveAwardsPage() {
             </option>
           ))}
         </select>
+
+        {policyFilter ? (
+          <select
+            value={cycleFilter}
+            onChange={(e) => setCycleFilter(e.target.value)}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm"
+            disabled={cycleOptions.length === 0}
+          >
+            {cycleOptions.length === 0 ? (
+              <option value="">No completed cycle</option>
+            ) : (
+              cycleOptions.map((item) => (
+                <option key={item.cycle_number} value={String(item.cycle_number)}>
+                  {formatCycleLabel(item.cycle_number, item.cycle_weeks)} Â·{" "}
+                  {formatShortDate(item.cycle_start)} - {formatShortDate(item.cycle_end)}
+                </option>
+              ))
+            )}
+          </select>
+        ) : null}
+
         <button
           type="button"
           onClick={() => load()}
@@ -224,6 +318,19 @@ export default function IncentiveAwardsPage() {
           {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
+
+      {policyFilter && selectedCycle ? (
+        <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          <span className="font-semibold">
+            Showing {policyFilter} Â·{" "}
+            {formatCycleLabel(selectedCycle.cycle_number, selectedCycle.cycle_weeks)}
+          </span>
+          {" Â· "}
+          {formatShortDate(selectedCycle.cycle_start)} - {formatShortDate(selectedCycle.cycle_end)}
+          {" Â· "}
+          {filteredRows.length} claimable driver{filteredRows.length === 1 ? "" : "s"}
+        </div>
+      ) : null}
 
       {message ? (
         <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
@@ -340,14 +447,14 @@ export default function IncentiveAwardsPage() {
             </tr>
           </thead>
           <tbody>
-            {history.length === 0 ? (
+            {filteredHistory.length === 0 ? (
               <tr>
                 <td className="p-3 text-slate-400" colSpan={5}>
                   No awards recorded yet.
                 </td>
               </tr>
             ) : (
-              history.map((a) => (
+              filteredHistory.map((a) => (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="p-2">{a.driver_name}</td>
                   <td className="p-2">{a.display_name || a.policy_code}</td>
