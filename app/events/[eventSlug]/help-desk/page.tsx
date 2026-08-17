@@ -121,7 +121,6 @@ type WalkInResult = {
   fullName: string;
   ticketNumber: string;
   registrationNumber: string;
-  eventPassUrl: string;
   checkedIn: boolean;
   checkedInAt: string | null;
 };
@@ -609,12 +608,17 @@ export default function EventHelpDeskPage() {
         throw new Error(msg);
       }
 
+      if (data.checkedIn !== true || !data.checkedInAt) {
+        throw new Error(
+          "Registration was created but attendance was not recorded. Do not register another ticket until this record is reviewed."
+        );
+      }
+
       setWalkInResult({
         attendeeId: data.attendeeId,
         fullName: name,
         ticketNumber: data.ticket?.ticketNumber || ticketNumber,
         registrationNumber: data.registrationNumber,
-        eventPassUrl: data.eventPassUrl,
         checkedIn: data.checkedIn === true,
         checkedInAt: data.checkedInAt || null,
       });
@@ -1318,42 +1322,24 @@ export default function EventHelpDeskPage() {
                 </p>
                 <p className="mt-1 font-mono text-lg font-bold text-white">
                   {walkInResult.ticketNumber}
-                </p>
-                <p className="mt-3 text-sm font-black uppercase tracking-[0.15em] text-slate-400">
-                  Event Pass
+                </p>                <p className="mt-3 text-sm font-black uppercase tracking-[0.15em] text-slate-400">
+                  Registration Record
                 </p>
                 <p className="mt-1 font-mono text-lg font-bold text-amber-300">
                   {walkInResult.registrationNumber}
                 </p>
 
-                <div className="mt-4 rounded-2xl border border-amber-500 bg-amber-500/15 p-4">
-                  <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">
-                    Not Checked In Yet
+                <div className="mt-4 rounded-2xl border border-emerald-500 bg-emerald-500/15 p-4">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">
+                    Checked In
                   </p>
                   <p className="mt-2 font-bold text-white">
-                    Scan the Event Pass QR at the event gate to record attendance.
+                    Manual registration is complete and attendance has already been recorded.
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">
+                    No Event Pass QR is needed for this attendee.
                   </p>
                 </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.open(walkInResult.eventPassUrl, "_blank")
-                  }
-                  className="rounded-2xl bg-amber-300 px-5 py-4 font-black text-slate-950"
-                >
-                  Print Pass
-                </button>
-                <a
-                  href={walkInResult.eventPassUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-2xl border border-slate-600 px-5 py-4 text-center font-black text-white"
-                >
-                  Open Pass
-                </a>
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-2">

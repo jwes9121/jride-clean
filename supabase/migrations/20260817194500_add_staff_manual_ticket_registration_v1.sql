@@ -107,6 +107,8 @@ begin
   set
     group_value = v_group_value,
     registration_source = 'manual_ticket',
+    attendance_status = 'checked_in',
+    checked_in_at = v_now,
     updated_at = v_now
   where a.id = v_claim.attendee_id
     and a.event_id = v_event_id
@@ -118,7 +120,7 @@ begin
 
   return query
   select true, 'CLAIMED',
-    'Manual ticket registration completed. Scan the Event Pass at the gate to check in.',
+    'Manual ticket registration completed and attendance was checked in.',
     v_claim.event_id, v_claim.ticket_id, v_claim.ticket_number,
     v_claim.attendee_id, v_claim.registration_number, v_claim.qr_token,
     v_claim.package_name, v_claim.ticket_price,

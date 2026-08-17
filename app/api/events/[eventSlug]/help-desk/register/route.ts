@@ -249,24 +249,13 @@ export async function POST(
     if (
       !row.attendee_id ||
       !row.registration_number ||
-      !row.qr_token ||
-      !row.ticket_number
+      !row.ticket_number ||
+      !row.checked_in_at
     ) {
       throw new Error(
-        "Registration succeeded but ticket or Event Pass details are missing."
+        "Registration succeeded but attendance check-in details are missing."
       );
     }
-
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      "https://app.jride.net";
-
-    const eventPassUrl =
-      `${appUrl.replace(/\/$/, "")}` +
-      `/events/${encodeURIComponent(eventSlug)}` +
-      `/pass/${encodeURIComponent(row.registration_number)}` +
-      `?token=${encodeURIComponent(row.qr_token)}`;
 
     return noStore(
       {
@@ -277,10 +266,9 @@ export async function POST(
           "Manual ticket registration completed.",
         attendeeId: row.attendee_id,
         registrationNumber: row.registration_number,
-        eventPassUrl,
         registrationSource: row.registration_source,
         groupValue: row.group_value,
-        checkedIn: Boolean(row.checked_in_at),
+        checkedIn: true,
         checkedInAt: row.checked_in_at,
         ticket: {
           ticketId: row.ticket_id,

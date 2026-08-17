@@ -167,7 +167,7 @@ const TABS: Array<{
   {
     key: "attendees",
     label: "Attendees",
-    helper: "Search, edit, passes, walk-ins",
+    helper: "Search, edit, passes, manual ticket registration",
   },
   {
     key: "groups",
