@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { cancelPendingDutyChecksForOfflineDriver } from "@/lib/driver-duty-check/onlineGuard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -706,6 +707,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    let dutyCheckOfflineCancellation: any = null;
+
+    if (status === "offline") {
+      dutyCheckOfflineCancellation =
+        await cancelPendingDutyChecksForOfflineDriver(supabase, {
+          driverId,
+          source: "driver_location_offline_ping",
+          deviceId: (lock as any).active_device_id || deviceId,
+          presence: {
+            online: false,
+            raw_status: "offline",
+            updated_at: nowIso,
+            age_seconds: 0,
+            is_stale: false,
+          },
+        });
+    }
+
     const presenceSessionResult = await syncDriverPresenceSession({
       supabase,
       driverId,
@@ -730,6 +749,7 @@ export async function POST(req: NextRequest) {
       recovered_from_stale_online: recoveredFromStaleOnline,
       vehicle_type: vehicleType,
       presence_session: presenceSessionResult,
+      duty_check_offline_cancellation: dutyCheckOfflineCancellation,
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";

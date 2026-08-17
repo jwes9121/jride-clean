@@ -5,6 +5,7 @@ import {
   resolveAuthenticatedDriver,
 } from "@/lib/advance-booking/driverAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { guardDriverOnlineForDutyCheck } from "@/lib/driver-duty-check/onlineGuard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -90,6 +91,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const admin = supabaseAdmin();
+
+    const onlineGuard = await guardDriverOnlineForDutyCheck(admin, {
+      driverId: auth.driverId,
+      source: "driver_alert_request",
+      deviceId,
+    });
+
+    if (!onlineGuard.online) {
+      return json(409, {
+        ok: false,
+        code: "DRIVER_OFFLINE",
+        message: "Duty Check was cancelled because the driver is offline.",
+        presence: onlineGuard.presence,
+        cancellation: onlineGuard.cancellation,
+      });
+    }
 
     const { data, error } = await admin.rpc(
       "jride_alert_driver_availability_ping",
