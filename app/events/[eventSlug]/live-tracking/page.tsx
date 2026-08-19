@@ -9,6 +9,13 @@ mapboxgl.accessToken =
   process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type Coordinate = [number, number];
+type MapMode = "course" | "satellite";
+
+function mapStyle(mode: MapMode) {
+  return mode === "satellite"
+    ? "mapbox://styles/mapbox/satellite-streets-v12"
+    : "mapbox://styles/mapbox/outdoors-v12";
+}
 
 type PositionRow = {
   attendeeId: string;
@@ -188,6 +195,8 @@ export default function EventLiveTrackingPage() {
   const [error, setError] = React.useState("");
   const [refreshing, setRefreshing] =
     React.useState(false);
+  const [mapMode, setMapMode] =
+    React.useState<MapMode>("course");
 
   const mapContainerRef =
     React.useRef<HTMLDivElement | null>(null);
@@ -198,6 +207,8 @@ export default function EventLiveTrackingPage() {
       new Map()
     );
   const fittedRef = React.useRef(false);
+  const appliedMapModeRef =
+    React.useRef<MapMode | null>(null);
 
   async function load(background = false) {
     if (background) setRefreshing(true);
@@ -293,6 +304,23 @@ export default function EventLiveTrackingPage() {
       return;
     }
 
+    if (
+      mapRef.current &&
+      appliedMapModeRef.current !== mapMode
+    ) {
+      for (
+        const marker
+        of markersRef.current.values()
+      ) {
+        marker.remove();
+      }
+
+      markersRef.current.clear();
+      mapRef.current.remove();
+      mapRef.current = null;
+      fittedRef.current = false;
+    }
+
     if (!mapRef.current) {
       const center: Coordinate =
         routeCoordinates[0] ||
@@ -303,8 +331,7 @@ export default function EventLiveTrackingPage() {
 
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style:
-          "mapbox://styles/mapbox/satellite-streets-v12",
+        style: mapStyle(mapMode),
         center,
         zoom: 15,
       });
@@ -315,6 +342,7 @@ export default function EventLiveTrackingPage() {
       );
 
       mapRef.current = map;
+      appliedMapModeRef.current = mapMode;
     }
 
     const activeMap = mapRef.current;
@@ -438,6 +466,7 @@ export default function EventLiveTrackingPage() {
     positions,
     routeCoordinates,
     courseRoute,
+    mapMode,
   ]);
 
   React.useEffect(() => {
@@ -451,6 +480,7 @@ export default function EventLiveTrackingPage() {
       markersRef.current.clear();
       mapRef.current?.remove();
       mapRef.current = null;
+      appliedMapModeRef.current = null;
     };
   }, []);
 
@@ -514,6 +544,30 @@ export default function EventLiveTrackingPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <div className="flex rounded-xl border border-slate-700 bg-slate-900 p-1">
+              <button
+                type="button"
+                onClick={() => setMapMode("course")}
+                className={`rounded-lg px-3 py-2 text-sm font-black ${
+                  mapMode === "course"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "text-slate-300"
+                }`}
+              >
+                Course Map
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapMode("satellite")}
+                className={`rounded-lg px-3 py-2 text-sm font-black ${
+                  mapMode === "satellite"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "text-slate-300"
+                }`}
+              >
+                Satellite Reference
+              </button>
+            </div>
             <a
               href={`/events/${eventSlug}/course`}
               target="_blank"
@@ -704,7 +758,7 @@ export default function EventLiveTrackingPage() {
         </div>
 
         <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900 p-4 text-xs leading-5 text-slate-400">
-          Safety note: the blue course line is organizer-controlled and does not depend on Mapbox road connectivity. Participant markers show each consenting participant's latest browser-reported location, not a stored route history. Browser updates may pause if the participant closes the Event Pass, locks the phone, loses mobile data, or the browser is put to sleep. Checkpoint scans remain the independent backup location record.
+          Safety note: Course Map is the operational default. The blue course line is organizer-controlled and does not depend on Mapbox road connectivity. Satellite Reference may not reflect recently completed roads, bridges, buildings, and other structures. Participant markers show each consenting participant's latest browser-reported location, not a stored route history. Browser updates may pause if the participant closes the Event Pass, locks the phone, loses mobile data, or the browser is put to sleep. Checkpoint scans remain the independent backup location record.
         </div>
       </section>
     </main>

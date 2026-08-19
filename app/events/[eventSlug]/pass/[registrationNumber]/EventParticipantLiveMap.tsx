@@ -8,6 +8,13 @@ mapboxgl.accessToken =
   process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type Coordinate = [number, number];
+type MapMode = "course" | "satellite";
+
+function mapStyle(mode: MapMode) {
+  return mode === "satellite"
+    ? "mapbox://styles/mapbox/satellite-streets-v12"
+    : "mapbox://styles/mapbox/outdoors-v12";
+}
 
 type CurrentPosition = {
   latitude: number;
@@ -47,6 +54,8 @@ export default function EventParticipantLiveMap({
   const [shareMessage, setShareMessage] =
     React.useState("");
   const [error, setError] = React.useState("");
+  const [mapMode, setMapMode] =
+    React.useState<MapMode>("course");
 
   const mapContainerRef =
     React.useRef<HTMLDivElement | null>(null);
@@ -56,6 +65,8 @@ export default function EventParticipantLiveMap({
   const markerRef =
     React.useRef<mapboxgl.Marker | null>(null);
   const fittedRef = React.useRef(false);
+  const appliedMapModeRef =
+    React.useRef<MapMode | null>(null);
 
   React.useEffect(() => {
     if (!eventSlug) return;
@@ -111,6 +122,17 @@ export default function EventParticipantLiveMap({
       return;
     }
 
+    if (
+      mapRef.current &&
+      appliedMapModeRef.current !== mapMode
+    ) {
+      markerRef.current?.remove();
+      markerRef.current = null;
+      mapRef.current.remove();
+      mapRef.current = null;
+      fittedRef.current = false;
+    }
+
     if (!mapRef.current) {
       const center: Coordinate =
         currentPosition
@@ -122,8 +144,7 @@ export default function EventParticipantLiveMap({
 
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
-        style:
-          "mapbox://styles/mapbox/satellite-streets-v12",
+        style: mapStyle(mapMode),
         center,
         zoom: 15,
       });
@@ -172,6 +193,7 @@ export default function EventParticipantLiveMap({
       });
 
       mapRef.current = map;
+      appliedMapModeRef.current = mapMode;
     }
 
     const map = mapRef.current;
@@ -250,7 +272,12 @@ export default function EventParticipantLiveMap({
         fittedRef.current = true;
       }
     }
-  }, [expanded, coordinates, currentPosition]);
+  }, [
+    expanded,
+    coordinates,
+    currentPosition,
+    mapMode,
+  ]);
 
   React.useEffect(() => {
     return () => {
@@ -258,6 +285,7 @@ export default function EventParticipantLiveMap({
       markerRef.current = null;
       mapRef.current?.remove();
       mapRef.current = null;
+      appliedMapModeRef.current = null;
     };
   }, []);
 
@@ -353,6 +381,33 @@ export default function EventParticipantLiveMap({
         </button>
       </div>
 
+      {expanded ? (
+        <div className="mt-3 flex w-fit rounded-xl border border-cyan-300 bg-white p-1">
+          <button
+            type="button"
+            onClick={() => setMapMode("course")}
+            className={`rounded-lg px-3 py-2 text-xs font-black ${
+              mapMode === "course"
+                ? "bg-cyan-700 text-white"
+                : "text-slate-600"
+            }`}
+          >
+            Course Map
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapMode("satellite")}
+            className={`rounded-lg px-3 py-2 text-xs font-black ${
+              mapMode === "satellite"
+                ? "bg-cyan-700 text-white"
+                : "text-slate-600"
+            }`}
+          >
+            Satellite Reference
+          </button>
+        </div>
+      ) : null}
+
       <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">
         Your map shows only your own phone location. The social share button publishes only the public event course and never includes your live coordinates, Event Pass token, or other participants.
       </p>
@@ -373,6 +428,12 @@ export default function EventParticipantLiveMap({
             </button>
           ) : null}
         </div>
+      ) : null}
+
+      {expanded && mapMode === "satellite" ? (
+        <p className="mt-3 text-xs font-bold text-amber-800">
+          Satellite imagery is a reference only and may not show recent roads, bridges, buildings, and other structures. Follow the official blue course line.
+        </p>
       ) : null}
 
       {expanded && !currentPosition ? (

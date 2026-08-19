@@ -9,6 +9,13 @@ mapboxgl.accessToken =
   process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 type Coordinate = [number, number];
+type MapMode = "course" | "satellite";
+
+function mapStyle(mode: MapMode) {
+  return mode === "satellite"
+    ? "mapbox://styles/mapbox/satellite-streets-v12"
+    : "mapbox://styles/mapbox/outdoors-v12";
+}
 
 type RouteResponse = {
   success: boolean;
@@ -39,6 +46,8 @@ export default function PublicEventCoursePage() {
   const [error, setError] = React.useState("");
   const [shareMessage, setShareMessage] =
     React.useState("");
+  const [mapMode, setMapMode] =
+    React.useState<MapMode>("course");
 
   const mapContainerRef =
     React.useRef<HTMLDivElement | null>(null);
@@ -100,7 +109,7 @@ export default function PublicEventCoursePage() {
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style: mapStyle(mapMode),
       center: route.coordinates[0],
       zoom: 14,
     });
@@ -194,7 +203,7 @@ export default function PublicEventCoursePage() {
       map.remove();
       mapRef.current = null;
     };
-  }, [route]);
+  }, [route, mapMode]);
 
   async function shareCourse() {
     const url = window.location.href;
@@ -242,14 +251,40 @@ export default function PublicEventCoursePage() {
                 "Official course route"}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void shareCourse()}
-            disabled={!route}
-            className="rounded-xl bg-cyan-400 px-5 py-3 font-black text-slate-950 disabled:opacity-40"
-          >
-            Share Official Course
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex rounded-xl border border-slate-700 bg-slate-900 p-1">
+              <button
+                type="button"
+                onClick={() => setMapMode("course")}
+                className={`rounded-lg px-3 py-2 text-sm font-black ${
+                  mapMode === "course"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "text-slate-300"
+                }`}
+              >
+                Course Map
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapMode("satellite")}
+                className={`rounded-lg px-3 py-2 text-sm font-black ${
+                  mapMode === "satellite"
+                    ? "bg-cyan-400 text-slate-950"
+                    : "text-slate-300"
+                }`}
+              >
+                Satellite Reference
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => void shareCourse()}
+              disabled={!route}
+              className="rounded-xl bg-cyan-400 px-5 py-3 font-black text-slate-950 disabled:opacity-40"
+            >
+              Share Official Course
+            </button>
+          </div>
         </div>
       </header>
 
@@ -284,7 +319,9 @@ export default function PublicEventCoursePage() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-cyan-800 bg-cyan-950/30 p-4 text-sm leading-6 text-cyan-100">
-              This blue line is JRide's official event course. It is drawn from the organizer-approved coordinates and can cross newly opened roads or bridges even when the Mapbox road layer has not been updated yet.
+              {mapMode === "course"
+                ? "Course Map is the default public view. The blue line is JRide's official organizer-approved route and remains authoritative even when the basemap does not show a recent road or bridge."
+                : "Satellite Reference is optional. Satellite imagery may not reflect recently completed roads, bridges, buildings, and other structures. Follow the official blue course line."}
             </div>
           </>
         ) : (
