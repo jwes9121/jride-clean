@@ -371,6 +371,12 @@ export default function PublicEventCoursePage() {
               >
                 Event Details
               </a>
+              <a
+                href={`/events/${eventSlug}/my-walk`}
+                className="rounded-xl border border-cyan-500 px-5 py-3 text-sm font-black text-cyan-200"
+              >
+                Find My Event Pass / My Walk
+              </a>
               {data?.event?.status === "registration_open" ? (
                 <a
                   href={`/events/${eventSlug}/register`}

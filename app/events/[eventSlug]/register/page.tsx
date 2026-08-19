@@ -354,6 +354,16 @@ export default function EventRegistrationPage() {
             </a>
           </div>
 
+          <div className="mt-3 rounded-2xl border border-cyan-400/40 bg-cyan-950/20 p-4 text-sm text-cyan-100">
+            Already registered or lost your Event Pass link?{" "}
+            <a
+              href={`/events/${eventSlug}/my-walk`}
+              className="font-black text-cyan-300 underline decoration-cyan-300/40 underline-offset-4"
+            >
+              Find My Event Pass and My Live Walk
+            </a>
+          </div>
+
           <div className="mt-6 rounded-2xl border border-slate-700 bg-slate-950 p-4">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
               Special Registration Groups

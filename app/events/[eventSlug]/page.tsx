@@ -143,7 +143,7 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
 
         <div
           className={`mt-8 grid gap-4 md:grid-cols-2 ${
-            publicFamilyTree ? "lg:grid-cols-5" : "lg:grid-cols-4"
+            publicFamilyTree ? "lg:grid-cols-6" : "lg:grid-cols-5"
           }`}
         >
           <a
@@ -152,6 +152,18 @@ export default async function EventHomePage({ params }: { params: { eventSlug: s
           >
             <h2 className="text-xl font-black">Register</h2>
             <p className="mt-2 text-sm font-semibold">Register for this event</p>
+          </a>
+
+          <a
+            href={`/events/${event.slug}/my-walk`}
+            className="rounded-2xl border border-cyan-300/50 bg-cyan-950/30 p-5 transition hover:border-cyan-300"
+          >
+            <h2 className="text-xl font-black text-cyan-200">
+              My Event Pass &amp; My Live Walk
+            </h2>
+            <p className="mt-2 text-sm font-semibold text-cyan-100/80">
+              Recover your existing private Event Pass and open your own event-day walk view
+            </p>
           </a>
 
           {publicFamilyTree ? (
