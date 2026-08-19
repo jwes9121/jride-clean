@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { renderQrDataUrl } from "@/lib/events/qr-render";
 import EventPassActions from "./EventPassActions";
+import EventLiveSafetyTracking from "./EventLiveSafetyTracking";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -381,6 +382,10 @@ export default async function EventPassPage({
     hasCheckpoints &&
     attendee.participation !== null &&
     attendee.participation.funWalk === false;
+
+  const liveSafetyTrackingEligible =
+    attendee.participation === null ||
+    attendee.participation.funWalk === true;
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-8 text-white print:bg-white print:p-0">
@@ -776,6 +781,15 @@ export default async function EventPassPage({
                   ))}
                 </div>
               </div>
+            ) : null}
+
+            {liveSafetyTrackingEligible ? (
+              <EventLiveSafetyTracking
+                eventSlug={event.slug}
+                eventName={event.name}
+                registrationNumber={attendee.registration_number}
+                qrToken={attendee.qr_token}
+              />
             ) : null}
 
             <EventPassActions

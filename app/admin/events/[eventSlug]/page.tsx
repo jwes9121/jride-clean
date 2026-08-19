@@ -1495,7 +1495,36 @@ export default function EventAdminControlPage() {
       {activeTab === "groups" ? (
         <RegistrationGroupsPanel eventSlug={eventSlug} />
       ) : null}
-      {activeTab === "operations" ? <CommandCenterPage /> : null}
+      {activeTab === "operations" ? (
+        <>
+          <div className="mx-auto mt-6 max-w-7xl px-4">
+            <div className="flex flex-col gap-4 rounded-2xl border border-emerald-700 bg-emerald-950/40 p-5 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
+                  Live Safety Tracking
+                </p>
+                <p className="mt-2 text-sm text-slate-300">
+                  View consenting participants who are sharing their latest phone location while the event is LIVE.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  window.open(
+                    `/events/${eventSlug}/live-tracking`,
+                    "jride_live_safety_tracking",
+                    "popup=yes,width=1280,height=850,resizable=yes,scrollbars=yes"
+                  )
+                }
+                className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950"
+              >
+                Open Live Safety Map
+              </button>
+            </div>
+          </div>
+          <CommandCenterPage />
+        </>
+      ) : null}
       {activeTab === "reports" ? (
         <ReportsPanel eventSlug={eventSlug} />
       ) : null}
