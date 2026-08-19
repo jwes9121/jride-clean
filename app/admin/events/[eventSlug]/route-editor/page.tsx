@@ -307,7 +307,7 @@ export default function EventCourseRouteEditorPage() {
       });
     });
 
-    map.on("click", (event) => {
+    map.on("click", (event: mapboxgl.MapMouseEvent) => {
       setCoordinates((current) => [
         ...current,
         [
