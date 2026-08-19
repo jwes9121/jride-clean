@@ -48,6 +48,26 @@ type AnimationNamesResponse = {
   error?: string;
 };
 
+type SoundPreviewPhase =
+  | "fast"
+  | "slow"
+  | "winner"
+  | "countdown";
+
+type SoundPreviewState = {
+  phase: SoundPreviewPhase;
+  label: string;
+  displayName: string;
+  seconds: number | null;
+};
+
+const SOUND_PREVIEW_NAMES = [
+  "RAFFLE SOUND TEST",
+  "FAST ROULETTE",
+  "SLOWING ROULETTE",
+  "WINNER REVEAL",
+];
+
 function nextDelay(secondsUntilReveal: number | null | undefined) {
   const remaining = Number(secondsUntilReveal ?? 0);
   if (remaining > 20) return 60;
@@ -114,6 +134,8 @@ export default function RaffleProjectorDisplayPage() {
     React.useState(false);
   const [soundError, setSoundError] =
     React.useState("");
+  const [soundPreview, setSoundPreview] =
+    React.useState<SoundPreviewState | null>(null);
 
   const audioContextRef =
     React.useRef<AudioContext | null>(null);
@@ -123,6 +145,10 @@ export default function RaffleProjectorDisplayPage() {
     React.useRef<RafflePhase>("idle");
   const lastCountdownSecondRef =
     React.useRef<number | null>(null);
+  const soundPreviewTimerRef =
+    React.useRef<number | null>(null);
+  const soundPreviewRunRef =
+    React.useRef(0);
 
   const ensureAudioContext = React.useCallback(
     async () => {
@@ -305,6 +331,220 @@ export default function RaffleProjectorDisplayPage() {
     [soundEnabled]
   );
 
+  const stopSoundPreview = React.useCallback(() => {
+    soundPreviewRunRef.current += 1;
+
+    if (soundPreviewTimerRef.current !== null) {
+      window.clearTimeout(soundPreviewTimerRef.current);
+      soundPreviewTimerRef.current = null;
+    }
+
+    setSoundPreview(null);
+  }, []);
+
+  const startSoundPreview = React.useCallback(async () => {
+    if (!soundEnabled) {
+      setSoundError(
+        "Enable Raffle Sound first, then run the local sound preview."
+      );
+      return;
+    }
+
+    try {
+      await ensureAudioContext();
+    } catch (caught) {
+      setSoundError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to start raffle sound preview."
+      );
+      return;
+    }
+
+    stopSoundPreview();
+    setSoundError("");
+
+    const runId = soundPreviewRunRef.current;
+    let fastTick = 0;
+
+    const schedule = (
+      callback: () => void,
+      delayMs: number
+    ) => {
+      soundPreviewTimerRef.current =
+        window.setTimeout(() => {
+          if (
+            soundPreviewRunRef.current !== runId
+          ) {
+            return;
+          }
+
+          callback();
+        }, delayMs);
+    };
+
+    const countdownValues = [
+      20,
+      10,
+      5,
+      4,
+      3,
+      2,
+      1,
+    ];
+
+    const runCountdown = (index: number) => {
+      if (
+        soundPreviewRunRef.current !== runId
+      ) {
+        return;
+      }
+
+      if (index >= countdownValues.length) {
+        schedule(() => {
+          setSoundPreview(null);
+          soundPreviewTimerRef.current = null;
+        }, 700);
+        return;
+      }
+
+      const seconds = countdownValues[index];
+
+      setSoundPreview({
+        phase: "countdown",
+        label: "Claim Countdown Sound",
+        displayName: "NO WINNER - LOCAL SOUND TEST",
+        seconds,
+      });
+
+      playCountdownTick(seconds);
+
+      schedule(
+        () => runCountdown(index + 1),
+        1000
+      );
+    };
+
+    const revealWinner = () => {
+      setSoundPreview({
+        phase: "winner",
+        label: "Winner Reveal Chime",
+        displayName: "SOUND TEST COMPLETE",
+        seconds: null,
+      });
+
+      playWinnerReveal();
+
+      schedule(() => runCountdown(0), 900);
+    };
+
+    const slowRemaining = [
+      20,
+      18,
+      16,
+      14,
+      12,
+      10,
+      8,
+      6,
+      4,
+      2,
+      1,
+    ];
+
+    const slowDelays = [
+      120,
+      140,
+      160,
+      190,
+      220,
+      260,
+      310,
+      360,
+      420,
+      500,
+      600,
+    ];
+
+    const runSlow = (index: number) => {
+      if (
+        soundPreviewRunRef.current !== runId
+      ) {
+        return;
+      }
+
+      if (index >= slowRemaining.length) {
+        revealWinner();
+        return;
+      }
+
+      const remaining = slowRemaining[index];
+
+      setSoundPreview({
+        phase: "slow",
+        label: "Slowing Roulette Sound",
+        displayName:
+          SOUND_PREVIEW_NAMES[
+            (index + 1) %
+              SOUND_PREVIEW_NAMES.length
+          ],
+        seconds: remaining,
+      });
+
+      playRouletteTick(remaining);
+
+      schedule(
+        () => runSlow(index + 1),
+        slowDelays[index]
+      );
+    };
+
+    const runFast = () => {
+      if (
+        soundPreviewRunRef.current !== runId
+      ) {
+        return;
+      }
+
+      if (fastTick >= 80) {
+        runSlow(0);
+        return;
+      }
+
+      const remaining =
+        60 -
+        Math.min(
+          39,
+          Math.floor((fastTick / 80) * 40)
+        );
+
+      setSoundPreview({
+        phase: "fast",
+        label: "Fast Roulette Sound",
+        displayName:
+          SOUND_PREVIEW_NAMES[
+            fastTick %
+              SOUND_PREVIEW_NAMES.length
+          ],
+        seconds: remaining,
+      });
+
+      playRouletteTick(remaining);
+      fastTick += 1;
+
+      schedule(runFast, 100);
+    };
+
+    runFast();
+  }, [
+    ensureAudioContext,
+    playCountdownTick,
+    playRouletteTick,
+    playWinnerReveal,
+    soundEnabled,
+    stopSoundPreview,
+  ]);
+
   const loadCurrent = React.useCallback(async () => {
     if (!eventSlug) return;
 
@@ -418,6 +658,15 @@ export default function RaffleProjectorDisplayPage() {
   ]);
 
   React.useEffect(() => {
+    if (
+      state?.phase &&
+      state.phase !== "idle"
+    ) {
+      stopSoundPreview();
+    }
+  }, [state?.phase, stopSoundPreview]);
+
+  React.useEffect(() => {
     const currentPhase =
       state?.phase || "idle";
     const previousPhase =
@@ -473,6 +722,17 @@ export default function RaffleProjectorDisplayPage() {
 
   React.useEffect(() => {
     return () => {
+      soundPreviewRunRef.current += 1;
+
+      if (
+        soundPreviewTimerRef.current !== null
+      ) {
+        window.clearTimeout(
+          soundPreviewTimerRef.current
+        );
+        soundPreviewTimerRef.current = null;
+      }
+
       const context = audioContextRef.current;
 
       audioContextRef.current = null;
@@ -517,9 +777,37 @@ export default function RaffleProjectorDisplayPage() {
             : "Enable Raffle Sound"}
         </button>
 
+        {soundEnabled && phase === "idle" ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (soundPreview) {
+                stopSoundPreview();
+              } else {
+                void startSoundPreview();
+              }
+            }}
+            className={`rounded-xl px-4 py-3 text-sm font-black shadow-2xl ${
+              soundPreview
+                ? "bg-red-600 text-white"
+                : "bg-cyan-400 text-slate-950"
+            }`}
+          >
+            {soundPreview
+              ? "Stop Local Sound Preview"
+              : "Preview Raffle Sounds - No Draw"}
+          </button>
+        ) : null}
+
         {!soundEnabled ? (
           <p className="rounded-lg bg-slate-950/90 px-3 py-2 text-right text-xs font-bold text-slate-300">
             Click once on this projector before the draw. Browsers block automatic sound until the operator enables it.
+          </p>
+        ) : null}
+
+        {soundEnabled && phase === "idle" ? (
+          <p className="rounded-lg bg-slate-950/90 px-3 py-2 text-right text-xs font-bold text-slate-300">
+            Local preview uses dummy text only. It does not call the raffle API, select a winner, create a draw, or change the database.
           </p>
         ) : null}
 
@@ -529,6 +817,39 @@ export default function RaffleProjectorDisplayPage() {
           </p>
         ) : null}
       </div>
+
+      {soundPreview ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/95 p-6 text-white">
+          <div className="w-full max-w-5xl rounded-[2rem] border-4 border-cyan-300 bg-slate-950 p-10 text-center shadow-2xl">
+            <p className="text-lg font-black uppercase tracking-[0.3em] text-cyan-300">
+              Local Sound Preview - No Raffle Draw
+            </p>
+            <h2 className="mt-5 text-4xl font-black md:text-6xl">
+              {soundPreview.label}
+            </h2>
+            <div className="mt-8 rounded-[2rem] bg-white px-8 py-12 text-slate-950">
+              <p className="text-5xl font-black md:text-8xl">
+                {soundPreview.displayName}
+              </p>
+              {soundPreview.seconds !== null ? (
+                <p className="mt-6 text-7xl font-black text-amber-600 md:text-9xl">
+                  {soundPreview.seconds}
+                </p>
+              ) : null}
+            </div>
+            <p className="mt-6 text-lg font-bold text-slate-300">
+              This preview is local to this projector. No attendee, winner, raffle draw, or database record is used.
+            </p>
+            <button
+              type="button"
+              onClick={stopSoundPreview}
+              className="mt-6 rounded-xl bg-red-600 px-6 py-4 text-lg font-black text-white"
+            >
+              Stop Preview
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <section className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-7xl flex-col">
         <header className="text-center">
