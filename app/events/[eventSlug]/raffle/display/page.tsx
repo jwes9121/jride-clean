@@ -57,6 +57,50 @@ function nextDelay(secondsUntilReveal: number | null | undefined) {
   return 550;
 }
 
+function scheduleTone(
+  context: AudioContext,
+  options: {
+    frequency: number;
+    duration: number;
+    volume: number;
+    startOffset?: number;
+    type?: OscillatorType;
+  }
+) {
+  const startAt =
+    context.currentTime + (options.startOffset || 0);
+  const stopAt = startAt + options.duration;
+  const peakAt = Math.min(
+    stopAt - 0.002,
+    startAt + 0.005
+  );
+
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+
+  oscillator.type = options.type || "square";
+  oscillator.frequency.setValueAtTime(
+    options.frequency,
+    startAt
+  );
+
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(
+    Math.max(0.0002, options.volume),
+    peakAt
+  );
+  gain.gain.exponentialRampToValueAtTime(
+    0.0001,
+    stopAt
+  );
+
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+
+  oscillator.start(startAt);
+  oscillator.stop(stopAt + 0.02);
+}
+
 export default function RaffleProjectorDisplayPage() {
   const params = useParams<{ eventSlug: string }>();
   const eventSlug = String(params?.eventSlug || "");
@@ -66,6 +110,200 @@ export default function RaffleProjectorDisplayPage() {
   const [nameIndex, setNameIndex] = React.useState(0);
   const [loadedDrawId, setLoadedDrawId] = React.useState("");
   const [error, setError] = React.useState("");
+  const [soundEnabled, setSoundEnabled] =
+    React.useState(false);
+  const [soundError, setSoundError] =
+    React.useState("");
+
+  const audioContextRef =
+    React.useRef<AudioContext | null>(null);
+  const secondsUntilRevealRef =
+    React.useRef<number | null>(null);
+  const previousPhaseRef =
+    React.useRef<RafflePhase>("idle");
+  const lastCountdownSecondRef =
+    React.useRef<number | null>(null);
+
+  const ensureAudioContext = React.useCallback(
+    async () => {
+      let context = audioContextRef.current;
+
+      if (!context) {
+        const AudioContextClass =
+          window.AudioContext ||
+          (
+            window as typeof window & {
+              webkitAudioContext?: typeof AudioContext;
+            }
+          ).webkitAudioContext;
+
+        if (!AudioContextClass) {
+          throw new Error(
+            "This browser does not support raffle audio."
+          );
+        }
+
+        context = new AudioContextClass();
+        audioContextRef.current = context;
+      }
+
+      if (context.state === "suspended") {
+        await context.resume();
+      }
+
+      return context;
+    },
+    []
+  );
+
+  const enableSound = React.useCallback(async () => {
+    try {
+      const context = await ensureAudioContext();
+
+      setSoundEnabled(true);
+      setSoundError("");
+
+      scheduleTone(context, {
+        frequency: 660,
+        duration: 0.07,
+        volume: 0.055,
+        type: "triangle",
+      });
+
+      scheduleTone(context, {
+        frequency: 880,
+        duration: 0.1,
+        volume: 0.06,
+        startOffset: 0.1,
+        type: "triangle",
+      });
+    } catch (caught) {
+      setSoundEnabled(false);
+      setSoundError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to enable raffle audio."
+      );
+    }
+  }, [ensureAudioContext]);
+
+  const disableSound = React.useCallback(() => {
+    setSoundEnabled(false);
+    setSoundError("");
+  }, []);
+
+  const playRouletteTick = React.useCallback(
+    (
+      secondsUntilReveal:
+        | number
+        | null
+        | undefined
+    ) => {
+      if (!soundEnabled) return;
+
+      const context = audioContextRef.current;
+
+      if (!context || context.state !== "running") {
+        return;
+      }
+
+      const remaining = Math.max(
+        0,
+        Number(secondsUntilReveal ?? 0)
+      );
+      const fastPhase = remaining > 20;
+
+      const frequency =
+        (
+          fastPhase
+            ? 820
+            : 520 + remaining * 16
+        ) +
+        Math.random() * (
+          fastPhase ? 260 : 120
+        );
+
+      scheduleTone(context, {
+        frequency,
+        duration: fastPhase ? 0.018 : 0.035,
+        volume: fastPhase ? 0.024 : 0.04,
+        type: "square",
+      });
+
+      scheduleTone(context, {
+        frequency: frequency / 2,
+        duration: fastPhase ? 0.024 : 0.045,
+        volume: fastPhase ? 0.009 : 0.014,
+        type: "triangle",
+      });
+    },
+    [soundEnabled]
+  );
+
+  const playWinnerReveal = React.useCallback(() => {
+    if (!soundEnabled) return;
+
+    const context = audioContextRef.current;
+
+    if (!context || context.state !== "running") {
+      return;
+    }
+
+    [
+      { frequency: 523.25, offset: 0 },
+      { frequency: 659.25, offset: 0.12 },
+      { frequency: 783.99, offset: 0.24 },
+    ].forEach((note) => {
+      scheduleTone(context, {
+        frequency: note.frequency,
+        duration: 0.22,
+        volume: 0.065,
+        startOffset: note.offset,
+        type: "triangle",
+      });
+    });
+  }, [soundEnabled]);
+
+  const playCountdownTick = React.useCallback(
+    (seconds: number) => {
+      if (!soundEnabled || seconds <= 0) {
+        return;
+      }
+
+      const context = audioContextRef.current;
+
+      if (!context || context.state !== "running") {
+        return;
+      }
+
+      const urgent = seconds <= 5;
+      const frequency = urgent
+        ? 980
+        : seconds <= 10
+        ? 760
+        : 560;
+      const startOffset = seconds === 20 ? 0.55 : 0;
+
+      scheduleTone(context, {
+        frequency,
+        duration: urgent ? 0.1 : 0.07,
+        volume: urgent ? 0.07 : 0.045,
+        startOffset,
+        type: "sine",
+      });
+
+      if (urgent) {
+        scheduleTone(context, {
+          frequency: frequency * 1.18,
+          duration: 0.08,
+          volume: 0.045,
+          startOffset: startOffset + 0.13,
+          type: "sine",
+        });
+      }
+    },
+    [soundEnabled]
+  );
 
   const loadCurrent = React.useCallback(async () => {
     if (!eventSlug) return;
@@ -130,24 +368,123 @@ export default function RaffleProjectorDisplayPage() {
   }, [eventSlug, loadedDrawId, state?.activeDraw?.drawId]);
 
   React.useEffect(() => {
-    if (state?.phase !== "rolling" || names.length === 0) return;
+    secondsUntilRevealRef.current =
+      state?.secondsUntilReveal ?? null;
+  }, [state?.secondsUntilReveal]);
+
+  React.useEffect(() => {
+    if (
+      state?.phase !== "rolling" ||
+      names.length === 0
+    ) {
+      return;
+    }
 
     let cancelled = false;
     let timer: number | null = null;
 
     const tick = () => {
       if (cancelled) return;
-      setNameIndex((current) => (current + 1) % names.length);
-      timer = window.setTimeout(tick, nextDelay(state.secondsUntilReveal));
+
+      const remaining =
+        secondsUntilRevealRef.current;
+
+      setNameIndex(
+        (current) =>
+          (current + 1) % names.length
+      );
+
+      playRouletteTick(remaining);
+
+      timer = window.setTimeout(
+        tick,
+        nextDelay(remaining)
+      );
     };
 
     tick();
 
     return () => {
       cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
+
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
     };
-  }, [names, state?.phase, state?.secondsUntilReveal]);
+  }, [
+    names,
+    playRouletteTick,
+    state?.phase,
+  ]);
+
+  React.useEffect(() => {
+    const currentPhase =
+      state?.phase || "idle";
+    const previousPhase =
+      previousPhaseRef.current;
+
+    if (
+      previousPhase === "rolling" &&
+      currentPhase === "claim"
+    ) {
+      playWinnerReveal();
+    }
+
+    if (currentPhase !== "claim") {
+      lastCountdownSecondRef.current = null;
+    }
+
+    previousPhaseRef.current = currentPhase;
+  }, [playWinnerReveal, state?.phase]);
+
+  React.useEffect(() => {
+    if (state?.phase !== "claim") {
+      lastCountdownSecondRef.current = null;
+      return;
+    }
+
+    const rawSeconds = Number(
+      state?.secondsUntilClaimDeadline ?? 0
+    );
+
+    if (!Number.isFinite(rawSeconds)) {
+      return;
+    }
+
+    const seconds = Math.max(
+      0,
+      Math.ceil(rawSeconds)
+    );
+
+    if (
+      lastCountdownSecondRef.current ===
+      seconds
+    ) {
+      return;
+    }
+
+    lastCountdownSecondRef.current = seconds;
+    playCountdownTick(seconds);
+  }, [
+    playCountdownTick,
+    state?.phase,
+    state?.secondsUntilClaimDeadline,
+  ]);
+
+  React.useEffect(() => {
+    return () => {
+      const context = audioContextRef.current;
+
+      audioContextRef.current = null;
+
+      if (
+        context &&
+        context.state !== "closed"
+      ) {
+        void context.close().catch(() => undefined);
+      }
+    };
+  }, []);
 
   const phase = state?.phase || "idle";
   const activeDraw = state?.activeDraw || null;
@@ -158,6 +495,41 @@ export default function RaffleProjectorDisplayPage() {
 
   return (
     <main className="min-h-screen overflow-hidden bg-black px-6 pb-36 pt-8 text-white md:pb-40">
+      <div className="fixed right-4 top-4 z-[70] flex max-w-[260px] flex-col items-end gap-2">
+        <button
+          type="button"
+          aria-pressed={soundEnabled}
+          onClick={() => {
+            if (soundEnabled) {
+              disableSound();
+            } else {
+              void enableSound();
+            }
+          }}
+          className={`rounded-xl px-4 py-3 text-sm font-black shadow-2xl ${
+            soundEnabled
+              ? "bg-emerald-500 text-slate-950"
+              : "bg-amber-300 text-slate-950"
+          }`}
+        >
+          {soundEnabled
+            ? "Raffle Sound ON"
+            : "Enable Raffle Sound"}
+        </button>
+
+        {!soundEnabled ? (
+          <p className="rounded-lg bg-slate-950/90 px-3 py-2 text-right text-xs font-bold text-slate-300">
+            Click once on this projector before the draw. Browsers block automatic sound until the operator enables it.
+          </p>
+        ) : null}
+
+        {soundError ? (
+          <p className="rounded-lg bg-red-700 px-3 py-2 text-right text-xs font-black text-white">
+            {soundError}
+          </p>
+        ) : null}
+      </div>
+
       <section className="mx-auto flex min-h-[calc(100vh-12rem)] max-w-7xl flex-col">
         <header className="text-center">
           <p className="text-xl font-black uppercase tracking-[0.4em] text-amber-300">
