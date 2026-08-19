@@ -80,7 +80,7 @@ export default function EventLiveSafetyTracking({
       const data = (await response.json()) as TrackingStatusResponse;
 
       if (!response.ok || !data.success) {
-        return;
+        return null;
       }
 
       setStatus(data);
@@ -111,17 +111,41 @@ export default function EventLiveSafetyTracking({
         stopLocalTracking();
         setTracking(false);
       }
-    } catch {}
+
+      return data;
+    } catch {
+      return null;
+    }
   }
 
   React.useEffect(() => {
-    void loadStatus();
+    let cancelled = false;
+    let timer: number | null = null;
 
-    const timer = window.setInterval(() => {
-      void loadStatus();
-    }, 10000);
+    async function pollStatus() {
+      const nextStatus = await loadStatus();
 
-    return () => window.clearInterval(timer);
+      if (cancelled) return;
+
+      const waitingForAttendance =
+        nextStatus?.eventStatus === "live" &&
+        nextStatus?.attendeeStatus !== "checked_in";
+
+      timer = window.setTimeout(
+        () => void pollStatus(),
+        waitingForAttendance ? 2000 : 10000
+      );
+    }
+
+    void pollStatus();
+
+    return () => {
+      cancelled = true;
+
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+    };
   }, [statusUrl]);
 
   React.useEffect(() => {
@@ -419,9 +443,12 @@ export default function EventLiveSafetyTracking({
               JRide can share your phone's latest location with authorized event staff while {eventName} is LIVE. This is for participant safety only.
             </p>
             <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-950">
-              <p className="font-black">Privacy controls</p>
+              <p className="font-black">Privacy and peace of mind</p>
               <p className="mt-2">
-                Only the latest location is stored, not your full route history. You can stop sharing at any time, and all live safety locations are automatically removed when the event leaves LIVE status.
+                Only your latest location is stored for participant safety. JRide does not save your full route history, and you can stop sharing at any time.
+              </p>
+              <p className="mt-3 font-black">
+                After the event ends, this live tracking session automatically stops and all stored live safety location data is permanently deleted. This event feature cannot continue tracking you afterward.
               </p>
             </div>
             <p className="mt-4 text-sm font-semibold text-slate-600">
