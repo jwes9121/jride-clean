@@ -1507,19 +1507,42 @@ export default function EventAdminControlPage() {
                   View consenting participants who are sharing their latest phone location while the event is LIVE.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() =>
-                  window.open(
-                    `/events/${eventSlug}/live-tracking`,
-                    "jride_live_safety_tracking",
-                    "popup=yes,width=1280,height=850,resizable=yes,scrollbars=yes"
-                  )
-                }
-                className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950"
-              >
-                Open Live Safety Map
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(
+                      `/admin/events/${eventSlug}/route-editor`,
+                      "jride_event_course_editor",
+                      "popup=yes,width=1400,height=900,resizable=yes,scrollbars=yes"
+                    )
+                  }
+                  className="rounded-xl border border-cyan-500 px-5 py-3 text-sm font-black text-cyan-200"
+                >
+                  Edit Official Course
+                </button>
+                <a
+                  href={`/events/${eventSlug}/course`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-slate-600 px-5 py-3 text-sm font-black text-slate-200"
+                >
+                  Public Course Page
+                </a>
+                <button
+                  type="button"
+                  onClick={() =>
+                    window.open(
+                      `/events/${eventSlug}/live-tracking`,
+                      "jride_live_safety_tracking",
+                      "popup=yes,width=1280,height=850,resizable=yes,scrollbars=yes"
+                    )
+                  }
+                  className="rounded-xl bg-emerald-500 px-5 py-3 text-sm font-black text-slate-950"
+                >
+                  Open Live Safety Map
+                </button>
+              </div>
             </div>
           </div>
           <CommandCenterPage />

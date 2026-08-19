@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import EventParticipantLiveMap from "./EventParticipantLiveMap";
 
 type TrackingStatusResponse = {
   success: boolean;
@@ -13,6 +14,13 @@ type TrackingStatusResponse = {
   lastUpdatedAt?: string | null;
   lastAccuracyM?: number | null;
   message?: string;
+};
+
+type CurrentPosition = {
+  latitude: number;
+  longitude: number;
+  accuracyM: number | null;
+  updatedAt: string;
 };
 
 type Props = {
@@ -51,6 +59,8 @@ export default function EventLiveSafetyTracking({
   const [error, setError] = React.useState("");
   const [lastUpdatedAt, setLastUpdatedAt] = React.useState<string | null>(null);
   const [lastAccuracyM, setLastAccuracyM] = React.useState<number | null>(null);
+  const [currentPosition, setCurrentPosition] =
+    React.useState<CurrentPosition | null>(null);
 
   const watchIdRef = React.useRef<number | null>(null);
   const wakeLockRef = React.useRef<any>(null);
@@ -275,6 +285,15 @@ export default function EventLiveSafetyTracking({
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         setTracking(true);
+        setCurrentPosition({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracyM:
+            Number.isFinite(position.coords.accuracy)
+              ? position.coords.accuracy
+              : null,
+          updatedAt: new Date().toISOString(),
+        });
         void sendPosition(position).catch((caught) => {
           setError(
             caught instanceof Error
@@ -304,6 +323,7 @@ export default function EventLiveSafetyTracking({
   async function stopTracking() {
     stopLocalTracking();
     setTracking(false);
+    setCurrentPosition(null);
     setPromptOpen(false);
 
     try {
@@ -429,6 +449,13 @@ export default function EventLiveSafetyTracking({
           </div>
         ) : null}
       </div>
+
+      <EventParticipantLiveMap
+        eventSlug={eventSlug}
+        eventName={eventName}
+        tracking={tracking}
+        currentPosition={currentPosition}
+      />
 
       {promptOpen ? (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-4 sm:items-center">
