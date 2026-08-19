@@ -1508,6 +1508,20 @@ export default function EventAdminControlPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/admin/events/${eventSlug}/access`}
+                  className="rounded-xl border border-amber-400 px-5 py-3 text-sm font-black text-amber-300"
+                >
+                  Event Links &amp; Assistant Access
+                </a>
+                <a
+                  href={`/events/${eventSlug}/attendance-display`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-xl border border-violet-400 px-5 py-3 text-sm font-black text-violet-200"
+                >
+                  Attendance Wallboard
+                </a>
                 <button
                   type="button"
                   onClick={() =>

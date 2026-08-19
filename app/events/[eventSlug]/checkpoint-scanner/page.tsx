@@ -805,7 +805,7 @@ export default function EventCheckpointScannerPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <button
               type="button"
               onClick={() => void startScanner()}
@@ -829,6 +829,12 @@ export default function EventCheckpointScannerPage() {
             >
               Stop
             </button>
+            <a
+              href={`/events/${eventSlug}/checkpoint-manual`}
+              className="rounded-2xl bg-cyan-400 px-5 py-4 text-center font-black text-slate-950"
+            >
+              Manual Lookup / Encode
+            </a>
           </div>
 
           <div className="mt-5 rounded-2xl bg-slate-950 p-4 text-sm text-slate-400">
