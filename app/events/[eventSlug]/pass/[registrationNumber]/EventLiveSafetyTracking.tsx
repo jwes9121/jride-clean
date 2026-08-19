@@ -453,6 +453,8 @@ export default function EventLiveSafetyTracking({
       <EventParticipantLiveMap
         eventSlug={eventSlug}
         eventName={eventName}
+        registrationNumber={registrationNumber}
+        qrToken={qrToken}
         tracking={tracking}
         currentPosition={currentPosition}
       />

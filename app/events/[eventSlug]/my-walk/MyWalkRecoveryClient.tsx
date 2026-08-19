@@ -35,6 +35,17 @@ function passengerToken() {
   }
 }
 
+function clearPassengerSession() {
+  try {
+    window.localStorage.removeItem(
+      "jride_passenger_token"
+    );
+    window.localStorage.removeItem(
+      "jride_access_token"
+    );
+  } catch {}
+}
+
 export default function MyWalkRecoveryClient({
   eventSlug,
 }: Props) {
@@ -157,8 +168,11 @@ export default function MyWalkRecoveryClient({
         !payload.eventPassUrl
       ) {
         if (response.status === 401) {
+          clearPassengerSession();
+          setHasPassengerSession(false);
+
           throw new Error(
-            "Your JRide session has expired. Sign in again, then return to this page."
+            "Your JRide session expired. Tap Sign In to JRide below, then you will return to this My Walk page automatically."
           );
         }
 

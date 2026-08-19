@@ -16,6 +16,25 @@ function mapStyle(mode: MapMode) {
     : "mapbox://styles/mapbox/outdoors-v12";
 }
 
+function formatFinishTime(value: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(date);
+}
+
 type CurrentPosition = {
   latitude: number;
   longitude: number;
@@ -26,8 +45,21 @@ type CurrentPosition = {
 type Props = {
   eventSlug: string;
   eventName: string;
+  registrationNumber: string;
+  qrToken: string;
   tracking: boolean;
   currentPosition: CurrentPosition | null;
+};
+
+type PassProgressResponse = {
+  success: boolean;
+  runnerProgress?: {
+    isComplete: boolean;
+    timeline: {
+      status: "passed" | "pending";
+      passedAt: string | null;
+    }[];
+  } | null;
 };
 
 type RouteResponse = {
@@ -44,6 +76,8 @@ type RouteResponse = {
 export default function EventParticipantLiveMap({
   eventSlug,
   eventName,
+  registrationNumber,
+  qrToken,
   tracking,
   currentPosition,
 }: Props) {
@@ -303,6 +337,56 @@ export default function EventParticipantLiveMap({
     });
   }
 
+  async function loadVerifiedFinish() {
+    try {
+      const response = await fetch(
+        `/api/events/${encodeURIComponent(
+          eventSlug
+        )}/pass/${encodeURIComponent(
+          registrationNumber
+        )}?token=${encodeURIComponent(qrToken)}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const payload =
+        (await response.json()) as PassProgressResponse;
+
+      if (!response.ok || !payload.success) {
+        return {
+          complete: false,
+          finishedAt: null as string | null,
+        };
+      }
+
+      const progress = payload.runnerProgress;
+      const passed =
+        progress?.timeline?.filter(
+          (item) =>
+            item.status === "passed" &&
+            Boolean(item.passedAt)
+        ) || [];
+      const lastPassed =
+        passed.length > 0
+          ? passed[passed.length - 1]
+          : null;
+
+      return {
+        complete: progress?.isComplete === true,
+        finishedAt:
+          progress?.isComplete === true
+            ? lastPassed?.passedAt || null
+            : null,
+      };
+    } catch {
+      return {
+        complete: false,
+        finishedAt: null as string | null,
+      };
+    }
+  }
+
   async function shareFunWalk() {
     const publicUrl =
       `${window.location.origin}/events/` +
@@ -311,27 +395,56 @@ export default function EventParticipantLiveMap({
       route?.officialDistanceKm ??
       route?.measuredDistanceKm ??
       5.21;
-    const text =
-      `I am joining the ${distance} km ${eventName}. ` +
-      "See the official Fun Walk route powered by JRide Events.";
+
+    setShareMessage(
+      "Preparing a privacy-safe JRide Events share..."
+    );
+
+    const finish = await loadVerifiedFinish();
+    const finishedAt = formatFinishTime(
+      finish.finishedAt
+    );
+    const brandLine =
+      "Powered by JRide Events - digital registration, QR attendance, live safety tracking, and raffle.";
+    const shareTitle = finish.complete
+      ? `I completed ${eventName}`
+      : eventName;
+    const text = finish.complete
+      ? `I completed the official ${distance} km ${eventName}! ` +
+        `${
+          finishedAt
+            ? `Finish verified ${finishedAt}. `
+            : "Finish verified by JRide Events. "
+        }` +
+        `${brandLine}`
+      : `I am joining the official ${distance} km ${eventName}! ` +
+        `View the official course. ${brandLine}`;
 
     try {
       if (navigator.share) {
         await navigator.share({
-          title: eventName,
+          title: shareTitle,
           text,
           url: publicUrl,
         });
-        setShareMessage("Fun Walk shared.");
+        setShareMessage(
+          finish.complete
+            ? "Verified finish shared with the public course link."
+            : "Fun Walk shared with the public course link."
+        );
       } else {
         await navigator.clipboard.writeText(
-          publicUrl
+          `${text}\n${publicUrl}`
         );
         setShareMessage(
-          "Public course link copied."
+          finish.complete
+            ? "Verified finish message and public course link copied."
+            : "Marketing message and public course link copied."
         );
       }
-    } catch {}
+    } catch {
+      setShareMessage("");
+    }
   }
 
   return (
@@ -342,7 +455,9 @@ export default function EventParticipantLiveMap({
             My Live Walk
           </p>
           <p className="mt-1 text-sm font-bold">
-            See your own location against the official course.
+            {tracking && currentPosition
+              ? "See your own live location against the official course."
+              : "Open the official course now. Your live marker appears only after Safety Tracking starts."}
           </p>
         </div>
         <span
@@ -370,14 +485,16 @@ export default function EventParticipantLiveMap({
         >
           {expanded
             ? "Hide My Map"
-            : "Open My Live Map"}
+            : tracking && currentPosition
+            ? "Open My Live Map"
+            : "Open Official Course Map"}
         </button>
         <button
           type="button"
           onClick={() => void shareFunWalk()}
           className="rounded-xl border border-cyan-600 bg-white px-4 py-3 text-sm font-black text-cyan-800"
         >
-          Share Fun Walk
+          Share Fun Walk / Finish
         </button>
       </div>
 
@@ -409,7 +526,7 @@ export default function EventParticipantLiveMap({
       ) : null}
 
       <p className="mt-3 text-xs font-semibold leading-5 text-slate-600">
-        Your map shows only your own phone location. The social share button publishes only the public event course and never includes your live coordinates, Event Pass token, or other participants.
+        Your map shows only your own phone location. Social sharing never includes your live coordinates, Event Pass token, or other participants. Before finishing, it shares a JRide Events participation message and the public course link. After the Finish checkpoint is verified, it shares a verified completion message using the official course distance.
       </p>
 
       {expanded ? (
