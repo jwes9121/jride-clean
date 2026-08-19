@@ -17,6 +17,23 @@ function mapStyle(mode: MapMode) {
     : "mapbox://styles/mapbox/outdoors-v12";
 }
 
+function formatEventDate(value: string | null | undefined) {
+  if (!value) return "Date to be announced";
+
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
 type RouteResponse = {
   success: boolean;
   event?: {
@@ -293,21 +310,24 @@ export default function PublicEventCoursePage() {
           <>
             <div className="grid gap-3 sm:grid-cols-3">
               <Metric
-                label="Official Distance"
+                label="Course Distance"
                 value={`${
                   route.officialDistanceKm ??
                   route.measuredDistanceKm
                 } km`}
               />
               <Metric
-                label="Mapped Distance"
-                value={`${route.measuredDistanceKm.toFixed(
-                  3
-                )} km`}
+                label="Event Date"
+                value={formatEventDate(
+                  data?.event?.event_date
+                )}
               />
               <Metric
-                label="Course Points"
-                value={route.coordinates.length}
+                label="Event Venue"
+                value={
+                  data?.event?.venue ||
+                  "Venue to be announced"
+                }
               />
             </div>
 
@@ -320,8 +340,45 @@ export default function PublicEventCoursePage() {
 
             <div className="mt-4 rounded-2xl border border-cyan-800 bg-cyan-950/30 p-4 text-sm leading-6 text-cyan-100">
               {mapMode === "course"
-                ? "Course Map is the default public view. The blue line is JRide's official organizer-approved route and remains authoritative even when the basemap does not show a recent road or bridge."
+                ? "Course Map is the default public view. Follow the official blue course line and event marshal instructions."
                 : "Satellite Reference is optional. Satellite imagery may not reflect recently completed roads, bridges, buildings, and other structures. Follow the official blue course line."}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.15em] text-emerald-300">
+                  Participant Privacy
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  This public page shows the event course only. Participant live locations are never displayed publicly.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+                <p className="text-xs font-black uppercase tracking-[0.15em] text-amber-300">
+                  Event Day
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Registered participants should bring or reopen their private Event Pass for attendance, safety tracking consent, and their own My Live Walk view.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-3">
+              <a
+                href={`/events/${eventSlug}`}
+                className="rounded-xl border border-slate-600 px-5 py-3 text-sm font-black text-slate-200"
+              >
+                Event Details
+              </a>
+              {data?.event?.status === "registration_open" ? (
+                <a
+                  href={`/events/${eventSlug}/register`}
+                  className="rounded-xl bg-amber-400 px-5 py-3 text-sm font-black text-slate-950"
+                >
+                  Register for the Event
+                </a>
+              ) : null}
             </div>
           </>
         ) : (
