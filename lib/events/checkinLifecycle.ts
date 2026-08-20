@@ -13,13 +13,14 @@
 // Decision (EVT-020 Phase 3A Step 1 evidence + organizer decision):
 //   draft                blocked
 //   published            blocked
-//   registration_open    blocked
+//   registration_open    allowed
 //   registration_closed  allowed
 //   live                 allowed
 //   completed            blocked
 //   archived             blocked
 
 export const CHECKIN_OPEN_STATUSES = [
+  "registration_open",
   "registration_closed",
   "live",
 ] as const;
