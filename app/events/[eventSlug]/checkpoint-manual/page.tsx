@@ -351,6 +351,16 @@ export default function ManualCheckpointPage() {
     }
 
     if (
+      selected.attendanceStatus !== "checked_in"
+    ) {
+      setTone("warning");
+      setMessage(
+        "Gate attendance is required first. Send this participant to the Gate Scanner or Help Desk Manual Check-In, then search again."
+      );
+      return;
+    }
+
+    if (
       reason === "other" &&
       note.trim().length < 3
     ) {
@@ -647,6 +657,12 @@ export default function ManualCheckpointPage() {
               {selected.registrationNumber}
             </p>
 
+            {selected.attendanceStatus !== "checked_in" ? (
+              <p className="mt-5 rounded-2xl border border-amber-500 bg-amber-950/40 p-4 text-sm font-black text-amber-100">
+                NOT CHECKED IN: record gate attendance first. Start/Finish encoding is blocked until the participant is checked in.
+              </p>
+            ) : null}
+
             <label className="mt-5 block text-sm font-bold text-slate-200">
               Reason
               <select
@@ -685,7 +701,9 @@ export default function ManualCheckpointPage() {
               onClick={() => void recordManually()}
               disabled={
                 loading ||
-                selected.isDisqualified
+                selected.isDisqualified ||
+                selected.attendanceStatus !==
+                  "checked_in"
               }
               className="mt-5 w-full rounded-2xl bg-amber-400 px-5 py-4 text-lg font-black text-slate-950 disabled:opacity-50"
             >

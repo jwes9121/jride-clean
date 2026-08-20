@@ -79,34 +79,19 @@ export async function GET(
       );
     }
 
-    const { data: eligibleRows, error: eligibleError } = await supabase
-      .from("event_attendees")
-      .select("id,attendee_type:event_attendee_types!event_attendees_attendee_type_id_fkey(raffle_eligible)")
-      .eq("event_id", event.id)
-      .eq("attendance_status", "checked_in")
-      .eq("is_disqualified", false)
-      .is("merged_into", null);
+    const { data: eligibleRows, error: eligibleError } =
+      await supabase.rpc(
+        "event_raffle_eligible_attendees_v2",
+        {
+          p_event_slug: params.eventSlug,
+        }
+      );
 
     if (eligibleError) throw new Error(eligibleError.message);
 
-    const { data: existingWinnerRows, error: existingWinnerError } = await supabase
-      .from("event_raffle_winners")
-      .select("attendee_id")
-      .eq("event_id", event.id)
-      .in("status", ["selected", "claimed"]);
-
-    if (existingWinnerError) throw new Error(existingWinnerError.message);
-
-    const blockedIds = new Set((existingWinnerRows || []).map((row) => row.attendee_id));
-
-    const eligibleCount = (eligibleRows || []).filter((row: any) => {
-      const attendeeType = Array.isArray(row.attendee_type)
-        ? row.attendee_type[0]
-        : row.attendee_type;
-
-      return attendeeType?.raffle_eligible === true && !blockedIds.has(row.id);
-    }).length;
-
+    const eligibleCount = Array.isArray(eligibleRows)
+      ? eligibleRows.length
+      : 0;
     const { data: activeDraw, error: activeDrawError } = await supabase
       .from("event_raffle_draws")
       .select("id,draw_name,draw_type,status,started_at,winner_selected_at,completed_at,created_at,updated_at")
@@ -194,6 +179,25 @@ export async function GET(
         groupLabel: event.group_label || "Batch",
       },
       eligibleCount,
+      eligibilityPolicy:
+        event.slug ===
+        "dbhs-batch-2001-fun-run-2026"
+          ? {
+              code:
+                "online_registered_and_present_all_attendees",
+              label:
+                "Online registered + gate attendance recorded",
+              details:
+                "Includes all attendee types, including Batch 2001, Golden Jubilarians, regular participants, and online guests. Authorized Help Desk Manual Check-In is accepted as the QR fallback. Event-day manual registrations and walk-ins are excluded.",
+            }
+          : {
+              code:
+                "configured_type_and_present",
+              label:
+                "Configured raffle-eligible types + checked in",
+              details:
+                "Uses this event's configured attendee-type raffle eligibility.",
+            },
       activeDraw: activeDraw
         ? {
             drawId: activeDraw.id,

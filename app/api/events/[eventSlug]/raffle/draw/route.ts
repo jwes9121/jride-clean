@@ -129,7 +129,8 @@ export async function POST(
         return NextResponse.json(
           {
             success: false,
-            error: "No eligible checked-in attendees are available.",
+            error:
+              "No attendees are currently eligible under this event's raffle policy.",
           },
           { status: 409 }
         );

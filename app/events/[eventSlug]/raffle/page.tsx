@@ -19,6 +19,11 @@ type CurrentStateResponse = {
   secondsUntilClaimDeadline?: number | null;
   event?: { title: string; slug: string; groupLabel: string };
   eligibleCount?: number;
+  eligibilityPolicy?: {
+    code: string;
+    label: string;
+    details: string;
+  };
   activeDraw?: {
     drawId: string;
     drawName: string;
@@ -204,6 +209,16 @@ export default function EventRaffleConsolePage() {
             Phase: {phaseLabel(phase)} | Eligible: {state?.eligibleCount || 0}
           </p>
 
+          {state?.eligibilityPolicy ? (
+            <div className="mt-4 rounded-2xl border border-cyan-700 bg-cyan-950/30 p-4 text-sm text-cyan-100">
+              <p className="font-black">
+                Eligibility: {state.eligibilityPolicy.label}
+              </p>
+              <p className="mt-2 leading-6">
+                {state.eligibilityPolicy.details}
+              </p>
+            </div>
+          ) : null}
           {loading ? <p className="mt-6">Loading raffle state...</p> : null}
           {notice ? (
             <p className="mt-5 rounded-2xl bg-emerald-100 p-4 font-bold text-emerald-800">

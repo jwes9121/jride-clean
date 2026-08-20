@@ -6,27 +6,13 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 type EligibleRow = {
-  id: string;
+  attendee_id: string;
   full_name: string;
   group_value: string | null;
-  attendee_type:
-    | {
-        raffle_eligible: boolean | null;
-      }
-    | {
-        raffle_eligible: boolean | null;
-      }[]
-    | null;
+  registration_number: string;
+  registration_source: string | null;
+  attendance_status: string;
 };
-
-function isEligible(row: EligibleRow) {
-  const attendeeType = Array.isArray(row.attendee_type)
-    ? row.attendee_type[0]
-    : row.attendee_type;
-
-  return attendeeType?.raffle_eligible === true;
-}
-
 function shuffle<T>(items: T[]) {
   const result = [...items];
 
@@ -83,27 +69,23 @@ export async function GET(
       );
     }
 
-    const { data: rows, error: rowsError } = await supabase
-      .from("event_attendees")
-      .select(
-        "id,full_name,group_value,attendee_type:event_attendee_types!event_attendees_attendee_type_id_fkey(raffle_eligible)"
-      )
-      .eq("event_id", event.id)
-      .eq("attendance_status", "checked_in")
-      .eq("is_disqualified", false)
-      .is("merged_into", null)
-      .limit(5000);
+    const { data: rows, error: rowsError } =
+      await supabase.rpc(
+        "event_raffle_eligible_attendees_v2",
+        {
+          p_event_slug: params.eventSlug,
+        }
+      );
 
     if (rowsError) throw new Error(rowsError.message);
 
-    const eligible = ((rows || []) as EligibleRow[])
-      .filter(isEligible)
-      .map((row) => ({
-        attendeeId: row.id,
+    const eligible = ((rows || []) as EligibleRow[]).map(
+      (row) => ({
+        attendeeId: row.attendee_id,
         fullName: row.full_name,
         groupValue: row.group_value,
-      }));
-
+      })
+    );
     return NextResponse.json({
       success: true,
       eventSlug: event.slug,

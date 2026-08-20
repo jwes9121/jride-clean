@@ -177,7 +177,7 @@ export async function POST(
       await supabase
         .from("event_attendees")
         .select(
-          "id,full_name,registration_number,is_disqualified,disqualification_reason,merged_into"
+          "id,full_name,registration_number,attendance_status,checked_in_at,is_disqualified,disqualification_reason,merged_into"
         )
         .eq("event_id", event.id)
         .eq("registration_number", registrationNumber)
@@ -213,6 +213,25 @@ export async function POST(
               attendee.disqualification_reason
             ) ||
             "Participant is not eligible for checkpoint recording.",
+        },
+        409
+      );
+    }
+
+    if (
+      attendee.attendance_status !== "checked_in" ||
+      !attendee.checked_in_at
+    ) {
+      return noStore(
+        {
+          success: false,
+          reason: "attendance_required",
+          attendeeId: attendee.id,
+          fullName: attendee.full_name,
+          registrationNumber:
+            attendee.registration_number,
+          message:
+            "Gate attendance must be recorded before Start or Finish. Send the participant to the Gate Scanner or Help Desk Manual Check-In first.",
         },
         409
       );
