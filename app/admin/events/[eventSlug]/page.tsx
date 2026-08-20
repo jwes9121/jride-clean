@@ -82,6 +82,56 @@ type RegistrantRow = {
   companions: CompanionRelationship[];
 };
 
+type TicketAccountingRow = {
+  ticketId: string;
+  ticketNumber: string;
+  ticketType: string;
+  packageName: string;
+  price: number;
+  ticketStatus: string;
+  buyerName: string | null;
+  buyerMobile: string | null;
+  paymentMethod: string | null;
+  paymentReference: string | null;
+  paidAt: string | null;
+  reservedAt: string | null;
+  claimedAt: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  soldBy: string | null;
+  used: boolean;
+  paymentRecorded: boolean;
+  dataIssue: string | null;
+  attendee: {
+    attendeeId: string;
+    fullName: string;
+    mobileNumber: string | null;
+    registrationNumber: string;
+    registrationSource: string | null;
+    registrationStatus: string | null;
+    attendanceStatus: string | null;
+    isDisqualified: boolean;
+    attendeeType: string;
+    attendeeTypeLabel: string;
+    groupValue: string | null;
+  } | null;
+};
+
+type TicketAccountingSummary = {
+  totalIssued: number;
+  usedClaimed: number;
+  regularUsed: number;
+  sponsorUsed: number;
+  complimentaryUsed: number;
+  claimedTicketValue: number;
+  paymentRecorded: number;
+  paymentRecordedValue: number;
+  missingPaymentRecord: number;
+  available: number;
+  reserved: number;
+  voided: number;
+  dataIssues: number;
+};
 type ReportsResponse = {
   success?: boolean;
   error?: string;
@@ -98,6 +148,10 @@ type ReportsResponse = {
   attendeeTypeSummary: AttendeeTypeSummary[];
   batchSummary: GroupSummaryRow[];
   groupSummary: GroupSummaryRow[];
+  ticketAccounting: {
+    summary: TicketAccountingSummary;
+    rows: TicketAccountingRow[];
+  };
   registrants: RegistrantRow[];
   absentees: Array<{
     attendeeId: string;
@@ -351,6 +405,16 @@ function formatDateTime(value: string | null) {
   }).format(date);
 }
 
+function formatPhp(value: number | null | undefined) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) return "PHP 0";
+
+  return `PHP ${new Intl.NumberFormat("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(numeric)}`;
+}
 function downloadCsv(
   filename: string,
   headers: string[],
@@ -437,6 +501,11 @@ function useEventReports(eventSlug: string) {
           !Array.isArray(payload.attendeeTypeSummary) ||
           !Array.isArray(payload.batchSummary) ||
           !Array.isArray(payload.groupSummary) ||
+          !payload.ticketAccounting ||
+          !payload.ticketAccounting.summary ||
+          !Array.isArray(
+            payload.ticketAccounting.rows
+          ) ||
           !Array.isArray(payload.registrants) ||
           !Array.isArray(payload.absentees) ||
           !Array.isArray(payload.raffleWinners)
@@ -824,10 +893,123 @@ function RegistrationGroupsPanel({
 function ReportsPanel({ eventSlug }: { eventSlug: string }) {
   const { data, loading, error, refresh } = useEventReports(eventSlug);
   const [section, setSection] = React.useState<
-    "overview" | "manual" | "absentees" | "raffle"
+    | "overview"
+    | "tickets"
+    | "manual"
+    | "absentees"
+    | "raffle"
   >("overview");
   const [search, setSearch] = React.useState("");
+  const [ticketFilter, setTicketFilter] =
+    React.useState<
+      | "used"
+      | "payment_recorded"
+      | "missing_payment"
+      | "regular"
+      | "sponsor"
+      | "complimentary"
+      | "issues"
+      | "all"
+    >("used");
 
+  const filteredTicketRows = React.useMemo(() => {
+    const query = search
+      .trim()
+      .toLowerCase();
+
+    return (
+      data?.ticketAccounting.rows || []
+    )
+      .filter((row) => {
+        if (ticketFilter === "all") {
+          return true;
+        }
+
+        if (ticketFilter === "used") {
+          return row.used;
+        }
+
+        if (
+          ticketFilter ===
+          "payment_recorded"
+        ) {
+          return (
+            row.used &&
+            row.paymentRecorded
+          );
+        }
+
+        if (
+          ticketFilter ===
+          "missing_payment"
+        ) {
+          return (
+            row.used &&
+            !row.paymentRecorded
+          );
+        }
+
+        if (ticketFilter === "regular") {
+          return (
+            row.used &&
+            row.ticketType === "regular"
+          );
+        }
+
+        if (ticketFilter === "sponsor") {
+          return (
+            row.used &&
+            row.ticketType === "sponsor"
+          );
+        }
+
+        if (
+          ticketFilter ===
+          "complimentary"
+        ) {
+          return (
+            row.used &&
+            row.ticketType ===
+              "complimentary"
+          );
+        }
+
+        if (ticketFilter === "issues") {
+          return Boolean(row.dataIssue);
+        }
+
+        return true;
+      })
+      .filter((row) => {
+        if (!query) return true;
+
+        return [
+          row.ticketNumber,
+          row.ticketType,
+          row.packageName,
+          row.ticketStatus,
+          row.buyerName || "",
+          row.buyerMobile || "",
+          row.paymentMethod || "",
+          row.paymentReference || "",
+          row.soldBy || "",
+          row.dataIssue || "",
+          row.attendee?.fullName || "",
+          row.attendee?.registrationNumber ||
+            "",
+          row.attendee?.mobileNumber || "",
+          row.attendee
+            ?.registrationSource || "",
+          row.attendee?.attendanceStatus ||
+            "",
+          row.attendee?.groupValue || "",
+        ].some((value) =>
+          value
+            .toLowerCase()
+            .includes(query)
+        );
+      });
+  }, [data, search, ticketFilter]);
   const manualRegistrants = React.useMemo(
     () =>
       (data?.registrants || []).filter((row) =>
@@ -943,6 +1125,10 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
         <div className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
           {[
             ["overview", "Overview"],
+            [
+              "tickets",
+              `Ticket Accounting (${data.ticketAccounting.summary.usedClaimed})`,
+            ],
             ["manual", `Manual Registrations (${manualRegistrants.length})`],
             ["absentees", `Absentees (${data.absentees.length})`],
             ["raffle", `Raffle Winners (${data.raffleWinners.length})`],
@@ -952,7 +1138,12 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
               type="button"
               onClick={() =>
                 setSection(
-                  key as "overview" | "manual" | "absentees" | "raffle"
+                  key as
+                    | "overview"
+                    | "tickets"
+                    | "manual"
+                    | "absentees"
+                    | "raffle"
                 )
               }
               className={`rounded-xl px-4 py-3 text-sm font-black ${
@@ -1127,6 +1318,408 @@ function ReportsPanel({ eventSlug }: { eventSlug: string }) {
           </div>
         ) : null}
 
+        {section === "tickets" ? (
+          <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h3 className="text-xl font-black">
+                  Ticket Accounting
+                </h3>
+                <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
+                  Claimed / Used means the issued ticket was consumed by a
+                  registration and linked to an Event Pass. Payment Recorded
+                  means paid_at exists. A missing payment record is not
+                  automatically unpaid; reconcile it with the Finance Team,
+                  especially for cash or offline ticket sales.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  downloadCsv(
+                    `${data.event.slug}-ticket-accounting.csv`,
+                    [
+                      "Ticket Number",
+                      "Ticket Type",
+                      "Package",
+                      "Price",
+                      "Ticket Status",
+                      "Claimed / Used",
+                      "Claimed At",
+                      "Payment Recorded At",
+                      "Payment Method",
+                      "Payment Reference",
+                      "Sold By",
+                      "Buyer Name",
+                      "Buyer Mobile",
+                      "Event Pass",
+                      "Participant",
+                      "Participant Mobile",
+                      "Registration Source",
+                      "Registration Status",
+                      "Attendance Status",
+                      "Category",
+                      "Attendee Type",
+                      "Disqualified",
+                      "Data Issue",
+                      "Voided At",
+                      "Void Reason",
+                    ],
+                    filteredTicketRows.map(
+                      (row) => [
+                        row.ticketNumber,
+                        row.ticketType,
+                        row.packageName,
+                        row.price,
+                        row.ticketStatus,
+                        row.used ? "YES" : "NO",
+                        row.claimedAt,
+                        row.paidAt,
+                        row.paymentMethod,
+                        row.paymentReference,
+                        row.soldBy,
+                        row.buyerName,
+                        row.buyerMobile,
+                        row.attendee
+                          ?.registrationNumber ||
+                          "",
+                        row.attendee?.fullName ||
+                          "",
+                        row.attendee
+                          ?.mobileNumber || "",
+                        row.attendee
+                          ?.registrationSource ||
+                          "",
+                        row.attendee
+                          ?.registrationStatus ||
+                          "",
+                        row.attendee
+                          ?.attendanceStatus ||
+                          "",
+                        row.attendee?.groupValue ||
+                          "",
+                        row.attendee
+                          ?.attendeeTypeLabel ||
+                          "",
+                        row.attendee
+                          ?.isDisqualified
+                          ? "YES"
+                          : "NO",
+                        row.dataIssue,
+                        row.voidedAt,
+                        row.voidReason,
+                      ]
+                    )
+                  )
+                }
+                className="rounded-xl bg-slate-950 px-4 py-3 text-sm font-black text-white"
+              >
+                Download Accounting CSV
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              <Metric
+                label="Used / Claimed Tickets"
+                value={
+                  data.ticketAccounting
+                    .summary.usedClaimed
+                }
+                helper={`${data.ticketAccounting.summary.totalIssued} total issued tickets`}
+              />
+              <Metric
+                label="Regular Used"
+                value={
+                  data.ticketAccounting
+                    .summary.regularUsed
+                }
+              />
+              <Metric
+                label="Sponsor Used"
+                value={
+                  data.ticketAccounting
+                    .summary.sponsorUsed
+                }
+              />
+              <Metric
+                label="Complimentary Used"
+                value={
+                  data.ticketAccounting
+                    .summary
+                    .complimentaryUsed
+                }
+              />
+              <Metric
+                label="Claimed Ticket Value"
+                value={formatPhp(
+                  data.ticketAccounting
+                    .summary
+                    .claimedTicketValue
+                )}
+                helper="Recorded ticket price; not proof of cash collection"
+              />
+              <Metric
+                label="Payment Recorded"
+                value={
+                  data.ticketAccounting
+                    .summary.paymentRecorded
+                }
+              />
+              <Metric
+                label="Payment-Recorded Value"
+                value={formatPhp(
+                  data.ticketAccounting
+                    .summary
+                    .paymentRecordedValue
+                )}
+              />
+              <Metric
+                label="Missing Payment Record"
+                value={
+                  data.ticketAccounting
+                    .summary
+                    .missingPaymentRecord
+                }
+                helper="Reconcile with Finance; not automatically unpaid"
+              />
+              <Metric
+                label="Data Issues"
+                value={
+                  data.ticketAccounting
+                    .summary.dataIssues
+                }
+              />
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-[260px_1fr]">
+              <select
+                value={ticketFilter}
+                onChange={(event) =>
+                  setTicketFilter(
+                    event.target.value as
+                      typeof ticketFilter
+                  )
+                }
+                className="rounded-xl border border-slate-300 px-4 py-3"
+              >
+                <option value="used">
+                  Used / Claimed Tickets
+                </option>
+                <option value="payment_recorded">
+                  Payment Recorded
+                </option>
+                <option value="missing_payment">
+                  Missing Payment Record
+                </option>
+                <option value="regular">
+                  Regular Used
+                </option>
+                <option value="sponsor">
+                  Sponsor Used
+                </option>
+                <option value="complimentary">
+                  Complimentary Used
+                </option>
+                <option value="issues">
+                  Data Issues
+                </option>
+                <option value="all">
+                  All Issued Tickets
+                </option>
+              </select>
+
+              <input
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Search by FR/SP ticket, Event Pass, participant, mobile, payment reference, or seller..."
+                className="rounded-xl border border-slate-300 px-4 py-3"
+              />
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-[0.1em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">
+                      Ticket
+                    </th>
+                    <th className="px-4 py-3">
+                      Type
+                    </th>
+                    <th className="px-4 py-3">
+                      Package
+                    </th>
+                    <th className="px-4 py-3">
+                      Price
+                    </th>
+                    <th className="px-4 py-3">
+                      Ticket Status
+                    </th>
+                    <th className="px-4 py-3">
+                      Payment Record
+                    </th>
+                    <th className="px-4 py-3">
+                      Claimed At
+                    </th>
+                    <th className="px-4 py-3">
+                      Event Pass
+                    </th>
+                    <th className="px-4 py-3">
+                      Participant
+                    </th>
+                    <th className="px-4 py-3">
+                      Source
+                    </th>
+                    <th className="px-4 py-3">
+                      Attendance
+                    </th>
+                    <th className="px-4 py-3">
+                      Seller / Reference
+                    </th>
+                    <th className="px-4 py-3">
+                      Data Check
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTicketRows.map(
+                    (row) => (
+                      <tr
+                        key={row.ticketId}
+                        className="border-t border-slate-100"
+                      >
+                        <td className="px-4 py-3 font-mono font-black">
+                          {row.ticketNumber}
+                        </td>
+                        <td className="px-4 py-3">
+                          {formatLabel(
+                            row.ticketType
+                          )}
+                        </td>
+                        <td className="min-w-[220px] px-4 py-3">
+                          {row.packageName}
+                        </td>
+                        <td className="px-4 py-3 font-black">
+                          {formatPhp(row.price)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-black ${
+                              row.used
+                                ? "bg-emerald-100 text-emerald-800"
+                                : row.ticketStatus ===
+                                  "void"
+                                ? "bg-red-100 text-red-800"
+                                : "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {formatLabel(
+                              row.ticketStatus
+                            )}
+                          </span>
+                        </td>
+                        <td className="min-w-[180px] px-4 py-3">
+                          {row.paidAt ? (
+                            <div>
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-800">
+                                RECORDED
+                              </span>
+                              <div className="mt-2 text-xs text-slate-500">
+                                {formatDateTime(
+                                  row.paidAt
+                                )}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {row.paymentMethod ||
+                                  "Method not recorded"}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-black text-amber-900">
+                              NO PAYMENT RECORD
+                            </span>
+                          )}
+                        </td>
+                        <td className="min-w-[170px] px-4 py-3">
+                          {formatDateTime(
+                            row.claimedAt
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-bold">
+                          {row.attendee
+                            ?.registrationNumber ||
+                            "-"}
+                        </td>
+                        <td className="min-w-[220px] px-4 py-3">
+                          <div className="font-bold">
+                            {row.attendee
+                              ?.fullName ||
+                              row.buyerName ||
+                              "-"}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {row.attendee
+                              ?.mobileNumber ||
+                              row.buyerMobile ||
+                              "-"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {registrationSourceLabel(
+                            row.attendee
+                              ?.registrationSource
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {formatLabel(
+                            row.attendee
+                              ?.attendanceStatus
+                          )}
+                        </td>
+                        <td className="min-w-[180px] px-4 py-3 text-xs">
+                          <div className="font-bold">
+                            {row.soldBy || "-"}
+                          </div>
+                          <div className="mt-1 break-all text-slate-500">
+                            {row.paymentReference ||
+                              "-"}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.dataIssue ? (
+                            <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-black text-red-800">
+                              {row.dataIssue}
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-800">
+                              OK
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  )}
+
+                  {filteredTicketRows.length ===
+                  0 ? (
+                    <tr>
+                      <td
+                        colSpan={13}
+                        className="px-4 py-8 text-center text-slate-500"
+                      >
+                        No matching ticket
+                        accounting records.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
         {section === "manual" ? (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

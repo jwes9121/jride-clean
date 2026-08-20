@@ -28,9 +28,24 @@ type AttendeeRow = {
   disqualification_reason: string | null;
 };
 
-type TicketClaimRow = {
-  claimed_attendee_id: string | null;
+type EventTicketRow = {
+  id: string;
   ticket_number: string;
+  ticket_type: string;
+  package_name: string;
+  price: number | string;
+  status: string;
+  buyer_name: string | null;
+  buyer_mobile: string | null;
+  payment_method: string | null;
+  payment_reference: string | null;
+  paid_at: string | null;
+  reserved_at: string | null;
+  claimed_at: string | null;
+  claimed_attendee_id: string | null;
+  voided_at: string | null;
+  void_reason: string | null;
+  sold_by: string | null;
 };
 
 // JRIDE_EVENT_COMPANION_CONTEXT_V1
@@ -249,9 +264,11 @@ export async function GET(
 
       supabase
         .from("event_tickets")
-        .select("claimed_attendee_id,ticket_number")
+        .select(
+          "id,ticket_number,ticket_type,package_name,price,status,buyer_name,buyer_mobile,payment_method,payment_reference,paid_at,reserved_at,claimed_at,claimed_attendee_id,voided_at,void_reason,sold_by"
+        )
         .eq("event_id", event.id)
-        .not("claimed_attendee_id", "is", null),
+        .order("ticket_number", { ascending: true }),
     ]);
 
     if (attendeesResult.error) {
@@ -272,8 +289,11 @@ export async function GET(
 
     const attendees = (attendeesResult.data || []) as AttendeeRow[];
 
+    const tickets =
+      (ticketsResult.data || []) as EventTicketRow[];
+
     const issuedTicketByAttendeeId = new Map(
-      ((ticketsResult.data || []) as TicketClaimRow[])
+      tickets
         .filter((row) => Boolean(row.claimed_attendee_id))
         .map((row) => [
           String(row.claimed_attendee_id),
@@ -468,6 +488,181 @@ export async function GET(
         };
       });
 
+    const ticketAccountingRows = tickets
+      .slice()
+      .sort((left, right) =>
+        left.ticket_number.localeCompare(
+          right.ticket_number,
+          undefined,
+          {
+            numeric: true,
+            sensitivity: "base",
+          }
+        )
+      )
+      .map((ticket) => {
+        const attendee = ticket.claimed_attendee_id
+          ? attendeeById.get(ticket.claimed_attendee_id) || null
+          : null;
+
+        const attendeeType = attendee
+          ? typeById.get(attendee.attendee_type_id)
+          : null;
+
+        const numericPrice = Number(ticket.price);
+        const price = Number.isFinite(numericPrice)
+          ? numericPrice
+          : 0;
+
+        const ticketStatus = String(
+          ticket.status || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const used = ticketStatus === "claimed";
+        const paymentRecorded = Boolean(
+          ticket.paid_at
+        );
+
+        let dataIssue: string | null = null;
+
+        if (
+          used &&
+          !ticket.claimed_attendee_id
+        ) {
+          dataIssue =
+            "CLAIMED_WITHOUT_ATTENDEE_LINK";
+        } else if (
+          used &&
+          ticket.claimed_attendee_id &&
+          !attendee
+        ) {
+          dataIssue =
+            "CLAIMED_ATTENDEE_NOT_IN_ACTIVE_REPORT";
+        } else if (
+          !used &&
+          ticket.claimed_attendee_id
+        ) {
+          dataIssue =
+            "NONCLAIMED_WITH_ATTENDEE_LINK";
+        }
+
+        return {
+          ticketId: ticket.id,
+          ticketNumber: ticket.ticket_number,
+          ticketType: ticket.ticket_type,
+          packageName: ticket.package_name,
+          price,
+          ticketStatus,
+          buyerName: ticket.buyer_name,
+          buyerMobile: ticket.buyer_mobile,
+          paymentMethod: ticket.payment_method,
+          paymentReference:
+            ticket.payment_reference,
+          paidAt: ticket.paid_at,
+          reservedAt: ticket.reserved_at,
+          claimedAt: ticket.claimed_at,
+          voidedAt: ticket.voided_at,
+          voidReason: ticket.void_reason,
+          soldBy: ticket.sold_by,
+          used,
+          paymentRecorded,
+          dataIssue,
+          attendee: attendee
+            ? {
+                attendeeId: attendee.id,
+                fullName: attendee.full_name,
+                mobileNumber:
+                  attendee.mobile_number,
+                registrationNumber:
+                  attendee.registration_number,
+                registrationSource:
+                  attendee.registration_source,
+                registrationStatus:
+                  attendee.registration_status,
+                attendanceStatus:
+                  attendee.attendance_status,
+                isDisqualified:
+                  isDisqualified(attendee),
+                attendeeType:
+                  attendeeType?.type_key ||
+                  "attendee",
+                attendeeTypeLabel:
+                  typeLabel(attendeeType),
+                groupValue:
+                  attendee.group_value,
+              }
+            : null,
+        };
+      });
+
+    const usedTicketRows =
+      ticketAccountingRows.filter(
+        (row) => row.used
+      );
+
+    const paymentRecordedRows =
+      usedTicketRows.filter(
+        (row) => row.paymentRecorded
+      );
+
+    const sumPrice = (
+      rows: typeof ticketAccountingRows
+    ) =>
+      Number(
+        rows
+          .reduce(
+            (total, row) =>
+              total + row.price,
+            0
+          )
+          .toFixed(2)
+      );
+
+    const ticketAccountingSummary = {
+      totalIssued: ticketAccountingRows.length,
+      usedClaimed: usedTicketRows.length,
+      regularUsed: usedTicketRows.filter(
+        (row) =>
+          row.ticketType === "regular"
+      ).length,
+      sponsorUsed: usedTicketRows.filter(
+        (row) =>
+          row.ticketType === "sponsor"
+      ).length,
+      complimentaryUsed:
+        usedTicketRows.filter(
+          (row) =>
+            row.ticketType ===
+            "complimentary"
+        ).length,
+      claimedTicketValue:
+        sumPrice(usedTicketRows),
+      paymentRecorded:
+        paymentRecordedRows.length,
+      paymentRecordedValue:
+        sumPrice(paymentRecordedRows),
+      missingPaymentRecord:
+        usedTicketRows.filter(
+          (row) => !row.paymentRecorded
+        ).length,
+      available: ticketAccountingRows.filter(
+        (row) =>
+          row.ticketStatus === "available"
+      ).length,
+      reserved: ticketAccountingRows.filter(
+        (row) =>
+          row.ticketStatus === "reserved"
+      ).length,
+      voided: ticketAccountingRows.filter(
+        (row) =>
+          row.ticketStatus === "void"
+      ).length,
+      dataIssues: ticketAccountingRows.filter(
+        (row) => Boolean(row.dataIssue)
+      ).length,
+    };
     const raffleWinners = (
       (raffleResult.data || []) as RaffleWinnerRow[]
     ).map((row) => {
@@ -534,6 +729,10 @@ export async function GET(
       attendeeTypeSummary,
       batchSummary,
       groupSummary,
+      ticketAccounting: {
+        summary: ticketAccountingSummary,
+        rows: ticketAccountingRows,
+      },
       registrants,
       absentees,
       raffleWinners,
