@@ -10,6 +10,27 @@ html, body {
   background: #f5f5f5;
 }
 
+/*
+ * Android WebView can report safe-area-inset-top as zero while the app is
+ * edge-to-edge under the system status bar. Keep the vendor status controls
+ * below the phone icons even when the CSS environment inset is unavailable.
+ */
+@media (max-width: 1023px) {
+  body > .relative.z-\[50\].border-b.border-emerald-500\/20.bg-slate-950.text-slate-100.shadow-lg {
+    padding-top: max(52px, calc(env(safe-area-inset-top, 0px) + 8px)) !important;
+  }
+}
+
+/*
+ * The Vendor Portal mobile header becomes sticky through page-local styles.
+ * When it sticks, keep it below the same Android status-bar exclusion zone.
+ */
+@media (max-width: 760px) {
+  .jride-vendor-premium-shell .flex.flex-wrap.items-start.justify-between.gap-3.rounded-2xl {
+    top: max(44px, env(safe-area-inset-top, 0px)) !important;
+  }
+}
+
 /* Vendor menu editing: keep the editor visible beside the menu on desktop. */
 @media (min-width: 1024px) {
   [data-jride-menu-enhanced="true"] {
