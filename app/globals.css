@@ -73,6 +73,18 @@ html, body {
 }
 
 @media (max-width: 1023px) {
+  [data-jride-vendor-mobile-menu="true"] {
+    order: 2 !important;
+  }
+
+  [data-jride-vendor-mobile-live-queue="true"] {
+    order: 3 !important;
+  }
+
+  [data-jride-vendor-mobile-summary="true"] {
+    order: 4 !important;
+  }
+
   [data-jride-menu-editor="true"] {
     scroll-margin-top: 12px;
   }
