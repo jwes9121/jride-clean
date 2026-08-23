@@ -309,6 +309,8 @@ export async function GET(req: NextRequest) {
       ok: true,
       max_items: null,
       unlimited_items: MENU_ITEMS_ARE_UNLIMITED,
+      accepting_orders: effectiveAcceptingOrders,
+      manual_accepting_orders: vendor?.accepting_orders !== false,
       vendor: vendor
         ? {
             id: cleanString(vendor?.id || vendorId),
@@ -317,7 +319,8 @@ export async function GET(req: NextRequest) {
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
             tagline: cleanString(vendor?.tagline || ""),
-            accepting_orders: effectiveAcceptingOrders,
+            accepting_orders: vendor?.accepting_orders !== false,
+            effective_accepting_orders: effectiveAcceptingOrders,
             manual_accepting_orders: vendor?.accepting_orders !== false,
             hours_enforced: availability?.hours_enforced === true,
             hours_configured: availability?.hours_configured === true,
@@ -337,6 +340,7 @@ export async function GET(req: NextRequest) {
             logo_url: null,
             tagline: "",
             accepting_orders: true,
+            effective_accepting_orders: true,
             manual_accepting_orders: true,
             hours_enforced: false,
             hours_configured: false,
