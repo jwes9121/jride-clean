@@ -98,3 +98,17 @@ html, body {
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Public vendor performance text must remain visible in the Android WebView. */
+@media (max-width: 639px) {
+  .jride-vendor-grid > button p {
+    display: -webkit-box !important;
+    margin-top: 4px !important;
+    overflow: hidden !important;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    color: #cbd5e1 !important;
+    font-size: 11px !important;
+    line-height: 1.25 !important;
+  }
+}
