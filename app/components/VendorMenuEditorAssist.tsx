@@ -87,7 +87,7 @@ function findMenuItemName(card: HTMLElement | null): string {
     return element.className.includes("text-lg") && !text.startsWith("PHP ");
   });
 
-  return elementText(title) || "selected item";
+  return elementText(title || null) || "selected item";
 }
 
 function findButtonByLabel(
