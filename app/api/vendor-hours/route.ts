@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const MANILA_TIME_ZONE = "Asia/Manila";
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
 type Json = Record<string, any>;
@@ -51,15 +50,16 @@ function manilaDateKey(value = new Date()): string {
 }
 
 async function resolveVendor(admin: any, vendorKey: string) {
-  if (UUID_RE.test(vendorKey)) {
-    const byId = await admin
-      .from("vendor_accounts")
-      .select("*")
-      .eq("id", vendorKey)
-      .limit(1)
-      .maybeSingle();
-    if (!byId.error && byId.data) return byId.data;
-  }
+  // Some founding-pilot/test vendors use legacy UUID-shaped IDs that are valid
+  // database keys but do not satisfy the RFC UUID variant bits. Always try the
+  // exact primary key first instead of rejecting those IDs client-side.
+  const byId = await admin
+    .from("vendor_accounts")
+    .select("*")
+    .eq("id", vendorKey)
+    .limit(1)
+    .maybeSingle();
+  if (!byId.error && byId.data) return byId.data;
 
   const byEmail = await admin
     .from("vendor_accounts")
@@ -238,10 +238,13 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      const nowIso = new Date().toISOString();
       const update = await admin
         .from("vendor_accounts")
         .update({
           accepting_orders: true,
+          daily_open_date: manilaDateKey(),
+          daily_opened_at: nowIso,
           extended_from: null,
           extended_until: null,
         })
