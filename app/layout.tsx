@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
 import VendorPerformancePanel from "./components/VendorPerformancePanel";
 import VendorPresenceHeartbeat from "./components/VendorPresenceHeartbeat";
+import VendorHoursGate from "./components/VendorHoursGate";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,6 +25,7 @@ export default function RootLayout({
         {children}
         <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
+        <VendorHoursGate />
         <VendorPerformancePanel />
       </body>
     </html>
