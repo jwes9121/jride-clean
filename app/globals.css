@@ -60,24 +60,48 @@ html, body {
     position: static !important;
     top: auto !important;
     z-index: auto !important;
-    margin: 0 0 10px !important;
-    border-radius: 18px !important;
-    padding: 10px 12px !important;
+    margin: 0 0 8px !important;
+    border-radius: 16px !important;
+    padding: 8px 10px !important;
   }
 
-  [data-jride-vendor-portal-header="true"] > div:first-child > p {
+  /* The mobile nav already says where the vendor is. Keep only identity + Logout here. */
+  [data-jride-vendor-portal-header="true"] > div:first-child {
     display: none !important;
   }
 
-  [data-jride-vendor-portal-header="true"] h1 {
-    font-size: 1.1rem !important;
-    line-height: 1.2 !important;
+  [data-jride-vendor-portal-header="true"] > div:last-child {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
   }
 
-  [data-jride-vendor-portal-header="true"] .min-w-72 {
+  [data-jride-vendor-auth-card="true"] {
+    position: relative;
     min-width: 0 !important;
     width: auto !important;
-    flex: 1 1 220px;
+    flex: 1 1 auto !important;
+    padding: 7px 9px !important;
+  }
+
+  [data-jride-vendor-auth-card="true"] > div:first-child {
+    display: none !important;
+  }
+
+  [data-jride-vendor-auth-card="true"][data-jride-loading="true"] > * {
+    display: none !important;
+  }
+
+  [data-jride-vendor-auth-card="true"][data-jride-loading="true"]::after {
+    content: "Loading vendor profile...";
+    display: block;
+    min-height: 30px;
+    color: #cbd5e1;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 30px;
   }
 
   [data-jride-vendor-header-redundant="true"] {
@@ -85,8 +109,146 @@ html, body {
   }
 
   [data-jride-vendor-scroll-target="true"],
-  [data-jride-menu-editor="true"] {
+  [data-jride-menu-editor="true"],
+  [data-jride-vendor-profile-details="true"] {
     scroll-margin-top: 104px;
+  }
+
+  /* Daily-use profile view: identity first, setup fields only when requested. */
+  [data-jride-vendor-profile-details="true"],
+  [data-jride-vendor-profile-save="true"] {
+    display: none !important;
+  }
+
+  [data-jride-vendor-profile-section="true"][data-jride-profile-expanded="true"] [data-jride-vendor-profile-details="true"] {
+    display: block !important;
+  }
+
+  [data-jride-vendor-profile-section="true"][data-jride-profile-expanded="true"] [data-jride-vendor-profile-save="true"] {
+    display: block !important;
+  }
+
+  .jride-profile-edit-toggle,
+  .jride-add-item-toggle {
+    flex: 0 0 auto;
+    border: 1px solid rgba(52, 211, 153, 0.42);
+    border-radius: 12px;
+    background: rgba(6, 20, 28, 0.9);
+    padding: 8px 10px;
+    color: #d1fae5;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  [data-jride-vendor-profile-summary="true"][data-jride-loading="true"] {
+    position: relative;
+    min-height: 58px;
+  }
+
+  [data-jride-vendor-profile-summary="true"][data-jride-loading="true"] > * {
+    display: none !important;
+  }
+
+  [data-jride-vendor-profile-summary="true"][data-jride-loading="true"]::after {
+    content: "Loading vendor profile...";
+    display: flex;
+    min-height: 58px;
+    align-items: center;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Existing menu items are the default mobile view. Add/edit form opens only on demand. */
+  [data-jride-vendor-menu-section="true"] {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  [data-jride-vendor-menu-section="true"] > [data-jride-menu-header="true"] {
+    order: 1 !important;
+  }
+
+  [data-jride-vendor-menu-section="true"] > [data-jride-menu-grid="true"] {
+    order: 2 !important;
+    margin-top: 10px !important;
+  }
+
+  [data-jride-vendor-menu-section="true"] > [data-jride-menu-editor="true"] {
+    order: 3 !important;
+    display: none !important;
+    margin-top: 10px !important;
+  }
+
+  [data-jride-vendor-menu-section="true"][data-jride-menu-adding="true"] > [data-jride-menu-editor="true"],
+  [data-jride-vendor-menu-section="true"][data-jride-menu-editing="true"] > [data-jride-menu-editor="true"] {
+    order: 2 !important;
+    display: grid !important;
+  }
+
+  [data-jride-vendor-menu-section="true"][data-jride-menu-adding="true"] > [data-jride-menu-grid="true"],
+  [data-jride-vendor-menu-section="true"][data-jride-menu-editing="true"] > [data-jride-menu-grid="true"] {
+    order: 3 !important;
+  }
+
+  [data-jride-menu-category-chips="true"],
+  [data-jride-menu-pilot-rule="true"] {
+    display: none !important;
+  }
+
+  /* Compact management cards: customer-facing large photography stays on the marketplace. */
+  [data-jride-menu-grid="true"] {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  [data-jride-vendor-menu-card="true"] {
+    display: grid !important;
+    grid-template-columns: 96px minmax(0, 1fr) !important;
+    align-items: start !important;
+    overflow: hidden !important;
+  }
+
+  [data-jride-vendor-menu-card-image="true"] {
+    width: 96px !important;
+    height: 112px !important;
+    min-height: 112px !important;
+  }
+
+  [data-jride-vendor-menu-card-image="true"] img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+  }
+
+  [data-jride-vendor-menu-card-body="true"] {
+    min-width: 0 !important;
+    padding: 10px !important;
+  }
+
+  [data-jride-vendor-menu-card-body="true"] > * {
+    margin-top: 6px !important;
+    margin-bottom: 0 !important;
+  }
+
+  [data-jride-vendor-menu-card-body="true"] > *:first-child {
+    margin-top: 0 !important;
+  }
+
+  [data-jride-vendor-menu-description="true"],
+  [data-jride-vendor-menu-secondary="true"] {
+    display: none !important;
+  }
+
+  [data-jride-vendor-menu-card="true"] .text-lg {
+    font-size: 0.95rem !important;
+    line-height: 1.15 !important;
+  }
+
+  [data-jride-vendor-menu-card="true"] .text-xl {
+    font-size: 1rem !important;
+    line-height: 1.15 !important;
   }
 }
 
@@ -175,7 +337,6 @@ html, body {
     inset: auto !important;
     z-index: 2 !important;
     max-height: none !important;
-    margin-top: 12px !important;
     overflow: visible !important;
     border: 1px solid rgba(52, 211, 153, 0.58) !important;
     border-radius: 22px !important;
