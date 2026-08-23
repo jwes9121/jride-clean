@@ -47,6 +47,10 @@ function findButton(parent: HTMLElement, label: string): HTMLButtonElement | nul
   );
 }
 
+function setButtonText(button: HTMLButtonElement, value: string) {
+  if (text(button) !== value) button.textContent = value;
+}
+
 function findMenuEditor(section: HTMLElement): HTMLElement | null {
   return (
     directChildren(section).find((child) =>
@@ -121,10 +125,10 @@ function ensureProfileToggle(profile: HTMLElement) {
       const expanded = profile.dataset.jrideProfileExpanded === "true";
       if (expanded) {
         delete profile.dataset.jrideProfileExpanded;
-        toggle!.textContent = "Edit profile";
+        setButtonText(toggle!, "Edit profile");
       } else {
         profile.dataset.jrideProfileExpanded = "true";
-        toggle!.textContent = "Hide profile form";
+        setButtonText(toggle!, "Hide profile form");
         window.setTimeout(() => {
           details?.scrollIntoView({ behavior: "smooth", block: "start" });
         }, 30);
@@ -132,8 +136,13 @@ function ensureProfileToggle(profile: HTMLElement) {
     });
     header.appendChild(toggle);
   }
-  toggle.textContent = profile.dataset.jrideProfileExpanded === "true" ? "Hide profile form" : "Edit profile";
-  toggle.style.display = summary?.dataset.jrideLoading === "true" ? "none" : "";
+
+  setButtonText(
+    toggle,
+    profile.dataset.jrideProfileExpanded === "true" ? "Hide profile form" : "Edit profile",
+  );
+  const nextDisplay = summary?.dataset.jrideLoading === "true" ? "none" : "";
+  if (toggle.style.display !== nextDisplay) toggle.style.display = nextDisplay;
 }
 
 function markMenuCards(grid: HTMLElement) {
@@ -201,21 +210,24 @@ function ensureAddItemToggle(menu: HTMLElement) {
       if (adding) {
         delete menu.dataset.jrideMenuAdding;
         findButton(editor, "Clear")?.click();
-        addButton!.textContent = "+ Add item";
+        setButtonText(addButton!, "+ Add item");
         return;
       }
 
       findButton(editor, "Clear")?.click();
       delete menu.dataset.jrideMenuEditing;
       menu.dataset.jrideMenuAdding = "true";
-      addButton!.textContent = "Close add item";
+      setButtonText(addButton!, "Close add item");
       window.setTimeout(() => {
         editor.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 50);
     });
     header.appendChild(addButton);
   }
-  addButton.textContent = menu.dataset.jrideMenuAdding === "true" ? "Close add item" : "+ Add item";
+  setButtonText(
+    addButton,
+    menu.dataset.jrideMenuAdding === "true" ? "Close add item" : "+ Add item",
+  );
 }
 
 function applyCompression() {
