@@ -3,6 +3,8 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
+import VendorOperationalTelemetry from "./components/VendorOperationalTelemetry";
+import VendorPerformanceBadges from "./components/VendorPerformanceBadges";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,6 +23,8 @@ export default function RootLayout({
       <body className={inter.className}>
         {children}
         <VendorMenuEditorAssist />
+        <VendorOperationalTelemetry />
+        <VendorPerformanceBadges />
       </body>
     </html>
   );
