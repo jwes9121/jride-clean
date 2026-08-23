@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  computePublicVendorPerformance,
+  isCompletedTakeoutOrder,
+} from "@/lib/vendorPerformance";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
+const CANONICAL_TAKEOUT_TOWNS = [
+  "Lamut",
+  "Kiangan",
+  "Lagawe",
+  "Hingyon",
+  "Banaue",
+] as const;
 
 const FORCE_VISIBLE_VENDOR_IDS = new Set<string>([
   "afa691c6-4a29-441f-b3bf-a8bb3a589ebe", // AGUBENGBENG
@@ -18,38 +29,78 @@ const FORCE_HIDDEN_VENDOR_IDS = new Set<string>([
 ]);
 
 function adminClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const url =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 }
 
-function cleanString(v: any) {
-  return String(v ?? "").trim();
+function cleanString(value: unknown): string {
+  return String(value ?? "").trim();
 }
 
-function normalizeTakeoutTown(value: any): string {
+function timestamp(value: unknown): number {
+  const result = new Date(String(value || "")).getTime();
+  return Number.isFinite(result) ? result : 0;
+}
+
+function normalizeTakeoutTown(value: unknown): string {
   const raw = cleanString(value).toLowerCase();
-  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
+  return (
+    CANONICAL_TAKEOUT_TOWNS.find(
+      (town) => town.toLowerCase() === raw
+    ) || ""
+  );
 }
 
-function isRemovedFromPilot(status: any): boolean {
+function isRemovedFromPilot(status: unknown): boolean {
   return cleanString(status).toLowerCase() === "removed_from_pilot";
 }
 
-function normalizeVendor(v: any) {
-  const logoUrl = cleanString(v?.logo_url);
+function normalizeVendor(
+  vendor: any,
+  publicPerformance: ReturnType<typeof computePublicVendorPerformance>
+) {
+  const logoUrl = cleanString(vendor?.logo_url);
+  const originalTagline = cleanString(vendor?.tagline || "");
+  const performanceText = publicPerformance.public_performance_text;
+  const storefrontTagline = originalTagline
+    ? performanceText + ". " + originalTagline
+    : performanceText;
+
+  const {
+    performance_metrics_started_at: _privateMetricsStart,
+    ...publicVendor
+  } = vendor || {};
+
   return {
-    ...v,
-    name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-    display_name: cleanString(v?.display_name || v?.email || v?.id || "Vendor"),
-    town: normalizeTakeoutTown(v?.town),
-    tagline: cleanString(v?.tagline || ""),
-    accepting_orders: v?.accepting_orders === true,
+    ...publicVendor,
+    name: cleanString(
+      vendor?.display_name || vendor?.email || vendor?.id || "Vendor"
+    ),
+    display_name: cleanString(
+      vendor?.display_name || vendor?.email || vendor?.id || "Vendor"
+    ),
+    town: normalizeTakeoutTown(vendor?.town),
+    tagline: storefrontTagline,
+    vendor_tagline: originalTagline,
+    accepting_orders: vendor?.accepting_orders === true,
     logo_url: logoUrl || null,
     vendor_logo_url: logoUrl || null,
     profile_logo_url: logoUrl || null,
     business_logo_url: logoUrl || null,
+    performance_status:
+      publicPerformance.acceptance_ready || publicPerformance.rating_ready
+        ? "active"
+        : "building",
+    public_performance_text: performanceText,
+    public_acceptance_rate: publicPerformance.public_acceptance_rate,
+    public_customer_rating: publicPerformance.public_customer_rating,
+    public_acceptance_ready: publicPerformance.acceptance_ready,
+    public_rating_ready: publicPerformance.rating_ready,
   };
 }
 
@@ -57,12 +108,17 @@ export async function GET() {
   const supabase = adminClient();
   if (!supabase) {
     return NextResponse.json(
-      { ok: false, error: "MISSING_SERVICE_ROLE", message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing" },
+      {
+        ok: false,
+        error: "MISSING_SERVICE_ROLE",
+        message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing",
+      },
       { status: 500 }
     );
   }
 
-  const selectCols = "id,email,display_name,created_at,town,lat,lng,location_label,logo_url,tagline,accepting_orders";
+  const selectCols =
+    "id,email,display_name,created_at,town,lat,lng,location_label,logo_url,tagline,accepting_orders,performance_metrics_started_at";
 
   const base = await supabase
     .from("vendor_accounts")
@@ -70,18 +126,22 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (base.error) {
-    return NextResponse.json({ ok: false, error: "DB_ERROR", message: base.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "DB_ERROR", message: base.error.message },
+      { status: 500 }
+    );
   }
 
-  // Safety net: force-fetch these two pilot vendors by ID, then merge/dedupe.
-  // This avoids losing them if a prior pilot cleanup filter or stale route query drops them from the base result.
   const forced = await supabase
     .from("vendor_accounts")
     .select(selectCols)
     .in("id", Array.from(FORCE_VISIBLE_VENDOR_IDS));
 
   if (forced.error) {
-    return NextResponse.json({ ok: false, error: "DB_ERROR", message: forced.error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "DB_ERROR", message: forced.error.message },
+      { status: 500 }
+    );
   }
 
   const byId = new Map<string, any>();
@@ -95,10 +155,13 @@ export async function GET() {
   }
 
   const rows = Array.from(byId.values());
-  const vendorIds = rows.map((v: any) => cleanString(v?.id)).filter(Boolean);
+  const vendorIds = rows
+    .map((vendor: any) => cleanString(vendor?.id))
+    .filter(Boolean);
 
-    let removedIds = new Set<string>();
+  let removedIds = new Set<string>();
   let statusByVendorId = new Map<string, string>();
+
   if (vendorIds.length > 0) {
     const registry = await supabase
       .from("vendor_onboarding_credentials")
@@ -106,35 +169,167 @@ export async function GET() {
       .in("vendor_id", vendorIds);
 
     if (registry.error) {
-      return NextResponse.json({ ok: false, error: "DB_ERROR", message: registry.error.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "DB_ERROR", message: registry.error.message },
+        { status: 500 }
+      );
     }
-        const statusEntries: Array<[string, string]> = (Array.isArray(registry.data) ? registry.data : [])
-      .map((row: any): [string, string] => [
-        cleanString(row?.vendor_id),
-        cleanString(row?.status).toLowerCase(),
-      ])
-      .filter((row: [string, string]) => Boolean(row[0]));
 
-    statusByVendorId = new Map<string, string>(statusEntries);
+    const registryRows = Array.isArray(registry.data) ? registry.data : [];
+    statusByVendorId = new Map<string, string>(
+      registryRows
+        .map(
+          (row: any): [string, string] => [
+            cleanString(row?.vendor_id),
+            cleanString(row?.status).toLowerCase(),
+          ]
+        )
+        .filter((row: [string, string]) => Boolean(row[0]))
+    );
 
     removedIds = new Set(
-      (Array.isArray(registry.data) ? registry.data : [])
+      registryRows
         .filter((row: any) => isRemovedFromPilot(row?.status))
         .map((row: any) => cleanString(row?.vendor_id))
         .filter(Boolean)
     );
   }
 
-    const vendors = rows
-    .filter((v: any) => {
-      const id = cleanString(v?.id);
+  const cutoffValues = rows
+    .map((vendor: any) => timestamp(vendor?.performance_metrics_started_at))
+    .filter((value: number) => value > 0);
+  const earliestCutoff = cutoffValues.length
+    ? new Date(Math.min(...cutoffValues)).toISOString()
+    : new Date().toISOString();
+
+  const [bookingsRes, ratingsRes, testAccountsRes, bookingExclusionsRes] =
+    await Promise.all([
+      vendorIds.length
+        ? supabase
+            .from("bookings")
+            .select(
+              "id,vendor_id,created_by_user_id,service_type,status,vendor_status,customer_status,created_at,updated_at,vendor_responded_at,vendor_accepted_at,vendor_rejected_at,vendor_timeout_at,vendor_cancel_reason,cancel_reason"
+            )
+            .eq("service_type", "takeout")
+            .in("vendor_id", vendorIds)
+            .gte("created_at", earliestCutoff)
+            .order("created_at", { ascending: false })
+            .limit(10000)
+        : Promise.resolve({ data: [], error: null } as any),
+      vendorIds.length
+        ? supabase
+            .from("takeout_ratings")
+            .select(
+              "id,booking_id,passenger_id,vendor_id,vendor_rating,created_at"
+            )
+            .in("vendor_id", vendorIds)
+            .gte("created_at", earliestCutoff)
+            .order("created_at", { ascending: false })
+            .limit(10000)
+        : Promise.resolve({ data: [], error: null } as any),
+      supabase
+        .from("analytics_test_accounts")
+        .select("subject_type,subject_id")
+        .eq("active", true),
+      supabase
+        .from("analytics_booking_exclusions")
+        .select("booking_id")
+        .eq("active", true),
+    ]);
+
+  const rawBookings =
+    !bookingsRes.error && Array.isArray(bookingsRes.data)
+      ? bookingsRes.data
+      : [];
+  const rawRatings =
+    !ratingsRes.error && Array.isArray(ratingsRes.data)
+      ? ratingsRes.data
+      : [];
+
+  const testPassengerIds = new Set(
+    !testAccountsRes.error && Array.isArray(testAccountsRes.data)
+      ? testAccountsRes.data
+          .filter(
+            (row: any) => cleanString(row?.subject_type) === "passenger_user"
+          )
+          .map((row: any) => cleanString(row?.subject_id))
+          .filter(Boolean)
+      : []
+  );
+
+  const excludedBookingIds = new Set(
+    !bookingExclusionsRes.error && Array.isArray(bookingExclusionsRes.data)
+      ? bookingExclusionsRes.data
+          .map((row: any) => cleanString(row?.booking_id))
+          .filter(Boolean)
+      : []
+  );
+
+  const bookingsById = new Map<string, any>();
+  for (const booking of rawBookings) {
+    const bookingId = cleanString(booking?.id);
+    if (bookingId) bookingsById.set(bookingId, booking);
+  }
+
+  const performanceByVendor = new Map<
+    string,
+    ReturnType<typeof computePublicVendorPerformance>
+  >();
+
+  for (const vendor of rows) {
+    const vendorId = cleanString(vendor?.id);
+    const cutoff = timestamp(vendor?.performance_metrics_started_at);
+
+    const eligibleBookings = rawBookings.filter((booking: any) => {
+      if (cleanString(booking?.vendor_id) !== vendorId) return false;
+      if (timestamp(booking?.created_at) < cutoff) return false;
+      if (excludedBookingIds.has(cleanString(booking?.id))) return false;
+      if (
+        testPassengerIds.has(cleanString(booking?.created_by_user_id))
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    const eligibleBookingIds = new Set(
+      eligibleBookings.map((booking: any) => cleanString(booking?.id))
+    );
+
+    const eligibleRatings = rawRatings.filter((rating: any) => {
+      if (cleanString(rating?.vendor_id) !== vendorId) return false;
+      if (timestamp(rating?.created_at) < cutoff) return false;
+      if (testPassengerIds.has(cleanString(rating?.passenger_id))) {
+        return false;
+      }
+
+      const bookingId = cleanString(rating?.booking_id);
+      if (!bookingId || !eligibleBookingIds.has(bookingId)) return false;
+      if (excludedBookingIds.has(bookingId)) return false;
+
+      const linkedBooking = bookingsById.get(bookingId);
+      return linkedBooking ? isCompletedTakeoutOrder(linkedBooking) : false;
+    });
+
+    performanceByVendor.set(
+      vendorId,
+      computePublicVendorPerformance(eligibleBookings, eligibleRatings)
+    );
+  }
+
+  const vendors = rows
+    .filter((vendor: any) => {
+      const id = cleanString(vendor?.id);
       if (FORCE_VISIBLE_VENDOR_IDS.has(id)) return true;
       return !removedIds.has(id) && !FORCE_HIDDEN_VENDOR_IDS.has(id);
     })
-    .map((v: any) => {
-      const normalized = normalizeVendor(v);
-      const id = cleanString(v?.id);
+    .map((vendor: any) => {
+      const id = cleanString(vendor?.id);
+      const performance =
+        performanceByVendor.get(id) || computePublicVendorPerformance([], []);
+      const normalized = normalizeVendor(vendor, performance);
       const marketplaceStatus = statusByVendorId.get(id) || "";
+
       return {
         ...normalized,
         marketplace_status: marketplaceStatus,
@@ -143,8 +338,15 @@ export async function GET() {
       };
     });
 
-  return NextResponse.json({ ok: true, vendors }, { status: 200 });
+  return NextResponse.json(
+    { ok: true, vendors },
+    {
+      status: 200,
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    }
+  );
 }
+
 export async function POST(req: Request) {
   const supabase = adminClient();
 
@@ -157,7 +359,6 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-
     const vendorId = cleanString(body?.vendor_id);
     const status = cleanString(body?.status).toLowerCase();
 
@@ -168,7 +369,9 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!["pilot_lagawe", "batch2", "removed_from_pilot"].includes(status)) {
+    if (
+      !["pilot_lagawe", "batch2", "removed_from_pilot"].includes(status)
+    ) {
       return NextResponse.json(
         { ok: false, error: "INVALID_STATUS" },
         { status: 400 }
@@ -195,9 +398,9 @@ export async function POST(req: Request) {
       vendor_id: vendorId,
       status,
     });
-  } catch (e: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { ok: false, error: String(e?.message || e) },
+      { ok: false, error: String(error?.message || error) },
       { status: 500 }
     );
   }
