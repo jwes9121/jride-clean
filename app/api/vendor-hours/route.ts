@@ -257,6 +257,23 @@ export async function POST(req: NextRequest) {
           message: update.error.message,
         });
       }
+    } else if (action === "close_today") {
+      const update = await admin
+        .from("vendor_accounts")
+        .update({
+          accepting_orders: false,
+          extended_from: null,
+          extended_until: null,
+        })
+        .eq("id", vendor.id);
+
+      if (update.error) {
+        return json(500, {
+          ok: false,
+          error: "VENDOR_DAILY_CLOSE_FAILED",
+          message: update.error.message,
+        });
+      }
     } else if (action === "extend") {
       const minutes = Number(body?.minutes);
       if (minutes !== 30 && minutes !== 60) {
@@ -296,7 +313,7 @@ export async function POST(req: NextRequest) {
       return json(400, {
         ok: false,
         error: "INVALID_ACTION",
-        message: "Supported actions are save_hours, open_today, extend, and end_extension.",
+        message: "Supported actions are save_hours, open_today, close_today, extend, and end_extension.",
       });
     }
 
