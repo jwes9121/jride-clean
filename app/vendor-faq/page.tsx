@@ -72,9 +72,9 @@ const HOURS_FAQ: FaqItem[] = [
 
 const ORDER_FAQ: FaqItem[] = [
   {
-    question: "How long do I have to accept a new Takeout order?",
+    question: "How quickly should I respond to a new Takeout order?",
     answer:
-      "You have up to 5 minutes from order creation to accept the order. The vendor portal shows the countdown for pending orders.",
+      "Respond before the acceptance countdown shown in the vendor portal expires. Keep the portal open during service hours so you can see the pending order and its countdown.",
   },
   {
     question: "Should I accept an order if an item is unavailable?",
