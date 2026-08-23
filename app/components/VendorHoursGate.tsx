@@ -26,6 +26,9 @@ type HoursStatus = {
   extension_active: boolean;
   scheduled_open_at: string | null;
   scheduled_close_at: string | null;
+  daily_opened: boolean;
+  daily_open_date: string | null;
+  daily_opened_at: string | null;
   reason: string;
 };
 
@@ -72,12 +75,18 @@ function formatManilaDateTime(value: string | null): string {
   }).format(date);
 }
 
+function sameDayHoursValid(openTime: string, closeTime: string): boolean {
+  return /^\d{2}:\d{2}$/.test(openTime) && /^\d{2}:\d{2}$/.test(closeTime) && openTime < closeTime;
+}
+
 function statusText(status: HoursStatus): string {
-  if (!status.manual_accepting_orders) return "Closed by the vendor OPEN/CLOSED switch.";
   if (!status.hours_enforced || !status.hours_configured) return "Opening and closing times are required.";
+  if (status.reason === "daily_open_required") return "Store has not been opened for orders today.";
+  if (!status.manual_accepting_orders) return "Closed by the vendor OPEN/CLOSED switch.";
   if (status.reason === "within_hours") return "Open for customer orders.";
   if (status.reason === "extended") return "Open under today's extension.";
-  return "Closed by the normal operating schedule.";
+  if (status.reason === "outside_hours") return "Closed by today's normal operating schedule.";
+  return status.effective_accepting_orders ? "Open for customer orders." : "Closed for new customer orders.";
 }
 
 async function readJson(res: Response): Promise<any> {
@@ -94,6 +103,7 @@ export default function VendorHoursGate() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dismissedCloseAt, setDismissedCloseAt] = useState("");
+  const [dailyPromptDismissed, setDailyPromptDismissed] = useState(false);
   const [clockTick, setClockTick] = useState(0);
 
   useEffect(() => {
@@ -166,7 +176,8 @@ export default function VendorHoursGate() {
     if (!status) return;
     setOpenTime(clean(status.normal_open_time));
     setCloseTime(clean(status.normal_close_time));
-  }, [status?.vendor_id, status?.normal_open_time, status?.normal_close_time]);
+    if (status.daily_opened) setDailyPromptDismissed(false);
+  }, [status?.vendor_id, status?.normal_open_time, status?.normal_close_time, status?.daily_opened]);
 
   const postAction = useCallback(
     async (action: string, extra: Record<string, any> = {}) => {
@@ -187,6 +198,10 @@ export default function VendorHoursGate() {
         setStatus(data as HoursStatus);
         setOpenTime(clean(data?.normal_open_time));
         setCloseTime(clean(data?.normal_close_time));
+
+        if (action === "open_today" && typeof window !== "undefined") {
+          window.setTimeout(() => window.location.reload(), 150);
+        }
       } catch (e: any) {
         setError(clean(e?.message || e || "Store hours could not be updated."));
       } finally {
@@ -197,6 +212,7 @@ export default function VendorHoursGate() {
   );
 
   const needsHours = Boolean(status && (!status.hours_configured || !status.hours_enforced));
+  const validDraftHours = sameDayHoursValid(openTime, closeTime);
 
   const extensionScheduled = useMemo(() => {
     if (!status?.extended_until) return false;
@@ -204,14 +220,42 @@ export default function VendorHoursGate() {
     return Number.isFinite(until) && until > Date.now();
   }, [clockTick, status?.extended_until]);
 
+  const timing = useMemo(() => {
+    const openMs = status?.scheduled_open_at ? new Date(status.scheduled_open_at).getTime() : NaN;
+    const closeMs = status?.scheduled_close_at ? new Date(status.scheduled_close_at).getTime() : NaN;
+    const now = Date.now();
+    const untilClose = Number.isFinite(closeMs) ? closeMs - now : NaN;
+
+    return {
+      beforeOpen: Number.isFinite(openMs) && now < openMs,
+      afterClose: Number.isFinite(closeMs) && now >= closeMs,
+      nearClose:
+        Number.isFinite(untilClose) &&
+        untilClose <= 30 * 60 * 1000 &&
+        untilClose >= -5 * 60 * 1000,
+    };
+  }, [clockTick, status?.scheduled_open_at, status?.scheduled_close_at]);
+
+  const shouldPromptDailyOpen = Boolean(
+    status &&
+      !needsHours &&
+      !status.daily_opened &&
+      !timing.afterClose &&
+      !dailyPromptDismissed,
+  );
+
   const shouldPromptForClosing = useMemo(() => {
-    if (!status?.effective_accepting_orders || !status?.scheduled_close_at || extensionScheduled) return false;
+    if (!status?.daily_opened || !status?.effective_accepting_orders || !status?.scheduled_close_at || extensionScheduled) return false;
     if (dismissedCloseAt === status.scheduled_close_at) return false;
     const closeMs = new Date(status.scheduled_close_at).getTime();
     if (!Number.isFinite(closeMs)) return false;
     const remaining = closeMs - Date.now();
     return remaining > 0 && remaining <= 15 * 60 * 1000;
   }, [clockTick, dismissedCloseAt, extensionScheduled, status]);
+
+  const canShowExtensionControls = Boolean(
+    status?.daily_opened && status?.manual_accepting_orders && (timing.nearClose || extensionScheduled),
+  );
 
   if (pathname !== "/vendor-portal" || !vendorId) return null;
 
@@ -248,23 +292,58 @@ export default function VendorHoursGate() {
             </div>
 
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              The existing OPEN/CLOSED switch still works. Your normal hours are the allowed ordering window; setting CLOSED always stops new orders immediately.
+              Closing time must be later than opening time on the same day. Overnight business hours are not enabled. After saving, the store remains OFFLINE until you manually open for orders that day.
             </div>
 
             {error ? <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
 
             <button
               type="button"
-              disabled={busy || !openTime || !closeTime || openTime === closeTime}
+              disabled={busy || !validDraftHours}
               onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
               className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {busy ? "Saving..." : "Save business hours and continue"}
+              {busy ? "Saving..." : "Save business hours"}
             </button>
 
             <a href="/vendor-faq" className="mt-3 block text-center text-sm font-semibold text-blue-700 underline">
               Read the Vendor FAQ
             </a>
+          </div>
+        </div>
+      ) : null}
+
+      {status && shouldPromptDailyOpen ? (
+        <div className="fixed inset-0 z-[190] flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-lg rounded-3xl border bg-white p-5 shadow-2xl">
+            <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Daily store status</div>
+            <h2 className="mt-1 text-xl font-bold text-slate-950">Your store is OFFLINE today</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              JRide does not automatically reopen your store each day. Open the Vendor Portal and turn the store on only when you are ready to receive Takeout orders.
+            </p>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              Normal hours: <span className="font-semibold">{formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}</span>
+              {timing.beforeOpen ? <div className="mt-1 text-xs">You may turn it on now. Customer ordering will begin only at your normal opening time.</div> : null}
+            </div>
+
+            {error ? <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void postAction("open_today")}
+              className="mt-5 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {busy ? "Opening..." : "OPEN FOR ORDERS TODAY"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setDailyPromptDismissed(true)}
+              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+            >
+              STAY OFFLINE
+            </button>
           </div>
         </div>
       ) : null}
@@ -275,6 +354,7 @@ export default function VendorHoursGate() {
           <div className="mt-1 text-sm text-amber-900">
             Closing time: {formatClock(status.normal_close_time)}. If you do nothing, JRide will stop new orders automatically at closing time.
           </div>
+          <div className="mt-1 text-xs text-amber-800">Extend only when your store can legally remain open and local curfew rules allow it.</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -319,11 +399,23 @@ export default function VendorHoursGate() {
 
               <div className="mt-3 rounded-xl border bg-slate-50 p-3 text-sm">
                 <div><span className="font-semibold">Normal hours:</span> {formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}</div>
+                <div className="mt-1"><span className="font-semibold">Opened today:</span> {status.daily_opened ? "YES" : "NO"}</div>
                 <div className="mt-1"><span className="font-semibold">Customer ordering:</span> {status.effective_accepting_orders ? "OPEN" : "CLOSED"}</div>
                 {extensionScheduled ? (
                   <div className="mt-1"><span className="font-semibold">Extension:</span> until {formatManilaDateTime(status.extended_until)}</div>
                 ) : null}
               </div>
+
+              {!status.daily_opened && !timing.afterClose ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void postAction("open_today")}
+                  className="mt-3 w-full rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  OPEN FOR ORDERS TODAY
+                </button>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <label className="text-xs font-semibold text-slate-700">
@@ -335,24 +427,27 @@ export default function VendorHoursGate() {
                   <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className="mt-1 w-full rounded-lg border px-2 py-2 text-sm" />
                 </label>
               </div>
+              {!validDraftHours ? <div className="mt-1 text-[11px] text-rose-700">Closing must be later than opening on the same day.</div> : null}
 
               <button
                 type="button"
-                disabled={busy || !openTime || !closeTime || openTime === closeTime}
+                disabled={busy || !validDraftHours}
                 onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 disabled:opacity-50"
               >
                 Save normal hours
               </button>
 
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 30 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                  Extend 30 min
-                </button>
-                <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 60 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                  Extend 60 min
-                </button>
-              </div>
+              {canShowExtensionControls ? (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 30 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                    Extend 30 min
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 60 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                    Extend 60 min
+                  </button>
+                </div>
+              ) : null}
 
               {extensionScheduled ? (
                 <button type="button" disabled={busy} onClick={() => void postAction("end_extension")} className="mt-2 w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 disabled:opacity-50">
