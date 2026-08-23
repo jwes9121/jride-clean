@@ -22,10 +22,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+        <VendorHoursGate />
         {children}
         <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
-        <VendorHoursGate />
         <VendorPerformancePanel />
       </body>
     </html>
