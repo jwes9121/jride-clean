@@ -9,3 +9,92 @@ html, body {
   min-height: 100%;
   background: #f5f5f5;
 }
+
+/* Vendor menu editing: keep the editor visible beside the menu on desktop. */
+@media (min-width: 1024px) {
+  [data-jride-menu-enhanced="true"] {
+    display: grid !important;
+    grid-template-columns: minmax(360px, 420px) minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 16px !important;
+  }
+
+  [data-jride-menu-header="true"] {
+    grid-column: 1 / -1 !important;
+  }
+
+  [data-jride-menu-editor="true"] {
+    position: sticky !important;
+    top: 16px !important;
+    grid-column: 1 !important;
+    align-self: start !important;
+    max-height: calc(100vh - 32px);
+    margin-top: 0 !important;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  [data-jride-menu-grid="true"] {
+    grid-column: 2 !important;
+    align-self: start !important;
+    margin-top: 0 !important;
+  }
+}
+
+[data-jride-menu-item-editing="true"] {
+  outline: 3px solid rgba(34, 197, 94, 0.8);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12), 0 18px 42px rgba(0, 0, 0, 0.24) !important;
+}
+
+[data-jride-menu-editor="true"][data-jride-menu-mode="edit"]::before {
+  content: "Editing: " attr(data-jride-menu-item);
+  display: block;
+  grid-column: 1 / -1;
+  margin-bottom: 4px;
+  border: 1px solid rgba(52, 211, 153, 0.48);
+  border-radius: 14px;
+  background: rgba(16, 185, 129, 0.16);
+  padding: 10px 12px;
+  color: #d1fae5;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.jride-menu-editor-backdrop {
+  display: none;
+}
+
+/* On phones and tablets, Edit opens the existing form as a bottom sheet. */
+@media (max-width: 1023px) {
+  .jride-menu-editor-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(0, 0, 0, 0.64);
+    padding: 0;
+  }
+
+  [data-jride-menu-editor="true"].jride-menu-editor-mobile-open {
+    position: fixed !important;
+    right: 8px !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    top: auto !important;
+    z-index: 81 !important;
+    max-height: 82vh !important;
+    margin: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    border: 1px solid rgba(52, 211, 153, 0.58) !important;
+    border-radius: 22px !important;
+    background: #07131b !important;
+    box-shadow: 0 26px 80px rgba(0, 0, 0, 0.58) !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
