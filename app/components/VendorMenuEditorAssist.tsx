@@ -7,17 +7,33 @@ function elementText(element: Element | null): string {
   return String(element?.textContent || "").replace(/\s+/g, " ").trim();
 }
 
-function findMenuSection(): HTMLElement | null {
+function vendorPortalSections(): HTMLElement[] {
   const shell = document.querySelector<HTMLElement>(".jride-vendor-premium-shell");
-  if (!shell) return null;
+  if (!shell) return [];
+  return Array.from(shell.querySelectorAll<HTMLElement>("section"));
+}
 
-  const sections = Array.from(shell.querySelectorAll<HTMLElement>("section"));
+function findSectionByHeading(label: string): HTMLElement | null {
   return (
-    sections.find((section) => {
+    vendorPortalSections().find((section) => {
       const heading = section.querySelector("h2");
-      return elementText(heading) === "Menu manager";
+      return elementText(heading) === label;
     }) || null
   );
+}
+
+function findMenuSection(): HTMLElement | null {
+  return findSectionByHeading("Menu manager");
+}
+
+function markMobileSectionOrder() {
+  const menuSection = findSectionByHeading("Menu manager");
+  const liveQueueSection = findSectionByHeading("Live order queue");
+  const summarySection = findSectionByHeading("Vendor summary");
+
+  if (menuSection) menuSection.dataset.jrideVendorMobileMenu = "true";
+  if (liveQueueSection) liveQueueSection.dataset.jrideVendorMobileLiveQueue = "true";
+  if (summarySection) summarySection.dataset.jrideVendorMobileSummary = "true";
 }
 
 function findDirectChild(
@@ -133,6 +149,8 @@ export default function VendorMenuEditorAssist() {
     };
 
     const refreshStructure = () => {
+      markMobileSectionOrder();
+
       const nextSection = findMenuSection();
       if (!nextSection) return false;
 
