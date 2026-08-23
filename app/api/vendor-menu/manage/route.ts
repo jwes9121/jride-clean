@@ -319,7 +319,7 @@ export async function GET(req: NextRequest) {
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
             tagline: cleanString(vendor?.tagline || ""),
-            accepting_orders: vendor?.accepting_orders !== false,
+            accepting_orders: effectiveAcceptingOrders,
             effective_accepting_orders: effectiveAcceptingOrders,
             manual_accepting_orders: vendor?.accepting_orders !== false,
             hours_enforced: availability?.hours_enforced === true,
@@ -384,11 +384,12 @@ export async function POST(req: NextRequest) {
       if (vendorLng !== null && (!Number.isFinite(vendorLng) || vendorLng < -180 || vendorLng > 180)) {
         return json(400, { ok: false, error: "INVALID_VENDOR_LNG", message: "Vendor longitude is invalid" });
       }
+      // Availability is intentionally excluded here. Store opening/closing is
+      // controlled only by /api/vendor-hours so profile edits cannot change it.
       const patch: Json = {
         display_name: cleanString(body?.name || body?.display_name),
         town: cleanString(body?.town),
         tagline: cleanString(body?.tagline || body?.description || body?.vendorTagline),
-        accepting_orders: body?.accepting_orders !== false && body?.acceptingOrders !== false,
         vendor_lat: vendorLat,
         vendor_lng: vendorLng,
         vendor_location_label: cleanString(body?.vendor_location_label || body?.vendorLocationLabel),
