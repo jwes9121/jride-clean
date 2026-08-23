@@ -27,25 +27,26 @@ function clean(value: unknown): string {
   return String(value ?? "").trim();
 }
 
-function numberValue(value: unknown): number {
-  const result = Number(value ?? 0);
-  return Number.isFinite(result) ? result : 0;
+function num(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function timestamp(value: unknown): number {
-  const result = new Date(String(value || "")).getTime();
-  return Number.isFinite(result) ? result : 0;
+function ts(value: unknown): number {
+  const n = new Date(String(value || "")).getTime();
+  return Number.isFinite(n) ? n : 0;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
 }
 
 function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    value
-  );
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function adminClient() {
-  const url =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!url || !key) return null;
   return createClient(url, key, {
@@ -59,48 +60,22 @@ function manilaDayStart(ms: number): number {
 
 function manilaWeekStart(ms: number): number {
   const dayStart = manilaDayStart(ms);
-  const shifted = new Date(dayStart + PHT_OFFSET_MS);
-  const weekday = shifted.getUTCDay();
-  const daysSinceMonday = weekday === 0 ? 6 : weekday - 1;
-  return dayStart - daysSinceMonday * DAY_MS;
+  const weekday = new Date(dayStart + PHT_OFFSET_MS).getUTCDay();
+  return dayStart - (weekday === 0 ? 6 : weekday - 1) * DAY_MS;
 }
 
 function manilaMonthStart(ms: number): number {
   const shifted = new Date(ms + PHT_OFFSET_MS);
-  return (
-    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) -
-    PHT_OFFSET_MS
-  );
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - PHT_OFFSET_MS;
 }
 
 function nextManilaMonthStart(ms: number): number {
   const shifted = new Date(ms + PHT_OFFSET_MS);
-  return (
-    Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) -
-    PHT_OFFSET_MS
-  );
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 1) - PHT_OFFSET_MS;
 }
 
-function iso(ms: number): string {
-  return new Date(ms).toISOString();
-}
-
-function round1(value: number): number {
-  return Math.round(value * 10) / 10;
-}
-
-function safeAverage(values: number[]): number | null {
-  if (!values.length) return null;
-  return round1(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
-function completePeriods(
-  unit: "day" | "week" | "month",
-  startMs: number,
-  nowMs: number
-): Array<[number, number]> {
+function periodWindows(unit: "day" | "week" | "month", startMs: number, nowMs: number): Array<[number, number]> {
   const out: Array<[number, number]> = [];
-
   if (unit === "day") {
     let cursor = manilaDayStart(startMs);
     if (startMs > cursor) cursor += DAY_MS;
@@ -111,7 +86,6 @@ function completePeriods(
     }
     return out;
   }
-
   if (unit === "week") {
     let cursor = manilaWeekStart(startMs);
     if (startMs > cursor) cursor += 7 * DAY_MS;
@@ -122,7 +96,6 @@ function completePeriods(
     }
     return out;
   }
-
   let cursor = manilaMonthStart(startMs);
   if (startMs > cursor) cursor = nextManilaMonthStart(cursor);
   const end = manilaMonthStart(nowMs);
@@ -134,109 +107,48 @@ function completePeriods(
   return out;
 }
 
-function rowsInWindow(rows: any[], startMs: number, endMs: number): any[] {
+function rowsInWindow(rows: any[], startMs: number, endMs: number) {
   return rows.filter((row) => {
-    const created = timestamp(row?.created_at);
+    const created = ts(row?.created_at);
     return created >= startMs && created < endMs;
   });
 }
 
 function orderStats(rows: any[]) {
-  const acceptedRows = rows.filter((row) => vendorDecision(row) === "accepted");
-  const unacceptedRows = rows.filter(
-    (row) => vendorDecision(row) === "unaccepted"
-  );
-  const pendingRows = rows.filter((row) => vendorDecision(row) === "pending");
-  const completedRows = rows.filter(isCompletedTakeoutOrder);
-  const acceptedNotCompleted = acceptedRows.filter(
-    (row) => !isCompletedTakeoutOrder(row)
-  );
-  const timeoutRows = unacceptedRows.filter(isVendorTimeoutDecision);
-  const rejectedRows = unacceptedRows.filter(
-    (row) => !isVendorTimeoutDecision(row)
-  );
-  const responseValues = rows
+  const accepted = rows.filter((r) => vendorDecision(r) === "accepted");
+  const unaccepted = rows.filter((r) => vendorDecision(r) === "unaccepted");
+  const pending = rows.filter((r) => vendorDecision(r) === "pending");
+  const completed = rows.filter(isCompletedTakeoutOrder);
+  const responses = rows
     .map(vendorResponseSeconds)
-    .filter((value): value is number => value !== null && value >= 0);
-  const decisions = acceptedRows.length + unacceptedRows.length;
+    .filter((v): v is number => v !== null && v >= 0);
+  const decisions = accepted.length + unaccepted.length;
 
   return {
     offered: rows.length,
-    accepted: acceptedRows.length,
-    completed: completedRows.length,
-    accepted_not_completed: acceptedNotCompleted.length,
-    unaccepted: unacceptedRows.length,
-    timed_out: timeoutRows.length,
-    rejected: rejectedRows.length,
-    pending: pendingRows.length,
-    acceptance_rate: decisions
-      ? round1((acceptedRows.length / decisions) * 100)
-      : null,
-    average_response_seconds: responseValues.length
-      ? Math.round(
-          responseValues.reduce((sum, value) => sum + value, 0) /
-            responseValues.length
-        )
+    accepted: accepted.length,
+    completed: completed.length,
+    accepted_not_completed: accepted.filter((r) => !isCompletedTakeoutOrder(r)).length,
+    unaccepted: unaccepted.length,
+    timed_out: unaccepted.filter(isVendorTimeoutDecision).length,
+    rejected: unaccepted.filter((r) => !isVendorTimeoutDecision(r)).length,
+    pending: pending.length,
+    acceptance_rate: decisions ? round1((accepted.length / decisions) * 100) : null,
+    average_response_seconds: responses.length
+      ? Math.round(responses.reduce((a, b) => a + b, 0) / responses.length)
       : null,
   };
 }
 
-function availabilityMinutes(
-  events: any[],
-  startMs: number,
-  endMs: number,
-  fallbackOpen: boolean
-): number {
-  if (endMs <= startMs) return 0;
-
-  const sorted = [...events].sort(
-    (a, b) => timestamp(a?.changed_at) - timestamp(b?.changed_at)
-  );
-
-  let state = fallbackOpen;
-  for (const event of sorted) {
-    const at = timestamp(event?.changed_at);
-    if (!at || at > startMs) break;
-    state = event?.accepting_orders === true;
-  }
-
-  let cursor = startMs;
-  let openMs = 0;
-
-  for (const event of sorted) {
-    const at = timestamp(event?.changed_at);
-    if (!at || at <= startMs || at >= endMs) continue;
-    if (state) openMs += Math.max(0, at - cursor);
-    state = event?.accepting_orders === true;
-    cursor = at;
-  }
-
-  if (state) openMs += Math.max(0, endMs - cursor);
-  return Math.round(openMs / 60000);
-}
-
-function presenceInWindow(
-  rows: any[],
-  startMs: number,
-  endMs: number
-): any[] {
-  return rows.filter((row) => {
-    const at = timestamp(row?.minute_started_at);
-    return at >= startMs && at < endMs;
-  });
-}
-
-function periodAverages(
+function averagePeriod(
   rows: any[],
   presenceRows: any[],
-  availabilityEvents: any[],
-  fallbackOpen: boolean,
   startMs: number,
   nowMs: number,
   unit: "day" | "week" | "month"
 ) {
-  const periods = completePeriods(unit, startMs, nowMs);
-  if (!periods.length) {
+  const windows = periodWindows(unit, startMs, nowMs);
+  if (!windows.length) {
     return {
       complete_periods: 0,
       completed_orders: null,
@@ -248,58 +160,40 @@ function periodAverages(
 
   const completed: number[] = [];
   const unaccepted: number[] = [];
-  const onlineHours: number[] = [];
-  const openHours: number[] = [];
+  const online: number[] = [];
+  const open: number[] = [];
 
-  for (const [periodStart, periodEnd] of periods) {
-    const stats = orderStats(rowsInWindow(rows, periodStart, periodEnd));
-    const online = presenceInWindow(
-      presenceRows,
-      periodStart,
-      periodEnd
-    ).length;
-    const open = availabilityMinutes(
-      availabilityEvents,
-      periodStart,
-      periodEnd,
-      fallbackOpen
-    );
-
+  for (const [start, end] of windows) {
+    const stats = orderStats(rowsInWindow(rows, start, end));
+    const p = presenceRows.filter((row) => {
+      const at = ts(row?.minute_started_at);
+      return at >= start && at < end;
+    });
     completed.push(stats.completed);
     unaccepted.push(stats.unaccepted);
-    onlineHours.push(online / 60);
-    openHours.push(open / 60);
+    online.push(p.length / 60);
+    open.push(p.filter((row) => row?.accepting_orders === true).length / 60);
   }
 
+  const avg = (values: number[]) => round1(values.reduce((a, b) => a + b, 0) / values.length);
   return {
-    complete_periods: periods.length,
-    completed_orders: safeAverage(completed),
-    unaccepted_orders: safeAverage(unaccepted),
-    online_hours: safeAverage(onlineHours),
-    open_hours: safeAverage(openHours),
+    complete_periods: windows.length,
+    completed_orders: avg(completed),
+    unaccepted_orders: avg(unaccepted),
+    online_hours: avg(online),
+    open_hours: avg(open),
   };
 }
 
 function missedOrder(row: any) {
-  const exactAt =
-    clean(row?.vendor_timeout_at) || clean(row?.vendor_rejected_at) || "";
-  const recordedAt =
-    exactAt ||
-    clean(row?.vendor_responded_at) ||
-    clean(row?.updated_at) ||
-    clean(row?.created_at) ||
-    null;
-
+  const exactAt = clean(row?.vendor_timeout_at) || clean(row?.vendor_rejected_at) || "";
+  const recordedAt = exactAt || clean(row?.vendor_responded_at) || clean(row?.updated_at) || clean(row?.created_at) || null;
   return {
     id: clean(row?.id),
     booking_code: clean(row?.booking_code) || clean(row?.id),
     passenger_name: clean(row?.passenger_name) || "Customer",
-    amount: numberValue(
-      row?.takeout_items_subtotal ?? row?.items_subtotal ?? row?.total_bill
-    ),
-    outcome: isVendorTimeoutDecision(row)
-      ? "Vendor timeout"
-      : "Vendor rejected",
+    amount: num(row?.takeout_items_subtotal),
+    outcome: isVendorTimeoutDecision(row) ? "Vendor timeout" : "Vendor rejected",
     reason: vendorCancellationReason(row) || "No reason recorded",
     order_placed_at: row?.created_at || null,
     missed_at: recordedAt,
@@ -311,262 +205,158 @@ export async function GET(req: NextRequest) {
   const admin = adminClient();
   if (!admin) return json(500, { ok: false, error: "SERVER_MISCONFIG" });
 
-  const days = Math.max(
-    1,
-    Math.min(365, Number(req.nextUrl.searchParams.get("days") || 30))
-  );
-  const requestedVendorId = clean(
-    req.nextUrl.searchParams.get("vendor_id")
-  );
+  const days = Math.max(1, Math.min(365, Number(req.nextUrl.searchParams.get("days") || 30)));
+  const requestedVendorId = clean(req.nextUrl.searchParams.get("vendor_id"));
   const nowMs = Date.now();
   const requestedStartMs = nowMs - days * DAY_MS;
 
   let vendorsQuery = admin
     .from("vendor_accounts")
-    .select(
-      "id,email,display_name,town,accepting_orders,created_at,performance_metrics_started_at"
-    )
+    .select("id,email,display_name,town,accepting_orders,created_at,performance_metrics_started_at")
     .order("display_name", { ascending: true });
-
   if (requestedVendorId) vendorsQuery = vendorsQuery.eq("id", requestedVendorId);
   const vendorsRes = await vendorsQuery;
-
-  if (vendorsRes.error) {
-    return json(500, {
-      ok: false,
-      error: "VENDORS_READ_FAILED",
-      message: vendorsRes.error.message,
-    });
-  }
+  if (vendorsRes.error) return json(500, { ok: false, error: "VENDORS_READ_FAILED", message: vendorsRes.error.message });
 
   const vendors = Array.isArray(vendorsRes.data) ? vendorsRes.data : [];
-  const vendorIds = vendors.map((row: any) => clean(row?.id)).filter(Boolean);
-
+  const vendorIds = vendors.map((v: any) => clean(v?.id)).filter(Boolean);
   if (!vendorIds.length) {
     return json(200, {
       ok: true,
       days,
       generated_at: new Date(nowMs).toISOString(),
+      online_fresh_seconds: ONLINE_FRESH_MS / 1000,
       vendors: [],
       exclusions: { test_accounts: [], bookings: [] },
     });
   }
 
-  const cutoffValues = vendors
-    .map((row: any) => timestamp(row?.performance_metrics_started_at))
-    .filter((value: number) => value > 0);
-  const earliestCutoff = cutoffValues.length
-    ? Math.min(...cutoffValues)
-    : nowMs;
+  const earliestCutoff = Math.min(
+    ...vendors.map((v: any) => ts(v?.performance_metrics_started_at) || nowMs)
+  );
   const queryStartMs = Math.min(requestedStartMs, earliestCutoff);
 
-  const [
-    bookingsRes,
-    presenceRes,
-    availabilityRes,
-    ratingsRes,
-    testAccountsRes,
-    bookingExclusionsRes,
-  ] = await Promise.all([
+  const [bookingsRes, presenceRes, ratingsRes, testAccountsRes, bookingExclusionsRes] = await Promise.all([
     admin
       .from("bookings")
-      .select(
-        "id,booking_code,vendor_id,created_by_user_id,passenger_name,service_type,status,vendor_status,customer_status,created_at,updated_at,completed_at,vendor_responded_at,vendor_accepted_at,vendor_rejected_at,vendor_timeout_at,vendor_cancel_reason,cancel_reason,takeout_items_subtotal,items_subtotal,total_bill"
-      )
+      .select("id,booking_code,vendor_id,created_by_user_id,passenger_name,service_type,status,vendor_status,customer_status,created_at,updated_at,completed_at,vendor_responded_at,vendor_accepted_at,vendor_rejected_at,vendor_timeout_at,vendor_cancel_reason,cancel_reason,takeout_items_subtotal")
       .eq("service_type", "takeout")
       .in("vendor_id", vendorIds)
-      .gte("created_at", iso(queryStartMs))
+      .gte("created_at", new Date(queryStartMs).toISOString())
       .order("created_at", { ascending: false })
       .limit(20000),
     admin
       .from("vendor_presence_minutes")
-      .select(
-        "vendor_id,minute_started_at,last_seen_at,accepting_orders,client"
-      )
+      .select("vendor_id,minute_started_at,last_seen_at,accepting_orders,client")
       .in("vendor_id", vendorIds)
-      .gte("minute_started_at", iso(queryStartMs))
+      .gte("minute_started_at", new Date(queryStartMs).toISOString())
       .order("minute_started_at", { ascending: false })
       .limit(50000),
     admin
-      .from("vendor_availability_events")
-      .select("vendor_id,accepting_orders,changed_at,source")
-      .in("vendor_id", vendorIds)
-      .order("changed_at", { ascending: true })
-      .limit(20000),
-    admin
       .from("takeout_ratings")
-      .select(
-        "id,booking_id,passenger_id,vendor_id,vendor_rating,created_at"
-      )
+      .select("id,booking_id,passenger_id,vendor_id,vendor_rating,created_at")
       .in("vendor_id", vendorIds)
-      .gte("created_at", iso(queryStartMs))
+      .gte("created_at", new Date(queryStartMs).toISOString())
       .order("created_at", { ascending: false })
       .limit(20000),
     admin
       .from("analytics_test_accounts")
-      .select(
-        "id,subject_type,subject_id,reason,active,marked_by,created_at,updated_at"
-      )
+      .select("id,subject_type,subject_id,reason,active,marked_by,created_at,updated_at")
       .eq("active", true)
       .order("created_at", { ascending: false }),
     admin
       .from("analytics_booking_exclusions")
-      .select(
-        "id,booking_id,reason,active,marked_by,created_at,updated_at"
-      )
+      .select("id,booking_id,reason,active,marked_by,created_at,updated_at")
       .eq("active", true)
       .order("created_at", { ascending: false }),
   ]);
 
-  for (const result of [
-    bookingsRes,
-    presenceRes,
-    availabilityRes,
-    ratingsRes,
-    testAccountsRes,
-    bookingExclusionsRes,
-  ]) {
+  for (const result of [bookingsRes, presenceRes, ratingsRes, testAccountsRes, bookingExclusionsRes]) {
     if (result.error) {
-      return json(500, {
-        ok: false,
-        error: "VENDOR_BEHAVIOR_READ_FAILED",
-        message: result.error.message,
-      });
+      return json(500, { ok: false, error: "VENDOR_BEHAVIOR_READ_FAILED", message: result.error.message });
     }
   }
 
   const bookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
   const presence = Array.isArray(presenceRes.data) ? presenceRes.data : [];
-  const availability = Array.isArray(availabilityRes.data)
-    ? availabilityRes.data
-    : [];
   const ratings = Array.isArray(ratingsRes.data) ? ratingsRes.data : [];
-  const testAccounts = Array.isArray(testAccountsRes.data)
-    ? testAccountsRes.data
-    : [];
-  const bookingExclusions = Array.isArray(bookingExclusionsRes.data)
-    ? bookingExclusionsRes.data
-    : [];
+  const testAccounts = Array.isArray(testAccountsRes.data) ? testAccountsRes.data : [];
+  const bookingExclusions = Array.isArray(bookingExclusionsRes.data) ? bookingExclusionsRes.data : [];
 
   const testPassengerIds = new Set(
     testAccounts
-      .filter((row: any) => clean(row?.subject_type) === "passenger_user")
-      .map((row: any) => clean(row?.subject_id))
+      .filter((r: any) => clean(r?.subject_type) === "passenger_user")
+      .map((r: any) => clean(r?.subject_id))
       .filter(Boolean)
   );
   const excludedBookingIds = new Set(
-    bookingExclusions
-      .map((row: any) => clean(row?.booking_id))
-      .filter(Boolean)
+    bookingExclusions.map((r: any) => clean(r?.booking_id)).filter(Boolean)
   );
 
-  const testProfileIds = Array.from(testPassengerIds);
-  const testProfilesRes = testProfileIds.length
-    ? await admin
-        .from("passenger_profiles")
-        .select("user_id,full_name,phone,email")
-        .in("user_id", testProfileIds)
+  const testProfilesRes = testPassengerIds.size
+    ? await admin.from("passenger_profiles").select("user_id,full_name,phone,email").in("user_id", Array.from(testPassengerIds))
     : ({ data: [], error: null } as any);
-  const testProfileById = new Map<string, any>();
+  const profileById = new Map<string, any>();
   if (!testProfilesRes.error && Array.isArray(testProfilesRes.data)) {
-    for (const profile of testProfilesRes.data) {
-      testProfileById.set(clean(profile?.user_id), profile);
-    }
+    for (const row of testProfilesRes.data) profileById.set(clean(row?.user_id), row);
   }
 
-  const excludedBookingCodesRes = excludedBookingIds.size
-    ? await admin
-        .from("bookings")
-        .select("id,booking_code,passenger_name,vendor_id,created_at")
-        .in("id", Array.from(excludedBookingIds))
+  const excludedBookingDetailsRes = excludedBookingIds.size
+    ? await admin.from("bookings").select("id,booking_code,passenger_name,vendor_id,created_at").in("id", Array.from(excludedBookingIds))
     : ({ data: [], error: null } as any);
   const excludedBookingById = new Map<string, any>();
-  if (
-    !excludedBookingCodesRes.error &&
-    Array.isArray(excludedBookingCodesRes.data)
-  ) {
-    for (const booking of excludedBookingCodesRes.data) {
-      excludedBookingById.set(clean(booking?.id), booking);
-    }
+  if (!excludedBookingDetailsRes.error && Array.isArray(excludedBookingDetailsRes.data)) {
+    for (const row of excludedBookingDetailsRes.data) excludedBookingById.set(clean(row?.id), row);
   }
 
   const behaviorRows = vendors.map((vendor: any) => {
     const vendorId = clean(vendor?.id);
-    const cutoffMs = timestamp(vendor?.performance_metrics_started_at) || nowMs;
+    const cutoffMs = ts(vendor?.performance_metrics_started_at) || nowMs;
     const rangeStartMs = Math.max(cutoffMs, requestedStartMs);
 
     const vendorBookings = bookings.filter((row: any) => {
       if (clean(row?.vendor_id) !== vendorId) return false;
-      if (timestamp(row?.created_at) < rangeStartMs) return false;
+      if (ts(row?.created_at) < rangeStartMs) return false;
       if (excludedBookingIds.has(clean(row?.id))) return false;
       if (testPassengerIds.has(clean(row?.created_by_user_id))) return false;
       return true;
     });
 
-    const vendorPresence = presence.filter(
-      (row: any) =>
-        clean(row?.vendor_id) === vendorId &&
-        timestamp(row?.minute_started_at) >= rangeStartMs
-    );
-    const vendorAvailability = availability.filter(
-      (row: any) => clean(row?.vendor_id) === vendorId
-    );
+    const vendorPresence = presence.filter((row: any) => {
+      return clean(row?.vendor_id) === vendorId && ts(row?.minute_started_at) >= rangeStartMs;
+    });
 
-    const stats = orderStats(vendorBookings);
-    const todayStats = orderStats(
-      rowsInWindow(vendorBookings, manilaDayStart(nowMs), nowMs + 1)
-    );
-    const last7Stats = orderStats(
-      rowsInWindow(vendorBookings, nowMs - 7 * DAY_MS, nowMs + 1)
-    );
-    const last30Stats = orderStats(
-      rowsInWindow(vendorBookings, nowMs - 30 * DAY_MS, nowMs + 1)
-    );
-
-    const latestPresence = [...vendorPresence].sort(
-      (a, b) => timestamp(b?.last_seen_at) - timestamp(a?.last_seen_at)
-    )[0];
-    const lastSeenMs = timestamp(latestPresence?.last_seen_at);
-    const heartbeatFresh = lastSeenMs >= nowMs - ONLINE_FRESH_MS;
+    const latestPresence = [...vendorPresence].sort((a, b) => ts(b?.last_seen_at) - ts(a?.last_seen_at))[0] || null;
+    const lastSeenMs = ts(latestPresence?.last_seen_at);
     const acceptingOrders = vendor?.accepting_orders === true;
     const currentState = !acceptingOrders
       ? "closed"
-      : heartbeatFresh
+      : lastSeenMs >= nowMs - ONLINE_FRESH_MS
         ? "online"
         : "open_but_offline";
 
-    const onlineMinutes = vendorPresence.length;
-    const onlineOpenMinutes = vendorPresence.filter(
-      (row: any) => row?.accepting_orders === true
-    ).length;
-    const openMinutes = availabilityMinutes(
-      vendorAvailability,
-      rangeStartMs,
-      nowMs,
-      acceptingOrders
-    );
-    const openButOfflineMinutes = Math.max(
-      0,
-      openMinutes - onlineOpenMinutes
-    );
+    const range = orderStats(vendorBookings);
+    const today = orderStats(rowsInWindow(vendorBookings, manilaDayStart(nowMs), nowMs + 1));
+    const last7 = orderStats(rowsInWindow(vendorBookings, nowMs - 7 * DAY_MS, nowMs + 1));
+    const last30 = orderStats(rowsInWindow(vendorBookings, nowMs - 30 * DAY_MS, nowMs + 1));
 
-    const vendorBookingIds = new Set(
-      vendorBookings.map((row: any) => clean(row?.id))
-    );
+    const onlineMinutes = vendorPresence.length;
+    const openMinutes = vendorPresence.filter((row: any) => row?.accepting_orders === true).length;
+    const openButOfflineMinutes = 0;
+
+    const bookingIds = new Set(vendorBookings.map((row: any) => clean(row?.id)));
     const vendorRatings = ratings
       .filter((row: any) => {
         if (clean(row?.vendor_id) !== vendorId) return false;
-        if (timestamp(row?.created_at) < rangeStartMs) return false;
+        if (ts(row?.created_at) < rangeStartMs) return false;
         if (testPassengerIds.has(clean(row?.passenger_id))) return false;
         const bookingId = clean(row?.booking_id);
-        if (!bookingId || !vendorBookingIds.has(bookingId)) return false;
-        if (excludedBookingIds.has(bookingId)) return false;
-        return true;
+        return bookingId && bookingIds.has(bookingId) && !excludedBookingIds.has(bookingId);
       })
-      .map((row: any) => numberValue(row?.vendor_rating))
+      .map((row: any) => num(row?.vendor_rating))
       .filter((value: number) => value >= 1 && value <= 5);
 
-    const recentMissed = vendorBookings
+    const missed = vendorBookings
       .filter((row: any) => vendorDecision(row) === "unaccepted")
       .sort((a: any, b: any) => vendorDecisionTimestamp(b) - vendorDecisionTimestamp(a))
       .slice(0, 20)
@@ -574,93 +364,40 @@ export async function GET(req: NextRequest) {
 
     return {
       vendor_id: vendorId,
-      display_name:
-        clean(vendor?.display_name) || clean(vendor?.email) || vendorId,
+      display_name: clean(vendor?.display_name) || clean(vendor?.email) || vendorId,
       email: clean(vendor?.email) || null,
       town: clean(vendor?.town) || null,
       accepting_orders: acceptingOrders,
       metrics_started_at: vendor?.performance_metrics_started_at,
       current_state: currentState,
       last_seen_at: lastSeenMs ? new Date(lastSeenMs).toISOString() : null,
-      last_seen_age_seconds: lastSeenMs
-        ? Math.max(0, Math.round((nowMs - lastSeenMs) / 1000))
-        : null,
+      last_seen_age_seconds: lastSeenMs ? Math.max(0, Math.round((nowMs - lastSeenMs) / 1000)) : null,
       presence_client: clean(latestPresence?.client) || null,
       range: {
         days,
         starts_at: new Date(rangeStartMs).toISOString(),
-        ...stats,
+        ...range,
         online_minutes: onlineMinutes,
         online_hours: round1(onlineMinutes / 60),
         open_minutes: openMinutes,
         open_hours: round1(openMinutes / 60),
         open_but_offline_minutes: openButOfflineMinutes,
-        open_but_offline_hours: round1(openButOfflineMinutes / 60),
-        orders_per_online_hour:
-          onlineMinutes > 0
-            ? round1(stats.offered / (onlineMinutes / 60))
-            : null,
+        open_but_offline_hours: 0,
+        orders_per_online_hour: onlineMinutes > 0 ? round1(range.offered / (onlineMinutes / 60)) : null,
       },
-      today: todayStats,
-      last_7_days: last7Stats,
-      last_30_days: last30Stats,
+      today,
+      last_7_days: last7,
+      last_30_days: last30,
       averages: {
-        daily: periodAverages(
-          vendorBookings,
-          vendorPresence,
-          vendorAvailability,
-          acceptingOrders,
-          rangeStartMs,
-          nowMs,
-          "day"
-        ),
-        weekly: periodAverages(
-          vendorBookings,
-          vendorPresence,
-          vendorAvailability,
-          acceptingOrders,
-          rangeStartMs,
-          nowMs,
-          "week"
-        ),
-        monthly: periodAverages(
-          vendorBookings,
-          vendorPresence,
-          vendorAvailability,
-          acceptingOrders,
-          rangeStartMs,
-          nowMs,
-          "month"
-        ),
+        daily: averagePeriod(vendorBookings, vendorPresence, rangeStartMs, nowMs, "day"),
+        weekly: averagePeriod(vendorBookings, vendorPresence, rangeStartMs, nowMs, "week"),
+        monthly: averagePeriod(vendorBookings, vendorPresence, rangeStartMs, nowMs, "month"),
       },
       survey: {
         responses: vendorRatings.length,
-        average: vendorRatings.length ? safeAverage(vendorRatings) : null,
+        average: vendorRatings.length ? round1(vendorRatings.reduce((a: number, b: number) => a + b, 0) / vendorRatings.length) : null,
       },
-      recent_missed_orders: recentMissed,
-    };
-  });
-
-  const testAccountOutput = testAccounts.map((row: any) => {
-    const subjectId = clean(row?.subject_id);
-    const profile = testProfileById.get(subjectId);
-    return {
-      ...row,
-      full_name: clean(profile?.full_name) || null,
-      phone: clean(profile?.phone) || null,
-      email: clean(profile?.email) || null,
-    };
-  });
-
-  const bookingExclusionOutput = bookingExclusions.map((row: any) => {
-    const bookingId = clean(row?.booking_id);
-    const booking = excludedBookingById.get(bookingId);
-    return {
-      ...row,
-      booking_code: clean(booking?.booking_code) || null,
-      passenger_name: clean(booking?.passenger_name) || null,
-      vendor_id: clean(booking?.vendor_id) || null,
-      booking_created_at: booking?.created_at || null,
+      recent_missed_orders: missed,
     };
   });
 
@@ -671,8 +408,25 @@ export async function GET(req: NextRequest) {
     online_fresh_seconds: ONLINE_FRESH_MS / 1000,
     vendors: behaviorRows,
     exclusions: {
-      test_accounts: testAccountOutput,
-      bookings: bookingExclusionOutput,
+      test_accounts: testAccounts.map((row: any) => {
+        const profile = profileById.get(clean(row?.subject_id));
+        return {
+          ...row,
+          full_name: clean(profile?.full_name) || null,
+          phone: clean(profile?.phone) || null,
+          email: clean(profile?.email) || null,
+        };
+      }),
+      bookings: bookingExclusions.map((row: any) => {
+        const detail = excludedBookingById.get(clean(row?.booking_id));
+        return {
+          ...row,
+          booking_code: clean(detail?.booking_code) || null,
+          passenger_name: clean(detail?.passenger_name) || null,
+          vendor_id: clean(detail?.vendor_id) || null,
+          booking_created_at: detail?.created_at || null,
+        };
+      }),
     },
   });
 }
@@ -689,82 +443,39 @@ export async function POST(req: NextRequest) {
   if (action === "exclude_passenger" || action === "include_passenger") {
     const subjectId = clean(body?.subject_id || body?.passenger_user_id);
     if (!isUuid(subjectId)) {
-      return json(400, {
-        ok: false,
-        error: "INVALID_PASSENGER_USER_ID",
-        message: "A valid passenger user UUID is required.",
-      });
+      return json(400, { ok: false, error: "INVALID_PASSENGER_USER_ID", message: "A valid passenger user UUID is required." });
     }
-
-    const result = await admin.from("analytics_test_accounts").upsert(
-      {
-        subject_type: "passenger_user",
-        subject_id: subjectId,
-        reason,
-        active: action === "exclude_passenger",
-        marked_by: markedBy,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "subject_type,subject_id" }
-    );
-
-    if (result.error) {
-      return json(500, {
-        ok: false,
-        error: "TEST_ACCOUNT_WRITE_FAILED",
-        message: result.error.message,
-      });
-    }
-
-    return json(200, {
-      ok: true,
-      action,
+    const result = await admin.from("analytics_test_accounts").upsert({
+      subject_type: "passenger_user",
       subject_id: subjectId,
+      reason,
       active: action === "exclude_passenger",
-    });
+      marked_by: markedBy,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "subject_type,subject_id" });
+    if (result.error) return json(500, { ok: false, error: "TEST_ACCOUNT_WRITE_FAILED", message: result.error.message });
+    return json(200, { ok: true, action, subject_id: subjectId, active: action === "exclude_passenger" });
   }
 
   if (action === "exclude_booking" || action === "include_booking") {
     const bookingId = clean(body?.booking_id);
     if (!isUuid(bookingId)) {
-      return json(400, {
-        ok: false,
-        error: "INVALID_BOOKING_ID",
-        message: "A valid booking UUID is required.",
-      });
+      return json(400, { ok: false, error: "INVALID_BOOKING_ID", message: "A valid booking UUID is required." });
     }
-
-    const result = await admin.from("analytics_booking_exclusions").upsert(
-      {
-        booking_id: bookingId,
-        reason,
-        active: action === "exclude_booking",
-        marked_by: markedBy,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "booking_id" }
-    );
-
-    if (result.error) {
-      return json(500, {
-        ok: false,
-        error: "BOOKING_EXCLUSION_WRITE_FAILED",
-        message: result.error.message,
-      });
-    }
-
-    return json(200, {
-      ok: true,
-      action,
+    const result = await admin.from("analytics_booking_exclusions").upsert({
       booking_id: bookingId,
+      reason,
       active: action === "exclude_booking",
-    });
+      marked_by: markedBy,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "booking_id" });
+    if (result.error) return json(500, { ok: false, error: "BOOKING_EXCLUSION_WRITE_FAILED", message: result.error.message });
+    return json(200, { ok: true, action, booking_id: bookingId, active: action === "exclude_booking" });
   }
 
   return json(400, {
     ok: false,
     error: "INVALID_ACTION",
-    message:
-      "Supported actions: exclude_passenger, include_passenger, exclude_booking, include_booking.",
+    message: "Supported actions: exclude_passenger, include_passenger, exclude_booking, include_booking.",
   });
 }
