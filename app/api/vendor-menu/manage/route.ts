@@ -30,6 +30,7 @@ function toPrice(v: any) {
   if (!Number.isFinite(n) || n < 0) return 0;
   return Math.round(n * 100) / 100;
 }
+
 function prepMinutes(value: any) {
   const n = Number(value);
   if (!Number.isFinite(n)) return 15;
@@ -73,7 +74,7 @@ function normalizeMenuRow(row: any) {
     description: cleanString(row?.description || ""),
     category: cleanString(row?.category || "Others") || "Others",
     packaging_note: cleanString(row?.packaging_note || ""),
-        prep_time_minutes: prepMinutes(row?.prep_time_minutes),
+    prep_time_minutes: prepMinutes(row?.prep_time_minutes),
     premium_packaging_enabled: toBool(row?.premium_packaging_enabled, false),
     premium_packaging_fee: toPrice(row?.premium_packaging_fee || 0),
     premium_packaging_label: cleanString(row?.premium_packaging_label || "Premium packaging") || "Premium packaging",
@@ -168,6 +169,18 @@ async function getVendor(admin: any, vendorId: string) {
   const byEmail = await admin.from("vendor_accounts").select("*").eq("email", vendorId).limit(1);
   if (!byEmail.error && Array.isArray(byEmail.data) && byEmail.data[0]) return byEmail.data[0];
   return null;
+}
+
+async function getEffectiveAvailability(admin: any, vendor: any) {
+  const vendorUuid = cleanString(vendor?.id);
+  if (!vendorUuid) return null;
+
+  const result = await admin.rpc("vendor_effective_availability", {
+    p_vendor_id: vendorUuid,
+  });
+
+  if (result.error) return null;
+  return Array.isArray(result.data) ? result.data[0] || null : result.data || null;
 }
 
 async function getMenu(admin: any, vendorId: string) {
@@ -287,6 +300,11 @@ export async function GET(req: NextRequest) {
   try {
     const vendor = await getVendor(admin, vendorId);
     const menu = await getMenu(admin, vendorId);
+    const availability = vendor ? await getEffectiveAvailability(admin, vendor) : null;
+    const effectiveAcceptingOrders = availability
+      ? availability.effective_accepting_orders === true
+      : vendor?.accepting_orders !== false;
+
     return json(200, {
       ok: true,
       max_items: null,
@@ -299,12 +317,37 @@ export async function GET(req: NextRequest) {
             town: cleanString(vendor?.town || ""),
             logo_url: pickLogo(vendor) || null,
             tagline: cleanString(vendor?.tagline || ""),
-            accepting_orders: vendor?.accepting_orders !== false,
+            accepting_orders: effectiveAcceptingOrders,
+            manual_accepting_orders: vendor?.accepting_orders !== false,
+            hours_enforced: availability?.hours_enforced === true,
+            hours_configured: availability?.hours_configured === true,
+            normal_open_time: availability?.normal_open_time ?? null,
+            normal_close_time: availability?.normal_close_time ?? null,
+            extended_until: availability?.extended_until ?? null,
+            availability_reason: cleanString(availability?.reason || ""),
             vendor_lat: vendor?.vendor_lat ?? null,
             vendor_lng: vendor?.vendor_lng ?? null,
             vendor_location_label: cleanString(vendor?.vendor_location_label || ""),
           }
-        : { id: vendorId, vendor_id: vendorId, name: vendorId, town: "", logo_url: null, tagline: "", accepting_orders: true, vendor_lat: null, vendor_lng: null, vendor_location_label: "" },
+        : {
+            id: vendorId,
+            vendor_id: vendorId,
+            name: vendorId,
+            town: "",
+            logo_url: null,
+            tagline: "",
+            accepting_orders: true,
+            manual_accepting_orders: true,
+            hours_enforced: false,
+            hours_configured: false,
+            normal_open_time: null,
+            normal_close_time: null,
+            extended_until: null,
+            availability_reason: "",
+            vendor_lat: null,
+            vendor_lng: null,
+            vendor_location_label: "",
+          },
       items: menu,
       used: menu.length,
     });
@@ -428,9 +471,3 @@ export async function POST(req: NextRequest) {
     return json(500, { ok: false, error: "SERVER_ERROR", message: String(e?.message || e) });
   }
 }
-
-
-
-
-
-
