@@ -72,12 +72,31 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const availability = await admin.rpc("vendor_effective_availability", {
+    p_vendor_id: vendorRes.data.id,
+  });
+
+  if (availability.error) {
+    return json(500, {
+      ok: false,
+      error: "VENDOR_AVAILABILITY_READ_FAILED",
+      message: availability.error.message,
+    });
+  }
+
+  const availabilityRow = Array.isArray(availability.data)
+    ? availability.data[0]
+    : availability.data;
+  const effectiveAcceptingOrders = availabilityRow
+    ? availabilityRow.effective_accepting_orders === true
+    : vendorRes.data.accepting_orders === true;
+
   const now = new Date();
   const row = {
     vendor_id: vendorId,
     minute_started_at: minuteStartIso(now),
     last_seen_at: now.toISOString(),
-    accepting_orders: vendorRes.data.accepting_orders === true,
+    accepting_orders: effectiveAcceptingOrders,
     client,
   };
 
@@ -97,6 +116,7 @@ export async function POST(req: NextRequest) {
     ok: true,
     vendor_id: vendorId,
     accepting_orders: row.accepting_orders,
+    availability_reason: clean(availabilityRow?.reason || ""),
     recorded_at: row.last_seen_at,
     online_until: new Date(now.getTime() + 120000).toISOString(),
   });
