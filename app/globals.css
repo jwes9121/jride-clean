@@ -21,14 +21,78 @@ html, body {
   }
 }
 
-/*
- * The Vendor Portal mobile header becomes sticky through page-local styles.
- * When it sticks, keep it below the same Android status-bar exclusion zone.
- */
-@media (max-width: 760px) {
-  .jride-vendor-premium-shell .flex.flex-wrap.items-start.justify-between.gap-3.rounded-2xl {
-    top: max(44px, env(safe-area-inset-top, 0px)) !important;
+/* Compact mobile vendor navigation. The full portal header scrolls away. */
+.jride-vendor-mobile-nav {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .jride-vendor-mobile-nav {
+    position: sticky;
+    top: max(44px, env(safe-area-inset-top, 0px));
+    z-index: 85;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    border-bottom: 1px solid rgba(52, 211, 153, 0.28);
+    background: rgba(5, 14, 20, 0.96);
+    padding: 7px 8px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(12px);
   }
+
+  .jride-vendor-mobile-nav a,
+  .jride-vendor-mobile-nav button {
+    min-width: 0;
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    border-radius: 12px;
+    background: rgba(6, 20, 28, 0.9);
+    padding: 9px 6px;
+    color: #d1fae5;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  [data-jride-vendor-portal-header="true"] {
+    position: static !important;
+    top: auto !important;
+    z-index: auto !important;
+    margin: 0 0 10px !important;
+    border-radius: 18px !important;
+    padding: 10px 12px !important;
+  }
+
+  [data-jride-vendor-portal-header="true"] > div:first-child > p {
+    display: none !important;
+  }
+
+  [data-jride-vendor-portal-header="true"] h1 {
+    font-size: 1.1rem !important;
+    line-height: 1.2 !important;
+  }
+
+  [data-jride-vendor-portal-header="true"] .min-w-72 {
+    min-width: 0 !important;
+    width: auto !important;
+    flex: 1 1 220px;
+  }
+
+  [data-jride-vendor-header-redundant="true"] {
+    display: none !important;
+  }
+
+  [data-jride-vendor-scroll-target="true"],
+  [data-jride-menu-editor="true"] {
+    scroll-margin-top: 104px;
+  }
+}
+
+/* Order history belongs on the dedicated Orders screen, not the main portal. */
+[data-jride-vendor-history-panel="true"] {
+  display: none !important;
 }
 
 /* Vendor menu editing: keep the editor visible beside the menu on desktop. */
@@ -104,10 +168,6 @@ html, body {
 
   [data-jride-vendor-mobile-summary="true"] {
     order: 4 !important;
-  }
-
-  [data-jride-menu-editor="true"] {
-    scroll-margin-top: 12px;
   }
 
   [data-jride-menu-editor="true"].jride-menu-editor-mobile-inline-open {
