@@ -260,218 +260,256 @@ export default function VendorHoursGate() {
   if (pathname !== "/vendor-portal" || !vendorId) return null;
 
   return (
-    <>
-      {status && needsHours ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="w-full max-w-lg rounded-3xl border bg-white p-5 shadow-2xl">
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-amber-700">Required setup</div>
-            <h2 className="mt-1 text-xl font-bold text-slate-950">Set your normal opening and closing time</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              JRide uses these times to stop new customer orders automatically when your normal business day ends. Times use Philippine time.
-            </p>
+    <div
+      className="relative z-[50] border-b border-emerald-500/20 bg-slate-950 text-slate-100 shadow-lg"
+      style={{ paddingTop: "calc(env(safe-area-inset-top) + 8px)" }}
+    >
+      <div className="mx-auto max-w-7xl space-y-2 px-3 pb-3 sm:px-4">
+        {!status && error ? (
+          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-100">
+            Store hours could not be loaded: {error}
+          </div>
+        ) : null}
 
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="text-sm font-semibold text-slate-800">
-                Normal opening time
+        {status && needsHours ? (
+          <section className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 sm:p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">Store hours setup required</div>
+                <div className="mt-1 text-base font-black text-white">Set your normal opening and closing time</div>
+                <p className="mt-1 text-xs leading-5 text-slate-300">
+                  Customer ordering stays closed until business hours are saved and the store is opened for the day. You can still edit your profile, menu, prices, photos, stock, and pickup location while the store is closed.
+                </p>
+              </div>
+              <a href="/vendor-faq" className="shrink-0 text-xs font-bold text-amber-200 underline">
+                Vendor FAQ
+              </a>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="text-xs font-semibold text-slate-200">
+                Opening
                 <input
                   type="time"
                   value={openTime}
                   onChange={(e) => setOpenTime(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+                  className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white"
                 />
               </label>
-              <label className="text-sm font-semibold text-slate-800">
-                Normal closing time
+              <label className="text-xs font-semibold text-slate-200">
+                Closing
                 <input
                   type="time"
                   value={closeTime}
                   onChange={(e) => setCloseTime(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3 text-base"
+                  className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white"
                 />
               </label>
             </div>
 
-            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-              Closing time must be later than opening time on the same day. Overnight business hours are not enabled. After saving, the store remains OFFLINE until you manually open for orders that day.
-            </div>
+            {!validDraftHours ? (
+              <div className="mt-2 text-[11px] font-semibold text-rose-200">Closing must be later than opening on the same day.</div>
+            ) : null}
 
-            {error ? <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
+            {error ? <div className="mt-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">{error}</div> : null}
 
             <button
               type="button"
               disabled={busy || !validDraftHours}
               onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
-              className="mt-5 w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-3 w-full rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? "Saving..." : "Save business hours"}
             </button>
+          </section>
+        ) : null}
 
-            <a href="/vendor-faq" className="mt-3 block text-center text-sm font-semibold text-blue-700 underline">
-              Read the Vendor FAQ
-            </a>
-          </div>
-        </div>
-      ) : null}
-
-      {status && shouldPromptDailyOpen ? (
-        <div className="fixed inset-0 z-[190] flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-lg rounded-3xl border bg-white p-5 shadow-2xl">
-            <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Daily store status</div>
-            <h2 className="mt-1 text-xl font-bold text-slate-950">Your store is OFFLINE today</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              JRide does not automatically reopen your store each day. Open the Vendor Portal and turn the store on only when you are ready to receive Takeout orders.
-            </p>
-            <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              Normal hours: <span className="font-semibold">{formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}</span>
-              {timing.beforeOpen ? <div className="mt-1 text-xs">You may turn it on now. Customer ordering will begin only at your normal opening time.</div> : null}
-            </div>
-
-            {error ? <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
-
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void postAction("open_today")}
-              className="mt-5 w-full rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
-            >
-              {busy ? "Opening..." : "OPEN FOR ORDERS TODAY"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setDailyPromptDismissed(true)}
-              className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
-            >
-              STAY OFFLINE
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {status && !needsHours && shouldPromptForClosing ? (
-        <div className="fixed left-1/2 top-4 z-[160] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-xl">
-          <div className="font-bold text-amber-950">Your normal closing time is approaching.</div>
-          <div className="mt-1 text-sm text-amber-900">
-            Closing time: {formatClock(status.normal_close_time)}. If you do nothing, JRide will stop new orders automatically at closing time.
-          </div>
-          <div className="mt-1 text-xs text-amber-800">Extend only when your store can legally remain open and local curfew rules allow it.</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void postAction("extend", { minutes: 30 })}
-              className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-            >
-              Extend 30 minutes
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void postAction("extend", { minutes: 60 })}
-              className="rounded-xl bg-amber-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-            >
-              Extend 60 minutes
-            </button>
-            <button
-              type="button"
-              onClick={() => setDismissedCloseAt(clean(status.scheduled_close_at))}
-              className="rounded-xl border border-amber-400 bg-white px-3 py-2 text-xs font-bold text-amber-950"
-            >
-              Close on schedule
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {status && !needsHours ? (
-        <div className="fixed bottom-4 left-4 z-[120] max-w-[calc(100%-2rem)]">
-          {panelOpen ? (
-            <div className="mb-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-slate-300 bg-white p-4 shadow-2xl">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-950">Store hours</div>
-                  <div className="mt-1 text-xs text-slate-600">{statusText(status)}</div>
+        {status && !needsHours ? (
+          <section className="rounded-2xl border border-emerald-500/25 bg-slate-900/90 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${
+                      status.effective_accepting_orders
+                        ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+                        : "border-rose-400/50 bg-rose-500/15 text-rose-100"
+                    }`}
+                  >
+                    {status.effective_accepting_orders ? "OPEN" : "CLOSED"}
+                  </span>
+                  <span className="text-sm font-black text-white">Store status</span>
                 </div>
-                <button type="button" onClick={() => setPanelOpen(false)} className="rounded-lg border px-2 py-1 text-xs font-bold text-slate-600">
-                  Close
-                </button>
+                <div className="mt-1 text-xs text-slate-300">{statusText(status)}</div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  Normal hours: {formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}
+                  {extensionScheduled ? ` | Extended until ${formatManilaDateTime(status.extended_until)}` : ""}
+                </div>
               </div>
-
-              <div className="mt-3 rounded-xl border bg-slate-50 p-3 text-sm">
-                <div><span className="font-semibold">Normal hours:</span> {formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}</div>
-                <div className="mt-1"><span className="font-semibold">Opened today:</span> {status.daily_opened ? "YES" : "NO"}</div>
-                <div className="mt-1"><span className="font-semibold">Customer ordering:</span> {status.effective_accepting_orders ? "OPEN" : "CLOSED"}</div>
-                {extensionScheduled ? (
-                  <div className="mt-1"><span className="font-semibold">Extension:</span> until {formatManilaDateTime(status.extended_until)}</div>
-                ) : null}
-              </div>
-
-              {!status.daily_opened && !timing.afterClose ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void postAction("open_today")}
-                  className="mt-3 w-full rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
-                >
-                  OPEN FOR ORDERS TODAY
-                </button>
-              ) : null}
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <label className="text-xs font-semibold text-slate-700">
-                  Opening
-                  <input type="time" value={openTime} onChange={(e) => setOpenTime(e.target.value)} className="mt-1 w-full rounded-lg border px-2 py-2 text-sm" />
-                </label>
-                <label className="text-xs font-semibold text-slate-700">
-                  Closing
-                  <input type="time" value={closeTime} onChange={(e) => setCloseTime(e.target.value)} className="mt-1 w-full rounded-lg border px-2 py-2 text-sm" />
-                </label>
-              </div>
-              {!validDraftHours ? <div className="mt-1 text-[11px] text-rose-700">Closing must be later than opening on the same day.</div> : null}
 
               <button
                 type="button"
-                disabled={busy || !validDraftHours}
-                onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800 disabled:opacity-50"
+                onClick={() => setPanelOpen((value) => !value)}
+                className="shrink-0 rounded-xl border border-emerald-500/40 bg-slate-950 px-3 py-2 text-xs font-black text-emerald-100 hover:border-emerald-300"
               >
-                Save normal hours
+                {panelOpen ? "Hide hours" : "Manage hours"}
               </button>
+            </div>
 
-              {canShowExtensionControls ? (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 30 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                    Extend 30 min
+            {shouldPromptDailyOpen ? (
+              <div className="mt-3 rounded-xl border border-blue-400/40 bg-blue-500/10 p-3">
+                <div className="text-sm font-black text-blue-100">Your store is offline today.</div>
+                <div className="mt-1 text-xs leading-5 text-slate-300">
+                  Open it only when you are ready to receive Takeout orders. This notice does not block menu or profile editing.
+                  {timing.beforeOpen ? " Customer ordering will begin at your normal opening time." : ""}
+                </div>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction("open_today")}
+                    className="rounded-xl bg-emerald-500 px-3 py-2.5 text-xs font-black text-slate-950 disabled:opacity-50"
+                  >
+                    {busy ? "Opening..." : "OPEN FOR ORDERS TODAY"}
                   </button>
-                  <button type="button" disabled={busy} onClick={() => void postAction("extend", { minutes: 60 })} className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                    Extend 60 min
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setDailyPromptDismissed(true)}
+                    className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2.5 text-xs font-black text-slate-200 disabled:opacity-50"
+                  >
+                    STAY OFFLINE
                   </button>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              {extensionScheduled ? (
-                <button type="button" disabled={busy} onClick={() => void postAction("end_extension")} className="mt-2 w-full rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-800 disabled:opacity-50">
-                  Cancel today's extension
+            {shouldPromptForClosing ? (
+              <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+                <div className="font-black text-amber-100">Your normal closing time is approaching.</div>
+                <div className="mt-1 text-xs text-amber-100/90">
+                  Closing time: {formatClock(status.normal_close_time)}. JRide will stop new orders automatically at closing time unless an extension is active.
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction("extend", { minutes: 30 })}
+                    className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                  >
+                    Extend 30 min
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction("extend", { minutes: 60 })}
+                    className="rounded-lg bg-amber-300 px-3 py-2 text-xs font-black text-slate-950 disabled:opacity-50"
+                  >
+                    Extend 60 min
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedCloseAt(clean(status.scheduled_close_at))}
+                    className="rounded-lg border border-amber-400/50 bg-slate-950 px-3 py-2 text-xs font-black text-amber-100"
+                  >
+                    Close on schedule
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {panelOpen ? (
+              <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/80 p-3">
+                <div className="grid gap-1 text-xs text-slate-300 sm:grid-cols-3">
+                  <div><span className="font-bold text-white">Opened today:</span> {status.daily_opened ? "YES" : "NO"}</div>
+                  <div><span className="font-bold text-white">Customer ordering:</span> {status.effective_accepting_orders ? "OPEN" : "CLOSED"}</div>
+                  <div><span className="font-bold text-white">Reason:</span> {status.reason || "unavailable"}</div>
+                </div>
+
+                {!status.daily_opened && !timing.afterClose ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction("open_today")}
+                    className="mt-3 w-full rounded-lg bg-emerald-500 px-3 py-2.5 text-xs font-black text-slate-950 disabled:opacity-50"
+                  >
+                    OPEN FOR ORDERS TODAY
+                  </button>
+                ) : null}
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Opening
+                    <input
+                      type="time"
+                      value={openTime}
+                      onChange={(e) => setOpenTime(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-2 py-2 text-sm text-white"
+                    />
+                  </label>
+                  <label className="text-xs font-semibold text-slate-300">
+                    Closing
+                    <input
+                      type="time"
+                      value={closeTime}
+                      onChange={(e) => setCloseTime(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-900 px-2 py-2 text-sm text-white"
+                    />
+                  </label>
+                </div>
+                {!validDraftHours ? <div className="mt-1 text-[11px] font-semibold text-rose-200">Closing must be later than opening on the same day.</div> : null}
+
+                <button
+                  type="button"
+                  disabled={busy || !validDraftHours}
+                  onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
+                  className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {busy ? "Saving..." : "Save normal hours"}
                 </button>
-              ) : null}
 
-              {error ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">{error}</div> : null}
+                {canShowExtensionControls ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void postAction("extend", { minutes: 30 })}
+                      className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white disabled:opacity-50"
+                    >
+                      Extend 30 min
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void postAction("extend", { minutes: 60 })}
+                      className="rounded-lg bg-blue-500 px-3 py-2 text-xs font-black text-white disabled:opacity-50"
+                    >
+                      Extend 60 min
+                    </button>
+                  </div>
+                ) : null}
 
-              <a href="/vendor-faq" className="mt-3 block text-center text-xs font-bold text-blue-700 underline">
-                Vendor FAQ
-              </a>
-            </div>
-          ) : null}
+                {extensionScheduled ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void postAction("end_extension")}
+                    className="mt-2 w-full rounded-lg border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100 disabled:opacity-50"
+                  >
+                    Cancel today's extension
+                  </button>
+                ) : null}
 
-          <button
-            type="button"
-            onClick={() => setPanelOpen((value) => !value)}
-            className={`rounded-full border px-4 py-2 text-xs font-bold shadow-lg ${status.effective_accepting_orders ? "border-emerald-300 bg-emerald-50 text-emerald-900" : "border-rose-300 bg-rose-50 text-rose-900"}`}
-          >
-            Store hours: {status.effective_accepting_orders ? "OPEN" : "CLOSED"}
-          </button>
-        </div>
-      ) : null}
-    </>
+                {error ? <div className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">{error}</div> : null}
+
+                <a href="/vendor-faq" className="mt-3 block text-center text-xs font-black text-blue-200 underline">
+                  Vendor FAQ
+                </a>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+      </div>
+    </div>
   );
 }
