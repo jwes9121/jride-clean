@@ -36,6 +36,10 @@ function clean(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function elementText(element: Element | null): string {
+  return clean(element?.textContent).replace(/\s+/g, " ");
+}
+
 function readVendorId(): string {
   if (typeof window === "undefined") return "";
 
@@ -81,12 +85,54 @@ function sameDayHoursValid(openTime: string, closeTime: string): boolean {
 
 function statusText(status: HoursStatus): string {
   if (!status.hours_enforced || !status.hours_configured) return "Opening and closing times are required.";
+  if (!status.manual_accepting_orders) return "Closed by the vendor for today.";
   if (status.reason === "daily_open_required") return "Store has not been opened for orders today.";
-  if (!status.manual_accepting_orders) return "Closed by the vendor OPEN/CLOSED switch.";
   if (status.reason === "within_hours") return "Open for customer orders.";
   if (status.reason === "extended") return "Open under today's extension.";
   if (status.reason === "outside_hours") return "Closed by today's normal operating schedule.";
   return status.effective_accepting_orders ? "Open for customer orders." : "Closed for new customer orders.";
+}
+
+function retireLegacyAvailabilityUi() {
+  const shell = document.querySelector<HTMLElement>(".jride-vendor-premium-shell");
+  if (!shell) return;
+
+  const profileSection = Array.from(shell.querySelectorAll<HTMLElement>("section")).find((section) => {
+    return elementText(section.querySelector("h2")) === "Vendor profile";
+  });
+  if (!profileSection) return;
+
+  const directChildren = Array.from(profileSection.children).filter(
+    (child): child is HTMLElement => child instanceof HTMLElement,
+  );
+
+  const legacyAvailabilityPanel = directChildren.find((child) => {
+    const text = elementText(child);
+    return text.includes("Order availability") && text.includes("OPEN FOR ORDERS") && text.includes("CLOSED");
+  });
+  if (legacyAvailabilityPanel) {
+    legacyAvailabilityPanel.dataset.jrideLegacyAvailabilityRetired = "true";
+    legacyAvailabilityPanel.style.display = "none";
+    legacyAvailabilityPanel.setAttribute("aria-hidden", "true");
+  }
+
+  const profileHeader = directChildren.find((child) => elementText(child.querySelector("h2")) === "Vendor profile");
+  if (profileHeader) {
+    const legacyBadge = Array.from(profileHeader.children).find((child) => {
+      const text = elementText(child);
+      return text === "Open" || text === "Closed";
+    });
+    if (legacyBadge instanceof HTMLElement) {
+      legacyBadge.dataset.jrideLegacyAvailabilityRetired = "true";
+      legacyBadge.style.display = "none";
+      legacyBadge.setAttribute("aria-hidden", "true");
+    }
+
+    const subtitle = profileHeader.querySelector("p");
+    if (subtitle && elementText(subtitle) === "Store identity and live order availability.") {
+      subtitle.textContent = "Store identity and profile details.";
+    }
+  }
 }
 
 async function readJson(res: Response): Promise<any> {
@@ -105,6 +151,26 @@ export default function VendorHoursGate() {
   const [dismissedCloseAt, setDismissedCloseAt] = useState("");
   const [dailyPromptDismissed, setDailyPromptDismissed] = useState(false);
   const [clockTick, setClockTick] = useState(0);
+
+  useEffect(() => {
+    if (pathname !== "/vendor-portal") return;
+
+    let frame = 0;
+    const apply = () => retireLegacyAvailabilityUi();
+    const schedule = () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(apply);
+    };
+
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    schedule();
+
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [pathname]);
 
   useEffect(() => {
     if (pathname !== "/vendor-portal") {
@@ -199,6 +265,11 @@ export default function VendorHoursGate() {
         setOpenTime(clean(data?.normal_open_time));
         setCloseTime(clean(data?.normal_close_time));
 
+        if (action === "close_today") {
+          setDailyPromptDismissed(true);
+          setPanelOpen(false);
+        }
+
         if (action === "open_today" && typeof window !== "undefined") {
           window.setTimeout(() => window.location.reload(), 150);
         }
@@ -256,6 +327,8 @@ export default function VendorHoursGate() {
   const canShowExtensionControls = Boolean(
     status?.daily_opened && status?.manual_accepting_orders && (timing.nearClose || extensionScheduled),
   );
+
+  const canCloseToday = Boolean(status?.daily_opened && status?.manual_accepting_orders);
 
   if (pathname !== "/vendor-portal" || !vendorId) return null;
 
@@ -347,13 +420,29 @@ export default function VendorHoursGate() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setPanelOpen((value) => !value)}
-                className="shrink-0 rounded-xl border border-emerald-500/40 bg-slate-950 px-3 py-2 text-xs font-black text-emerald-100 hover:border-emerald-300"
-              >
-                {panelOpen ? "Hide hours" : "Manage hours"}
-              </button>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                {canCloseToday ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      if (window.confirm("Close this store for new orders today?")) {
+                        void postAction("close_today");
+                      }
+                    }}
+                    className="rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100 disabled:opacity-50"
+                  >
+                    CLOSE TODAY
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen((value) => !value)}
+                  className="rounded-xl border border-emerald-500/40 bg-slate-950 px-3 py-2 text-xs font-black text-emerald-100 hover:border-emerald-300"
+                >
+                  {panelOpen ? "Hide hours" : "Manage hours"}
+                </button>
+              </div>
             </div>
 
             {shouldPromptDailyOpen ? (
