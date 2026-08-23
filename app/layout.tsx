@@ -3,7 +3,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
-import VendorPerformancePanel from "./components/VendorPerformancePanel";
+import VendorPortalMobileChrome from "./components/VendorPortalMobileChrome";
 import VendorPresenceHeartbeat from "./components/VendorPresenceHeartbeat";
 import VendorHoursGate from "./components/VendorHoursGate";
 
@@ -23,10 +23,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <VendorHoursGate />
+        <VendorPortalMobileChrome />
         {children}
         <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
-        <VendorPerformancePanel />
       </body>
     </html>
   );
