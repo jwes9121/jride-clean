@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const CLOSE_EDITOR_EVENT = "jride:close-vendor-menu-editor";
@@ -101,10 +102,14 @@ function findButtonByLabel(
 }
 
 export default function VendorMenuEditorAssist() {
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (window.location.pathname !== "/vendor-portal") return;
+    if (pathname !== "/vendor-portal") {
+      setMobileOpen(false);
+      return;
+    }
 
     let section: HTMLElement | null = null;
     let editor: HTMLElement | null = null;
@@ -239,7 +244,7 @@ export default function VendorMenuEditorAssist() {
       window.removeEventListener(CLOSE_EDITOR_EVENT, onCloseRequest);
       clearVisualState(false);
     };
-  }, []);
+  }, [pathname]);
 
   if (!mobileOpen) return null;
 
