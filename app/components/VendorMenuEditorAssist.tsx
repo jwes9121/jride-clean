@@ -1,9 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-
-const CLOSE_EDITOR_EVENT = "jride:close-vendor-menu-editor";
+import { useEffect } from "react";
 
 function elementText(element: Element | null): string {
   return String(element?.textContent || "").replace(/\s+/g, " ").trim();
@@ -103,19 +101,16 @@ function findButtonByLabel(
 
 export default function VendorMenuEditorAssist() {
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    if (pathname !== "/vendor-portal") {
-      setMobileOpen(false);
-      return;
-    }
+    if (pathname !== "/vendor-portal") return;
 
     let section: HTMLElement | null = null;
     let editor: HTMLElement | null = null;
     let menuGrid: HTMLElement | null = null;
     let sectionObserver: MutationObserver | null = null;
     let refreshTimer: number | null = null;
+    let scrollTimer: number | null = null;
     let editStartedAt = 0;
 
     const clearVisualState = (resetReactState: boolean) => {
@@ -126,7 +121,7 @@ export default function VendorMenuEditorAssist() {
 
       if (section) delete section.dataset.jrideMenuEditing;
       if (editor) {
-        editor.classList.remove("jride-menu-editor-mobile-open");
+        editor.classList.remove("jride-menu-editor-mobile-inline-open");
         delete editor.dataset.jrideMenuMode;
         delete editor.dataset.jrideMenuItem;
       }
@@ -135,7 +130,6 @@ export default function VendorMenuEditorAssist() {
           .querySelectorAll<HTMLElement>('[data-jride-menu-item-editing="true"]')
           .forEach((card) => delete card.dataset.jrideMenuItemEditing);
       }
-      setMobileOpen(false);
     };
 
     const refreshStructure = () => {
@@ -163,7 +157,7 @@ export default function VendorMenuEditorAssist() {
         sectionObserver = new MutationObserver(() => {
           if (!section || !editor) return;
           if (section.dataset.jrideMenuEditing !== "true") return;
-          if (Date.now() - editStartedAt < 250) return;
+          if (Date.now() - editStartedAt < 300) return;
 
           const updateButton = findButtonByLabel(editor, "Update item");
           if (!updateButton) clearVisualState(false);
@@ -185,6 +179,18 @@ export default function VendorMenuEditorAssist() {
         refreshTimer = null;
         refreshStructure();
       }, 40);
+    };
+
+    const scrollEditorIntoView = () => {
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(() => {
+        scrollTimer = null;
+        if (!editor) refreshStructure();
+        if (!editor) return;
+
+        editor.classList.add("jride-menu-editor-mobile-inline-open");
+        editor.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
     };
 
     const onDocumentClick = (event: MouseEvent) => {
@@ -214,8 +220,7 @@ export default function VendorMenuEditorAssist() {
         editor.dataset.jrideMenuItem = findMenuItemName(card);
 
         if (window.matchMedia("(max-width: 1023px)").matches) {
-          editor.classList.add("jride-menu-editor-mobile-open");
-          setMobileOpen(true);
+          scrollEditorIntoView();
         }
 
         scheduleRefresh();
@@ -227,33 +232,21 @@ export default function VendorMenuEditorAssist() {
       }
     };
 
-    const onCloseRequest = () => clearVisualState(true);
-
     const bodyObserver = new MutationObserver(scheduleRefresh);
     bodyObserver.observe(document.body, { childList: true, subtree: true });
 
     document.addEventListener("click", onDocumentClick, true);
-    window.addEventListener(CLOSE_EDITOR_EVENT, onCloseRequest);
     refreshStructure();
 
     return () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer);
       bodyObserver.disconnect();
       sectionObserver?.disconnect();
       document.removeEventListener("click", onDocumentClick, true);
-      window.removeEventListener(CLOSE_EDITOR_EVENT, onCloseRequest);
       clearVisualState(false);
     };
   }, [pathname]);
 
-  if (!mobileOpen) return null;
-
-  return (
-    <button
-      type="button"
-      className="jride-menu-editor-backdrop"
-      aria-label="Close menu item editor"
-      onClick={() => window.dispatchEvent(new Event(CLOSE_EDITOR_EVENT))}
-    />
-  );
+  return null;
 }
