@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type PeriodKey = "today" | "week" | "month" | "all";
-
 type BookingRow = Record<string, any>;
 
 type ItemRow = {
@@ -12,6 +11,20 @@ type ItemRow = {
   quantity?: number | string | null;
   snapshot_at?: string | null;
 };
+
+const ANALYTICS_DUMMY_PASSENGER_NAMES = new Set([
+  "wes play",
+  "che er",
+  "test book lamut",
+]);
+
+const ANALYTICS_DUMMY_USER_IDS = new Set([
+  "54d744ad-ec15-41a9-a947-c1012001a5cb",
+  "a80e8043-6477-4ce0-96a7-06ef7007b541",
+  "38a1ac7f-2222-424f-86ac-22f7f3f81414",
+]);
+
+const DUMMY_DRIVER_UUID = /^00000000-0000-4000-8000-000000000\d{3}$/i;
 
 function json(status: number, body: Record<string, any>) {
   return NextResponse.json(body, { status });
@@ -25,6 +38,10 @@ function text(v: unknown): string {
   return String(v ?? "").trim();
 }
 
+function normalizedText(v: unknown): string {
+  return text(v).toLowerCase().replace(/\s+/g, " ");
+}
+
 function num(v: unknown): number {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
@@ -32,6 +49,25 @@ function num(v: unknown): number {
 
 function normalizeStatus(v: unknown): string {
   return text(v).toLowerCase().replace(/\s+/g, "_");
+}
+
+function isDummyDriverId(v: unknown): boolean {
+  const id = text(v);
+  return Boolean(id && DUMMY_DRIVER_UUID.test(id));
+}
+
+function isAnalyticsDummyBooking(row: BookingRow): boolean {
+  const passengerName = normalizedText(row.passenger_name);
+  if (ANALYTICS_DUMMY_PASSENGER_NAMES.has(passengerName)) return true;
+
+  const userId = text(row.created_by_user_id).toLowerCase();
+  if (ANALYTICS_DUMMY_USER_IDS.has(userId)) return true;
+
+  return [
+    row.driver_id,
+    row.assigned_driver_id,
+    row.takeout_fee_proposed_by_driver_id,
+  ].some(isDummyDriverId);
 }
 
 function isCompleted(row: BookingRow): boolean {
@@ -106,9 +142,7 @@ function startOfManilaPeriod(period: PeriodKey): string | null {
   let startM = m;
   let startD = d;
 
-  if (period === "month") {
-    startD = 1;
-  }
+  if (period === "month") startD = 1;
 
   if (period === "week") {
     const manilaNoonUtc = new Date(Date.UTC(y, m - 1, d, 4, 0, 0));
@@ -177,7 +211,9 @@ export async function GET(req: NextRequest) {
     return json(500, { ok: false, error: "DB_ERROR", message: bookingsRes.error.message });
   }
 
-  const rows = (Array.isArray(bookingsRes.data) ? bookingsRes.data : []) as BookingRow[];
+  const sourceRows = (Array.isArray(bookingsRes.data) ? bookingsRes.data : []) as BookingRow[];
+  const excludedTestRows = sourceRows.filter(isAnalyticsDummyBooking);
+  const rows = sourceRows.filter((row) => !isAnalyticsDummyBooking(row));
   const bookingIds = rows.map((r) => text(r.id)).filter(Boolean);
 
   const itemRows: ItemRow[] = [];
@@ -271,6 +307,8 @@ export async function GET(req: NextRequest) {
     vendor_id: vendorId,
     period,
     generated_at: new Date().toISOString(),
+    test_data_excluded: true,
+    excluded_test_orders: excludedTestRows.length,
     summary: {
       total_orders: totalOrders,
       active_orders: active.length,
