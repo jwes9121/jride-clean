@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAssist";
 import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
+import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
 import VendorPortalDailyCompression from "./components/VendorPortalDailyCompression";
 import VendorPortalMobileChrome from "./components/VendorPortalMobileChrome";
@@ -30,6 +31,7 @@ export default function RootLayout({
         {children}
         <TakeoutPassengerMobileAssist />
         <TakeoutPassengerPinUX />
+        <TakeoutTrackingMilestoneAssist />
         <VendorPortalDailyCompression />
         <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
