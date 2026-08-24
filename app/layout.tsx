@@ -2,7 +2,6 @@ import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import TakeoutPassengerCheckoutPolish from "./components/TakeoutPassengerCheckoutPolish";
 import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAssist";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
 import VendorPortalDailyCompression from "./components/VendorPortalDailyCompression";
@@ -29,7 +28,6 @@ export default function RootLayout({
         <VendorPortalMobileChrome />
         {children}
         <TakeoutPassengerMobileAssist />
-        <TakeoutPassengerCheckoutPolish />
         <VendorPortalDailyCompression />
         <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
