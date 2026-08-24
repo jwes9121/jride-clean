@@ -29,6 +29,10 @@ function findExact<T extends Element>(
   );
 }
 
+function setElementText(element: HTMLElement | null, value: string) {
+  if (element && elementText(element) !== value) element.textContent = value;
+}
+
 function setButtonText(button: HTMLButtonElement | null, value: string) {
   if (button && elementText(button) !== value) button.textContent = value;
 }
@@ -80,7 +84,13 @@ function ensureContactSummary(shell: HTMLElement) {
   if (!name || !phone) {
     if (summary) summary.style.display = "none";
     shell.dataset.jrideTakeoutContactExpanded = "true";
+    shell.dataset.jrideTakeoutContactForced = "true";
     return;
+  }
+
+  if (shell.dataset.jrideTakeoutContactForced === "true") {
+    delete shell.dataset.jrideTakeoutContactExpanded;
+    delete shell.dataset.jrideTakeoutContactForced;
   }
 
   if (!summary) {
@@ -109,6 +119,7 @@ function ensureContactSummary(shell: HTMLElement) {
     toggle.type = "button";
     toggle.dataset.jrideTakeoutContactToggle = "true";
     toggle.addEventListener("click", () => {
+      delete shell.dataset.jrideTakeoutContactForced;
       const expanded = shell.dataset.jrideTakeoutContactExpanded === "true";
       if (expanded) {
         delete shell.dataset.jrideTakeoutContactExpanded;
@@ -132,16 +143,16 @@ function ensureContactSummary(shell: HTMLElement) {
   const toggle = summary.querySelector<HTMLButtonElement>("[data-jride-takeout-contact-toggle='true']");
   const readOnly = nameInput.readOnly && phoneInput.readOnly;
 
-  if (value) value.textContent = name + " | " + maskPhone(phone);
-  if (note) note.textContent = readOnly ? "From your passenger profile" : "Check before submitting";
-  if (toggle) {
-    toggle.textContent =
-      shell.dataset.jrideTakeoutContactExpanded === "true"
-        ? "Hide"
-        : readOnly
-          ? "Details"
-          : "Edit";
-  }
+  setElementText(value, name + " | " + maskPhone(phone));
+  setElementText(note, readOnly ? "From your passenger profile" : "Check before submitting");
+  setButtonText(
+    toggle,
+    shell.dataset.jrideTakeoutContactExpanded === "true"
+      ? "Hide"
+      : readOnly
+        ? "Details"
+        : "Edit",
+  );
 }
 
 function markAddressControls(shell: HTMLElement) {
@@ -168,10 +179,10 @@ function markAddressControls(shell: HTMLElement) {
     modeRow.dataset.jrideTakeoutAddressMode = "true";
     Array.from(modeRow.querySelectorAll<HTMLLabelElement>("label")).forEach((label) => {
       label.dataset.jrideTakeoutAddressModeOption = "true";
-      const span = label.querySelector("span");
+      const span = label.querySelector<HTMLElement>("span");
       const value = elementText(span);
-      if (value === "Use saved address") span!.textContent = "Saved address";
-      if (value === "Enter a new address") span!.textContent = "New address";
+      if (value === "Use saved address") setElementText(span, "Saved address");
+      if (value === "Enter a new address") setElementText(span, "New address");
     });
   }
 
