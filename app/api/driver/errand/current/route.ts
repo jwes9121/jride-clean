@@ -4,6 +4,7 @@ import { resolveDriverRequest } from "@/lib/driver/resolveDriverRequest";
 import {
   errandFeatureEnabled,
   errandFareBreakdown,
+  errandPabiliAccounting,
   loadErrandBundleByBookingId,
 } from "@/lib/errand/server";
 
@@ -99,6 +100,11 @@ export async function GET(req: Request) {
             bundle.booking,
             bundle.job,
             bundle.settings
+          ),
+          pabili: errandPabiliAccounting(
+            bundle.job,
+            bundle.stops,
+            bundle.pabiliFundEvents
           ),
         },
       },
