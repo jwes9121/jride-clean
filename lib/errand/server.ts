@@ -94,24 +94,45 @@ export function errandFareBreakdown(
     num(settings?.company_cut_flat, 20)
   );
 
-  const storedWaitSeconds = Math.max(0, Math.floor(num(job?.waiting_accumulated_seconds)));
+  const storedWaitSeconds = Math.max(
+    0,
+    Math.floor(num(job?.waiting_accumulated_seconds))
+  );
   const waitingStartedAt = text(job?.waiting_started_at);
-  let runningWaitSeconds = 0;
+  const stage = text(job?.errand_stage).toLowerCase();
+  const finalHandoffWaiting = stage === "waiting_at_final_handoff";
+  const finalHandoffLimitSeconds = 30 * 60;
+  let rawRunningWaitSeconds = 0;
 
   if (waitingStartedAt) {
     const startedMs = Date.parse(waitingStartedAt);
     if (Number.isFinite(startedMs)) {
-      runningWaitSeconds = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
+      rawRunningWaitSeconds = Math.max(
+        0,
+        Math.floor((Date.now() - startedMs) / 1000)
+      );
     }
   }
 
+  const runningWaitSeconds = finalHandoffWaiting
+    ? Math.min(rawRunningWaitSeconds, finalHandoffLimitSeconds)
+    : rawRunningWaitSeconds;
   const currentWaitSeconds = storedWaitSeconds + runningWaitSeconds;
   const currentWaitMinutes =
     currentWaitSeconds > 0 ? Math.ceil(currentWaitSeconds / 60) : 0;
 
-  const freeMinutes = Math.max(0, Math.floor(num(settings?.waiting_free_minutes, 15)));
-  const blockMinutes = Math.max(1, Math.floor(num(settings?.waiting_block_minutes, 15)));
-  const feePerBlock = Math.max(0, num(settings?.waiting_fee_per_block, 20));
+  const freeMinutes = Math.max(
+    0,
+    Math.floor(num(settings?.waiting_free_minutes, 15))
+  );
+  const blockMinutes = Math.max(
+    1,
+    Math.floor(num(settings?.waiting_block_minutes, 15))
+  );
+  const feePerBlock = Math.max(
+    0,
+    num(settings?.waiting_fee_per_block, 20)
+  );
   const paidMinutes = Math.max(currentWaitMinutes - freeMinutes, 0);
   const paidBlocks = paidMinutes > 0 ? Math.ceil(paidMinutes / blockMinutes) : 0;
   const liveWaitingFee = paidBlocks * feePerBlock;
@@ -132,6 +153,9 @@ export function errandFareBreakdown(
     freeMinutes * 60 - currentWaitSeconds,
     0
   );
+  const finalLocalWaitSeconds = finalHandoffWaiting
+    ? Math.min(rawRunningWaitSeconds, finalHandoffLimitSeconds)
+    : 0;
 
   return {
     base_fare: baseFare,
@@ -145,7 +169,10 @@ export function errandFareBreakdown(
     total_errand_fare: currentTotal,
     stored_total_errand_fare: num(booking?.total_errand_fare),
     company_cut: companyCut,
-    driver_payout: Math.max(Number((currentTotal - companyCut).toFixed(2)), 0),
+    driver_payout: Math.max(
+      Number((currentTotal - companyCut).toFixed(2)),
+      0
+    ),
     waiting: {
       running: !!waitingStartedAt,
       waiting_started_at: waitingStartedAt || null,
@@ -160,6 +187,16 @@ export function errandFareBreakdown(
       block_minutes: blockMinutes,
       fee_per_block: feePerBlock,
       current_fee: liveWaitingFee,
+    },
+    final_handoff: {
+      active: finalHandoffWaiting,
+      local_wait_seconds: finalLocalWaitSeconds,
+      local_wait_limit_seconds: finalHandoffLimitSeconds,
+      local_wait_remaining_seconds: finalHandoffWaiting
+        ? Math.max(finalHandoffLimitSeconds - rawRunningWaitSeconds, 0)
+        : null,
+      cutoff_reached:
+        finalHandoffWaiting && rawRunningWaitSeconds >= finalHandoffLimitSeconds,
     },
   };
 }
