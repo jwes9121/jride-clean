@@ -1,7 +1,7 @@
 // lib/routing/mapboxRoad.ts
 //
-// Shared Mapbox road-routing helpers for JRide backend assignment decisions.
-// These helpers never fall back to straight-line/Haversine distance.
+// Shared Mapbox road-routing helpers for JRide backend decisions.
+// Billing and assignment helpers never fall back to straight-line/Haversine distance.
 
 export type RoadPoint = {
   lat: number;
@@ -11,6 +11,15 @@ export type RoadPoint = {
 export type RoadMetric = {
   distanceKm: number;
   durationSeconds: number | null;
+};
+
+export type RoadLineGeometry = {
+  type: "LineString";
+  coordinates: [number, number][];
+};
+
+export type RoadMetricWithGeometry = RoadMetric & {
+  geometry: RoadLineGeometry | null;
 };
 
 export type RoadOrigin = RoadPoint & {
@@ -51,6 +60,40 @@ function mapboxToken(): string {
   return "";
 }
 
+function parseMetric(route: any): RoadMetric | null {
+  const meters = Number(route?.distance ?? NaN);
+  const seconds = Number(route?.duration ?? NaN);
+
+  if (!Number.isFinite(meters) || meters < 0) return null;
+
+  return {
+    distanceKm: meters / 1000,
+    durationSeconds:
+      Number.isFinite(seconds) && seconds >= 0 ? seconds : null,
+  };
+}
+
+function parseLineGeometry(route: any): RoadLineGeometry | null {
+  const raw = route?.geometry;
+  if (!raw || raw.type !== "LineString" || !Array.isArray(raw.coordinates)) {
+    return null;
+  }
+
+  const coordinates: [number, number][] = [];
+  for (const point of raw.coordinates) {
+    if (!Array.isArray(point) || point.length < 2) continue;
+    const lng = Number(point[0]);
+    const lat = Number(point[1]);
+    if (!validCoordinate(lat, -90, 90) || !validCoordinate(lng, -180, 180)) {
+      continue;
+    }
+    coordinates.push([lng, lat]);
+  }
+
+  if (coordinates.length < 2) return null;
+  return { type: "LineString", coordinates };
+}
+
 export async function getDrivingRoadRoute(
   from: RoadPoint,
   to: RoadPoint
@@ -78,21 +121,53 @@ export async function getDrivingRoadRoute(
 
     const json = (await response.json().catch(() => ({}))) as any;
     const route = Array.isArray(json?.routes) ? json.routes[0] : null;
-    const meters = Number(route?.distance ?? NaN);
-    const seconds = Number(route?.duration ?? NaN);
-
-    if (!Number.isFinite(meters) || meters < 0) {
-      return null;
-    }
-
-    return {
-      distanceKm: meters / 1000,
-      durationSeconds:
-        Number.isFinite(seconds) && seconds >= 0 ? seconds : null,
-    };
+    return parseMetric(route);
   } catch (error: any) {
     console.error(
       "[MAPBOX_ROAD_ROUTE_EXCEPTION]",
+      String(error?.message || error)
+    );
+    return null;
+  }
+}
+
+export async function getDrivingRoadRouteWithGeometry(
+  from: RoadPoint,
+  to: RoadPoint
+): Promise<RoadMetricWithGeometry | null> {
+  if (!validPoint(from) || !validPoint(to)) return null;
+
+  const token = mapboxToken();
+  if (!token) return null;
+
+  const url =
+    "https://api.mapbox.com/directions/v5/mapbox/driving/" +
+    `${from.lng},${from.lat};${to.lng},${to.lat}` +
+    `?alternatives=false&geometries=geojson&overview=full&steps=false&access_token=${encodeURIComponent(token)}`;
+
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      console.error(
+        "[MAPBOX_ROAD_GEOMETRY_ERROR]",
+        response.status,
+        await response.text()
+      );
+      return null;
+    }
+
+    const json = (await response.json().catch(() => ({}))) as any;
+    const route = Array.isArray(json?.routes) ? json.routes[0] : null;
+    const metric = parseMetric(route);
+    if (!metric) return null;
+
+    return {
+      ...metric,
+      geometry: parseLineGeometry(route),
+    };
+  } catch (error: any) {
+    console.error(
+      "[MAPBOX_ROAD_GEOMETRY_EXCEPTION]",
       String(error?.message || error)
     );
     return null;
