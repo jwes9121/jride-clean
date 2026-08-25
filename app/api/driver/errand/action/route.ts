@@ -35,6 +35,8 @@ type DriverErrandActionBody = {
   substitute_lng?: number | string | null;
   confirmation_method?: string | null;
   reason_code?: string | null;
+  requested_additional_cash?: number | string | null;
+  received_additional_cash?: number | string | null;
 };
 
 function text(value: unknown): string {
@@ -81,6 +83,51 @@ async function loadDriverBundle(bookingId: string, driverId: string) {
   }
 
   return bundle;
+}
+
+function cashTopupRoutePoints(bundle: any, sequence: number) {
+  const booking = bundle?.booking || {};
+  const stops = Array.isArray(bundle?.stops) ? bundle.stops : [];
+  const stop = stops.find((row: any) => Number(row?.sequence) === sequence);
+
+  const stopLat = num(stop?.lat);
+  const stopLng = num(stop?.lng);
+  const customerLat = num(booking?.pickup_lat);
+  const customerLng = num(booking?.pickup_lng);
+
+  if (
+    !stop ||
+    stopLat == null ||
+    stopLng == null ||
+    customerLat == null ||
+    customerLng == null
+  ) {
+    return null;
+  }
+
+  const stopLabel = text(stop?.location_label) || `Stop ${sequence}`;
+  const customerLabel = text(booking?.from_label) || "Customer";
+
+  return [
+    {
+      key: `cash-topup-stop-${sequence}-out`,
+      label: stopLabel,
+      lat: stopLat,
+      lng: stopLng,
+    },
+    {
+      key: "cash-topup-customer",
+      label: customerLabel,
+      lat: customerLat,
+      lng: customerLng,
+    },
+    {
+      key: `cash-topup-stop-${sequence}-return`,
+      label: stopLabel,
+      lat: stopLat,
+      lng: stopLng,
+    },
+  ];
 }
 
 export async function POST(req: Request) {
@@ -317,6 +364,75 @@ export async function POST(req: Request) {
         p_sequence: sequence,
         p_reason_code: reasonCode,
       };
+    } else if (action === "confirm_cash_topup_return") {
+      const sequence = positiveSequence(body.sequence);
+      const requestedCash = num(body.requested_additional_cash);
+      if (sequence == null || requestedCash == null || requestedCash < 0) {
+        return NextResponse.json(
+          { ok: false, error: "CASH_TOPUP_SEQUENCE_AND_AMOUNT_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+
+      const bundle = await loadDriverBundle(bookingId, driverId);
+      if (!bundle.ok) {
+        return NextResponse.json(
+          { ok: false, error: bundle.error },
+          { status: blockedStatus(bundle.error), headers: noStoreHeaders() }
+        );
+      }
+
+      const points = cashTopupRoutePoints(bundle, sequence);
+      if (!points) {
+        return NextResponse.json(
+          { ok: false, error: "CASH_TOPUP_ROUTE_PINS_INCOMPLETE" },
+          { status: 409, headers: noStoreHeaders() }
+        );
+      }
+
+      route = await getErrandConfirmedRoute(points);
+      if (!route) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "CASH_TOPUP_ROUTE_UNAVAILABLE",
+            message: "The return for cash was not confirmed because routed-road distance is unavailable.",
+          },
+          { status: 503, headers: noStoreHeaders() }
+        );
+      }
+
+      rpcName = "errand_driver_confirm_cash_topup_return_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_stop_sequence: sequence,
+        p_requested_additional_cash: requestedCash,
+        p_confirmation_method: text(body.confirmation_method) || "phone",
+        p_adjustment_distance_km: route.distanceKm,
+        p_adjustment_duration_seconds: route.durationSeconds,
+        p_adjustment_route_legs: route.legs,
+      };
+    } else if (action === "arrive_cash_topup_customer") {
+      rpcName = "errand_driver_arrive_cash_topup_customer_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
+    } else if (action === "receive_cash_topup") {
+      const receivedCash = num(body.received_additional_cash);
+      if (receivedCash == null || receivedCash <= 0) {
+        return NextResponse.json(
+          { ok: false, error: "ADDITIONAL_CASH_RECEIVED_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+      rpcName = "errand_driver_receive_cash_topup_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_received_additional_cash: receivedCash,
+      };
+    } else if (action === "return_to_stop_after_cash") {
+      rpcName = "errand_driver_return_to_stop_after_cash_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
     } else if (action === "arrive_final") {
       rpcName = "errand_driver_arrive_final_v1";
       rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
@@ -396,6 +512,7 @@ export async function POST(req: Request) {
               booking: bundle.booking,
               job: bundle.job,
               stops: bundle.stops,
+              route_adjustments: bundle.routeAdjustments,
               fare: errandFareBreakdown(
                 bundle.booking,
                 bundle.job,
