@@ -105,16 +105,29 @@ export async function GET(req: Request) {
       (bundle.booking as any).assigned_driver_id || (bundle.booking as any).driver_id
     );
     let driverLocation: any = null;
+    let driver: any = null;
 
     if (driverId) {
-      const driverLoc = await admin
-        .from("driver_locations")
-        .select("driver_id,lat,lng,status,updated_at,town,vehicle_type")
-        .eq("driver_id", driverId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [driverLoc, driverProfile] = await Promise.all([
+        admin
+          .from("driver_locations")
+          .select("driver_id,lat,lng,status,updated_at,town,vehicle_type")
+          .eq("driver_id", driverId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        admin
+          .from("driver_profiles")
+          .select(
+            "driver_id,full_name,callsign,municipality,vehicle_type,plate_number,phone,photo_url"
+          )
+          .eq("driver_id", driverId)
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
       if (!driverLoc.error && driverLoc.data) driverLocation = driverLoc.data;
+      if (!driverProfile.error && driverProfile.data) driver = driverProfile.data;
     }
 
     return NextResponse.json(
@@ -135,6 +148,7 @@ export async function GET(req: Request) {
             bundle.stops,
             bundle.pabiliFundEvents
           ),
+          driver,
           driver_location: driverLocation,
           map_note: "Fare is based on the confirmed route, not the driver's live path.",
         },
