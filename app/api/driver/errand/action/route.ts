@@ -6,10 +6,8 @@ import {
   errandFareBreakdown,
   loadErrandBundleByBookingId,
 } from "@/lib/errand/server";
-import {
-  getErrandConfirmedRoute,
-  type ErrandRoutePoint,
-} from "@/lib/errand/confirmedRoute";
+import { getErrandConfirmedRoute } from "@/lib/errand/confirmedRoute";
+import { buildErrandBillingRoutePoints } from "@/lib/errand/routePoints";
 
 type DriverErrandActionBody = {
   action?: string;
@@ -31,6 +29,12 @@ type DriverErrandActionBody = {
   sequence?: number | string | null;
   receipt_photo_url?: string | null;
   purchase_total?: number | string | null;
+  substitute_place_name?: string | null;
+  substitute_location_label?: string | null;
+  substitute_lat?: number | string | null;
+  substitute_lng?: number | string | null;
+  confirmation_method?: string | null;
+  reason_code?: string | null;
 };
 
 function text(value: unknown): string {
@@ -77,52 +81,6 @@ async function loadDriverBundle(bookingId: string, driverId: string) {
   }
 
   return bundle;
-}
-
-function routePointsFromBundle(bundle: any): ErrandRoutePoint[] | null {
-  const booking = bundle.booking || {};
-  const job = bundle.job || {};
-  const stops = Array.isArray(bundle.stops) ? bundle.stops : [];
-
-  const stage0Lat = num(booking.pickup_lat);
-  const stage0Lng = num(booking.pickup_lng);
-  const finalLat = num(job.final_lat);
-  const finalLng = num(job.final_lng);
-
-  if (stage0Lat == null || stage0Lng == null || finalLat == null || finalLng == null) {
-    return null;
-  }
-
-  const points: ErrandRoutePoint[] = [
-    {
-      key: "stage0",
-      label: text(booking.from_label) || "Stage 0",
-      lat: stage0Lat,
-      lng: stage0Lng,
-    },
-  ];
-
-  for (const stop of stops) {
-    const lat = num(stop?.lat);
-    const lng = num(stop?.lng);
-    if (lat == null || lng == null) return null;
-
-    points.push({
-      key: `stop-${Number(stop?.sequence || points.length)}`,
-      label: text(stop?.location_label) || `Stop ${Number(stop?.sequence || points.length)}`,
-      lat,
-      lng,
-    });
-  }
-
-  points.push({
-    key: "final",
-    label: text(job.final_label) || text(booking.to_label) || "Final destination",
-    lat: finalLat,
-    lng: finalLng,
-  });
-
-  return points;
 }
 
 export async function POST(req: Request) {
@@ -196,7 +154,7 @@ export async function POST(req: Request) {
         );
       }
 
-      const points = routePointsFromBundle(bundle);
+      const points = buildErrandBillingRoutePoints(bundle);
       if (!points) {
         return NextResponse.json(
           {
@@ -260,6 +218,103 @@ export async function POST(req: Request) {
         p_sequence: sequence,
         p_receipt_photo_url: text(body.receipt_photo_url) || null,
         p_purchase_total: num(body.purchase_total),
+      };
+    } else if (action === "mark_stop_closed") {
+      const sequence = positiveSequence(body.sequence);
+      if (sequence == null) {
+        return NextResponse.json(
+          { ok: false, error: "STOP_SEQUENCE_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+      rpcName = "errand_driver_mark_stop_closed_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_sequence: sequence,
+      };
+    } else if (action === "confirm_substitute") {
+      const sequence = positiveSequence(body.sequence);
+      const substituteLabel = text(body.substitute_location_label);
+      const substituteLat = num(body.substitute_lat);
+      const substituteLng = num(body.substitute_lng);
+
+      if (
+        sequence == null ||
+        !substituteLabel ||
+        substituteLat == null ||
+        substituteLng == null
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "SUBSTITUTE_LOCATION_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+
+      const bundle = await loadDriverBundle(bookingId, driverId);
+      if (!bundle.ok) {
+        return NextResponse.json(
+          { ok: false, error: bundle.error },
+          { status: blockedStatus(bundle.error), headers: noStoreHeaders() }
+        );
+      }
+
+      const points = buildErrandBillingRoutePoints(bundle, {
+        sequence,
+        placeName: text(body.substitute_place_name) || null,
+        locationLabel: substituteLabel,
+        lat: substituteLat,
+        lng: substituteLng,
+      });
+
+      if (!points) {
+        return NextResponse.json(
+          { ok: false, error: "ERRAND_SUBSTITUTE_ROUTE_PINS_INCOMPLETE" },
+          { status: 409, headers: noStoreHeaders() }
+        );
+      }
+
+      route = await getErrandConfirmedRoute(points);
+      if (!route) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "ERRAND_SUBSTITUTE_ROUTE_UNAVAILABLE",
+            message: "The substitute was not confirmed because routed-road distance is unavailable.",
+          },
+          { status: 503, headers: noStoreHeaders() }
+        );
+      }
+
+      rpcName = "errand_driver_confirm_substitute_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_sequence: sequence,
+        p_place_name: text(body.substitute_place_name) || null,
+        p_location_label: substituteLabel,
+        p_lat: substituteLat,
+        p_lng: substituteLng,
+        p_confirmation_method: text(body.confirmation_method) || "phone",
+        p_route_distance_km: route.distanceKm,
+        p_route_duration_seconds: route.durationSeconds,
+        p_route_legs: route.legs,
+      };
+    } else if (action === "mark_stop_unfulfilled") {
+      const sequence = positiveSequence(body.sequence);
+      const reasonCode = text(body.reason_code).toLowerCase();
+      if (sequence == null || !reasonCode) {
+        return NextResponse.json(
+          { ok: false, error: "STOP_SEQUENCE_AND_REASON_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+      rpcName = "errand_driver_mark_stop_unfulfilled_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_sequence: sequence,
+        p_reason_code: reasonCode,
       };
     } else {
       return NextResponse.json(
