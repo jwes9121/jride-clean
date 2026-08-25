@@ -94,6 +94,7 @@ export async function GET(req: Request) {
           booking: bundle.booking,
           job: bundle.job,
           stops: bundle.stops,
+          route_adjustments: bundle.routeAdjustments,
           fare: errandFareBreakdown(
             bundle.booking,
             bundle.job,
