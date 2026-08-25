@@ -30,6 +30,14 @@ function noStoreHeaders() {
   };
 }
 
+function secondsUntil(value: unknown): number | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.ceil((parsed - Date.now()) / 1000));
+}
+
 export async function GET(req: Request) {
   try {
     if (!errandFeatureEnabled()) {
@@ -57,7 +65,9 @@ export async function GET(req: Request) {
 
     const { data, error } = await admin
       .from("bookings")
-      .select("id,booking_code,status,updated_at")
+      .select(
+        "id,booking_code,status,updated_at,assigned_at,driver_accept_expires_at,driver_to_pickup_km,pickup_distance_fee"
+      )
       .eq("service_type", "errand")
       .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
       .in("status", ACTIVE_STATUSES)
@@ -72,9 +82,31 @@ export async function GET(req: Request) {
       );
     }
 
+    const [profileRes, locationRes] = await Promise.all([
+      admin
+        .from("driver_profiles")
+        .select("driver_id,full_name,callsign,municipality,vehicle_type,plate_number,phone,photo_url")
+        .eq("driver_id", driverId)
+        .maybeSingle(),
+      admin
+        .from("driver_locations")
+        .select("driver_id,lat,lng,status,town,home_town,vehicle_type,updated_at")
+        .eq("driver_id", driverId)
+        .maybeSingle(),
+    ]);
+
+    const driver = !profileRes.error && profileRes.data ? profileRes.data : null;
+    const driverLocation = !locationRes.error && locationRes.data ? locationRes.data : null;
+
     if (!data?.id) {
       return NextResponse.json(
-        { ok: true, errand: null, auth_mode: identity.authMode },
+        {
+          ok: true,
+          errand: null,
+          driver,
+          driver_location: driverLocation,
+          auth_mode: identity.authMode,
+        },
         { status: 200, headers: noStoreHeaders() }
       );
     }
@@ -87,17 +119,33 @@ export async function GET(req: Request) {
       );
     }
 
+    const mergedBooking = {
+      ...(bundle.booking as any),
+      ...(data as any),
+    };
+    const expiresAt = text((data as any).driver_accept_expires_at);
+
     return NextResponse.json(
       {
         ok: true,
         auth_mode: identity.authMode,
+        driver,
+        driver_location: driverLocation,
+        offer: {
+          active: text((data as any).status).toLowerCase() === "assigned",
+          assigned_at: (data as any).assigned_at || null,
+          expires_at: expiresAt || null,
+          seconds_remaining: secondsUntil(expiresAt),
+          pickup_road_distance_km: (data as any).driver_to_pickup_km ?? null,
+          pickup_distance_fee: (data as any).pickup_distance_fee ?? 0,
+        },
         errand: {
-          booking: bundle.booking,
+          booking: mergedBooking,
           job: bundle.job,
           stops: bundle.stops,
           route_adjustments: bundle.routeAdjustments,
           fare: errandFareBreakdown(
-            bundle.booking,
+            mergedBooking,
             bundle.job,
             bundle.settings
           ),
