@@ -33,20 +33,26 @@ function getAdminClient(req: NextRequest) {
   });
 }
 
-async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bookingId?: string }) {
+async function finalizeTripSafe(
+  supabase: any,
+  input: { bookingCode?: string; bookingId?: string; serviceType?: string }
+) {
   const id = clean(input.bookingId);
+  const serviceType = clean(input.serviceType).toLowerCase();
 
   if (!id) {
     return { ok: false, error: "MISSING_BOOKING_ID" };
   }
 
-  const { data, error } = await supabase.rpc(
-    "settle_completed_ride_wallet_v2",
-    {
-      p_booking_id: id,
-      p_settled_by: "dispatch_status_route",
-    }
-  );
+  const settlementRpc =
+    serviceType === "errand"
+      ? "settle_completed_errand_wallet_v1"
+      : "settle_completed_ride_wallet_v2";
+
+  const { data, error } = await supabase.rpc(settlementRpc, {
+    p_booking_id: id,
+    p_settled_by: "dispatch_status_route",
+  });
 
   if (error) {
     return { ok: false, error: String(error?.message || error) };
@@ -63,6 +69,7 @@ async function finalizeTripSafe(supabase: any, input: { bookingCode?: string; bo
   return {
     ok: true,
     data,
+    settlementRpc,
     usedArgs: { p_booking_id: id },
   };
 }
@@ -117,7 +124,12 @@ export async function POST(req: NextRequest) {
     const adminClient = getAdminClient(req);
     const supabase = adminClient ?? routeClient;
 
-    let query = supabase.from("bookings").select("id, booking_code, status, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code").limit(1);
+    let query = supabase
+      .from("bookings")
+      .select(
+        "id, booking_code, status, service_type, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code"
+      )
+      .limit(1);
 
     if (bookingCode) {
       query = query.eq("booking_code", bookingCode);
@@ -145,6 +157,7 @@ export async function POST(req: NextRequest) {
       const finalized = await finalizeTripSafe(supabase, {
         bookingCode: booking.booking_code || bookingCode,
         bookingId: booking.id || bookingId,
+        serviceType: booking.service_type,
       });
 
       if (!finalized.ok) {
@@ -161,6 +174,7 @@ export async function POST(req: NextRequest) {
             ok: false,
             error: promoFinalized.error || "promo_finalize_failed",
             completed_via: "admin_finalize_trip_and_credit_wallets",
+            settlement_rpc: finalized.settlementRpc,
             result: finalized.data ?? null,
           },
           { status: 500 }
@@ -170,6 +184,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         ok: true,
         completed_via: "admin_finalize_trip_and_credit_wallets",
+        settlement_rpc: finalized.settlementRpc,
         result: finalized.data ?? null,
         promo_finalize: promoFinalized,
       });
