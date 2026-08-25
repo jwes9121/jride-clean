@@ -157,6 +157,22 @@ export default function ErrandLiveMap({
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(true);
 
+  const mapPointsKey = React.useMemo(
+    () =>
+      JSON.stringify(
+        [stage0, ...stops, finalPoint]
+          .filter(Boolean)
+          .map((point: any) => [
+            text(point?.kind),
+            finite(point?.sequence),
+            text(point?.label),
+            finite(point?.lat),
+            finite(point?.lng),
+          ])
+      ),
+    [stage0, stops, finalPoint]
+  );
+
   function updateMapData() {
     const map = mapRef.current;
     if (!map) return;
@@ -228,7 +244,7 @@ export default function ErrandLiveMap({
       if (lat != null && lng != null && mapRef.current && mapboxRef.current) {
         const MapboxGL = mapboxRef.current.default || mapboxRef.current;
         if (!driverMarkerRef.current) {
-          driverMarkerRef.current = new MapboxGL.Marker()
+          driverMarkerRef.current = new MapboxGL.Marker({ color: "#dc2626" })
             .setLngLat([lng, lat])
             .addTo(mapRef.current);
         } else {
@@ -293,7 +309,11 @@ export default function ErrandLiveMap({
               type: "line",
               source: CONFIRMED_SOURCE,
               layout: { "line-join": "round", "line-cap": "round" },
-              paint: { "line-width": 5, "line-opacity": 0.7 },
+              paint: {
+                "line-color": "#059669",
+                "line-width": 5,
+                "line-opacity": 0.75,
+              },
             });
             mapRef.current.addSource(ACTUAL_SOURCE, {
               type: "geojson",
@@ -304,7 +324,12 @@ export default function ErrandLiveMap({
               type: "line",
               source: ACTUAL_SOURCE,
               layout: { "line-join": "round", "line-cap": "round" },
-              paint: { "line-width": 4, "line-opacity": 0.9, "line-dasharray": [1.5, 1] },
+              paint: {
+                "line-color": "#2563eb",
+                "line-width": 4,
+                "line-opacity": 0.9,
+                "line-dasharray": [1.5, 1],
+              },
             });
             updateMapData();
           } catch {}
@@ -319,7 +344,14 @@ export default function ErrandLiveMap({
 
         const allPoints = [stage0, ...stops, finalPoint].filter(Boolean) as Point[];
         for (const point of allPoints) {
-          const marker = new MapboxGL.Marker()
+          const marker = new MapboxGL.Marker({
+            color:
+              point.kind === "stage0"
+                ? "#059669"
+                : point.kind === "final"
+                  ? "#7c3aed"
+                  : "#f59e0b",
+          })
             .setLngLat([point.lng, point.lat])
             .setPopup(
               new MapboxGL.Popup({ offset: 16 }).setText(
@@ -351,7 +383,7 @@ export default function ErrandLiveMap({
       driverMarkerRef.current = null;
       mapRef.current = null;
     };
-  }, [MAPBOX_TOKEN, bookingId]);
+  }, [MAPBOX_TOKEN, bookingId, mapPointsKey]);
 
   const secondsSinceUpdate = finite(tracking?.driver_location?.seconds_since_update);
   const staleMinutes =
@@ -365,7 +397,7 @@ export default function ErrandLiveMap({
         <div>
           <div className="text-sm font-semibold text-slate-950">Live Errand map</div>
           <div className="mt-1 text-xs text-slate-500">
-            Confirmed billing route and actual driver GPS are shown separately.
+            Green = confirmed billing route. Blue dashed = actual driver GPS path.
           </div>
         </div>
         <div className="text-xs text-slate-500">
