@@ -1,4 +1,8 @@
-import { getDrivingRoadRoute, type RoadPoint } from "@/lib/routing/mapboxRoad";
+import {
+  getDrivingRoadRouteWithGeometry,
+  type RoadLineGeometry,
+  type RoadPoint,
+} from "@/lib/routing/mapboxRoad";
 
 export type ErrandRoutePoint = RoadPoint & {
   key: string;
@@ -12,6 +16,7 @@ export type ErrandRouteLeg = {
   toLabel: string;
   distanceKm: number;
   durationSeconds: number | null;
+  geometry: RoadLineGeometry | null;
 };
 
 export type ErrandConfirmedRoute = {
@@ -51,7 +56,7 @@ export async function getErrandConfirmedRoute(
   for (let index = 0; index < points.length - 1; index += 1) {
     const from = points[index];
     const to = points[index + 1];
-    const metric = await getDrivingRoadRoute(from, to);
+    const metric = await getDrivingRoadRouteWithGeometry(from, to);
 
     // Billing must never fall back to straight-line distance.
     if (!metric) return null;
@@ -70,6 +75,7 @@ export async function getErrandConfirmedRoute(
       toLabel: to.label,
       distanceKm: Number(metric.distanceKm.toFixed(3)),
       durationSeconds: metric.durationSeconds,
+      geometry: metric.geometry,
     });
   }
 
