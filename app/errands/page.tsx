@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import ErrandLiveMap from "./ErrandLiveMap";
 import ErrandLocationField, {
   type ErrandLocationValue,
 } from "./ErrandLocationField";
@@ -38,6 +39,14 @@ type ErrandBundle = {
   driver?: any;
   driver_location?: any;
   map_note?: string;
+};
+
+type MapPoint = {
+  label: string;
+  lat: number;
+  lng: number;
+  kind: "stage0" | "stop" | "final";
+  sequence?: number | null;
 };
 
 function text(value: unknown): string {
@@ -506,6 +515,44 @@ export default function ErrandPage() {
     stage === "awaiting_customer_confirmation" || status === "fare_proposed";
   const taskLocked = job?.task_locked === true;
 
+  const stage0Lat = numberOrNull(booking?.pickup_lat);
+  const stage0Lng = numberOrNull(booking?.pickup_lng);
+  const stage0MapPoint: MapPoint | null =
+    stage0Lat != null && stage0Lng != null
+      ? {
+          label: text(booking?.from_label) || "Stage 0",
+          lat: stage0Lat,
+          lng: stage0Lng,
+          kind: "stage0",
+        }
+      : null;
+
+  const stopMapPoints = currentStops.reduce<MapPoint[]>((points, stop: any) => {
+    const lat = numberOrNull(stop?.lat);
+    const lng = numberOrNull(stop?.lng);
+    if (lat == null || lng == null) return points;
+    points.push({
+      label: text(stop?.location_label) || `Stop ${Number(stop?.sequence || points.length + 1)}`,
+      lat,
+      lng,
+      kind: "stop",
+      sequence: numberOrNull(stop?.sequence),
+    });
+    return points;
+  }, []);
+
+  const finalLat = numberOrNull(job?.final_lat);
+  const finalLng = numberOrNull(job?.final_lng);
+  const finalMapPoint: MapPoint | null =
+    finalLat != null && finalLng != null
+      ? {
+          label: text(job?.final_label) || text(booking?.to_label) || "Final destination",
+          lat: finalLat,
+          lng: finalLng,
+          kind: "final",
+        }
+      : null;
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f7faf9_0%,#f1f7f4_52%,#edf5f1_100%)] text-slate-900">
       <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
@@ -655,6 +702,17 @@ export default function ErrandPage() {
                 No driver is assigned yet. JRide will keep the Errand in matching; it will not silently pull a driver from another town.
               </div>
             )}
+
+            {text(booking?.id) ? (
+              <ErrandLiveMap
+                bookingId={text(booking.id)}
+                stage0={stage0MapPoint}
+                stops={stopMapPoints}
+                finalPoint={finalMapPoint}
+                errandStage={stage}
+                currentStopSequence={numberOrNull(job?.current_stop_sequence)}
+              />
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
