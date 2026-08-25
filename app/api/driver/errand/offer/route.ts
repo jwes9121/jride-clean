@@ -54,6 +54,63 @@ export async function POST(req: Request) {
     }
 
     const admin = supabaseAdmin();
+
+    if (action === "retry_match") {
+      const [outcomeRes, bookingRes] = await Promise.all([
+        admin
+          .from("errand_driver_offer_outcomes")
+          .select("outcome,reason_code,created_at")
+          .eq("booking_id", bookingId)
+          .eq("driver_id", identity.driverId)
+          .maybeSingle(),
+        admin
+          .from("bookings")
+          .select("id,service_type,status,assigned_driver_id,driver_id")
+          .eq("id", bookingId)
+          .maybeSingle(),
+      ]);
+
+      if (outcomeRes.error || !outcomeRes.data) {
+        return NextResponse.json(
+          { ok: false, error: "ERRAND_RELEASE_OUTCOME_NOT_FOUND" },
+          { status: 403, headers: headers() }
+        );
+      }
+      if (bookingRes.error || !bookingRes.data) {
+        return NextResponse.json(
+          { ok: false, error: "BOOKING_NOT_FOUND" },
+          { status: 404, headers: headers() }
+        );
+      }
+
+      const booking = bookingRes.data as any;
+      if (
+        text(booking.service_type).toLowerCase() !== "errand" ||
+        text(booking.status).toLowerCase() !== "searching" ||
+        text(booking.assigned_driver_id || booking.driver_id)
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "ERRAND_NOT_READY_FOR_REMATCH",
+            status: booking.status,
+          },
+          { status: 409, headers: headers() }
+        );
+      }
+
+      const reassignment = await assignErrandStage0({ bookingId });
+      return NextResponse.json(
+        {
+          ok: true,
+          auth_mode: identity.authMode,
+          released_outcome: outcomeRes.data,
+          reassignment,
+        },
+        { status: 200, headers: headers() }
+      );
+    }
+
     let rpcName = "";
     let rpcArgs: Record<string, unknown> = {};
 
