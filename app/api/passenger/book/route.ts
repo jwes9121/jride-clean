@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolvePassengerBookingIdentity } from "@/lib/passenger/bookingIdentity";
 
 type BookBody = {
   town?: string;
@@ -367,48 +368,6 @@ function canApplyBoundaryOverride(selectedTown: string, derivedTown: string, req
   return !!map[selectedKey]?.includes(derivedKey);
 }
 
-function normalizePassengerName(v: unknown): string {
-  return String(v ?? "").trim().replace(/\s+/g, " ");
-}
-
-function isValidPassengerName(v: string): boolean {
-  const parts = String(v ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length < 2) return false;
-
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-
-  if (!/^[A-Za-z]{2,}$/.test(first)) return false;
-  if (!/^[A-Za-z]{2,}$/.test(last)) return false;
-
-  return parts
-    .slice(1, -1)
-    .every((part) => /^[A-Za-z]+$/.test(part));
-}
-
-function userDisplayName(user: any): string {
-  const direct = [
-    user?.user_metadata?.full_name,
-    user?.user_metadata?.name,
-    user?.user_metadata?.display_name,
-    user?.user_metadata?.passenger_name,
-    user?.raw_user_meta_data?.full_name,
-    user?.raw_user_meta_data?.name,
-    user?.raw_user_meta_data?.display_name,
-    user?.email,
-  ];
-
-  for (const v of direct) {
-    const s = text(v);
-    if (s) return s;
-  }
-
-  return "";
-}
 
 async function resolvePickupTownFromCoords(pickupLng: number, pickupLat: number): Promise<string> {
   const token = getMapboxToken();
@@ -701,20 +660,23 @@ const boundaryOverrideRequested =
       );
     }
 
-    const passengerName = normalizePassengerName(
-      text(body.passenger_name) ||
-      text(body.full_name) ||
-      userDisplayName((canRes as any).user)
+    // Booking identity is server-authoritative. Client-supplied passenger_name
+    // and full_name are intentionally ignored.
+    const bookingIdentity = await resolvePassengerBookingIdentity(
+      supabaseAdmin(),
+      createdByUserId
     );
+    const passengerName = bookingIdentity.name;
 
-    if (!isValidPassengerName(passengerName)) {
+    if (!passengerName) {
       return NextResponse.json(
         {
           ok: false,
-          code: "INVALID_PASSENGER_NAME",
-          message: "Passenger name must contain a first name and last name with at least 2 letters each. Middle initials are allowed.",
+          code: "PROFILE_NAME_REQUIRED",
+          message:
+            "Your JRide profile does not have a usable passenger name. Please update your profile before booking.",
         },
-        { status: 400 }
+        { status: 409 }
       );
     }
 

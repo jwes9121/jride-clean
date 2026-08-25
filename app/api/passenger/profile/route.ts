@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
-
+import { resolvePassengerBookingIdentity } from "@/lib/passenger/bookingIdentity";
 function noStoreHeaders() {
   return {
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -126,6 +126,10 @@ export async function GET(req: NextRequest) {
     let profile: any = null;
     let savedAddressCount = 0;
 
+    const bookingIdentity = await resolvePassengerBookingIdentity(
+      supabase,
+      authRes.userId
+    );
     try {
       const { data } = await supabase
         .from("passenger_profiles")
@@ -205,6 +209,8 @@ export async function GET(req: NextRequest) {
         profile: {
           user_id: authRes.userId,
           full_name: text(profile?.full_name) || null,
+          booking_name: bookingIdentity.name,
+          booking_name_source: bookingIdentity.source,
           phone: text(profile?.phone) || authRes.phone || null,
           email: text(profile?.email) || authRes.email || null,
           photo_url: text(profile?.photo_url) || null,
