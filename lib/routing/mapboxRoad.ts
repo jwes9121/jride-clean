@@ -143,7 +143,7 @@ export async function getDrivingRoadRouteWithGeometry(
   const url =
     "https://api.mapbox.com/directions/v5/mapbox/driving/" +
     `${from.lng},${from.lat};${to.lng},${to.lat}` +
-    `?alternatives=false&geometries=geojson&overview=full&steps=false&access_token=${encodeURIComponent(token)}`;
+    `?alternatives=false&geometries=geojson&overview=simplified&steps=false&access_token=${encodeURIComponent(token)}`;
 
   try {
     const response = await fetch(url, { cache: "no-store" });
