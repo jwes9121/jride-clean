@@ -28,6 +28,9 @@ type DriverErrandActionBody = {
   pabili_cash_received?: number | string | null;
   confirmed_cargo_weight_kg?: number | string | null;
   vehicle_requirement?: string | null;
+  sequence?: number | string | null;
+  receipt_photo_url?: string | null;
+  purchase_total?: number | string | null;
 };
 
 function text(value: unknown): string {
@@ -38,6 +41,12 @@ function num(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function positiveSequence(value: unknown): number | null {
+  const parsed = num(value);
+  if (parsed == null || parsed < 1) return null;
+  return Math.floor(parsed);
 }
 
 function noStoreHeaders() {
@@ -219,6 +228,39 @@ export async function POST(req: Request) {
         p_route_duration_seconds: route.durationSeconds,
         p_route_legs: route.legs,
       };
+    } else if (action === "start_execution") {
+      rpcName = "errand_driver_start_execution_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
+    } else if (action === "arrive_stop") {
+      const sequence = positiveSequence(body.sequence);
+      if (sequence == null) {
+        return NextResponse.json(
+          { ok: false, error: "STOP_SEQUENCE_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+      rpcName = "errand_driver_arrive_stop_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_sequence: sequence,
+      };
+    } else if (action === "complete_stop") {
+      const sequence = positiveSequence(body.sequence);
+      if (sequence == null) {
+        return NextResponse.json(
+          { ok: false, error: "STOP_SEQUENCE_REQUIRED" },
+          { status: 400, headers: noStoreHeaders() }
+        );
+      }
+      rpcName = "errand_driver_complete_stop_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: driverId,
+        p_sequence: sequence,
+        p_receipt_photo_url: text(body.receipt_photo_url) || null,
+        p_purchase_total: num(body.purchase_total),
+      };
     } else {
       return NextResponse.json(
         { ok: false, error: "UNKNOWN_ERRAND_ACTION", action },
@@ -256,7 +298,11 @@ export async function POST(req: Request) {
               booking: bundle.booking,
               job: bundle.job,
               stops: bundle.stops,
-              fare: errandFareBreakdown(bundle.booking),
+              fare: errandFareBreakdown(
+                bundle.booking,
+                bundle.job,
+                bundle.settings
+              ),
             }
           : null,
       },
