@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+const ERRAND_RECEIPT_BUCKET = "errand-receipts";
+
 function text(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -36,24 +38,30 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     return { ok: false as const, error: "NOT_ERRAND_BOOKING" };
   }
 
-  const [jobRes, stopsRes, settingsRes, adjustmentsRes] = await Promise.all([
-    admin.from("errand_jobs").select("*").eq("booking_id", bookingId).maybeSingle(),
-    admin
-      .from("errand_stops")
-      .select("*")
-      .eq("booking_id", bookingId)
-      .order("sequence", { ascending: true }),
-    admin
-      .from("errand_pricing_settings")
-      .select("*")
-      .eq("singleton", true)
-      .maybeSingle(),
-    admin
-      .from("errand_route_adjustments")
-      .select("*")
-      .eq("booking_id", bookingId)
-      .order("created_at", { ascending: true }),
-  ]);
+  const [jobRes, stopsRes, settingsRes, adjustmentsRes, fundEventsRes] =
+    await Promise.all([
+      admin.from("errand_jobs").select("*").eq("booking_id", bookingId).maybeSingle(),
+      admin
+        .from("errand_stops")
+        .select("*")
+        .eq("booking_id", bookingId)
+        .order("sequence", { ascending: true }),
+      admin
+        .from("errand_pricing_settings")
+        .select("*")
+        .eq("singleton", true)
+        .maybeSingle(),
+      admin
+        .from("errand_route_adjustments")
+        .select("*")
+        .eq("booking_id", bookingId)
+        .order("created_at", { ascending: true }),
+      admin
+        .from("errand_pabili_fund_events")
+        .select("id,booking_id,stop_sequence,event_type,amount,confirmation_method,created_at")
+        .eq("booking_id", bookingId)
+        .order("created_at", { ascending: true }),
+    ]);
 
   if (jobRes.error || !jobRes.data) {
     return {
@@ -77,6 +85,10 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     return { ok: false as const, error: adjustmentsRes.error.message };
   }
 
+  if (fundEventsRes.error) {
+    return { ok: false as const, error: fundEventsRes.error.message };
+  }
+
   return {
     ok: true as const,
     booking: bookingRes.data,
@@ -86,6 +98,112 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     routeAdjustments: Array.isArray(adjustmentsRes.data)
       ? adjustmentsRes.data
       : [],
+    pabiliFundEvents: Array.isArray(fundEventsRes.data)
+      ? fundEventsRes.data
+      : [],
+  };
+}
+
+export function errandPabiliAccounting(
+  job: any,
+  stops: any[],
+  fundEvents: any[] = []
+) {
+  const isPabili = Boolean(job?.is_pabili);
+  if (!isPabili) {
+    return {
+      is_pabili: false,
+      customer_purchase_funds_received: 0,
+      purchase_total: 0,
+      shortfall: 0,
+      change_due: 0,
+      change_returned: 0,
+      change_remaining: 0,
+      accounting_balanced: true,
+      purchase_stops: [],
+      fund_events: [],
+    };
+  }
+
+  const customerFunds = Math.max(0, num(job?.pabili_cash_received));
+  const purchaseStops = (Array.isArray(stops) ? stops : [])
+    .map((stop: any) => ({
+      sequence: Math.max(0, Math.floor(num(stop?.sequence))),
+      location_label: text(stop?.location_label) || null,
+      purchase_total: Math.max(0, num(stop?.purchase_total)),
+      receipt_available: !!text(stop?.receipt_photo_url),
+    }))
+    .filter((stop: any) => stop.purchase_total > 0 || stop.receipt_available);
+
+  const purchaseTotal = Number(
+    purchaseStops
+      .reduce((sum: number, stop: any) => sum + stop.purchase_total, 0)
+      .toFixed(2)
+  );
+  const shortfall = Number(Math.max(purchaseTotal - customerFunds, 0).toFixed(2));
+  const changeDue = Number(Math.max(customerFunds - purchaseTotal, 0).toFixed(2));
+  const changeReturned = Number(
+    Math.max(0, num(job?.pabili_change_returned)).toFixed(2)
+  );
+  const changeRemaining = Number(
+    Math.max(changeDue - changeReturned, 0).toFixed(2)
+  );
+
+  return {
+    is_pabili: true,
+    customer_purchase_funds_received: Number(customerFunds.toFixed(2)),
+    purchase_total: purchaseTotal,
+    stored_purchase_total: Number(
+      Math.max(0, num(job?.pabili_purchase_total)).toFixed(2)
+    ),
+    shortfall,
+    change_due: changeDue,
+    stored_change_due: Number(
+      Math.max(0, num(job?.pabili_change_due)).toFixed(2)
+    ),
+    change_returned: changeReturned,
+    change_remaining: changeRemaining,
+    accounting_balanced: shortfall <= 0.009 && changeRemaining <= 0.009,
+    purchase_stops: purchaseStops,
+    fund_events: (Array.isArray(fundEvents) ? fundEvents : []).map((event: any) => ({
+      id: text(event?.id) || null,
+      stop_sequence:
+        event?.stop_sequence == null
+          ? null
+          : Math.max(0, Math.floor(num(event?.stop_sequence))),
+      event_type: text(event?.event_type) || null,
+      amount: Number(Math.max(0, num(event?.amount)).toFixed(2)),
+      confirmation_method: text(event?.confirmation_method) || null,
+      created_at: text(event?.created_at) || null,
+    })),
+  };
+}
+
+export async function createErrandReceiptSignedUrl(
+  path: string,
+  expiresInSeconds = 600
+) {
+  const cleanPath = text(path);
+  if (!cleanPath || cleanPath.includes("://")) {
+    return { ok: false as const, error: "INVALID_RECEIPT_PATH" };
+  }
+
+  const admin = supabaseAdmin();
+  const { data, error } = await admin.storage
+    .from(ERRAND_RECEIPT_BUCKET)
+    .createSignedUrl(cleanPath, Math.max(60, Math.min(expiresInSeconds, 3600)));
+
+  if (error || !data?.signedUrl) {
+    return {
+      ok: false as const,
+      error: error?.message || "RECEIPT_SIGNED_URL_FAILED",
+    };
+  }
+
+  return {
+    ok: true as const,
+    signedUrl: data.signedUrl,
+    expiresInSeconds: Math.max(60, Math.min(expiresInSeconds, 3600)),
   };
 }
 
