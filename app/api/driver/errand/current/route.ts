@@ -94,7 +94,11 @@ export async function GET(req: Request) {
           booking: bundle.booking,
           job: bundle.job,
           stops: bundle.stops,
-          fare: errandFareBreakdown(bundle.booking),
+          fare: errandFareBreakdown(
+            bundle.booking,
+            bundle.job,
+            bundle.settings
+          ),
         },
       },
       { status: 200, headers: noStoreHeaders() }
