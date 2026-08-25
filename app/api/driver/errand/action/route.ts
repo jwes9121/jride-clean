@@ -120,6 +120,7 @@ export async function POST(req: Request) {
     let rpcName = "";
     let rpcArgs: Record<string, unknown> = {};
     let route: Awaited<ReturnType<typeof getErrandConfirmedRoute>> = null;
+    let settlement: any = null;
 
     if (action === "accept") {
       rpcName = "errand_driver_accept_v1";
@@ -316,6 +317,15 @@ export async function POST(req: Request) {
         p_sequence: sequence,
         p_reason_code: reasonCode,
       };
+    } else if (action === "arrive_final") {
+      rpcName = "errand_driver_arrive_final_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
+    } else if (action === "complete_errand") {
+      rpcName = "errand_driver_complete_handoff_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
+    } else if (action === "escalate_unreachable") {
+      rpcName = "errand_driver_escalate_unreachable_v1";
+      rpcArgs = { p_booking_id: bookingId, p_driver_id: driverId };
     } else {
       return NextResponse.json(
         { ok: false, error: "UNKNOWN_ERRAND_ACTION", action },
@@ -340,6 +350,38 @@ export async function POST(req: Request) {
       );
     }
 
+    if (action === "complete_errand") {
+      const settled = await admin.rpc("settle_completed_errand_wallet_v1", {
+        p_booking_id: bookingId,
+        p_settled_by: "driver_errand_action",
+      });
+
+      if (settled.error) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "ERRAND_SETTLEMENT_RPC_FAILED",
+            message: settled.error.message,
+            handoff: result,
+          },
+          { status: 500, headers: noStoreHeaders() }
+        );
+      }
+
+      settlement = (settled.data as any) || {};
+      if (settlement.ok === false) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: settlement.error || "ERRAND_SETTLEMENT_BLOCKED",
+            handoff: result,
+            settlement,
+          },
+          { status: 409, headers: noStoreHeaders() }
+        );
+      }
+    }
+
     const bundle = await loadErrandBundleByBookingId(bookingId);
 
     return NextResponse.json(
@@ -348,6 +390,7 @@ export async function POST(req: Request) {
         ok: true,
         auth_mode: identity.authMode,
         route,
+        settlement,
         errand: bundle.ok
           ? {
               booking: bundle.booking,
