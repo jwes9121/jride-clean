@@ -42,6 +42,14 @@ function isDeliveryType(tripType: string) {
   );
 }
 
+function isErrandType(tripType: string) {
+  return (tripType || "").trim().toLowerCase().includes("errand");
+}
+
+function normalizedTown(value: string) {
+  return (value || "").trim().toLowerCase();
+}
+
 function isDriverAvailable(status: string) {
   const s = (status || "").toLowerCase();
   return (
@@ -77,6 +85,8 @@ export default function SmartAutoAssignSuggestions({
     if (!trip) return [];
 
     const deliveryMode = isDeliveryType(trip.tripType);
+    const errandMode = isErrandType(trip.tripType);
+    const tripTown = normalizedTown(trip.zone);
 
     return drivers
       .filter((d) => {
@@ -85,9 +95,14 @@ export default function SmartAutoAssignSuggestions({
         const zStat = zoneStats[d.zone];
         if (zStat && zStat.status === "FULL") return false;
 
-        if (!deliveryMode) {
-          return d.homeTown === trip.zone;
-        }
+        const sameTown = normalizedTown(d.homeTown) === tripTown;
+
+        // Locked Errand rule: the driver who goes to Stage 0 must come from
+        // the customer's same home/service town. Takeout keeps its existing
+        // delivery-style cross-town suggestion behavior.
+        if (errandMode) return sameTown;
+
+        if (!deliveryMode) return sameTown;
 
         return true;
       })
@@ -99,13 +114,14 @@ export default function SmartAutoAssignSuggestions({
           trip.pickupLng
         );
 
+        const sameTown = normalizedTown(d.homeTown) === tripTown;
         let score = dist;
         let label = "~" + dist.toFixed(2) + " km";
 
-        if (!deliveryMode && d.homeTown === trip.zone) {
+        if ((!deliveryMode || errandMode) && sameTown) {
           score *= 0.4;
           label = "Same town - " + dist.toFixed(2) + " km";
-        } else if (deliveryMode && d.homeTown === trip.zone) {
+        } else if (deliveryMode && sameTown) {
           label = "Same town - " + dist.toFixed(2) + " km";
         } else if (zoneStats[d.zone]?.status === "OK") {
           score *= 0.8;
@@ -128,9 +144,16 @@ export default function SmartAutoAssignSuggestions({
 
   if (!suggestions.length) {
     const deliveryMode = isDeliveryType(trip.tripType);
+    const errandMode = isErrandType(trip.tripType);
+
     return (
       <div className="text-[11px] text-slate-400">
-        {deliveryMode ? (
+        {errandMode ? (
+          <>
+            No eligible same-town Errand drivers from{" "}
+            <span className="font-semibold">{trip.zone}</span>.
+          </>
+        ) : deliveryMode ? (
           <>No available drivers near pickup.</>
         ) : (
           <>
