@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   errandFeatureEnabled,
   errandFareBreakdown,
+  errandPabiliAccounting,
   loadErrandBundleByBookingId,
 } from "@/lib/errand/server";
 
@@ -128,6 +129,11 @@ export async function GET(req: Request) {
             bundle.booking,
             bundle.job,
             bundle.settings
+          ),
+          pabili: errandPabiliAccounting(
+            bundle.job,
+            bundle.stops,
+            bundle.pabiliFundEvents
           ),
           driver_location: driverLocation,
           map_note: "Fare is based on the confirmed route, not the driver's live path.",
