@@ -36,7 +36,7 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     return { ok: false as const, error: "NOT_ERRAND_BOOKING" };
   }
 
-  const [jobRes, stopsRes, settingsRes] = await Promise.all([
+  const [jobRes, stopsRes, settingsRes, adjustmentsRes] = await Promise.all([
     admin.from("errand_jobs").select("*").eq("booking_id", bookingId).maybeSingle(),
     admin
       .from("errand_stops")
@@ -48,6 +48,11 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
       .select("*")
       .eq("singleton", true)
       .maybeSingle(),
+    admin
+      .from("errand_route_adjustments")
+      .select("*")
+      .eq("booking_id", bookingId)
+      .order("created_at", { ascending: true }),
   ]);
 
   if (jobRes.error || !jobRes.data) {
@@ -68,12 +73,19 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     };
   }
 
+  if (adjustmentsRes.error) {
+    return { ok: false as const, error: adjustmentsRes.error.message };
+  }
+
   return {
     ok: true as const,
     booking: bookingRes.data,
     job: jobRes.data,
     stops: Array.isArray(stopsRes.data) ? stopsRes.data : [],
     settings: settingsRes.data,
+    routeAdjustments: Array.isArray(adjustmentsRes.data)
+      ? adjustmentsRes.data
+      : [],
   };
 }
 
