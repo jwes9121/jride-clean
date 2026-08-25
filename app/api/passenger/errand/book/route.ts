@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolvePassengerBookingIdentity } from "@/lib/passenger/bookingIdentity";
+import { assignErrandStage0 } from "@/lib/errand/assignStage0";
 
 type ErrandStopInput = {
   place_name?: string | null;
@@ -332,11 +333,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ...result, code }, { status });
     }
 
+    const assignment = await assignErrandStage0({
+      bookingId: text(result.booking_id),
+      bookingCode: text(result.booking_code),
+    });
+
     return NextResponse.json({
       ...result,
       ok: true,
       stage0_town: stage0Town,
-      dispatch_pending: true,
+      assignment,
+      dispatch_pending: assignment.assigned !== true,
       feature_status: "gated_backend_only",
     });
   } catch (error: any) {
