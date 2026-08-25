@@ -4,6 +4,11 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function num(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export function errandFeatureEnabled(): boolean {
   const raw = text(process.env.JRIDE_ERRAND_BOOKING_ENABLED).toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
@@ -31,13 +36,18 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     return { ok: false as const, error: "NOT_ERRAND_BOOKING" };
   }
 
-  const [jobRes, stopsRes] = await Promise.all([
+  const [jobRes, stopsRes, settingsRes] = await Promise.all([
     admin.from("errand_jobs").select("*").eq("booking_id", bookingId).maybeSingle(),
     admin
       .from("errand_stops")
       .select("*")
       .eq("booking_id", bookingId)
       .order("sequence", { ascending: true }),
+    admin
+      .from("errand_pricing_settings")
+      .select("*")
+      .eq("singleton", true)
+      .maybeSingle(),
   ]);
 
   if (jobRes.error || !jobRes.data) {
@@ -51,25 +61,105 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
     return { ok: false as const, error: stopsRes.error.message };
   }
 
+  if (settingsRes.error || !settingsRes.data) {
+    return {
+      ok: false as const,
+      error: settingsRes.error?.message || "ERRAND_PRICING_NOT_CONFIGURED",
+    };
+  }
+
   return {
     ok: true as const,
     booking: bookingRes.data,
     job: jobRes.data,
     stops: Array.isArray(stopsRes.data) ? stopsRes.data : [],
+    settings: settingsRes.data,
   };
 }
 
-export function errandFareBreakdown(booking: any) {
+export function errandFareBreakdown(
+  booking: any,
+  job?: any,
+  settings?: any
+) {
+  const baseFare = num(booking?.base_fee);
+  const pickupDistanceFee = num(booking?.pickup_distance_fee);
+  const distanceFare = num(booking?.distance_fare);
+  const extraStopFee = num(booking?.extra_stop_fee);
+  const storedWaitingFee = num(booking?.waiting_fee);
+  const elevationSurcharge = num(booking?.elevation_surcharge);
+  const heavyLoadFee = num(booking?.heavy_load_fee);
+  const companyCut = num(
+    booking?.company_cut,
+    num(settings?.company_cut_flat, 20)
+  );
+
+  const storedWaitSeconds = Math.max(0, Math.floor(num(job?.waiting_accumulated_seconds)));
+  const waitingStartedAt = text(job?.waiting_started_at);
+  let runningWaitSeconds = 0;
+
+  if (waitingStartedAt) {
+    const startedMs = Date.parse(waitingStartedAt);
+    if (Number.isFinite(startedMs)) {
+      runningWaitSeconds = Math.max(0, Math.floor((Date.now() - startedMs) / 1000));
+    }
+  }
+
+  const currentWaitSeconds = storedWaitSeconds + runningWaitSeconds;
+  const currentWaitMinutes =
+    currentWaitSeconds > 0 ? Math.ceil(currentWaitSeconds / 60) : 0;
+
+  const freeMinutes = Math.max(0, Math.floor(num(settings?.waiting_free_minutes, 15)));
+  const blockMinutes = Math.max(1, Math.floor(num(settings?.waiting_block_minutes, 15)));
+  const feePerBlock = Math.max(0, num(settings?.waiting_fee_per_block, 20));
+  const paidMinutes = Math.max(currentWaitMinutes - freeMinutes, 0);
+  const paidBlocks = paidMinutes > 0 ? Math.ceil(paidMinutes / blockMinutes) : 0;
+  const liveWaitingFee = paidBlocks * feePerBlock;
+
+  const currentTotal = Number(
+    (
+      baseFare +
+      pickupDistanceFee +
+      distanceFare +
+      extraStopFee +
+      liveWaitingFee +
+      elevationSurcharge +
+      heavyLoadFee
+    ).toFixed(2)
+  );
+
+  const freeRemainingSeconds = Math.max(
+    freeMinutes * 60 - currentWaitSeconds,
+    0
+  );
+
   return {
-    base_fare: Number(booking?.base_fee || 0),
-    pickup_distance_fee: Number(booking?.pickup_distance_fee || 0),
-    distance_fare: Number(booking?.distance_fare || 0),
-    extra_stop_fee: Number(booking?.extra_stop_fee || 0),
-    waiting_fee: Number(booking?.waiting_fee || 0),
-    elevation_surcharge: Number(booking?.elevation_surcharge || 0),
-    heavy_load_fee: Number(booking?.heavy_load_fee || 0),
-    total_errand_fare: Number(booking?.total_errand_fare || 0),
-    company_cut: Number(booking?.company_cut || 0),
-    driver_payout: Number(booking?.driver_payout || 0),
+    base_fare: baseFare,
+    pickup_distance_fee: pickupDistanceFee,
+    distance_fare: distanceFare,
+    extra_stop_fee: extraStopFee,
+    waiting_fee: liveWaitingFee,
+    stored_waiting_fee: storedWaitingFee,
+    elevation_surcharge: elevationSurcharge,
+    heavy_load_fee: heavyLoadFee,
+    total_errand_fare: currentTotal,
+    stored_total_errand_fare: num(booking?.total_errand_fare),
+    company_cut: companyCut,
+    driver_payout: Math.max(Number((currentTotal - companyCut).toFixed(2)), 0),
+    waiting: {
+      running: !!waitingStartedAt,
+      waiting_started_at: waitingStartedAt || null,
+      accumulated_seconds: storedWaitSeconds,
+      running_seconds: runningWaitSeconds,
+      current_total_seconds: currentWaitSeconds,
+      current_total_minutes: currentWaitMinutes,
+      free_minutes: freeMinutes,
+      free_remaining_seconds: freeRemainingSeconds,
+      chargeable_minutes: paidMinutes,
+      chargeable_started_blocks: paidBlocks,
+      block_minutes: blockMinutes,
+      fee_per_block: feePerBlock,
+      current_fee: liveWaitingFee,
+    },
   };
 }
