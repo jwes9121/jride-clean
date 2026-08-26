@@ -26,7 +26,25 @@ type Props = {
 
 const LAST_STAGE0_KEY = "jride_errand_last_stage0_v1";
 const MAX_MOBILE_GPS_ACCURACY_METERS = 2000;
-const MAX_LAST_PIN_DISTANCE_KM = 50;
+
+// Official Provincial Government of Ifugao geographic extent:
+// 120 deg 40 min to 121 deg 31 min E; 16 deg 35 min to 17 deg 5 min N.
+const IFUGAO_BOUNDS = {
+  west: 120.666667,
+  south: 16.583333,
+  east: 121.516667,
+  north: 17.083333,
+};
+const IFUGAO_CENTER = {
+  lat: (IFUGAO_BOUNDS.south + IFUGAO_BOUNDS.north) / 2,
+  lng: (IFUGAO_BOUNDS.west + IFUGAO_BOUNDS.east) / 2,
+};
+const IFUGAO_BBOX = [
+  IFUGAO_BOUNDS.west,
+  IFUGAO_BOUNDS.south,
+  IFUGAO_BOUNDS.east,
+  IFUGAO_BOUNDS.north,
+].join(",");
 
 function text(value: unknown): string {
   const clean = String(value ?? "").replace(/\s+/g, " ").trim();
@@ -45,17 +63,13 @@ function isMobileDevice(): boolean {
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 }
 
-function haversineKm(a: ErrandLocationValue, b: { lat: number; lng: number }): number {
-  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
-  const earthRadiusKm = 6371;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+function insideIfugao(lat: number, lng: number): boolean {
+  return (
+    lat >= IFUGAO_BOUNDS.south &&
+    lat <= IFUGAO_BOUNDS.north &&
+    lng >= IFUGAO_BOUNDS.west &&
+    lng <= IFUGAO_BOUNDS.east
+  );
 }
 
 function validLocation(value: any): ErrandLocationValue | null {
@@ -70,8 +84,7 @@ function loadLastStage0(): ErrandLocationValue | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(LAST_STAGE0_KEY);
-    if (!raw) return null;
-    return validLocation(JSON.parse(raw));
+    return raw ? validLocation(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -80,10 +93,7 @@ function loadLastStage0(): ErrandLocationValue | null {
 function saveLastStage0(value: ErrandLocationValue) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(
-      LAST_STAGE0_KEY,
-      JSON.stringify({ label: value.label, lat: value.lat, lng: value.lng })
-    );
+    localStorage.setItem(LAST_STAGE0_KEY, JSON.stringify(value));
   } catch {}
 }
 
@@ -137,6 +147,7 @@ export default function ErrandLocationField({
   const [error, setError] = React.useState("");
   const [mapOpen, setMapOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<ErrandLocationValue | null>(value);
+  const [draftNeedsMove, setDraftNeedsMove] = React.useState(false);
   const [lastStage0, setLastStage0] = React.useState<ErrandLocationValue | null>(null);
   const [serverStage0, setServerStage0] = React.useState<ErrandLocationValue | null>(null);
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
@@ -146,7 +157,11 @@ export default function ErrandLocationField({
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTokenRef = React.useRef("");
 
-  const preferredStage0 = lastStage0 || serverStage0;
+  const preferredRaw = lastStage0 || serverStage0;
+  const preferredStage0 =
+    preferredRaw && insideIfugao(preferredRaw.lat, preferredRaw.lng)
+      ? preferredRaw
+      : null;
   const desktopRecentAvailable =
     allowCurrentLocation && !isMobileDevice() && !!preferredStage0;
 
@@ -162,12 +177,12 @@ export default function ErrandLocationField({
     if (!allowCurrentLocation) return;
     let cancelled = false;
     const local = loadLastStage0();
-    setLastStage0(local);
+    if (local && insideIfugao(local.lat, local.lng)) setLastStage0(local);
 
     loadRecentStage0FromServer().then((recent) => {
-      if (cancelled || !recent) return;
+      if (cancelled || !recent || !insideIfugao(recent.lat, recent.lng)) return;
       setServerStage0(recent);
-      if (!local) {
+      if (!local || !insideIfugao(local.lat, local.lng)) {
         saveLastStage0(recent);
         setLastStage0(recent);
       }
@@ -189,15 +204,21 @@ export default function ErrandLocationField({
     };
   }, []);
 
-  function commit(next: ErrandLocationValue) {
+  function commit(next: ErrandLocationValue): boolean {
+    if (allowCurrentLocation && !insideIfugao(next.lat, next.lng)) {
+      setError("Stage 0 must be inside Ifugao Province.");
+      return false;
+    }
     setQuery(next.label);
     setDraft(next);
     setSuggestions([]);
+    setError("");
     if (allowCurrentLocation) {
       saveLastStage0(next);
       setLastStage0(next);
     }
     onChange(next);
+    return true;
   }
 
   async function retrieve(mapboxId: string): Promise<Suggestion | null> {
@@ -239,7 +260,10 @@ export default function ErrandLocationField({
         `.json?limit=1&country=PH&access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
       const response = await fetch(url, { cache: "no-store" });
       const json: any = await response.json().catch(() => ({}));
-      return text(json?.features?.[0]?.place_name) || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+      return (
+        text(json?.features?.[0]?.place_name) ||
+        `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+      );
     } catch {
       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
@@ -263,10 +287,14 @@ export default function ErrandLocationField({
       const prox = searchProximity
         ? `&proximity=${encodeURIComponent(`${searchProximity.lng},${searchProximity.lat}`)}`
         : "";
+      const bbox = allowCurrentLocation
+        ? `&bbox=${encodeURIComponent(IFUGAO_BBOX)}`
+        : "";
       const url =
         "https://api.mapbox.com/search/searchbox/v1/suggest" +
         `?q=${encodeURIComponent(clean)}` +
         "&limit=6&country=PH&language=en&types=poi,address,place" +
+        bbox +
         prox +
         `&session_token=${encodeURIComponent(sessionTokenRef.current)}` +
         `&access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
@@ -323,13 +351,8 @@ export default function ErrandLocationField({
     if (!isMobileDevice()) {
       if (preferredStage0) {
         commit(preferredStage0);
-        setError(
-          "Desktop GPS is unreliable. JRide used your recent Stage 0 pin; open Map to adjust it if needed."
-        );
       } else {
-        setError(
-          "Desktop GPS can point to Manila. Search the meeting place once; JRide will remember that Stage 0 for later bookings."
-        );
+        setError("Desktop GPS is unreliable. Open Map and choose the exact Stage 0 within Ifugao.");
       }
       return;
     }
@@ -358,13 +381,8 @@ export default function ErrandLocationField({
           setLocating(false);
           return;
         }
-        if (
-          preferredStage0 &&
-          haversineKm(preferredStage0, { lat, lng }) > MAX_LAST_PIN_DISTANCE_KM
-        ) {
-          setError(
-            "The device location is far from your recent Stage 0 pin. JRide kept the recent pin; search or adjust it on the map."
-          );
+        if (!insideIfugao(lat, lng)) {
+          setError("The detected location is outside Ifugao. Stage 0 must be inside Ifugao Province.");
           setLocating(false);
           return;
         }
@@ -390,21 +408,26 @@ export default function ErrandLocationField({
 
   function openMap() {
     setError("");
-    const initial =
-      value ||
-      (allowCurrentLocation ? preferredStage0 : null) ||
-      (proximity
-        ? { label: "Map pin", lat: proximity.lat, lng: proximity.lng }
-        : null);
+    let initial: ErrandLocationValue;
+    let needsMove = false;
 
-    if (!initial) {
-      setError(
-        "Search the meeting place once. JRide will save that Stage 0 so future maps open there automatically."
-      );
-      return;
+    if (value) {
+      initial = value;
+    } else if (allowCurrentLocation && preferredStage0) {
+      initial = preferredStage0;
+    } else if (proximity) {
+      initial = { label: "Map pin", lat: proximity.lat, lng: proximity.lng };
+    } else {
+      initial = {
+        label: "Ifugao Province - tap the exact Stage 0 location",
+        lat: IFUGAO_CENTER.lat,
+        lng: IFUGAO_CENTER.lng,
+      };
+      needsMove = true;
     }
 
     setDraft(initial);
+    setDraftNeedsMove(needsMove);
     setMapOpen(true);
   }
 
@@ -419,17 +442,23 @@ export default function ErrandLocationField({
         const MapboxGL = mapboxRef.current.default || mapboxRef.current;
         MapboxGL.accessToken = MAPBOX_TOKEN;
 
-        if (mapRef.current) {
-          try {
-            mapRef.current.remove();
-          } catch {}
-        }
+        try {
+          mapRef.current?.remove?.();
+        } catch {}
 
         mapRef.current = new MapboxGL.Map({
           container: mapDivRef.current,
           style: "mapbox://styles/mapbox/streets-v12",
           center: [draft.lng, draft.lat],
-          zoom: 14,
+          zoom: allowCurrentLocation && draftNeedsMove ? 9 : 14,
+          ...(allowCurrentLocation
+            ? {
+                maxBounds: [
+                  [IFUGAO_BOUNDS.west, IFUGAO_BOUNDS.south],
+                  [IFUGAO_BOUNDS.east, IFUGAO_BOUNDS.north],
+                ],
+              }
+            : {}),
         });
         mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
         markerRef.current = new MapboxGL.Marker({ color: "#059669" })
@@ -440,9 +469,15 @@ export default function ErrandLocationField({
           const lng = finite(event?.lngLat?.lng);
           const lat = finite(event?.lngLat?.lat);
           if (lat == null || lng == null) return;
+          if (allowCurrentLocation && !insideIfugao(lat, lng)) {
+            setError("Stage 0 must be inside Ifugao Province.");
+            return;
+          }
           markerRef.current?.setLngLat?.([lng, lat]);
           const label = await reverseGeocode(lng, lat);
           setDraft({ label, lat, lng });
+          setDraftNeedsMove(false);
+          setError("");
         });
       } catch {
         setError("Map picker failed to load.");
@@ -460,18 +495,18 @@ export default function ErrandLocationField({
   }, [mapOpen, MAPBOX_TOKEN]);
 
   function confirmMapPin() {
-    if (!draft) return;
-    commit(draft);
-    setMapOpen(false);
+    if (!draft || draftNeedsMove) {
+      setError("Tap the map to set the exact Stage 0 pin.");
+      return;
+    }
+    if (commit(draft)) setMapOpen(false);
   }
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <label className="text-xs font-semibold text-slate-700">{title}</label>
-        {value ? (
-          <span className="text-[11px] font-medium text-emerald-700">Pin set</span>
-        ) : null}
+        {value ? <span className="text-[11px] font-medium text-emerald-700">Pin set</span> : null}
       </div>
 
       <div className="relative">
@@ -527,9 +562,7 @@ export default function ErrandLocationField({
           </button>
         ) : null}
         {allowCurrentLocation && preferredStage0 ? (
-          <span className="text-[11px] text-slate-500">
-            Recent Stage 0: {preferredStage0.label}
-          </span>
+          <span className="text-[11px] text-slate-500">Recent Stage 0: {preferredStage0.label}</span>
         ) : null}
         {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
         {value ? (
@@ -539,9 +572,9 @@ export default function ErrandLocationField({
         ) : null}
       </div>
 
-      {allowCurrentLocation && preferredStage0 && !value ? (
+      {allowCurrentLocation ? (
         <div className="text-[11px] text-slate-500">
-          Map opens at your recent Stage 0 pin. Move it if this Errand starts elsewhere.
+          Stage 0 search and map are limited to Ifugao Province. Task stops and the final destination may be outside Ifugao.
         </div>
       ) : null}
       {helpText ? <div className="text-[11px] text-slate-500">{helpText}</div> : null}
@@ -553,7 +586,9 @@ export default function ErrandLocationField({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-semibold text-slate-900">Set {title}</div>
-                <div className="text-xs text-slate-500">Tap the map to move the pin.</div>
+                <div className="text-xs text-slate-500">
+                  {draftNeedsMove ? "Tap the exact location before confirming." : "Tap the map to move the pin."}
+                </div>
               </div>
               <button
                 type="button"
@@ -579,10 +614,10 @@ export default function ErrandLocationField({
             <button
               type="button"
               onClick={confirmMapPin}
-              disabled={!draft}
+              disabled={!draft || draftNeedsMove}
               className="mt-3 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-400 disabled:opacity-50"
             >
-              Use this pin
+              {draftNeedsMove ? "Tap map to set pin" : "Use this pin"}
             </button>
           </div>
         </div>
