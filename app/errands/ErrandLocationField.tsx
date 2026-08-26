@@ -51,6 +51,7 @@ export default function ErrandLocationField({
   const [searching, setSearching] = React.useState(false);
   const [error, setError] = React.useState("");
   const [mapOpen, setMapOpen] = React.useState(false);
+  const [mapLocating, setMapLocating] = React.useState(false);
   const [draft, setDraft] = React.useState<ErrandLocationValue | null>(value);
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
@@ -202,58 +203,100 @@ export default function ErrandLocationField({
     onChange(next);
   }
 
+  function currentCoordinates(): Promise<{ lat: number; lng: number }> {
+    return new Promise((resolve, reject) => {
+      const geo = typeof navigator !== "undefined" ? navigator.geolocation : null;
+      if (!geo?.getCurrentPosition) {
+        reject(new Error("Location is not available on this device."));
+        return;
+      }
+
+      geo.getCurrentPosition(
+        (position) => {
+          const lat = finite(position.coords.latitude);
+          const lng = finite(position.coords.longitude);
+          if (lat == null || lng == null) {
+            reject(new Error("Could not read your location."));
+            return;
+          }
+          resolve({ lat, lng });
+        },
+        (err) => {
+          reject(
+            new Error(
+              Number(err?.code) === 1
+                ? "Location permission was denied."
+                : text(err?.message) || "Could not read your location."
+            )
+          );
+        },
+        {
+          enableHighAccuracy: /Android|iPhone|iPad|iPod/i.test(
+            navigator.userAgent || ""
+          ),
+          timeout: 15000,
+          maximumAge: 30000,
+        }
+      );
+    });
+  }
+
   async function useCurrentLocation() {
     setError("");
-    const geo = typeof navigator !== "undefined" ? navigator.geolocation : null;
-    if (!geo?.getCurrentPosition) {
-      setError("Location is not available on this device.");
+    setMapLocating(true);
+    try {
+      const { lat, lng } = await currentCoordinates();
+      const label = await reverseGeocode(lng, lat);
+      const next = { label, lat, lng };
+      setQuery(label);
+      setDraft(next);
+      setSuggestions([]);
+      onChange(next);
+    } catch (err: any) {
+      setError(text(err?.message) || "Could not read your location.");
+    } finally {
+      setMapLocating(false);
+    }
+  }
+
+  async function openMap() {
+    setError("");
+
+    if (value) {
+      setDraft(value);
+      setMapOpen(true);
       return;
     }
 
-    geo.getCurrentPosition(
-      async (position) => {
-        const lat = finite(position.coords.latitude);
-        const lng = finite(position.coords.longitude);
-        if (lat == null || lng == null) {
-          setError("Could not read your location.");
-          return;
-        }
-        const label = await reverseGeocode(lng, lat);
-        const next = { label, lat, lng };
-        setQuery(label);
-        setDraft(next);
-        setSuggestions([]);
-        onChange(next);
-      },
-      (err) => {
-        setError(
-          Number(err?.code) === 1
-            ? "Location permission was denied."
-            : text(err?.message) || "Could not read your location."
-        );
-      },
-      {
-        enableHighAccuracy: /Android|iPhone|iPad|iPod/i.test(
-          navigator.userAgent || ""
-        ),
-        timeout: 15000,
-        maximumAge: 30000,
-      }
-    );
-  }
+    if (proximity) {
+      setDraft({
+        label: "Map pin",
+        lat: proximity.lat,
+        lng: proximity.lng,
+      });
+      setMapOpen(true);
+      return;
+    }
 
-  function openMap() {
-    setDraft(
-      value ||
-        (proximity
-          ? {
-              label: "Map pin",
-              lat: proximity.lat,
-              lng: proximity.lng,
-            }
-          : { label: "Map pin", lat: 16.801351, lng: 121.124289 })
-    );
-    setMapOpen(true);
+    if (allowCurrentLocation) {
+      setMapLocating(true);
+      try {
+        const { lat, lng } = await currentCoordinates();
+        const label = await reverseGeocode(lng, lat);
+        setDraft({ label, lat, lng });
+        setMapOpen(true);
+      } catch (err: any) {
+        setError(
+          text(err?.message) ||
+            "Allow location access or search for the Stage 0 address first."
+        );
+      } finally {
+        setMapLocating(false);
+      }
+      return;
+    }
+
+    setError("Set Stage 0 first so this map opens near the Errand route.");
   }
 
   React.useEffect(() => {
@@ -344,9 +387,10 @@ export default function ErrandLocationField({
         <button
           type="button"
           onClick={openMap}
-          className="absolute right-2 top-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          disabled={mapLocating}
+          className="absolute right-2 top-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
         >
-          Map
+          {mapLocating ? "Locating..." : "Map"}
         </button>
 
         {suggestions.length > 0 ? (
@@ -371,9 +415,10 @@ export default function ErrandLocationField({
           <button
             type="button"
             onClick={useCurrentLocation}
-            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+            disabled={mapLocating}
+            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
           >
-            Use my current location
+            {mapLocating ? "Locating..." : "Use my current location"}
           </button>
         ) : null}
         {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
