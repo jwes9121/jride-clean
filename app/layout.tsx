@@ -2,6 +2,7 @@ import "./globals.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import AnalyticsCompletedTicketsVendorAttendance from "./components/AnalyticsCompletedTicketsVendorAttendance";
 import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAssist";
 import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
 import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
@@ -29,6 +30,7 @@ export default function RootLayout({
         <VendorHoursGate />
         <VendorPortalMobileChrome />
         {children}
+        <AnalyticsCompletedTicketsVendorAttendance />
         <TakeoutPassengerMobileAssist />
         <TakeoutPassengerPinUX />
         <TakeoutTrackingMilestoneAssist />
