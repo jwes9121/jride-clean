@@ -49,10 +49,12 @@ function manilaDateKey(value = new Date()): string {
   return year && month && day ? `${year}-${month}-${day}` : "";
 }
 
+function future(value: unknown): boolean {
+  const t = new Date(String(value || "")).getTime();
+  return Number.isFinite(t) && t > Date.now();
+}
+
 async function resolveVendor(admin: any, vendorKey: string) {
-  // Some founding-pilot/test vendors use legacy UUID-shaped IDs that are valid
-  // database keys but do not satisfy the RFC UUID variant bits. Always try the
-  // exact primary key first instead of rejecting those IDs client-side.
   const byId = await admin
     .from("vendor_accounts")
     .select("*")
@@ -86,6 +88,8 @@ async function readStatus(admin: any, vendor: any) {
 
   const today = manilaDateKey();
   const dailyOpenDate = clean(vendor?.daily_open_date);
+  const suspended = future(vendor?.suspended_until);
+  const publicWarningActive = future(vendor?.public_response_warning_until);
 
   return {
     ok: true,
@@ -106,6 +110,15 @@ async function readStatus(admin: any, vendor: any) {
     daily_opened: Boolean(today && dailyOpenDate === today && vendor?.accepting_orders === true),
     daily_open_date: dailyOpenDate || null,
     daily_opened_at: vendor?.daily_opened_at || null,
+    suspended,
+    suspended_until: suspended ? vendor?.suspended_until : null,
+    suspension_reason: suspended ? clean(vendor?.suspension_reason) || null : null,
+    public_response_warning_active: publicWarningActive,
+    public_response_warning_until: publicWarningActive ? vendor?.public_response_warning_until : null,
+    public_response_warning_reason: publicWarningActive ? clean(vendor?.public_response_warning_reason) || null : null,
+    compliance_started_on: vendor?.vendor_compliance_started_on || null,
+    consecutive_vendor_timeouts: Number(vendor?.consecutive_vendor_timeouts || 0),
+    consecutive_offline_days: Number(vendor?.consecutive_offline_days || 0),
     reason: clean(row.reason || "unavailable"),
   };
 }
@@ -168,6 +181,17 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: "VENDOR_NOT_FOUND",
         message: "Vendor account was not found.",
+      });
+    }
+
+    const suspended = future(vendor?.suspended_until);
+    if (suspended && ["open_today", "extend"].includes(action)) {
+      return json(423, {
+        ok: false,
+        error: "VENDOR_SUSPENDED",
+        message: `This vendor is suspended until ${vendor.suspended_until}. Contact JRide admin for review.`,
+        suspended_until: vendor.suspended_until,
+        suspension_reason: clean(vendor?.suspension_reason) || null,
       });
     }
 

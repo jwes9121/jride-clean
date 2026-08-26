@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/errand-offer-expiry",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/vendor-compliance",
+      "schedule": "10 16 * * *"
     }
   ]
 }
