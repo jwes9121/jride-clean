@@ -58,17 +58,20 @@ function haversineKm(a: ErrandLocationValue, b: { lat: number; lng: number }): n
   return earthRadiusKm * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
+function validLocation(value: any): ErrandLocationValue | null {
+  const label = text(value?.label);
+  const lat = finite(value?.lat);
+  const lng = finite(value?.lng);
+  if (!label || lat == null || lng == null) return null;
+  return { label, lat, lng };
+}
+
 function loadLastStage0(): ErrandLocationValue | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(LAST_STAGE0_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const label = text(parsed?.label);
-    const lat = finite(parsed?.lat);
-    const lng = finite(parsed?.lng);
-    if (!label || lat == null || lng == null) return null;
-    return { label, lat, lng };
+    return validLocation(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -82,6 +85,36 @@ function saveLastStage0(value: ErrandLocationValue) {
       JSON.stringify({ label: value.label, lat: value.lat, lng: value.lng })
     );
   } catch {}
+}
+
+function passengerToken(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return text(
+      localStorage.getItem("jride_access_token") ||
+        localStorage.getItem("jride_passenger_token") ||
+        ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+async function loadRecentStage0FromServer(): Promise<ErrandLocationValue | null> {
+  const token = passengerToken();
+  if (!token) return null;
+  try {
+    const response = await fetch("/api/passenger/errand/eligibility", {
+      method: "GET",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    const json: any = await response.json().catch(() => ({}));
+    if (!response.ok || json?.ok === false) return null;
+    return validLocation(json?.last_stage0);
+  } catch {
+    return null;
+  }
 }
 
 export default function ErrandLocationField({
@@ -105,12 +138,17 @@ export default function ErrandLocationField({
   const [mapOpen, setMapOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<ErrandLocationValue | null>(value);
   const [lastStage0, setLastStage0] = React.useState<ErrandLocationValue | null>(null);
+  const [serverStage0, setServerStage0] = React.useState<ErrandLocationValue | null>(null);
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const markerRef = React.useRef<any>(null);
   const mapboxRef = React.useRef<any>(null);
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionTokenRef = React.useRef("");
+
+  const preferredStage0 = lastStage0 || serverStage0;
+  const desktopRecentAvailable =
+    allowCurrentLocation && !isMobileDevice() && !!preferredStage0;
 
   if (!sessionTokenRef.current) {
     sessionTokenRef.current = `err_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
@@ -121,7 +159,23 @@ export default function ErrandLocationField({
   }, [value?.label]);
 
   React.useEffect(() => {
-    if (allowCurrentLocation) setLastStage0(loadLastStage0());
+    if (!allowCurrentLocation) return;
+    let cancelled = false;
+    const local = loadLastStage0();
+    setLastStage0(local);
+
+    loadRecentStage0FromServer().then((recent) => {
+      if (cancelled || !recent) return;
+      setServerStage0(recent);
+      if (!local) {
+        saveLastStage0(recent);
+        setLastStage0(recent);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [allowCurrentLocation]);
 
   React.useEffect(() => {
@@ -205,8 +259,9 @@ export default function ErrandLocationField({
     setSearching(true);
     setError("");
     try {
-      const prox = proximity
-        ? `&proximity=${encodeURIComponent(`${proximity.lng},${proximity.lat}`)}`
+      const searchProximity = proximity || preferredStage0;
+      const prox = searchProximity
+        ? `&proximity=${encodeURIComponent(`${searchProximity.lng},${searchProximity.lat}`)}`
         : "";
       const url =
         "https://api.mapbox.com/search/searchbox/v1/suggest" +
@@ -266,9 +321,16 @@ export default function ErrandLocationField({
     setError("");
 
     if (!isMobileDevice()) {
-      setError(
-        "Desktop location can be inaccurate and may point to Manila. Search your Stage 0 place, or use the last Stage 0 pin."
-      );
+      if (preferredStage0) {
+        commit(preferredStage0);
+        setError(
+          "Desktop GPS is unreliable. JRide used your recent Stage 0 pin; open Map to adjust it if needed."
+        );
+      } else {
+        setError(
+          "Desktop GPS can point to Manila. Search the meeting place once; JRide will remember that Stage 0 for later bookings."
+        );
+      }
       return;
     }
 
@@ -297,11 +359,11 @@ export default function ErrandLocationField({
           return;
         }
         if (
-          lastStage0 &&
-          haversineKm(lastStage0, { lat, lng }) > MAX_LAST_PIN_DISTANCE_KM
+          preferredStage0 &&
+          haversineKm(preferredStage0, { lat, lng }) > MAX_LAST_PIN_DISTANCE_KM
         ) {
           setError(
-            "The device location is far from your last Stage 0 pin. JRide did not move the pin; search the correct place or use the last pin."
+            "The device location is far from your recent Stage 0 pin. JRide kept the recent pin; search or adjust it on the map."
           );
           setLocating(false);
           return;
@@ -328,17 +390,16 @@ export default function ErrandLocationField({
 
   function openMap() {
     setError("");
-    const saved = allowCurrentLocation ? lastStage0 || loadLastStage0() : null;
     const initial =
       value ||
-      saved ||
+      (allowCurrentLocation ? preferredStage0 : null) ||
       (proximity
         ? { label: "Map pin", lat: proximity.lat, lng: proximity.lng }
         : null);
 
     if (!initial) {
       setError(
-        "Search the meeting place or tap Use my current location first. JRide will not guess your town."
+        "Search the meeting place once. JRide will save that Stage 0 so future maps open there automatically."
       );
       return;
     }
@@ -458,17 +519,17 @@ export default function ErrandLocationField({
             disabled={locating}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
           >
-            {locating ? "Locating..." : "Use my current location"}
+            {locating
+              ? "Locating..."
+              : desktopRecentAvailable
+                ? "Use recent Stage 0"
+                : "Use my current location"}
           </button>
         ) : null}
-        {allowCurrentLocation && lastStage0 ? (
-          <button
-            type="button"
-            onClick={() => commit(lastStage0)}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Use last Stage 0
-          </button>
+        {allowCurrentLocation && preferredStage0 ? (
+          <span className="text-[11px] text-slate-500">
+            Recent Stage 0: {preferredStage0.label}
+          </span>
         ) : null}
         {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
         {value ? (
@@ -478,9 +539,9 @@ export default function ErrandLocationField({
         ) : null}
       </div>
 
-      {allowCurrentLocation && lastStage0 && !value ? (
+      {allowCurrentLocation && preferredStage0 && !value ? (
         <div className="text-[11px] text-slate-500">
-          Map will open at your last Stage 0 pin: {lastStage0.label}
+          Map opens at your recent Stage 0 pin. Move it if this Errand starts elsewhere.
         </div>
       ) : null}
       {helpText ? <div className="text-[11px] text-slate-500">{helpText}</div> : null}
