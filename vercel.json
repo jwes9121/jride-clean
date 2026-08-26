@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/takeout-expiry-recovery",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/errand-offer-expiry",
+      "schedule": "*/1 * * * *"
     }
   ]
 }
