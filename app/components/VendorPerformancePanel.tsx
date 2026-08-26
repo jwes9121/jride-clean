@@ -19,7 +19,12 @@ type MissedOrder = {
   reason: string;
   order_placed_at: string | null;
   missed_at: string | null;
+  exact_event_at?: string | null;
+  expected_deadline_at?: string | null;
   date_is_exact: boolean;
+  time_label?: string;
+  timestamp_note?: string;
+  timeout_window_minutes?: number | null;
 };
 
 type VendorSummary = {
@@ -100,8 +105,12 @@ function stateLabel(value: VendorSummary["current_state"]): string {
 }
 
 function stateClass(value: VendorSummary["current_state"]): string {
-  if (value === "online") return "border-emerald-400 bg-emerald-500/15 text-emerald-200";
-  if (value === "open_but_offline") return "border-amber-400 bg-amber-500/15 text-amber-100";
+  if (value === "online") {
+    return "border-emerald-400 bg-emerald-500/15 text-emerald-200";
+  }
+  if (value === "open_but_offline") {
+    return "border-amber-400 bg-amber-500/15 text-amber-100";
+  }
   return "border-slate-500 bg-slate-700/60 text-slate-200";
 }
 
@@ -137,11 +146,19 @@ export default function VendorPerformancePanel() {
       );
       const json = await response.json().catch(() => ({}));
       if (!response.ok || json?.ok !== true || !json?.vendor) {
-        throw new Error(json?.message || json?.error || "Failed to load store statistics.");
+        throw new Error(
+          json?.message || json?.error || "Failed to load store statistics."
+        );
       }
       setSummary(json.vendor as VendorSummary);
     } catch (loadError: any) {
-      setError(String(loadError?.message || loadError || "Failed to load store statistics."));
+      setError(
+        String(
+          loadError?.message ||
+            loadError ||
+            "Failed to load store statistics."
+        )
+      );
     } finally {
       if (!silent) setLoading(false);
     }
@@ -214,7 +231,8 @@ export default function VendorPerformancePanel() {
                   {summary?.display_name || "Store performance"}
                 </h2>
                 <div className="mt-1 text-xs text-slate-400">
-                  Real orders only. Known test accounts and explicitly excluded bookings are not counted.
+                  Real orders only. Known test accounts and explicitly excluded
+                  bookings are not counted.
                 </div>
               </div>
               <button
@@ -275,7 +293,9 @@ export default function VendorPerformancePanel() {
                   <SmallStat label="Rejected" value={summary.rejected} />
                   <SmallStat
                     label="Average response"
-                    value={formatResponseSeconds(summary.average_response_seconds)}
+                    value={formatResponseSeconds(
+                      summary.average_response_seconds
+                    )}
                   />
                   <SmallStat
                     label="Customer survey"
@@ -290,9 +310,15 @@ export default function VendorPerformancePanel() {
                 <div className="mt-4 rounded-2xl border border-emerald-500/20 bg-slate-900/70 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <h3 className="font-black text-white">Missed orders with dates</h3>
+                      <h3 className="font-black text-white">
+                        Unaccepted orders and response deadlines
+                      </h3>
                       <p className="mt-1 text-xs text-slate-400">
-                        Exact timeout or rejection time is shown when the event timestamp exists. Older fallback records are marked as recorded update time.
+                        Exact event time is shown only when JRide captured the
+                        actual timeout or rejection. For older records, JRide
+                        shows the expected response deadline and labels it as
+                        derived instead of pretending a later database update
+                        was the missed-order time.
                       </p>
                     </div>
                     <span className="rounded-full border border-rose-500/40 bg-rose-500/10 px-3 py-1 text-xs font-bold text-rose-100">
@@ -302,7 +328,8 @@ export default function VendorPerformancePanel() {
 
                   {summary.missed_orders.length === 0 ? (
                     <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-sm text-slate-300">
-                      No real unaccepted order exists after the new metrics baseline.
+                      No real unaccepted order exists after the new metrics
+                      baseline.
                     </div>
                   ) : (
                     <div className="mt-3 space-y-2">
@@ -324,21 +351,43 @@ export default function VendorPerformancePanel() {
                               {order.outcome}
                             </span>
                           </div>
+
                           <div className="mt-2 grid grid-cols-1 gap-1 text-slate-400 sm:grid-cols-2">
                             <div>
-                              <span className="font-semibold text-slate-300">Order placed:</span>{" "}
+                              <span className="font-semibold text-slate-300">
+                                Order placed:
+                              </span>{" "}
                               {formatDateTime(order.order_placed_at)}
                             </div>
                             <div>
-                              <span className="font-semibold text-slate-300">Missed at:</span>{" "}
+                              <span className="font-semibold text-slate-300">
+                                {order.time_label ||
+                                  (order.date_is_exact
+                                    ? "Event time"
+                                    : "Recorded time")}
+                                :
+                              </span>{" "}
                               {formatDateTime(order.missed_at)}
-                              <span className="ml-1 text-[10px]">
-                                ({order.date_is_exact ? "exact event time" : "recorded update time"})
-                              </span>
                             </div>
                           </div>
+
+                          <div
+                            className={
+                              "mt-2 rounded-lg border p-2 text-[11px] " +
+                              (order.date_is_exact
+                                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
+                                : "border-amber-500/30 bg-amber-500/10 text-amber-100")
+                            }
+                          >
+                            {order.timestamp_note ||
+                              (order.date_is_exact
+                                ? "Exact event time"
+                                : "Historical exact event time unavailable")}
+                          </div>
+
                           <div className="mt-2 text-slate-300">
-                            <span className="font-semibold">Reason:</span> {order.reason}
+                            <span className="font-semibold">Reason:</span>{" "}
+                            {order.reason}
                           </div>
                         </div>
                       ))}
