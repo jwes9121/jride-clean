@@ -8,14 +8,12 @@ import ErrandLocationField, {
 
 type StopDraft = {
   id: string;
-  sequence: number;
   location: ErrandLocationValue | null;
   instructions: string;
 };
 
 type CurrentPayload = {
   ok?: boolean;
-  auth_mode?: string;
   driver?: any;
   driver_location?: any;
   offer?: any;
@@ -48,7 +46,27 @@ function nextId(): string {
   return `stop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function prettyStage(stageRaw: unknown, statusRaw: unknown): string {
+async function accessToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return text(data?.session?.access_token);
+}
+
+async function requestJson(url: string, method: "GET" | "POST", body?: unknown) {
+  const token = await accessToken();
+  const response = await fetch(url, {
+    method,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(method === "POST" ? { "content-type": "application/json" } : {}),
+    },
+    ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+    cache: "no-store",
+  });
+  const json: any = await response.json().catch(() => ({}));
+  return { response, json, token };
+}
+
+function stageLabel(stageRaw: unknown, statusRaw: unknown): string {
   const stage = text(stageRaw).toLowerCase();
   const status = text(statusRaw).toLowerCase();
   const labels: Record<string, string> = {
@@ -59,81 +77,35 @@ function prettyStage(stageRaw: unknown, statusRaw: unknown): string {
     task_confirmed: "Task confirmed",
     going_to_stop: "Going to task stop",
     waiting_at_stop: "Waiting at task stop",
-    resolving_stop_issue: "Resolving stop issue",
-    going_to_customer_for_cash: "Returning for Pabili funds",
-    waiting_for_cash_topup: "Waiting for Pabili funds",
-    returning_to_stop_after_cash: "Returning to task stop",
     going_to_final: "Going to final destination",
     waiting_at_final_handoff: "Waiting at final handoff",
     unreachable_escalated: "Final handoff escalated",
-    handoff_complete: "Handoff complete",
     completed: "Errand completed",
   };
-  if (labels[stage]) return labels[stage];
-  if (status === "assigned") return "New Errand offer";
-  if (status === "accepted") return "Go to customer";
-  if (status === "fare_proposed") return "Waiting for customer confirmation";
-  if (status === "ready") return "Task confirmed";
-  return stage || status || "Errand";
-}
-
-async function driverToken(): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  return text(data?.session?.access_token);
-}
-
-async function getDriverJson(url: string) {
-  const token = await driverToken();
-  const response = await fetch(url, {
-    method: "GET",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    cache: "no-store",
-  });
-  const json: any = await response.json().catch(() => ({}));
-  return { response, json, token };
-}
-
-async function postDriverJson(url: string, body: unknown) {
-  const token = await driverToken();
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const json: any = await response.json().catch(() => ({}));
-  return { response, json, token };
+  return labels[stage] || (status === "assigned" ? "New Errand offer" : stage || status || "Errand");
 }
 
 export default function DriverErrandPage() {
-  const [sessionLoading, setSessionLoading] = React.useState(true);
+  const [payload, setPayload] = React.useState<CurrentPayload | null>(null);
+  const [sessionReady, setSessionReady] = React.useState(false);
   const [authed, setAuthed] = React.useState(false);
   const [featureDisabled, setFeatureDisabled] = React.useState(false);
-  const [payload, setPayload] = React.useState<CurrentPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState("");
   const [notice, setNotice] = React.useState("");
   const [error, setError] = React.useState("");
-  const [busyAction, setBusyAction] = React.useState("");
   const [clock, setClock] = React.useState(Date.now());
-  const expireAttemptRef = React.useRef("");
-  const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const expireRef = React.useRef("");
 
-  const [reviewBookingId, setReviewBookingId] = React.useState("");
-  const [taskDescription, setTaskDescription] = React.useState("");
+  const [reviewId, setReviewId] = React.useState("");
+  const [task, setTask] = React.useState("");
   const [stops, setStops] = React.useState<StopDraft[]>([]);
-  const [finalMode, setFinalMode] = React.useState<
-    "return_to_customer" | "different_address"
-  >("return_to_customer");
+  const [finalMode, setFinalMode] = React.useState<"return_to_customer" | "different_address">("return_to_customer");
   const [finalLocation, setFinalLocation] = React.useState<ErrandLocationValue | null>(null);
+  const [cargoWeight, setCargoWeight] = React.useState("0");
+  const [vehicleRequirement, setVehicleRequirement] = React.useState<"either" | "motorcycle" | "tricycle">("either");
   const [isPabili, setIsPabili] = React.useState(false);
   const [estimatedPurchase, setEstimatedPurchase] = React.useState("");
-  const [cargoWeight, setCargoWeight] = React.useState("");
-  const [vehicleRequirement, setVehicleRequirement] = React.useState<
-    "either" | "motorcycle" | "tricycle"
-  >("either");
   const [cashReceived, setCashReceived] = React.useState("");
   const [vehicleSuitable, setVehicleSuitable] = React.useState<boolean | null>(null);
   const [reviewDirty, setReviewDirty] = React.useState(true);
@@ -147,24 +119,21 @@ export default function DriverErrandPage() {
   const offer = payload?.offer || {};
   const driver = payload?.driver || {};
   const driverLocation = payload?.driver_location || {};
-  const stage = text(job?.errand_stage).toLowerCase();
-  const status = text(booking?.status).toLowerCase();
-  const bookingId = text(booking?.id);
   const currentStops = Array.isArray(errand?.stops) ? errand.stops : [];
+  const bookingId = text(booking?.id);
+  const status = text(booking?.status).toLowerCase();
+  const stage = text(job?.errand_stage).toLowerCase();
 
-  async function refreshCurrent(silent = false) {
+  async function refresh(silent = false) {
     if (!silent) setLoading(true);
     try {
-      const { response, json, token } = await getDriverJson(
-        "/api/driver/errand/current"
-      );
+      const { response, json, token } = await requestJson("/api/driver/errand/current", "GET");
       if (!token) {
         setAuthed(false);
         setPayload(null);
         return;
       }
       setAuthed(true);
-
       if (response.status === 503) {
         setFeatureDisabled(true);
         setPayload(null);
@@ -172,55 +141,38 @@ export default function DriverErrandPage() {
         return;
       }
       setFeatureDisabled(false);
-
-      if (response.status === 401 || response.status === 403) {
-        setAuthed(false);
-        setPayload(null);
-        setError(text(json?.message || json?.error) || "Driver session is not authorized.");
-        return;
-      }
       if (!response.ok || json?.ok === false) {
-        setError(text(json?.message || json?.error) || `HTTP ${response.status}`);
-        return;
+        throw new Error(text(json?.message || json?.error) || `HTTP ${response.status}`);
       }
-
       setError("");
       setPayload(json as CurrentPayload);
     } catch (err: any) {
-      setError(text(err?.message) || "Could not refresh Errand work screen.");
+      setError(text(err?.message) || "Could not refresh Errand screen.");
     } finally {
+      setSessionReady(true);
       if (!silent) setLoading(false);
-      setSessionLoading(false);
     }
   }
 
   React.useEffect(() => {
-    let alive = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return;
+    let active = true;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
       const signedIn = !!data?.session?.access_token;
       setAuthed(signedIn);
-      setSessionLoading(false);
-      if (signedIn) refreshCurrent(false);
+      setSessionReady(true);
+      if (signedIn) void refresh(false);
       else setLoading(false);
     });
     return () => {
-      alive = false;
+      active = false;
     };
   }, []);
 
   React.useEffect(() => {
-    if (!authed || featureDisabled) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = null;
-      return;
-    }
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => refreshCurrent(true), 3000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = null;
-    };
+    if (!authed || featureDisabled) return;
+    const timer = setInterval(() => void refresh(true), 3000);
+    return () => clearInterval(timer);
   }, [authed, featureDisabled]);
 
   React.useEffect(() => {
@@ -228,86 +180,79 @@ export default function DriverErrandPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const expiresAtMs = Date.parse(text(offer?.expires_at));
-  const offerSecondsLeft =
-    status === "assigned" && Number.isFinite(expiresAtMs)
-      ? Math.max(0, Math.ceil((expiresAtMs - clock) / 1000))
+  const expiresAt = Date.parse(text(offer?.expires_at));
+  const secondsLeft =
+    status === "assigned" && Number.isFinite(expiresAt)
+      ? Math.max(0, Math.ceil((expiresAt - clock) / 1000))
       : null;
 
-  async function offerAction(action: string, extra: Record<string, unknown> = {}) {
-    if (!bookingId) return;
-    setBusyAction(action);
+  async function normalAction(action: string, extra: Record<string, unknown> = {}) {
+    if (!bookingId) return null;
+    setBusy(action);
     setNotice("");
     setError("");
     try {
-      const { response, json } = await postDriverJson(
-        "/api/driver/errand/offer",
-        { action, booking_id: bookingId, ...extra }
-      );
+      const { response, json } = await requestJson("/api/driver/errand/action", "POST", {
+        action,
+        booking_id: bookingId,
+        ...extra,
+      });
+      if (!response.ok || json?.ok === false) {
+        throw new Error(text(json?.message || json?.error) || `HTTP ${response.status}`);
+      }
+      await refresh(false);
+      return json;
+    } catch (err: any) {
+      setError(text(err?.message) || `Errand action failed: ${action}`);
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function offerAction(action: string, extra: Record<string, unknown> = {}) {
+    if (!bookingId) return null;
+    setBusy(action);
+    setNotice("");
+    setError("");
+    try {
+      const { response, json } = await requestJson("/api/driver/errand/offer", "POST", {
+        action,
+        booking_id: bookingId,
+        ...extra,
+      });
       if (!response.ok || json?.ok === false) {
         throw new Error(text(json?.message || json?.error) || `HTTP ${response.status}`);
       }
       if (action === "decline") {
         setNotice("Errand passed. JRide is checking the next eligible same-town driver.");
       } else if (action === "vehicle_not_suitable") {
-        setNotice(
-          `Released safely. Required vehicle is now ${text(json?.required_vehicle || json?.reassignment?.required_vehicle || "updated")}.`
-        );
+        setNotice("Errand released for a suitable vehicle. No Pabili cash was accepted.");
       }
-      await refreshCurrent(false);
-    } catch (err: any) {
-      setError(text(err?.message) || "Errand offer action failed.");
-    } finally {
-      setBusyAction("");
-    }
-  }
-
-  React.useEffect(() => {
-    if (status !== "assigned" || offerSecondsLeft == null || offerSecondsLeft > 0) {
-      return;
-    }
-    if (!bookingId || expireAttemptRef.current === bookingId) return;
-    expireAttemptRef.current = bookingId;
-    void offerAction("expire_offer");
-  }, [status, offerSecondsLeft, bookingId]);
-
-  async function normalAction(action: string, extra: Record<string, unknown> = {}) {
-    if (!bookingId) return null;
-    setBusyAction(action);
-    setNotice("");
-    setError("");
-    try {
-      const { response, json } = await postDriverJson(
-        "/api/driver/errand/action",
-        { action, booking_id: bookingId, ...extra }
-      );
-      if (!response.ok || json?.ok === false) {
-        if (text(json?.error) === "ERRAND_OFFER_EXPIRED") {
-          await refreshCurrent(false);
-        }
-        throw new Error(text(json?.message || json?.error) || `HTTP ${response.status}`);
-      }
-      setPayload((previous) => ({ ...(previous || {}), errand: json?.errand || previous?.errand }));
-      await refreshCurrent(false);
+      await refresh(false);
       return json;
     } catch (err: any) {
-      setError(text(err?.message) || `Errand action failed: ${action}`);
+      setError(text(err?.message) || "Errand release action failed.");
       return null;
     } finally {
-      setBusyAction("");
+      setBusy("");
     }
   }
 
   React.useEffect(() => {
-    if (!bookingId || stage !== "stage0_review") return;
-    if (reviewBookingId === bookingId) return;
+    if (status !== "assigned" || secondsLeft == null || secondsLeft > 0 || !bookingId) return;
+    if (expireRef.current === bookingId) return;
+    expireRef.current = bookingId;
+    void offerAction("expire_offer");
+  }, [status, secondsLeft, bookingId]);
 
-    setReviewBookingId(bookingId);
-    setTaskDescription(text(job?.task_description));
+  React.useEffect(() => {
+    if (!bookingId || stage !== "stage0_review" || reviewId === bookingId) return;
+    setReviewId(bookingId);
+    setTask(text(job?.task_description));
     setStops(
       currentStops.map((stop: any, index: number) => ({
         id: text(stop?.id) || nextId(),
-        sequence: Number(stop?.sequence || index + 1),
         location:
           num(stop?.lat) != null && num(stop?.lng) != null
             ? {
@@ -319,92 +264,50 @@ export default function DriverErrandPage() {
         instructions: text(stop?.instructions),
       }))
     );
-    setFinalMode(
-      text(job?.final_destination_mode) === "different_address"
-        ? "different_address"
-        : "return_to_customer"
-    );
+    setFinalMode(text(job?.final_destination_mode) === "different_address" ? "different_address" : "return_to_customer");
     setFinalLocation(
       num(job?.final_lat) != null && num(job?.final_lng) != null
         ? {
-            label: text(job?.final_label) || text(booking?.to_label) || "Final destination",
+            label: text(job?.final_label) || "Final destination",
             lat: Number(job.final_lat),
             lng: Number(job.final_lng),
           }
         : null
     );
-    setIsPabili(job?.is_pabili === true);
-    setEstimatedPurchase(
-      num(job?.estimated_purchase_amount) == null
-        ? ""
-        : String(Number(job.estimated_purchase_amount))
-    );
-    setCargoWeight(
-      String(
-        num(job?.confirmed_cargo_weight_kg ?? job?.estimated_cargo_weight_kg) ?? 0
-      )
-    );
+    setCargoWeight(String(num(job?.confirmed_cargo_weight_kg ?? job?.estimated_cargo_weight_kg) ?? 0));
     setVehicleRequirement(
-      ["motorcycle", "tricycle", "either"].includes(text(job?.vehicle_requirement))
-        ? (text(job?.vehicle_requirement) as "motorcycle" | "tricycle" | "either")
+      ["either", "motorcycle", "tricycle"].includes(text(job?.vehicle_requirement))
+        ? (text(job?.vehicle_requirement) as "either" | "motorcycle" | "tricycle")
         : "either"
     );
+    setIsPabili(job?.is_pabili === true);
+    setEstimatedPurchase(num(job?.estimated_purchase_amount) == null ? "" : String(Number(job.estimated_purchase_amount)));
     const existingCash = num(job?.pabili_cash_received);
     setCashReceived(existingCash == null ? "" : String(existingCash));
-    setCashRecorded(existingCash != null && existingCash > 0);
+    setCashRecorded((existingCash ?? 0) > 0);
     setVehicleSuitable(null);
     setReviewDirty(true);
-  }, [bookingId, stage, reviewBookingId, job, booking, currentStops]);
+  }, [bookingId, stage, reviewId]);
 
-  function markDirty() {
+  function dirty() {
     setReviewDirty(true);
     setVehicleSuitable(null);
   }
 
-  function addStop() {
-    setStops((rows) => [
-      ...rows,
-      {
-        id: nextId(),
-        sequence: rows.length + 1,
-        location: null,
-        instructions: "",
-      },
-    ]);
-    markDirty();
-  }
-
-  function removeStop(id: string) {
-    setStops((rows) =>
-      rows.length <= 1
-        ? rows
-        : rows
-            .filter((row) => row.id !== id)
-            .map((row, index) => ({ ...row, sequence: index + 1 }))
-    );
-    markDirty();
-  }
-
-  const reviewPinsValid =
-    stops.length >= 1 && stops.every((stop) => stop.location != null);
-  const finalValid =
-    finalMode === "return_to_customer" || finalLocation != null;
   const cargoKg = num(cargoWeight);
   const reviewValid =
-    text(taskDescription).length >= 3 &&
-    reviewPinsValid &&
-    finalValid &&
-    cargoKg != null &&
-    cargoKg >= 0 &&
-    cargoKg <= 100 &&
+    text(task).length >= 3 &&
+    stops.length > 0 &&
+    stops.every((stop) => !!stop.location) &&
+    (finalMode === "return_to_customer" || !!finalLocation) &&
+    cargoKg != null && cargoKg >= 0 && cargoKg <= 100 &&
     (!isPabili || num(estimatedPurchase) != null);
 
-  async function saveReview(recordCash: boolean) {
+  async function saveReview(withCash: boolean) {
     if (!reviewValid) {
-      setError("Complete the task, all stop pins, final destination and cargo details first.");
+      setError("Complete task details, all pins, final destination, and cargo information first.");
       return;
     }
-
     const final =
       finalMode === "return_to_customer"
         ? {
@@ -414,8 +317,8 @@ export default function DriverErrandPage() {
           }
         : finalLocation;
 
-    const json = await normalAction("save_stage0_review", {
-      task_description: text(taskDescription),
+    const result = await normalAction("save_stage0_review", {
+      task_description: text(task),
       stops: stops.map((stop) => ({
         place_name: stop.location?.label || null,
         location_label: stop.location?.label || "",
@@ -429,652 +332,216 @@ export default function DriverErrandPage() {
       final_lng: final?.lng ?? null,
       is_pabili: isPabili,
       estimated_purchase_amount: isPabili ? num(estimatedPurchase) : null,
-      pabili_cash_received:
-        isPabili && recordCash ? num(cashReceived) : null,
+      pabili_cash_received: isPabili && withCash ? num(cashReceived) : null,
       confirmed_cargo_weight_kg: cargoKg,
       vehicle_requirement: vehicleRequirement,
     });
 
-    if (!json) return;
-    const suitable = json?.vehicle_suitable === true;
+    if (!result) return;
+    const suitable = result?.vehicle_suitable === true;
     setVehicleSuitable(suitable);
     setReviewDirty(false);
-
-    if (isPabili && recordCash && suitable && (num(cashReceived) || 0) > 0) {
-      setCashRecorded(true);
-      setNotice("Customer Pabili cash recorded. Review is ready for the final route/fare calculation.");
-    } else if (suitable) {
-      setNotice(
-        isPabili
-          ? "Vehicle/load check passed. You may now receive and record the customer's Pabili cash."
-          : "Vehicle/load check passed. Review saved."
-      );
-    } else {
+    if (!suitable) {
       setNotice("Vehicle/load check did not pass. Do not accept Pabili cash.");
+      return;
+    }
+    if (isPabili && withCash && (num(cashReceived) ?? 0) > 0) {
+      setCashRecorded(true);
+      setNotice("Customer Pabili cash recorded.");
+    } else {
+      setNotice(isPabili ? "Vehicle/load check passed. You may now receive customer cash." : "Vehicle/load check passed. Review saved.");
     }
   }
 
-  async function readyForCustomerReview() {
+  async function sendForCustomerReview() {
     if (vehicleSuitable !== true || reviewDirty) {
-      setError("Save and pass the vehicle/load check before sending the task to the customer.");
+      setError("Save the review and pass the vehicle/load check first.");
       return;
     }
     if (isPabili && !cashRecorded) {
-      setError("Record the customer's Pabili cash before sending the task for confirmation.");
+      setError("Record customer Pabili cash first.");
       return;
     }
-    const json = await normalAction("ready_for_customer_review");
-    if (json) {
-      setNotice("Task and starting fare sent to the customer. Wait for Confirm Task.");
-    }
+    const result = await normalAction("ready_for_customer_review");
+    if (result) setNotice("Task and starting fare sent to the customer. Wait for Confirm Task.");
   }
 
-  const offerCargoKg = num(job?.estimated_cargo_weight_kg ?? job?.confirmed_cargo_weight_kg) ?? 0;
-  const extraHeavyOffer = offerCargoKg > 50;
-  const finalLabel = text(job?.final_label || booking?.to_label);
-  const passengerName = text(booking?.passenger_name) || "JRide Passenger";
-
-  if (sessionLoading || loading) {
-    return (
-      <main className="min-h-screen bg-slate-950 p-5 text-slate-100">
-        <div className="mx-auto max-w-3xl rounded-3xl border border-slate-800 bg-slate-900 p-5 text-sm">
-          Loading JRide Driver Errand...
-        </div>
-      </main>
-    );
+  if (!sessionReady || loading) {
+    return <main className="min-h-screen bg-slate-950 p-5 text-slate-100">Loading Driver Errand...</main>;
   }
 
   if (!authed) {
     return (
       <main className="min-h-screen bg-slate-950 p-5 text-slate-100">
-        <div className="mx-auto max-w-xl rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <div className="mx-auto max-w-lg rounded-3xl border border-slate-800 bg-slate-900 p-6">
           <h1 className="text-xl font-semibold">Driver sign-in required</h1>
-          <p className="mt-2 text-sm text-slate-400">
-            Sign in with your JRide driver account before opening the Errand work screen.
-          </p>
-          <a
-            href="/driver/login"
-            className="mt-4 inline-flex rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Driver Login
-          </a>
+          <a href="/driver/login" className="mt-4 inline-flex rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white">Driver Login</a>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#071019_0%,#0b1722_48%,#0b1220_100%)] text-slate-100">
-      <div className="mx-auto max-w-5xl space-y-4 px-4 py-5">
-        <header className="rounded-[26px] border border-slate-700/70 bg-slate-900/90 p-5 shadow-xl">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <main className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="mx-auto max-w-4xl space-y-4 px-4 py-5">
+        <header className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-400">
-                JRide Driver
+              <div className="text-xs font-semibold uppercase tracking-wider text-emerald-400">JRide Driver</div>
+              <h1 className="mt-1 text-2xl font-semibold">Errand / Pabili</h1>
+              <div className="mt-1 text-xs text-slate-400">
+                {text(driver?.full_name || driver?.callsign) || "JRide Driver"} | {text(driver?.vehicle_type || driverLocation?.vehicle_type) || "vehicle pending"}
               </div>
-              <h1 className="mt-1 text-2xl font-semibold">Errand / Pabili Work Screen</h1>
-              <p className="mt-1 text-sm text-slate-400">
-                Offer, Stage 0 review, cargo check, Pabili cash, and customer confirmation.
-              </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href="/driver/livetracking"
-                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
-              >
-                Live Tracking
-              </a>
-              <a
-                href="/driver"
-                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
-              >
-                Driver Dashboard
-              </a>
+            <div className="flex gap-2">
+              <a href="/driver/livetracking" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs">Live Tracking</a>
+              <a href="/driver" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs">Dashboard</a>
             </div>
           </div>
         </header>
 
         {featureDisabled ? (
-          <div className="rounded-3xl border border-amber-700/60 bg-amber-950/40 p-5 text-amber-100">
-            <div className="font-semibold">Errand pilot is not enabled yet</div>
-            <div className="mt-1 text-sm text-amber-200/80">
-              The driver screen is installed, but the production feature flag is still off.
-            </div>
-          </div>
+          <div className="rounded-3xl border border-amber-700 bg-amber-950/40 p-5 text-amber-100">Errand pilot is installed but the production feature flag is off.</div>
         ) : null}
-
-        {notice ? (
-          <div className="rounded-2xl border border-emerald-700/50 bg-emerald-950/40 p-4 text-sm text-emerald-100">
-            {notice}
-          </div>
-        ) : null}
-        {error ? (
-          <div className="rounded-2xl border border-red-700/50 bg-red-950/40 p-4 text-sm text-red-100">
-            {error}
-          </div>
-        ) : null}
-
-        {!featureDisabled ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/85 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-slate-500">Driver</div>
-                <div className="mt-1 font-semibold text-slate-100">
-                  {text(driver?.full_name) || text(driver?.callsign) || "JRide Driver"}
-                </div>
-                <div className="mt-1 text-xs text-slate-400">
-                  {[text(driver?.vehicle_type || driverLocation?.vehicle_type), text(driver?.plate_number), text(driver?.municipality || driverLocation?.town)]
-                    .filter(Boolean)
-                    .join(" | ") || "Profile details unavailable"}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => refreshCurrent(false)}
-                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-200"
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-        ) : null}
+        {notice ? <div className="rounded-2xl border border-emerald-700 bg-emerald-950/40 p-4 text-sm">{notice}</div> : null}
+        {error ? <div className="rounded-2xl border border-red-700 bg-red-950/40 p-4 text-sm text-red-100">{error}</div> : null}
 
         {!featureDisabled && !errand ? (
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/85 p-6 text-center">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-6 text-center">
             <div className="text-lg font-semibold">No active Errand</div>
-            <div className="mt-2 text-sm text-slate-400">
-              Stay online in your service town. New Errand offers will appear here when assigned.
-            </div>
+            <div className="mt-2 text-sm text-slate-400">Stay online in your service town. Assigned Errand offers will appear here.</div>
           </div>
         ) : null}
 
         {errand ? (
-          <section className="space-y-4">
-            <div className="rounded-3xl border border-slate-700 bg-slate-900/90 p-5 shadow-xl">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Current stage</div>
-                  <div className="mt-1 text-xl font-semibold text-white">
-                    {prettyStage(stage, status)}
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Booking: <span className="font-mono">{text(booking?.booking_code)}</span>
-                  </div>
-                </div>
-                <div className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300">
-                  {status || "active"}
-                </div>
-              </div>
+          <>
+            <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
+              <div className="text-xs uppercase tracking-wide text-slate-500">Current stage</div>
+              <div className="mt-1 text-xl font-semibold">{stageLabel(stage, status)}</div>
+              <div className="mt-1 text-xs text-slate-400">Booking: {text(booking?.booking_code)}</div>
             </div>
 
             {status === "assigned" ? (
-              <div className="rounded-[28px] border border-amber-500/60 bg-amber-950/35 p-5 shadow-2xl">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <section className="rounded-3xl border border-amber-600 bg-amber-950/30 p-5">
+                <div className="flex justify-between gap-4">
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-[0.16em] text-amber-300">
-                      New Errand Offer
-                    </div>
-                    <div className="mt-1 text-2xl font-bold text-white">{passengerName}</div>
-                    <div className="mt-1 text-sm text-amber-100/80">Stage 0: {text(booking?.from_label) || "--"}</div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-amber-300">New Errand Offer</div>
+                    <div className="mt-1 text-xl font-bold">{text(booking?.passenger_name) || "Passenger"}</div>
+                    <div className="mt-1 text-sm text-amber-100">Stage 0: {text(booking?.from_label)}</div>
                   </div>
-                  <div className="rounded-2xl border border-amber-500/40 bg-black/20 px-4 py-3 text-center">
-                    <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Accept within</div>
-                    <div className="mt-1 text-2xl font-bold text-amber-200">
-                      {offerSecondsLeft == null
-                        ? "--"
-                        : `${Math.floor(offerSecondsLeft / 60)}:${String(offerSecondsLeft % 60).padStart(2, "0")}`}
+                  <div className="rounded-2xl bg-black/20 px-4 py-3 text-center">
+                    <div className="text-[10px] uppercase text-amber-300">Accept within</div>
+                    <div className="text-xl font-bold text-amber-100">
+                      {secondsLeft == null ? "--" : `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}`}
                     </div>
                   </div>
                 </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                  <MetricDark label="Driver -> Stage 0" value={km(offer?.pickup_road_distance_km ?? booking?.driver_to_pickup_km)} />
-                  <MetricDark label="Pickup surcharge" value={money(offer?.pickup_distance_fee ?? booking?.pickup_distance_fee)} />
-                  <MetricDark label="Stops" value={String(currentStops.length || job?.declared_stop_count || 0)} />
-                  <MetricDark label="Estimated cargo" value={`${offerCargoKg} kg`} />
+                <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+                  <Metric label="Driver to Stage 0" value={km(offer?.pickup_road_distance_km ?? booking?.driver_to_pickup_km)} />
+                  <Metric label="Pickup surcharge" value={money(offer?.pickup_distance_fee ?? booking?.pickup_distance_fee)} />
+                  <Metric label="Stops" value={String(currentStops.length || job?.declared_stop_count || 0)} />
+                  <Metric label="Est. cargo" value={`${num(job?.estimated_cargo_weight_kg) ?? 0} kg`} />
                 </div>
-
-                <div className="mt-4 rounded-2xl border border-slate-700/80 bg-slate-950/45 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Task</div>
-                  <div className="mt-1 text-sm text-slate-100">{text(job?.task_description) || "--"}</div>
-                  <div className="mt-3 text-xs text-slate-400">
-                    Required vehicle: {text(job?.vehicle_requirement) || "either"} | Final: {finalLabel || "--"}
-                  </div>
-                  {job?.is_pabili ? (
-                    <div className="mt-2 text-xs text-sky-300">
-                      Pabili | Estimated purchase: {money(job?.estimated_purchase_amount)}. Do not accept customer cash until Stage 0 vehicle/load check passes.
-                    </div>
-                  ) : null}
+                <div className="mt-4 rounded-2xl bg-slate-950/50 p-4 text-sm">
+                  <div>{text(job?.task_description) || "--"}</div>
+                  <div className="mt-2 text-xs text-slate-400">Required vehicle: {text(job?.vehicle_requirement) || "either"} | Final: {text(job?.final_label || booking?.to_label) || "--"}</div>
+                  {job?.is_pabili ? <div className="mt-2 text-xs text-sky-300">Pabili estimate: {money(job?.estimated_purchase_amount)}. Do not accept cash until Stage 0 vehicle/load check passes.</div> : null}
                 </div>
-
-                {extraHeavyOffer ? (
-                  <div className="mt-4 rounded-2xl border border-orange-500/50 bg-orange-950/40 p-4 text-sm text-orange-100">
-                    <div className="font-semibold">EXTRA HEAVY: 51-100 kg</div>
-                    <div className="mt-1 text-xs text-orange-200/80">
-                      Tricycle only. This tier is optional. You may pass without penalty if the load is unsafe, too bulky, or you do not want to carry it.
-                    </div>
-                  </div>
+                {num(job?.estimated_cargo_weight_kg) != null && Number(job.estimated_cargo_weight_kg) > 50 ? (
+                  <div className="mt-3 rounded-2xl border border-orange-700 bg-orange-950/40 p-3 text-xs text-orange-100">51-100 kg Extra Heavy is optional to a tricycle driver. You may pass without penalty if unsafe or unsuitable.</div>
                 ) : null}
-
-                <div className="mt-5 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    disabled={!!busyAction || offerSecondsLeft === 0}
-                    onClick={() => normalAction("accept")}
-                    className="rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-white hover:bg-emerald-400 disabled:opacity-50"
-                  >
-                    {busyAction === "accept" ? "Accepting..." : "Accept Errand"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!!busyAction}
-                    onClick={() =>
-                      offerAction("decline", {
-                        reason_code: extraHeavyOffer ? "extra_heavy_driver_pass" : "driver_passed",
-                      })
-                    }
-                    className="rounded-2xl border border-slate-600 bg-slate-800 py-3.5 text-sm font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-50"
-                  >
-                    {busyAction === "decline" ? "Passing..." : "Pass"}
-                  </button>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button disabled={!!busy || secondsLeft === 0} onClick={() => void normalAction("accept")} className="rounded-2xl bg-emerald-500 py-3 font-semibold disabled:opacity-50">{busy === "accept" ? "Accepting..." : "Accept Errand"}</button>
+                  <button disabled={!!busy} onClick={() => void offerAction("decline", { reason_code: "driver_passed" })} className="rounded-2xl border border-slate-600 bg-slate-800 py-3 font-semibold disabled:opacity-50">{busy === "decline" ? "Passing..." : "Pass"}</button>
                 </div>
-              </div>
+              </section>
             ) : null}
 
             {status === "accepted" && stage === "going_to_customer" ? (
-              <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                <div className="text-sm font-semibold text-white">Go to Customer / Stage 0</div>
-                <div className="mt-2 text-lg text-slate-100">{text(booking?.from_label) || "--"}</div>
-                <div className="mt-2 text-xs text-slate-400">
-                  Driver -> Stage 0: {km(booking?.driver_to_pickup_km)} | Pickup surcharge: {money(booking?.pickup_distance_fee)}
-                </div>
-                {num(booking?.pickup_lat) != null && num(booking?.pickup_lng) != null ? (
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${Number(booking.pickup_lat)},${Number(booking.pickup_lng)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-4 inline-flex rounded-xl border border-sky-600/60 bg-sky-950/40 px-4 py-2 text-sm font-semibold text-sky-200"
-                  >
-                    Open Directions
-                  </a>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => normalAction("arrive_stage0")}
-                  disabled={!!busyAction}
-                  className="mt-4 w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-white hover:bg-emerald-400 disabled:opacity-50"
-                >
-                  {busyAction === "arrive_stage0" ? "Updating..." : "Arrived at Customer - Start Stage 0 Review"}
-                </button>
-                <div className="mt-2 text-[11px] text-slate-500">
-                  Stage 0 discussion time is not counted as waiting time.
-                </div>
-              </div>
+              <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5">
+                <div className="font-semibold">Go to Customer / Stage 0</div>
+                <div className="mt-2 text-lg">{text(booking?.from_label)}</div>
+                <div className="mt-2 text-xs text-slate-400">Driver to Stage 0: {km(booking?.driver_to_pickup_km)} | Pickup surcharge: {money(booking?.pickup_distance_fee)}</div>
+                <button disabled={!!busy} onClick={() => void normalAction("arrive_stage0")} className="mt-4 w-full rounded-2xl bg-emerald-500 py-3 font-semibold disabled:opacity-50">Arrived at Customer - Start Stage 0 Review</button>
+                <div className="mt-2 text-[11px] text-slate-500">Stage 0 discussion time is not waiting time.</div>
+              </section>
             ) : null}
 
             {status === "accepted" && stage === "stage0_review" ? (
-              <div className="space-y-4">
-                <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                  <div className="text-sm font-semibold text-white">Stage 0: Review the task with the customer</div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Edit only what you and the customer agree on. The passenger will have the final Confirm Task button.
-                  </div>
+              <section className="space-y-4">
+                <Card title="Stage 0 review">
+                  <textarea value={task} onChange={(e) => { setTask(e.target.value); dirty(); }} className="min-h-28 w-full rounded-2xl border border-slate-700 bg-slate-950 p-3 text-sm" />
+                </Card>
 
-                  <label className="mt-4 block text-xs font-semibold text-slate-300">Task description</label>
-                  <textarea
-                    value={taskDescription}
-                    onChange={(event) => {
-                      setTaskDescription(event.target.value);
-                      markDirty();
-                    }}
-                    className="mt-1 min-h-[110px] w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-white">Confirmed task stops</div>
-                      <div className="text-xs text-slate-400">Stop 1 is included; additional confirmed stops affect the fare.</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={addStop}
-                      className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
-                    >
-                      Add stop
-                    </button>
-                  </div>
-                  <div className="mt-4 space-y-4">
+                <Card title="Confirmed task stops">
+                  <button onClick={() => { setStops((rows) => [...rows, { id: nextId(), location: null, instructions: "" }]); dirty(); }} className="mb-3 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold">Add stop</button>
+                  <div className="space-y-4">
                     {stops.map((stop, index) => (
-                      <div key={stop.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold">Stop {index + 1}</div>
-                          {stops.length > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => removeStop(stop.id)}
-                              className="text-xs font-semibold text-red-400"
-                            >
-                              Remove
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="mt-3 text-slate-900">
-                          <ErrandLocationField
-                            title={`Stop ${index + 1} location`}
-                            value={stop.location}
-                            onChange={(location) => {
-                              setStops((rows) =>
-                                rows.map((row) =>
-                                  row.id === stop.id ? { ...row, location } : row
-                                )
-                              );
-                              markDirty();
-                            }}
-                            placeholder="Search confirmed task stop"
-                          />
-                        </div>
-                        <input
-                          value={stop.instructions}
-                          onChange={(event) => {
-                            const instructions = event.target.value;
-                            setStops((rows) =>
-                              rows.map((row) =>
-                                row.id === stop.id ? { ...row, instructions } : row
-                              )
-                            );
-                            markDirty();
-                          }}
-                          placeholder="Instructions for this stop"
-                          className="mt-3 w-full rounded-2xl border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-100"
-                        />
+                      <div key={stop.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                        <div className="mb-2 flex justify-between"><span className="font-semibold">Stop {index + 1}</span>{stops.length > 1 ? <button onClick={() => { setStops((rows) => rows.filter((r) => r.id !== stop.id)); dirty(); }} className="text-xs text-red-400">Remove</button> : null}</div>
+                        <div className="text-slate-900"><ErrandLocationField title={`Stop ${index + 1} location`} value={stop.location} onChange={(location) => { setStops((rows) => rows.map((r) => r.id === stop.id ? { ...r, location } : r)); dirty(); }} /></div>
+                        <input value={stop.instructions} onChange={(e) => { const instructions = e.target.value; setStops((rows) => rows.map((r) => r.id === stop.id ? { ...r, instructions } : r)); dirty(); }} placeholder="Stop instructions" className="mt-3 w-full rounded-2xl border border-slate-700 bg-slate-900 p-3 text-sm" />
                       </div>
                     ))}
                   </div>
-                </div>
+                </Card>
 
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                    <div className="text-sm font-semibold text-white">Final destination</div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFinalMode("return_to_customer");
-                          markDirty();
-                        }}
-                        className={
-                          "rounded-2xl border p-3 text-left text-xs " +
-                          (finalMode === "return_to_customer"
-                            ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
-                            : "border-slate-700 bg-slate-950 text-slate-300")
-                        }
-                      >
-                        Return to customer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFinalMode("different_address");
-                          markDirty();
-                        }}
-                        className={
-                          "rounded-2xl border p-3 text-left text-xs " +
-                          (finalMode === "different_address"
-                            ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
-                            : "border-slate-700 bg-slate-950 text-slate-300")
-                        }
-                      >
-                        Different address
-                      </button>
-                    </div>
-                    {finalMode === "different_address" ? (
-                      <div className="mt-3 text-slate-900">
-                        <ErrandLocationField
-                          title="Final destination"
-                          value={finalLocation}
-                          onChange={(location) => {
-                            setFinalLocation(location);
-                            markDirty();
-                          }}
-                          placeholder="Search final destination"
-                        />
-                      </div>
-                    ) : (
-                      <div className="mt-3 rounded-2xl bg-slate-950 p-3 text-xs text-slate-400">
-                        {text(booking?.from_label)}
-                      </div>
-                    )}
+                <Card title="Final destination">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { setFinalMode("return_to_customer"); dirty(); }} className={`rounded-2xl border p-3 text-xs ${finalMode === "return_to_customer" ? "border-emerald-500 bg-emerald-950/40" : "border-slate-700"}`}>Return to customer</button>
+                    <button onClick={() => { setFinalMode("different_address"); dirty(); }} className={`rounded-2xl border p-3 text-xs ${finalMode === "different_address" ? "border-emerald-500 bg-emerald-950/40" : "border-slate-700"}`}>Different address</button>
                   </div>
+                  {finalMode === "different_address" ? <div className="mt-3 text-slate-900"><ErrandLocationField title="Final destination" value={finalLocation} onChange={(location) => { setFinalLocation(location); dirty(); }} /></div> : <div className="mt-3 rounded-2xl bg-slate-950 p-3 text-xs text-slate-400">{text(booking?.from_label)}</div>}
+                </Card>
 
-                  <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                    <div className="text-sm font-semibold text-white">Cargo / vehicle check</div>
-                    <label className="mt-3 block text-xs font-semibold text-slate-300">Actual peak cargo weight</label>
-                    <div className="relative mt-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.5"
-                        value={cargoWeight}
-                        onChange={(event) => {
-                          setCargoWeight(event.target.value);
-                          markDirty();
-                        }}
-                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 pr-10 text-sm text-slate-100"
-                      />
-                      <span className="absolute right-3 top-3 text-sm text-slate-500">kg</span>
-                    </div>
-                    <label className="mt-3 block text-xs font-semibold text-slate-300">Required vehicle</label>
-                    <select
-                      value={vehicleRequirement}
-                      onChange={(event) => {
-                        setVehicleRequirement(
-                          event.target.value as "either" | "motorcycle" | "tricycle"
-                        );
-                        markDirty();
-                      }}
-                      className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100"
-                    >
-                      <option value="either">Motorcycle or Tricycle</option>
-                      <option value="motorcycle">Motorcycle</option>
-                      <option value="tricycle">Tricycle</option>
-                    </select>
-                    {cargoKg != null && cargoKg > 50 ? (
-                      <div className="mt-2 text-xs text-orange-300">
-                        51-100 kg is Extra Heavy and optional to a tricycle driver.
-                      </div>
-                    ) : cargoKg != null && cargoKg > 25 ? (
-                      <div className="mt-2 text-xs text-amber-300">Above 25 kg requires a tricycle.</div>
-                    ) : null}
+                <Card title="Cargo, vehicle, and Pabili">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-xs">Actual peak cargo weight<input type="number" min="0" max="100" step="0.5" value={cargoWeight} onChange={(e) => { setCargoWeight(e.target.value); dirty(); }} className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 p-3 text-sm" /></label>
+                    <label className="text-xs">Required vehicle<select value={vehicleRequirement} onChange={(e) => { setVehicleRequirement(e.target.value as any); dirty(); }} className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 p-3 text-sm"><option value="either">Motorcycle or Tricycle</option><option value="motorcycle">Motorcycle</option><option value="tricycle">Tricycle</option></select></label>
                   </div>
-                </div>
+                  <label className="mt-4 flex gap-2 text-sm"><input type="checkbox" checked={isPabili} onChange={(e) => { setIsPabili(e.target.checked); setCashRecorded(false); dirty(); }} />Pabili purchase - customer funded only</label>
+                  {isPabili ? <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs">Estimated purchase<input type="number" min="0" value={estimatedPurchase} onChange={(e) => { setEstimatedPurchase(e.target.value); dirty(); }} className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 p-3 text-sm" /></label><label className="text-xs">Customer cash received<input type="number" min="0" value={cashReceived} disabled={vehicleSuitable !== true} onChange={(e) => setCashReceived(e.target.value)} className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 p-3 text-sm disabled:opacity-40" /></label></div> : null}
+                </Card>
 
-                <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
-                  <label className="flex items-start gap-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={isPabili}
-                      onChange={(event) => {
-                        setIsPabili(event.target.checked);
-                        setCashRecorded(false);
-                        markDirty();
-                      }}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="font-semibold text-white">Pabili purchase</span>
-                      <span className="mt-1 block text-xs text-slate-400">
-                        Customer-funded only. Never use your own money.
-                      </span>
-                    </span>
-                  </label>
-                  {isPabili ? (
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="text-xs font-semibold text-slate-300">Estimated purchase amount</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={estimatedPurchase}
-                          onChange={(event) => {
-                            setEstimatedPurchase(event.target.value);
-                            markDirty();
-                          }}
-                          className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs font-semibold text-slate-300">Customer cash received</label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={cashReceived}
-                          disabled={vehicleSuitable !== true}
-                          onChange={(event) => setCashReceived(event.target.value)}
-                          placeholder={vehicleSuitable === true ? "Enter cash actually received" : "Vehicle check first"}
-                          className="mt-1 w-full rounded-2xl border border-slate-700 bg-slate-950 px-3 py-3 text-sm text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="rounded-3xl border border-slate-700 bg-slate-900/95 p-5">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => saveReview(false)}
-                      disabled={!reviewValid || !!busyAction}
-                      className="rounded-2xl bg-sky-600 py-3 text-sm font-bold text-white hover:bg-sky-500 disabled:opacity-50"
-                    >
-                      {busyAction === "save_stage0_review"
-                        ? "Checking..."
-                        : "Save Review + Check Vehicle"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        offerAction("vehicle_not_suitable", {
-                          confirmed_cargo_weight_kg: cargoKg,
-                          reason_code:
-                            cargoKg != null && cargoKg > 25
-                              ? "cargo_too_heavy_or_bulky"
-                              : "vehicle_or_load_not_suitable",
-                        })
-                      }
-                      disabled={!!busyAction || cashRecorded || (num(job?.pabili_cash_received) || 0) > 0}
-                      className="rounded-2xl border border-orange-600/60 bg-orange-950/30 py-3 text-sm font-semibold text-orange-100 disabled:opacity-40"
-                    >
-                      Vehicle / Load Not Suitable
-                    </button>
+                <Card title="Stage 0 actions">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <button disabled={!reviewValid || !!busy} onClick={() => void saveReview(false)} className="rounded-2xl bg-sky-600 py-3 font-semibold disabled:opacity-40">Save Review + Check Vehicle</button>
+                    <button disabled={!!busy || cashRecorded || (num(job?.pabili_cash_received) ?? 0) > 0} onClick={() => void offerAction("vehicle_not_suitable", { confirmed_cargo_weight_kg: cargoKg, reason_code: "vehicle_or_load_not_suitable" })} className="rounded-2xl border border-orange-700 bg-orange-950/30 py-3 font-semibold text-orange-100 disabled:opacity-40">Vehicle / Load Not Suitable</button>
                   </div>
-
-                  {vehicleSuitable === true ? (
-                    <div className="mt-3 rounded-2xl border border-emerald-700/50 bg-emerald-950/35 p-3 text-xs text-emerald-100">
-                      Vehicle/load check passed.
-                    </div>
-                  ) : vehicleSuitable === false ? (
-                    <div className="mt-3 rounded-2xl border border-orange-700/50 bg-orange-950/35 p-3 text-xs text-orange-100">
-                      Vehicle/load check did not pass. Do not accept customer cash. Release this Errand for a suitable vehicle.
-                    </div>
-                  ) : null}
-
-                  {isPabili && vehicleSuitable === true ? (
-                    <button
-                      type="button"
-                      onClick={() => saveReview(true)}
-                      disabled={(num(cashReceived) || 0) <= 0 || !!busyAction}
-                      className="mt-3 w-full rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
-                    >
-                      {cashRecorded ? "Update Recorded Customer Cash" : "Record Customer Cash"}
-                    </button>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={readyForCustomerReview}
-                    disabled={
-                      !!busyAction ||
-                      vehicleSuitable !== true ||
-                      reviewDirty ||
-                      (isPabili && !cashRecorded)
-                    }
-                    className="mt-3 w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-bold text-white hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {busyAction === "ready_for_customer_review"
-                      ? "Calculating route..."
-                      : "Ready for Customer Review"}
-                  </button>
-                  <div className="mt-2 text-center text-[11px] text-slate-500">
-                    This calculates the confirmed road route and sends the exact starting fare to the passenger.
-                  </div>
-                </div>
-              </div>
+                  {vehicleSuitable === true ? <div className="mt-3 rounded-2xl bg-emerald-950/40 p-3 text-xs text-emerald-100">Vehicle/load check passed.</div> : vehicleSuitable === false ? <div className="mt-3 rounded-2xl bg-orange-950/40 p-3 text-xs text-orange-100">Vehicle/load check did not pass. Do not accept cash.</div> : null}
+                  {isPabili && vehicleSuitable === true ? <button disabled={(num(cashReceived) ?? 0) <= 0 || !!busy} onClick={() => void saveReview(true)} className="mt-3 w-full rounded-2xl bg-emerald-600 py-3 font-semibold disabled:opacity-40">{cashRecorded ? "Update Recorded Customer Cash" : "Record Customer Cash"}</button> : null}
+                  <button disabled={!!busy || vehicleSuitable !== true || reviewDirty || (isPabili && !cashRecorded)} onClick={() => void sendForCustomerReview()} className="mt-3 w-full rounded-2xl bg-emerald-500 py-3 font-semibold disabled:opacity-40">Ready for Customer Review</button>
+                </Card>
+              </section>
             ) : null}
 
-            {(stage === "awaiting_customer_confirmation" || status === "fare_proposed") ? (
-              <div className="rounded-3xl border border-amber-600/50 bg-amber-950/30 p-5">
-                <div className="text-lg font-semibold text-amber-100">Waiting for passenger Confirm Task</div>
-                <div className="mt-1 text-sm text-amber-200/80">
-                  Do not begin the task route until the passenger confirms.
-                </div>
-                <div className="mt-4 space-y-2 text-sm text-slate-300">
-                  <FareRowDark label="Base" value={fare?.base_fare} />
-                  <FareRowDark label={`Confirmed route (${km(job?.confirmed_route_distance_km)})`} value={fare?.distance_fare} />
-                  <FareRowDark label="Pickup surcharge" value={fare?.pickup_distance_fee} />
-                  <FareRowDark label="Additional stops" value={fare?.extra_stop_fee} />
-                  <FareRowDark label="Heavy load" value={fare?.heavy_load_fee} />
-                  <div className="border-t border-slate-700 pt-3">
-                    <FareRowDark label="Starting service fare" value={fare?.total_errand_fare} strong />
-                  </div>
-                </div>
-                {job?.is_pabili ? (
-                  <div className="mt-3 rounded-2xl bg-slate-950/50 p-3 text-xs text-slate-400">
-                    Customer purchase funds recorded: {money(pabili?.customer_funds_received ?? job?.pabili_cash_received)}. This is separate from the JRide service fare.
-                  </div>
-                ) : null}
-              </div>
+            {stage === "awaiting_customer_confirmation" || status === "fare_proposed" ? (
+              <section className="rounded-3xl border border-amber-700 bg-amber-950/30 p-5">
+                <div className="text-lg font-semibold">Waiting for passenger Confirm Task</div>
+                <div className="mt-1 text-sm text-amber-200">Do not begin the task route until the passenger confirms.</div>
+                <div className="mt-4 space-y-2 text-sm"><Fare label="Base" value={fare?.base_fare} /><Fare label={`Confirmed route (${km(job?.confirmed_route_distance_km)})`} value={fare?.distance_fare} /><Fare label="Pickup surcharge" value={fare?.pickup_distance_fee} /><Fare label="Additional stops" value={fare?.extra_stop_fee} /><Fare label="Heavy load" value={fare?.heavy_load_fee} /><div className="border-t border-slate-700 pt-2"><Fare label="Starting service fare" value={fare?.total_errand_fare} /></div></div>
+                {job?.is_pabili ? <div className="mt-3 text-xs text-slate-400">Customer purchase funds: {money(pabili?.customer_funds_received ?? job?.pabili_cash_received)}</div> : null}
+              </section>
             ) : null}
 
-            {(stage === "task_confirmed" || status === "ready") ? (
-              <div className="rounded-3xl border border-emerald-700/60 bg-emerald-950/35 p-5">
-                <div className="text-lg font-semibold text-emerald-100">Passenger confirmed the task</div>
-                <div className="mt-1 text-sm text-emerald-200/80">
-                  The task is now locked. Stop-execution controls are the next implementation slice.
-                </div>
-              </div>
+            {stage === "task_confirmed" || status === "ready" ? (
+              <section className="rounded-3xl border border-emerald-700 bg-emerald-950/30 p-5"><div className="text-lg font-semibold">Passenger confirmed the task</div><div className="mt-1 text-sm text-emerald-200">Task is locked. Stop-execution controls are the next slice.</div></section>
             ) : null}
-          </section>
+          </>
         ) : null}
       </div>
     </main>
   );
 }
 
-function MetricDark({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
-      <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="mt-1 font-semibold text-slate-100">{value}</div>
-    </div>
-  );
+function Card({ title, children }: { title: string; children: React.ReactNode }) {
+  return <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5"><div className="mb-3 font-semibold">{title}</div>{children}</div>;
 }
 
-function FareRowDark({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: unknown;
-  strong?: boolean;
-}) {
-  return (
-    <div className={`flex items-center justify-between gap-3 ${strong ? "font-bold text-white" : ""}`}>
-      <span>{label}</span>
-      <span>{money(value)}</span>
-    </div>
-  );
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-slate-950/50 p-3"><div className="text-[10px] uppercase text-slate-500">{label}</div><div className="mt-1 font-semibold">{value}</div></div>;
+}
+
+function Fare({ label, value }: { label: string; value: unknown }) {
+  return <div className="flex justify-between gap-3"><span>{label}</span><span className="font-semibold">{money(value)}</span></div>;
 }
