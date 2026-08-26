@@ -6,6 +6,7 @@ import AnalyticsCompletedTicketsVendorAttendance from "./components/AnalyticsCom
 import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAssist";
 import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
 import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
+import VendorComplianceNotice from "./components/VendorComplianceNotice";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
 import VendorPortalDailyCompression from "./components/VendorPortalDailyCompression";
 import VendorPortalMobileChrome from "./components/VendorPortalMobileChrome";
@@ -28,6 +29,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <VendorHoursGate />
+        <VendorComplianceNotice />
         <VendorPortalMobileChrome />
         {children}
         <AnalyticsCompletedTicketsVendorAttendance />
