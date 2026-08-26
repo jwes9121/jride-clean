@@ -3,6 +3,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import AnalyticsCompletedTicketsVendorAttendance from "./components/AnalyticsCompletedTicketsVendorAttendance";
+import AnalyticsFailedTickets from "./components/AnalyticsFailedTickets";
 import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAssist";
 import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
 import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
@@ -33,6 +34,7 @@ export default function RootLayout({
         <VendorPortalMobileChrome />
         {children}
         <AnalyticsCompletedTicketsVendorAttendance />
+        <AnalyticsFailedTickets />
         <TakeoutPassengerMobileAssist />
         <TakeoutPassengerPinUX />
         <TakeoutTrackingMilestoneAssist />
