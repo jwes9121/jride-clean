@@ -17,9 +17,9 @@ const CANONICAL_TAKEOUT_TOWNS = [
 ] as const;
 
 const FORCE_VISIBLE_VENDOR_IDS = new Set<string>([
-  "afa691c6-4a29-441f-b3bf-a8bb3a589ebe", // AGUBENGBENG
-  "8af2c5a5-d325-4d49-af43-d5d1d5ab14cb", // IFUGATO CAFE
-  "23d549f7-565f-4476-90ca-ea10d7ee07b2", // DJARRY'S NOODLE-BAR RESTAURANT
+  "afa691c6-4a29-441f-b3bf-a8bb3a589ebe",
+  "8af2c5a5-d325-4d49-af43-d5d1d5ab14cb",
+  "23d549f7-565f-4476-90ca-ea10d7ee07b2",
 ]);
 
 const FORCE_HIDDEN_VENDOR_IDS = new Set<string>([
@@ -29,8 +29,7 @@ const FORCE_HIDDEN_VENDOR_IDS = new Set<string>([
 ]);
 
 function adminClient() {
-  const url =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!url || !key) return null;
   return createClient(url, key, {
@@ -49,11 +48,7 @@ function timestamp(value: unknown): number {
 
 function normalizeTakeoutTown(value: unknown): string {
   const raw = cleanString(value).toLowerCase();
-  return (
-    CANONICAL_TAKEOUT_TOWNS.find(
-      (town) => town.toLowerCase() === raw
-    ) || ""
-  );
+  return CANONICAL_TAKEOUT_TOWNS.find((town) => town.toLowerCase() === raw) || "";
 }
 
 function isRemovedFromPilot(status: unknown): boolean {
@@ -67,40 +62,43 @@ function normalizeVendor(
   const logoUrl = cleanString(vendor?.logo_url);
   const originalTagline = cleanString(vendor?.tagline || "");
   const performanceText = publicPerformance.public_performance_text;
-  const storefrontTagline = originalTagline
-    ? performanceText + ". " + originalTagline
-    : performanceText;
+  const warningActive = timestamp(vendor?.public_response_warning_until) > Date.now();
+  const suspended = timestamp(vendor?.suspended_until) > Date.now();
+  const warningText = warningActive ? "JRide notice: Recent response issue." : "";
+  const storefrontTagline = [warningText, performanceText, originalTagline].filter(Boolean).join(" ");
 
   const {
     performance_metrics_started_at: _privateMetricsStart,
+    public_response_warning_reason: _privateWarningReason,
+    suspension_reason: _privateSuspensionReason,
     ...publicVendor
   } = vendor || {};
 
   return {
     ...publicVendor,
-    name: cleanString(
-      vendor?.display_name || vendor?.email || vendor?.id || "Vendor"
-    ),
-    display_name: cleanString(
-      vendor?.display_name || vendor?.email || vendor?.id || "Vendor"
-    ),
+    name: cleanString(vendor?.display_name || vendor?.email || vendor?.id || "Vendor"),
+    display_name: cleanString(vendor?.display_name || vendor?.email || vendor?.id || "Vendor"),
     town: normalizeTakeoutTown(vendor?.town),
     tagline: storefrontTagline,
     vendor_tagline: originalTagline,
-    accepting_orders: vendor?.accepting_orders === true,
+    accepting_orders: vendor?.accepting_orders === true && !suspended,
     logo_url: logoUrl || null,
     vendor_logo_url: logoUrl || null,
     profile_logo_url: logoUrl || null,
     business_logo_url: logoUrl || null,
     performance_status:
-      publicPerformance.acceptance_ready || publicPerformance.rating_ready
-        ? "active"
-        : "building",
+      publicPerformance.acceptance_ready || publicPerformance.rating_ready ? "active" : "building",
     public_performance_text: performanceText,
     public_acceptance_rate: publicPerformance.public_acceptance_rate,
     public_customer_rating: publicPerformance.public_customer_rating,
     public_acceptance_ready: publicPerformance.acceptance_ready,
     public_rating_ready: publicPerformance.rating_ready,
+    public_response_warning_active: warningActive,
+    public_response_warning_until: warningActive ? vendor?.public_response_warning_until : null,
+    public_response_warning_text: warningActive ? "Recent response issue" : null,
+    suspended,
+    suspended_until: suspended ? vendor?.suspended_until : null,
+    availability_notice: suspended ? "Temporarily unavailable by JRide review" : null,
   };
 }
 
@@ -108,17 +106,13 @@ export async function GET() {
   const supabase = adminClient();
   if (!supabase) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "MISSING_SERVICE_ROLE",
-        message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing",
-      },
+      { ok: false, error: "MISSING_SERVICE_ROLE", message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing" },
       { status: 500 }
     );
   }
 
   const selectCols =
-    "id,email,display_name,created_at,town,lat,lng,location_label,logo_url,tagline,accepting_orders,performance_metrics_started_at";
+    "id,email,display_name,created_at,town,lat,lng,location_label,logo_url,tagline,accepting_orders,performance_metrics_started_at,public_response_warning_until,public_response_warning_reason,suspended_until,suspension_reason";
 
   const base = await supabase
     .from("vendor_accounts")
@@ -126,10 +120,7 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (base.error) {
-    return NextResponse.json(
-      { ok: false, error: "DB_ERROR", message: base.error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "DB_ERROR", message: base.error.message }, { status: 500 });
   }
 
   const forced = await supabase
@@ -138,10 +129,7 @@ export async function GET() {
     .in("id", Array.from(FORCE_VISIBLE_VENDOR_IDS));
 
   if (forced.error) {
-    return NextResponse.json(
-      { ok: false, error: "DB_ERROR", message: forced.error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "DB_ERROR", message: forced.error.message }, { status: 500 });
   }
 
   const byId = new Map<string, any>();
@@ -155,9 +143,7 @@ export async function GET() {
   }
 
   const rows = Array.from(byId.values());
-  const vendorIds = rows
-    .map((vendor: any) => cleanString(vendor?.id))
-    .filter(Boolean);
+  const vendorIds = rows.map((vendor: any) => cleanString(vendor?.id)).filter(Boolean);
 
   let removedIds = new Set<string>();
   let statusByVendorId = new Map<string, string>();
@@ -169,21 +155,13 @@ export async function GET() {
       .in("vendor_id", vendorIds);
 
     if (registry.error) {
-      return NextResponse.json(
-        { ok: false, error: "DB_ERROR", message: registry.error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "DB_ERROR", message: registry.error.message }, { status: 500 });
     }
 
     const registryRows = Array.isArray(registry.data) ? registry.data : [];
     statusByVendorId = new Map<string, string>(
       registryRows
-        .map(
-          (row: any): [string, string] => [
-            cleanString(row?.vendor_id),
-            cleanString(row?.status).toLowerCase(),
-          ]
-        )
+        .map((row: any): [string, string] => [cleanString(row?.vendor_id), cleanString(row?.status).toLowerCase()])
         .filter((row: [string, string]) => Boolean(row[0]))
     );
 
@@ -202,56 +180,37 @@ export async function GET() {
     ? new Date(Math.min(...cutoffValues)).toISOString()
     : new Date().toISOString();
 
-  const [bookingsRes, ratingsRes, testAccountsRes, bookingExclusionsRes] =
-    await Promise.all([
-      vendorIds.length
-        ? supabase
-            .from("bookings")
-            .select(
-              "id,vendor_id,created_by_user_id,service_type,status,vendor_status,customer_status,created_at,updated_at,vendor_responded_at,vendor_accepted_at,vendor_rejected_at,vendor_timeout_at,vendor_cancel_reason,cancel_reason"
-            )
-            .eq("service_type", "takeout")
-            .in("vendor_id", vendorIds)
-            .gte("created_at", earliestCutoff)
-            .order("created_at", { ascending: false })
-            .limit(10000)
-        : Promise.resolve({ data: [], error: null } as any),
-      vendorIds.length
-        ? supabase
-            .from("takeout_ratings")
-            .select(
-              "id,booking_id,passenger_id,vendor_id,vendor_rating,created_at"
-            )
-            .in("vendor_id", vendorIds)
-            .gte("created_at", earliestCutoff)
-            .order("created_at", { ascending: false })
-            .limit(10000)
-        : Promise.resolve({ data: [], error: null } as any),
-      supabase
-        .from("analytics_test_accounts")
-        .select("subject_type,subject_id")
-        .eq("active", true),
-      supabase
-        .from("analytics_booking_exclusions")
-        .select("booking_id")
-        .eq("active", true),
-    ]);
+  const [bookingsRes, ratingsRes, testAccountsRes, bookingExclusionsRes] = await Promise.all([
+    vendorIds.length
+      ? supabase
+          .from("bookings")
+          .select("id,vendor_id,created_by_user_id,service_type,status,vendor_status,customer_status,created_at,updated_at,vendor_responded_at,vendor_accepted_at,vendor_rejected_at,vendor_timeout_at,vendor_cancel_reason,cancel_reason")
+          .eq("service_type", "takeout")
+          .in("vendor_id", vendorIds)
+          .gte("created_at", earliestCutoff)
+          .order("created_at", { ascending: false })
+          .limit(10000)
+      : Promise.resolve({ data: [], error: null } as any),
+    vendorIds.length
+      ? supabase
+          .from("takeout_ratings")
+          .select("id,booking_id,passenger_id,vendor_id,vendor_rating,created_at")
+          .in("vendor_id", vendorIds)
+          .gte("created_at", earliestCutoff)
+          .order("created_at", { ascending: false })
+          .limit(10000)
+      : Promise.resolve({ data: [], error: null } as any),
+    supabase.from("analytics_test_accounts").select("subject_type,subject_id").eq("active", true),
+    supabase.from("analytics_booking_exclusions").select("booking_id").eq("active", true),
+  ]);
 
-  const rawBookings =
-    !bookingsRes.error && Array.isArray(bookingsRes.data)
-      ? bookingsRes.data
-      : [];
-  const rawRatings =
-    !ratingsRes.error && Array.isArray(ratingsRes.data)
-      ? ratingsRes.data
-      : [];
+  const rawBookings = !bookingsRes.error && Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
+  const rawRatings = !ratingsRes.error && Array.isArray(ratingsRes.data) ? ratingsRes.data : [];
 
   const testPassengerIds = new Set(
     !testAccountsRes.error && Array.isArray(testAccountsRes.data)
       ? testAccountsRes.data
-          .filter(
-            (row: any) => cleanString(row?.subject_type) === "passenger_user"
-          )
+          .filter((row: any) => cleanString(row?.subject_type) === "passenger_user")
           .map((row: any) => cleanString(row?.subject_id))
           .filter(Boolean)
       : []
@@ -259,9 +218,7 @@ export async function GET() {
 
   const excludedBookingIds = new Set(
     !bookingExclusionsRes.error && Array.isArray(bookingExclusionsRes.data)
-      ? bookingExclusionsRes.data
-          .map((row: any) => cleanString(row?.booking_id))
-          .filter(Boolean)
+      ? bookingExclusionsRes.data.map((row: any) => cleanString(row?.booking_id)).filter(Boolean)
       : []
   );
 
@@ -271,10 +228,7 @@ export async function GET() {
     if (bookingId) bookingsById.set(bookingId, booking);
   }
 
-  const performanceByVendor = new Map<
-    string,
-    ReturnType<typeof computePublicVendorPerformance>
-  >();
+  const performanceByVendor = new Map<string, ReturnType<typeof computePublicVendorPerformance>>();
 
   for (const vendor of rows) {
     const vendorId = cleanString(vendor?.id);
@@ -284,24 +238,16 @@ export async function GET() {
       if (cleanString(booking?.vendor_id) !== vendorId) return false;
       if (timestamp(booking?.created_at) < cutoff) return false;
       if (excludedBookingIds.has(cleanString(booking?.id))) return false;
-      if (
-        testPassengerIds.has(cleanString(booking?.created_by_user_id))
-      ) {
-        return false;
-      }
+      if (testPassengerIds.has(cleanString(booking?.created_by_user_id))) return false;
       return true;
     });
 
-    const eligibleBookingIds = new Set(
-      eligibleBookings.map((booking: any) => cleanString(booking?.id))
-    );
+    const eligibleBookingIds = new Set(eligibleBookings.map((booking: any) => cleanString(booking?.id)));
 
     const eligibleRatings = rawRatings.filter((rating: any) => {
       if (cleanString(rating?.vendor_id) !== vendorId) return false;
       if (timestamp(rating?.created_at) < cutoff) return false;
-      if (testPassengerIds.has(cleanString(rating?.passenger_id))) {
-        return false;
-      }
+      if (testPassengerIds.has(cleanString(rating?.passenger_id))) return false;
 
       const bookingId = cleanString(rating?.booking_id);
       if (!bookingId || !eligibleBookingIds.has(bookingId)) return false;
@@ -311,10 +257,7 @@ export async function GET() {
       return linkedBooking ? isCompletedTakeoutOrder(linkedBooking) : false;
     });
 
-    performanceByVendor.set(
-      vendorId,
-      computePublicVendorPerformance(eligibleBookings, eligibleRatings)
-    );
+    performanceByVendor.set(vendorId, computePublicVendorPerformance(eligibleBookings, eligibleRatings));
   }
 
   const vendors = rows
@@ -325,8 +268,7 @@ export async function GET() {
     })
     .map((vendor: any) => {
       const id = cleanString(vendor?.id);
-      const performance =
-        performanceByVendor.get(id) || computePublicVendorPerformance([], []);
+      const performance = performanceByVendor.get(id) || computePublicVendorPerformance([], []);
       const normalized = normalizeVendor(vendor, performance);
       const marketplaceStatus = statusByVendorId.get(id) || "";
 
@@ -340,21 +282,14 @@ export async function GET() {
 
   return NextResponse.json(
     { ok: true, vendors },
-    {
-      status: 200,
-      headers: { "Cache-Control": "no-store, max-age=0" },
-    }
+    { status: 200, headers: { "Cache-Control": "no-store, max-age=0" } }
   );
 }
 
 export async function POST(req: Request) {
   const supabase = adminClient();
-
   if (!supabase) {
-    return NextResponse.json(
-      { ok: false, error: "MISSING_SERVICE_ROLE" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "MISSING_SERVICE_ROLE" }, { status: 500 });
   }
 
   try {
@@ -363,45 +298,24 @@ export async function POST(req: Request) {
     const status = cleanString(body?.status).toLowerCase();
 
     if (!vendorId) {
-      return NextResponse.json(
-        { ok: false, error: "MISSING_VENDOR_ID" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "MISSING_VENDOR_ID" }, { status: 400 });
     }
 
-    if (
-      !["pilot_lagawe", "batch2", "removed_from_pilot"].includes(status)
-    ) {
-      return NextResponse.json(
-        { ok: false, error: "INVALID_STATUS" },
-        { status: 400 }
-      );
+    if (!["pilot_lagawe", "batch2", "removed_from_pilot"].includes(status)) {
+      return NextResponse.json({ ok: false, error: "INVALID_STATUS" }, { status: 400 });
     }
 
     const result = await supabase
       .from("vendor_onboarding_credentials")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status, updated_at: new Date().toISOString() })
       .eq("vendor_id", vendorId);
 
     if (result.error) {
-      return NextResponse.json(
-        { ok: false, error: result.error.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: result.error.message }, { status: 500 });
     }
 
-    return NextResponse.json({
-      ok: true,
-      vendor_id: vendorId,
-      status,
-    });
+    return NextResponse.json({ ok: true, vendor_id: vendorId, status });
   } catch (error: any) {
-    return NextResponse.json(
-      { ok: false, error: String(error?.message || error) },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: String(error?.message || error) }, { status: 500 });
   }
 }
