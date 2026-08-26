@@ -200,7 +200,7 @@ export default function AnalyticsCompletedTicketsVendorAttendance() {
                             <td className="p-2">{row.driver_name || "-"}</td>
                             <td className="p-2">{row.vendor_name || "-"}</td>
                             <td className="whitespace-nowrap p-2 font-bold">{money(row.fare)}</td>
-                            <td className="max-w-sm p-2 text-[11px] text-slate-600">{row.pickup || "-"} -> {row.dropoff || "-"}</td>
+                            <td className="max-w-sm p-2 text-[11px] text-slate-600">{row.pickup || "-"}{" -> "}{row.dropoff || "-"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -236,9 +236,22 @@ export default function AnalyticsCompletedTicketsVendorAttendance() {
                         </div>
                         {expandedVendor === vendor.vendor_id ? (
                           <div className="mt-3 overflow-x-auto rounded-lg border">
-                            <table className="min-w-full text-left text-xs"><thead className="bg-slate-50 text-[10px] uppercase text-slate-500"><tr><th className="p-2">Date</th><th className="p-2">Opened</th><th className="p-2">First seen</th><th className="p-2">Last seen</th><th className="p-2">Online</th></tr></thead><tbody>
-                              {(vendor.daily || []).map((row: any) => <tr key={row.date} className="border-t"><td className="p-2 font-bold">{row.date}</td><td className="p-2">{fmtDateTime(row.opened_at)}</td><td className="p-2">{fmtDateTime(row.first_seen_at)}</td><td className="p-2">{fmtDateTime(row.last_seen_at)}</td><td className="p-2 font-bold">{hours(row.online_hours)}</td></tr>)}
-                            </tbody></table>
+                            <table className="min-w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-[10px] uppercase text-slate-500">
+                                <tr><th className="p-2">Date</th><th className="p-2">Opened</th><th className="p-2">First seen</th><th className="p-2">Last seen</th><th className="p-2">Online</th></tr>
+                              </thead>
+                              <tbody>
+                                {(vendor.daily || []).map((row: any) => (
+                                  <tr key={row.date} className="border-t">
+                                    <td className="p-2 font-bold">{row.date}</td>
+                                    <td className="p-2">{fmtDateTime(row.opened_at)}</td>
+                                    <td className="p-2">{fmtDateTime(row.first_seen_at)}</td>
+                                    <td className="p-2">{fmtDateTime(row.last_seen_at)}</td>
+                                    <td className="p-2 font-bold">{hours(row.online_hours)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         ) : null}
                       </div>
