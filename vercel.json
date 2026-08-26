@@ -1,5 +1,8 @@
 {
   "headers": [],
+  "env": {
+    "JRIDE_ERRAND_BOOKING_ENABLED": "true"
+  },
   "crons": [
     {
       "path": "/api/cron/advance-booking-lifecycle",
