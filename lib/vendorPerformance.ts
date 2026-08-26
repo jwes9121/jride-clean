@@ -1,3 +1,5 @@
+import { vendorTimeoutDisplay } from "@/lib/vendorTimeoutDisplay";
+
 export type VendorPerformanceBooking = Record<string, any>;
 
 export type VendorDecision = "accepted" | "unaccepted" | "pending";
@@ -90,11 +92,16 @@ export function isCompletedTakeoutOrder(
 export function vendorDecisionTimestamp(
   row: VendorPerformanceBooking
 ): number {
+  if (isVendorTimeoutDecision(row)) {
+    const display = vendorTimeoutDisplay(row);
+    const timeoutValue = new Date(String(display.displayed_at || "")).getTime();
+    if (Number.isFinite(timeoutValue)) return timeoutValue;
+  }
+
   const raw =
     row?.vendor_responded_at ||
     row?.vendor_accepted_at ||
     row?.vendor_rejected_at ||
-    row?.vendor_timeout_at ||
     row?.updated_at ||
     row?.created_at ||
     "";
