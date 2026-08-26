@@ -9,6 +9,10 @@
       "schedule": "*/1 * * * *"
     },
     {
+      "path": "/api/cron/takeout-vendor-expiry",
+      "schedule": "*/1 * * * *"
+    },
+    {
       "path": "/api/cron/takeout-expiry-recovery",
       "schedule": "*/1 * * * *"
     },
