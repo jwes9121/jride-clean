@@ -18,6 +18,7 @@ begin
     where lower(coalesce(booking.service_type, '')) = 'takeout'
       and lower(coalesce(booking.status, '')) not in ('completed', 'cancelled', 'canceled')
       and lower(coalesce(booking.vendor_status, 'vendor_pending')) in ('', 'requested', 'vendor_pending')
+      and booking.created_at >= timestamptz '2026-08-26 12:54:00+00'
       and booking.created_at <= p_now - interval '5 minutes'
     order by booking.created_at
     limit 200
@@ -43,4 +44,4 @@ revoke all on function public.expire_takeout_vendor_pending_v1(timestamptz) from
 grant execute on function public.expire_takeout_vendor_pending_v1(timestamptz) to service_role;
 
 comment on function public.expire_takeout_vendor_pending_v1(timestamptz) is
-  'Expires pending Takeout vendor offers after exactly five minutes. The transition trigger records the exact vendor timeout timestamp.';
+  'Prospectively expires Takeout vendor offers created on or after the 2026-08-26 20:54 Asia/Manila rollout after five minutes. Historical stale pending rows are not rewritten by this sweep.';
