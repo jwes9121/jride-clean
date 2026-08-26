@@ -124,6 +124,20 @@ export async function GET(req: Request) {
       ...(data as any),
     };
     const expiresAt = text((data as any).driver_accept_expires_at);
+    const fare = errandFareBreakdown(
+      mergedBooking,
+      bundle.job,
+      bundle.settings
+    );
+
+    // Keep the Android contract explicit. These aliases are the live values,
+    // including the running waiting fee, not the pre-wait stored booking total.
+    const driverFare = {
+      ...fare,
+      current_service_fare: fare.total_errand_fare,
+      pickup_distance_surcharge: fare.pickup_distance_fee,
+      route_distance_fare: fare.distance_fare,
+    };
 
     return NextResponse.json(
       {
@@ -144,11 +158,7 @@ export async function GET(req: Request) {
           job: bundle.job,
           stops: bundle.stops,
           route_adjustments: bundle.routeAdjustments,
-          fare: errandFareBreakdown(
-            mergedBooking,
-            bundle.job,
-            bundle.settings
-          ),
+          fare: driverFare,
           pabili: errandPabiliAccounting(
             bundle.job,
             bundle.stops,
