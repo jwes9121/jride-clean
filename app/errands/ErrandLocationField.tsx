@@ -24,13 +24,64 @@ type Props = {
   helpText?: string;
 };
 
+const LAST_STAGE0_KEY = "jride_errand_last_stage0_v1";
+const MAX_MOBILE_GPS_ACCURACY_METERS = 2000;
+const MAX_LAST_PIN_DISTANCE_KM = 50;
+
 function text(value: unknown): string {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+  const clean = String(value ?? "").replace(/\s+/g, " ").trim();
+  return clean.toLowerCase() === "null" || clean.toLowerCase() === "undefined"
+    ? ""
+    : clean;
 }
 
 function finite(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isMobileDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+}
+
+function haversineKm(a: ErrandLocationValue, b: { lat: number; lng: number }): number {
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function loadLastStage0(): ErrandLocationValue | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(LAST_STAGE0_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const label = text(parsed?.label);
+    const lat = finite(parsed?.lat);
+    const lng = finite(parsed?.lng);
+    if (!label || lat == null || lng == null) return null;
+    return { label, lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+function saveLastStage0(value: ErrandLocationValue) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(
+      LAST_STAGE0_KEY,
+      JSON.stringify({ label: value.label, lat: value.lat, lng: value.lng })
+    );
+  } catch {}
 }
 
 export default function ErrandLocationField({
@@ -49,10 +100,11 @@ export default function ErrandLocationField({
   const [query, setQuery] = React.useState(value?.label || "");
   const [suggestions, setSuggestions] = React.useState<Suggestion[]>([]);
   const [searching, setSearching] = React.useState(false);
+  const [locating, setLocating] = React.useState(false);
   const [error, setError] = React.useState("");
   const [mapOpen, setMapOpen] = React.useState(false);
-  const [mapLocating, setMapLocating] = React.useState(false);
   const [draft, setDraft] = React.useState<ErrandLocationValue | null>(value);
+  const [lastStage0, setLastStage0] = React.useState<ErrandLocationValue | null>(null);
   const mapDivRef = React.useRef<HTMLDivElement | null>(null);
   const mapRef = React.useRef<any>(null);
   const markerRef = React.useRef<any>(null);
@@ -69,6 +121,10 @@ export default function ErrandLocationField({
   }, [value?.label]);
 
   React.useEffect(() => {
+    if (allowCurrentLocation) setLastStage0(loadLastStage0());
+  }, [allowCurrentLocation]);
+
+  React.useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       try {
@@ -78,6 +134,17 @@ export default function ErrandLocationField({
       markerRef.current = null;
     };
   }, []);
+
+  function commit(next: ErrandLocationValue) {
+    setQuery(next.label);
+    setDraft(next);
+    setSuggestions([]);
+    if (allowCurrentLocation) {
+      saveLastStage0(next);
+      setLastStage0(next);
+    }
+    onChange(next);
+  }
 
   async function retrieve(mapboxId: string): Promise<Suggestion | null> {
     if (!MAPBOX_TOKEN || !mapboxId) return null;
@@ -100,8 +167,7 @@ export default function ErrandLocationField({
         label: text(
           feature?.properties?.full_address ||
             feature?.properties?.place_formatted ||
-            feature?.properties?.name ||
-            ""
+            feature?.properties?.name
         ),
         center: [lng, lat],
       };
@@ -119,10 +185,7 @@ export default function ErrandLocationField({
         `.json?limit=1&country=PH&access_token=${encodeURIComponent(MAPBOX_TOKEN)}`;
       const response = await fetch(url, { cache: "no-store" });
       const json: any = await response.json().catch(() => ({}));
-      return (
-        text(json?.features?.[0]?.place_name) ||
-        `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-      );
+      return text(json?.features?.[0]?.place_name) || `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     } catch {
       return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
     }
@@ -196,125 +259,104 @@ export default function ErrandLocationField({
     const lng = finite(selected.center?.[0]);
     const lat = finite(selected.center?.[1]);
     if (lat == null || lng == null) return;
-    const next = { label: selected.label, lat, lng };
-    setQuery(next.label);
-    setSuggestions([]);
-    setDraft(next);
-    onChange(next);
-  }
-
-  function currentCoordinates(): Promise<{ lat: number; lng: number }> {
-    return new Promise((resolve, reject) => {
-      const geo = typeof navigator !== "undefined" ? navigator.geolocation : null;
-      if (!geo?.getCurrentPosition) {
-        reject(new Error("Location is not available on this device."));
-        return;
-      }
-
-      geo.getCurrentPosition(
-        (position) => {
-          const lat = finite(position.coords.latitude);
-          const lng = finite(position.coords.longitude);
-          if (lat == null || lng == null) {
-            reject(new Error("Could not read your location."));
-            return;
-          }
-          resolve({ lat, lng });
-        },
-        (err) => {
-          reject(
-            new Error(
-              Number(err?.code) === 1
-                ? "Location permission was denied."
-                : text(err?.message) || "Could not read your location."
-            )
-          );
-        },
-        {
-          enableHighAccuracy: /Android|iPhone|iPad|iPod/i.test(
-            navigator.userAgent || ""
-          ),
-          timeout: 15000,
-          maximumAge: 30000,
-        }
-      );
-    });
+    commit({ label: selected.label, lat, lng });
   }
 
   async function useCurrentLocation() {
     setError("");
-    setMapLocating(true);
-    try {
-      const { lat, lng } = await currentCoordinates();
-      const label = await reverseGeocode(lng, lat);
-      const next = { label, lat, lng };
-      setQuery(label);
-      setDraft(next);
-      setSuggestions([]);
-      onChange(next);
-    } catch (err: any) {
-      setError(text(err?.message) || "Could not read your location.");
-    } finally {
-      setMapLocating(false);
+
+    if (!isMobileDevice()) {
+      setError(
+        "Desktop location can be inaccurate and may point to Manila. Search your Stage 0 place, or use the last Stage 0 pin."
+      );
+      return;
     }
+
+    const geo = typeof navigator !== "undefined" ? navigator.geolocation : null;
+    if (!geo?.getCurrentPosition) {
+      setError("Location is not available on this device.");
+      return;
+    }
+
+    setLocating(true);
+    geo.getCurrentPosition(
+      async (position) => {
+        const lat = finite(position.coords.latitude);
+        const lng = finite(position.coords.longitude);
+        const accuracy = finite(position.coords.accuracy);
+        if (lat == null || lng == null) {
+          setError("Could not read your location.");
+          setLocating(false);
+          return;
+        }
+        if (accuracy != null && accuracy > MAX_MOBILE_GPS_ACCURACY_METERS) {
+          setError(
+            `Current location is too approximate (${Math.ceil(accuracy / 1000)} km). Wait for GPS or search the meeting place.`
+          );
+          setLocating(false);
+          return;
+        }
+        if (
+          lastStage0 &&
+          haversineKm(lastStage0, { lat, lng }) > MAX_LAST_PIN_DISTANCE_KM
+        ) {
+          setError(
+            "The device location is far from your last Stage 0 pin. JRide did not move the pin; search the correct place or use the last pin."
+          );
+          setLocating(false);
+          return;
+        }
+        const label = await reverseGeocode(lng, lat);
+        commit({ label, lat, lng });
+        setLocating(false);
+      },
+      (err) => {
+        setError(
+          Number(err?.code) === 1
+            ? "Location permission was denied."
+            : text(err?.message) || "Could not read your location."
+        );
+        setLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 30000,
+      }
+    );
   }
 
-  async function openMap() {
+  function openMap() {
     setError("");
+    const saved = allowCurrentLocation ? lastStage0 || loadLastStage0() : null;
+    const initial =
+      value ||
+      saved ||
+      (proximity
+        ? { label: "Map pin", lat: proximity.lat, lng: proximity.lng }
+        : null);
 
-    if (value) {
-      setDraft(value);
-      setMapOpen(true);
+    if (!initial) {
+      setError(
+        "Search the meeting place or tap Use my current location first. JRide will not guess your town."
+      );
       return;
     }
 
-    if (proximity) {
-      setDraft({
-        label: "Map pin",
-        lat: proximity.lat,
-        lng: proximity.lng,
-      });
-      setMapOpen(true);
-      return;
-    }
-
-    if (allowCurrentLocation) {
-      setMapLocating(true);
-      try {
-        const { lat, lng } = await currentCoordinates();
-        const label = await reverseGeocode(lng, lat);
-        setDraft({ label, lat, lng });
-        setMapOpen(true);
-      } catch (err: any) {
-        setError(
-          text(err?.message) ||
-            "Allow location access or search for the Stage 0 address first."
-        );
-      } finally {
-        setMapLocating(false);
-      }
-      return;
-    }
-
-    setError("Set Stage 0 first so this map opens near the Errand route.");
+    setDraft(initial);
+    setMapOpen(true);
   }
 
   React.useEffect(() => {
-    if (!mapOpen || !mapDivRef.current || !MAPBOX_TOKEN) return;
+    if (!mapOpen || !mapDivRef.current || !MAPBOX_TOKEN || !draft) return;
     let cancelled = false;
 
     (async () => {
       try {
         if (!mapboxRef.current) mapboxRef.current = await import("mapbox-gl");
-        if (cancelled || !mapDivRef.current) return;
+        if (cancelled || !mapDivRef.current || !draft) return;
         const MapboxGL = mapboxRef.current.default || mapboxRef.current;
         MapboxGL.accessToken = MAPBOX_TOKEN;
-
-        const initial = draft || value || {
-          label: "Map pin",
-          lat: proximity?.lat ?? 16.801351,
-          lng: proximity?.lng ?? 121.124289,
-        };
 
         if (mapRef.current) {
           try {
@@ -325,12 +367,12 @@ export default function ErrandLocationField({
         mapRef.current = new MapboxGL.Map({
           container: mapDivRef.current,
           style: "mapbox://styles/mapbox/streets-v12",
-          center: [initial.lng, initial.lat],
+          center: [draft.lng, draft.lat],
           zoom: 14,
         });
         mapRef.current.addControl(new MapboxGL.NavigationControl(), "top-right");
         markerRef.current = new MapboxGL.Marker({ color: "#059669" })
-          .setLngLat([initial.lng, initial.lat])
+          .setLngLat([draft.lng, draft.lat])
           .addTo(mapRef.current);
 
         mapRef.current.on("click", async (event: any) => {
@@ -358,8 +400,7 @@ export default function ErrandLocationField({
 
   function confirmMapPin() {
     if (!draft) return;
-    setQuery(draft.label);
-    onChange(draft);
+    commit(draft);
     setMapOpen(false);
   }
 
@@ -387,10 +428,9 @@ export default function ErrandLocationField({
         <button
           type="button"
           onClick={openMap}
-          disabled={mapLocating}
-          className="absolute right-2 top-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-wait disabled:opacity-60"
+          className="absolute right-2 top-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
         >
-          {mapLocating ? "Locating..." : "Map"}
+          Map
         </button>
 
         {suggestions.length > 0 ? (
@@ -415,10 +455,19 @@ export default function ErrandLocationField({
           <button
             type="button"
             onClick={useCurrentLocation}
-            disabled={mapLocating}
+            disabled={locating}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
           >
-            {mapLocating ? "Locating..." : "Use my current location"}
+            {locating ? "Locating..." : "Use my current location"}
+          </button>
+        ) : null}
+        {allowCurrentLocation && lastStage0 ? (
+          <button
+            type="button"
+            onClick={() => commit(lastStage0)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Use last Stage 0
           </button>
         ) : null}
         {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
@@ -429,8 +478,13 @@ export default function ErrandLocationField({
         ) : null}
       </div>
 
+      {allowCurrentLocation && lastStage0 && !value ? (
+        <div className="text-[11px] text-slate-500">
+          Map will open at your last Stage 0 pin: {lastStage0.label}
+        </div>
+      ) : null}
       {helpText ? <div className="text-[11px] text-slate-500">{helpText}</div> : null}
-      {error ? <div className="text-xs text-red-600">{error}</div> : null}
+      {error ? <div className="text-xs font-medium text-red-600">{error}</div> : null}
 
       {mapOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center">
