@@ -73,8 +73,17 @@ export async function GET(req: NextRequest) {
   const group = clean(req.nextUrl.searchParams.get("group") || "pilot_active").toLowerCase();
   const town = clean(req.nextUrl.searchParams.get("town"));
   const query = clean(req.nextUrl.searchParams.get("q")).toLowerCase();
+  const now = Date.now();
   const startMs = periodStart(range, days);
+  const todayStart = manilaDayStart(now);
+  const weekStart = manilaWeekStart(now);
+  const monthStart = manilaMonthStart(now);
+  const queryStartMs = Math.min(startMs, monthStart);
   const startDate = dateKey(startMs);
+  const queryStartDate = dateKey(queryStartMs);
+  const todayKey = dateKey(todayStart);
+  const weekKey = dateKey(weekStart);
+  const monthKey = dateKey(monthStart);
 
   const [vendorsRes, attendanceRes, registryRes] = await Promise.all([
     admin
@@ -84,7 +93,7 @@ export async function GET(req: NextRequest) {
     admin
       .from("vendor_daily_attendance")
       .select("vendor_id,attendance_date,opened_at,first_seen_at,last_seen_at,online_minutes,source")
-      .gte("attendance_date", startDate)
+      .gte("attendance_date", queryStartDate)
       .order("attendance_date", { ascending: false })
       .limit(30000),
     admin
@@ -111,14 +120,6 @@ export async function GET(req: NextRequest) {
     if (!attendanceByVendor.has(vendorId)) attendanceByVendor.set(vendorId, []);
     attendanceByVendor.get(vendorId)!.push(row);
   }
-
-  const now = Date.now();
-  const todayStart = manilaDayStart(now);
-  const weekStart = manilaWeekStart(now);
-  const monthStart = manilaMonthStart(now);
-  const todayKey = dateKey(todayStart);
-  const weekKey = dateKey(weekStart);
-  const monthKey = dateKey(monthStart);
 
   const vendors = (Array.isArray(vendorsRes.data) ? vendorsRes.data : [])
     .filter((vendor: any) => clean(vendor?.id) !== TEST_VENDOR_ID)
@@ -157,15 +158,17 @@ export async function GET(req: NextRequest) {
         today: summarize(todayKey),
         this_week: summarize(weekKey),
         this_month: summarize(monthKey),
-        daily: rows.map((row: any) => ({
-          date: row?.attendance_date,
-          opened_at: row?.opened_at || null,
-          first_seen_at: row?.first_seen_at || null,
-          last_seen_at: row?.last_seen_at || null,
-          online_minutes: Number(row?.online_minutes || 0),
-          online_hours: Math.round((Number(row?.online_minutes || 0) / 60) * 100) / 100,
-          source: clean(row?.source) || null,
-        })),
+        daily: rows
+          .filter((row: any) => clean(row?.attendance_date) >= startDate)
+          .map((row: any) => ({
+            date: row?.attendance_date,
+            opened_at: row?.opened_at || null,
+            first_seen_at: row?.first_seen_at || null,
+            last_seen_at: row?.last_seen_at || null,
+            online_minutes: Number(row?.online_minutes || 0),
+            online_hours: Math.round((Number(row?.online_minutes || 0) / 60) * 100) / 100,
+            source: clean(row?.source) || null,
+          })),
       };
     })
     .filter((vendor: any) => {
