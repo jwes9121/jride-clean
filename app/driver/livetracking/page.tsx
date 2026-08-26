@@ -11,7 +11,7 @@ import { supabase } from "@/lib/supabaseDriverClient";
 export default function DriverLiveTrackingPage() {
   const [online, setOnline] = useState(false);
   const [town, setTown] = useState("Lagawe");
-  const [statusMsg, setStatusMsg] = useState("Checking driver session…");
+  const [statusMsg, setStatusMsg] = useState("Checking driver session...");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -29,14 +29,13 @@ export default function DriverLiveTrackingPage() {
   }, []);
 
   const handleToggle = async () => {
-    // If not logged in, send straight to login
     if (!isAuthenticated) {
       window.location.href = "/driver/login";
       return;
     }
 
     if (!online) {
-      setStatusMsg("Starting tracking…");
+      setStatusMsg("Starting tracking...");
       const result: UpsertResult = await startDriverTracking(town);
 
       if (result === "ok") {
@@ -51,7 +50,7 @@ export default function DriverLiveTrackingPage() {
         );
       }
     } else {
-      setStatusMsg("Stopping tracking…");
+      setStatusMsg("Stopping tracking...");
       const result: UpsertResult = await stopDriverTracking(town);
 
       setOnline(false);
@@ -71,11 +70,11 @@ export default function DriverLiveTrackingPage() {
       : "Go Online";
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100 p-4">
       <h1 className="text-xl font-semibold mb-2">
         JRide Driver Live Tracking
       </h1>
-      <p className="text-xs text-slate-400 mb-4">
+      <p className="text-xs text-slate-400 mb-4 text-center">
         Toggle Online to send your location to the JRide admin live map.
       </p>
 
@@ -103,15 +102,30 @@ export default function DriverLiveTrackingPage() {
 
       <div className="mt-3 flex flex-col items-center gap-2 text-xs text-slate-300 max-w-md text-center">
         <span>{statusMsg}</span>
-        {isAuthenticated === false && (
+        {isAuthenticated === false ? (
           <a
             href="/driver/login"
             className="inline-block mt-1 px-3 py-1 rounded bg-sky-600 hover:bg-sky-500 text-[10px] font-medium"
           >
             Go to Driver Login
           </a>
-        )}
+        ) : null}
       </div>
+
+      {isAuthenticated ? (
+        <div className="mt-6 w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <div className="text-sm font-semibold text-white">Driver services</div>
+          <div className="mt-1 text-xs text-slate-400">
+            Open the Errand screen to receive offers, perform Stage 0 review, and complete active Errand/Pabili jobs.
+          </div>
+          <a
+            href="/driver/errand"
+            className="mt-3 block w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-emerald-500"
+          >
+            Open Errand / Pabili
+          </a>
+        </div>
+      ) : null}
     </div>
   );
 }
