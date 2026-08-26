@@ -22,6 +22,12 @@ export default function VendorAdminLayout({
           >
             Online behavior and statistics
           </a>
+          <a
+            href="/admin/vendors/compliance"
+            className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-bold hover:border-amber-400 hover:bg-amber-500/10"
+          >
+            Compliance reviews
+          </a>
         </div>
       </nav>
       {children}
