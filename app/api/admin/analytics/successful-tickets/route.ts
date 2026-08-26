@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
       : []
   );
 
-  let rows = (Array.isArray(bookingsRes.data) ? bookingsRes.data : []).filter((row: any) => {
+  const rows = (Array.isArray(bookingsRes.data) ? bookingsRes.data : []).filter((row: any) => {
     const completedMs = completionTime(row);
     if (!completedMs || completedMs < startMs) return false;
     if (service !== "all" && clean(row?.service_type).toLowerCase() !== service) return false;
@@ -183,10 +183,6 @@ export async function GET(req: NextRequest) {
       takeout_delivery_fee: num(row?.takeout_delivery_fee),
     };
   });
-
-  if (query) {
-    rows = [];
-  }
 
   const filtered = query
     ? output.filter((row: any) =>
