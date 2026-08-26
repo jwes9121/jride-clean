@@ -119,6 +119,7 @@ export function bookingCreatedTimestamp(
 export function vendorResponseSeconds(
   row: VendorPerformanceBooking
 ): number | null {
+  if (vendorDecision(row) === "pending") return null;
   const created = bookingCreatedTimestamp(row);
   const responded = vendorDecisionTimestamp(row);
   if (!created || !responded || responded < created) return null;
