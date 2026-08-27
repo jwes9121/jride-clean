@@ -158,6 +158,34 @@ function stageIsConfirmed(stageRaw: unknown): boolean {
   ].includes(stage);
 }
 
+function friendlyStage(stageRaw: unknown, currentStopSequence?: number | null): string {
+  const stage = text(stageRaw).toLowerCase();
+  const stopNumber = Number(currentStopSequence || 0);
+  const labels: Record<string, string> = {
+    draft: "Preparing request",
+    matching: "Looking for a driver",
+    driver_assigned: "Driver assigned",
+    going_to_customer: "Driver going to your meeting point",
+    stage0_review: "Confirming the task with you",
+    awaiting_customer_confirmation: "Waiting for your confirmation",
+    task_confirmed: "Task confirmed",
+    going_to_stop: stopNumber > 0 ? `Going to Task Stop ${stopNumber}` : "Going to a task stop",
+    waiting_at_stop: stopNumber > 0 ? `Waiting at Task Stop ${stopNumber}` : "Waiting at a task stop",
+    resolving_stop_issue: "Resolving a task-stop issue",
+    going_to_customer_for_cash: "Returning to you for additional Pabili funds",
+    waiting_for_cash_topup: "Waiting for additional Pabili funds",
+    returning_to_stop_after_cash: stopNumber > 0 ? `Returning to Task Stop ${stopNumber}` : "Returning to the task stop",
+    going_to_final: "Going to the Errand destination",
+    waiting_at_final_handoff: "Waiting at the Errand destination",
+    unreachable_escalated: "Destination handoff escalated",
+    handoff_complete: "Errand handoff complete",
+    completed: "Errand completed",
+    cancelled: "Errand cancelled",
+    expired: "Errand expired",
+  };
+  return labels[stage] || stage || "Updating Errand";
+}
+
 async function fetchDisplayRoute(
   token: string,
   coords: SimpleCoord[]
@@ -276,14 +304,14 @@ export default function ErrandLiveMap({
   );
 
   const routeOrder = React.useMemo(() => {
-    const items = ["DRIVER", "YOU / STAGE 0"];
+    const items = ["DRIVER", "YOU / MEETING POINT"];
     const sortedStops = [...stops].sort(
       (a, b) => Number(a.sequence || 0) - Number(b.sequence || 0)
     );
     for (const stop of sortedStops) {
-      items.push(`STOP ${stop.sequence || items.length - 1}`);
+      items.push(`TASK STOP ${stop.sequence || items.length - 1}`);
     }
-    items.push(finalReturnsToStage0 ? "FINAL: RETURN TO YOU" : "FINAL");
+    items.push(finalReturnsToStage0 ? "RETURN TO YOU" : "FINAL DESTINATION");
     return items;
   }, [stops, finalReturnsToStage0]);
 
@@ -533,15 +561,15 @@ export default function ErrandLiveMap({
         stopMarkersRef.current = [];
 
         if (stage0) {
-          const stageLabel = finalReturnsToStage0
-            ? "YOU / STAGE 0 + FINAL RETURN"
-            : "YOU / STAGE 0";
+          const meetingLabel = finalReturnsToStage0
+            ? "YOU / MEETING POINT + RETURN"
+            : "YOU / MEETING POINT";
           const marker = new MapboxGL.Marker({
-            element: markerElement(stageLabel, finalReturnsToStage0 ? "return" : "stage0"),
+            element: markerElement(meetingLabel, finalReturnsToStage0 ? "return" : "stage0"),
             anchor: "bottom",
           })
             .setLngLat([stage0.lng, stage0.lat])
-            .setPopup(new MapboxGL.Popup({ offset: 24 }).setText(`${stageLabel}: ${stage0.label}`))
+            .setPopup(new MapboxGL.Popup({ offset: 24 }).setText(`${meetingLabel}: ${stage0.label}`))
             .addTo(mapRef.current);
           stopMarkersRef.current.push(marker);
         }
@@ -550,7 +578,7 @@ export default function ErrandLiveMap({
           (a, b) => Number(a.sequence || 0) - Number(b.sequence || 0)
         );
         for (const point of sortedStops) {
-          const label = `STOP ${point.sequence || ""}`.trim();
+          const label = `TASK STOP ${point.sequence || ""}`.trim();
           const marker = new MapboxGL.Marker({
             element: markerElement(label, "stop"),
             anchor: "bottom",
@@ -563,11 +591,11 @@ export default function ErrandLiveMap({
 
         if (finalPoint && !finalReturnsToStage0) {
           const marker = new MapboxGL.Marker({
-            element: markerElement("FINAL", "final"),
+            element: markerElement("FINAL DESTINATION", "final"),
             anchor: "bottom",
           })
             .setLngLat([finalPoint.lng, finalPoint.lat])
-            .setPopup(new MapboxGL.Popup({ offset: 24 }).setText(`FINAL: ${finalPoint.label}`))
+            .setPopup(new MapboxGL.Popup({ offset: 24 }).setText(`FINAL DESTINATION: ${finalPoint.label}`))
             .addTo(mapRef.current);
           stopMarkersRef.current.push(marker);
         }
@@ -605,6 +633,10 @@ export default function ErrandLiveMap({
   const confirmedKm = finite(tracking?.confirmed_route?.distance_km);
   const actualPointCount = pointsRef.current.length;
   const confirmed = stageIsConfirmed(tracking?.errand_stage || errandStage) || confirmedKm != null;
+  const displayedStage = friendlyStage(
+    tracking?.errand_stage || errandStage,
+    currentStopSequence
+  );
 
   return (
     <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
@@ -612,7 +644,7 @@ export default function ErrandLiveMap({
         <div>
           <div className="text-sm font-semibold text-slate-950">Live Errand map</div>
           <div className="mt-1 text-xs text-slate-500">
-            Follow the labeled route in order. Each person and stop is identified on the map.
+            Follow the labeled route in order. The customer meeting point, task stops and destination are identified on the map.
           </div>
         </div>
         <div className="text-xs text-slate-500">
@@ -633,7 +665,7 @@ export default function ErrandLiveMap({
 
       <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-teal-900">
-          <span className="font-bold">Teal solid:</span> Driver -&gt; You / Stage 0
+          <span className="font-bold">Teal solid:</span> Driver -&gt; You / Meeting Point
         </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
           <span className="font-bold">Gray dashed:</span> task-route preview before confirmation
@@ -665,10 +697,7 @@ export default function ErrandLiveMap({
         </div>
         <div className="rounded-2xl bg-slate-50 p-3">
           <div className="text-slate-400">Current stage</div>
-          <div className="mt-1 font-semibold text-slate-800">
-            {text(errandStage) || text(tracking?.errand_stage) || "--"}
-            {currentStopSequence ? ` | Stop ${currentStopSequence}` : ""}
-          </div>
+          <div className="mt-1 font-semibold text-slate-800">{displayedStage}</div>
         </div>
         <div className="rounded-2xl bg-slate-50 p-3">
           <div className="text-slate-400">Driver location</div>
@@ -684,7 +713,7 @@ export default function ErrandLiveMap({
 
       {!confirmed ? (
         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-          The gray task route is only a preview so you can see Stage 0, Stop 1 and the final destination clearly. The green billing route appears only after the driver finishes Stage 0 review and you confirm the task.
+          The gray task route is only a preview so you can see the meeting point, Task Stop 1 and the Errand destination clearly. The green billing route appears only after the driver finishes reviewing the task with you and you confirm it.
         </div>
       ) : null}
 
