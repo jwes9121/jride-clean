@@ -50,7 +50,10 @@ type MapPoint = {
 };
 
 function text(value: unknown): string {
-  return String(value ?? "").replace(/\s+/g, " ").trim();
+  const clean = String(value ?? "").replace(/\s+/g, " ").trim();
+  return clean.toLowerCase() === "null" || clean.toLowerCase() === "undefined"
+    ? ""
+    : clean;
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -140,21 +143,23 @@ function prettyStage(stageRaw: unknown, statusRaw: unknown): string {
     draft: "Preparing request",
     matching: "Looking for a driver",
     driver_assigned: "Driver assigned",
-    going_to_customer: "Driver going to Stage 0",
-    stage0_review: "Reviewing task at Stage 0",
+    going_to_customer: "Driver going to your meeting point",
+    stage0_review: "Confirming the task with you",
     awaiting_customer_confirmation: "Waiting for your confirmation",
     task_confirmed: "Task confirmed",
-    going_to_stop: "Going to task stop",
-    waiting_at_stop: "Driver waiting at task stop",
-    resolving_stop_issue: "Resolving stop issue",
-    going_to_customer_for_cash: "Returning for additional Pabili funds",
+    going_to_stop: "Going to a task stop",
+    waiting_at_stop: "Driver waiting at a task stop",
+    resolving_stop_issue: "Resolving a task-stop issue",
+    going_to_customer_for_cash: "Returning to you for additional Pabili funds",
     waiting_for_cash_topup: "Waiting for additional Pabili funds",
     returning_to_stop_after_cash: "Returning to the task stop",
-    going_to_final: "Going to final destination",
-    waiting_at_final_handoff: "Waiting at final handoff",
-    unreachable_escalated: "Final handoff escalated",
-    handoff_complete: "Handoff complete",
+    going_to_final: "Going to the Errand destination",
+    waiting_at_final_handoff: "Waiting at the Errand destination",
+    unreachable_escalated: "Destination handoff escalated",
+    handoff_complete: "Errand handoff complete",
     completed: "Errand completed",
+    cancelled: "Errand cancelled",
+    expired: "Errand expired",
   };
   if (labels[stage]) return labels[stage];
   if (["requested", "pending", "searching"].includes(status)) {
@@ -168,19 +173,19 @@ function stageDescription(stageRaw: unknown, statusRaw: unknown): string {
   const stage = text(stageRaw).toLowerCase();
   const status = text(statusRaw).toLowerCase();
   if (["requested", "pending", "searching"].includes(status)) {
-    return "JRide is searching for an eligible driver from your Stage 0 town.";
+    return "JRide is searching for an eligible driver from your meeting-point town.";
   }
   if (stage === "driver_assigned") {
     return "A same-town driver has been assigned. Wait for the driver to accept.";
   }
   if (stage === "going_to_customer") {
-    return "Your driver accepted the Errand and is travelling to your Stage 0 location.";
+    return "Your driver accepted the Errand and is travelling to your customer meeting point.";
   }
   if (stage === "stage0_review") {
-    return "Review the task together. Cargo suitability is checked before Pabili cash changes hands.";
+    return "Review the task together. The driver checks cargo suitability before any Pabili cash changes hands.";
   }
   if (stage === "awaiting_customer_confirmation") {
-    return "The driver finished the Stage 0 review. Check the final stops, cargo and starting fare before confirming.";
+    return "The driver finished reviewing the task with you. Check the task stops, cargo and starting fare before confirming.";
   }
   if (stage === "task_confirmed") {
     return "The task is locked and the driver can start the confirmed Errand route.";
@@ -189,10 +194,10 @@ function stageDescription(stageRaw: unknown, statusRaw: unknown): string {
     return "Waiting is cumulative for the whole Errand. The first 15 total minutes are free.";
   }
   if (stage === "unreachable_escalated") {
-    return "The 30-minute local handoff limit was reached. JRide support or dispatch must resolve the handoff.";
+    return "The 30-minute destination handoff limit was reached. JRide support or dispatch must resolve the handoff.";
   }
   if (stage === "waiting_at_final_handoff") {
-    return "The driver is at the final handoff. The local handoff waiting limit is 30 minutes.";
+    return "The driver is at the Errand destination. The local handoff waiting limit is 30 minutes.";
   }
   return "Follow the current Errand stage below.";
 }
@@ -352,6 +357,20 @@ export default function ErrandPage() {
     finalReady &&
     !cargoTooHeavy &&
     (!isPabili || numberOrNull(estimatedPurchase) != null);
+  const firstMissingStopIndex = stops.findIndex((stop) => !stop.location);
+  const missingRequirement = !stage0
+    ? "Customer meeting point"
+    : text(taskDescription).length < 3
+      ? "Task description"
+      : firstMissingStopIndex >= 0
+        ? `Task Stop ${firstMissingStopIndex + 1} location`
+        : !finalReady
+          ? "Errand destination"
+          : cargoTooHeavy
+            ? "Cargo must not exceed 100 kg"
+            : isPabili && numberOrNull(estimatedPurchase) == null
+              ? "Estimated Pabili purchase amount"
+              : "";
 
   function updateStopLocation(id: string, location: ErrandLocationValue) {
     setStops((rows) =>
@@ -397,7 +416,11 @@ export default function ErrandPage() {
       return;
     }
     if (!formReady || !stage0) {
-      setNotice("Complete the task, pins, and cargo details before booking.");
+      setNotice(
+        missingRequirement
+          ? `Missing: ${missingRequirement}.`
+          : "Complete the meeting point, task stops, destination and cargo details before booking."
+      );
       return;
     }
 
@@ -511,6 +534,8 @@ export default function ErrandPage() {
   const driverLocation = current?.driver_location || {};
   const stage = text(job?.errand_stage).toLowerCase();
   const status = text(booking?.status).toLowerCase();
+  const returnsToCustomer =
+    text(job?.final_destination_mode).toLowerCase() === "return_to_customer";
   const awaitingConfirmation =
     stage === "awaiting_customer_confirmation" || status === "fare_proposed";
   const taskLocked = job?.task_locked === true;
@@ -520,7 +545,7 @@ export default function ErrandPage() {
   const stage0MapPoint: MapPoint | null =
     stage0Lat != null && stage0Lng != null
       ? {
-          label: text(booking?.from_label) || "Stage 0",
+          label: text(booking?.from_label) || "Customer meeting point",
           lat: stage0Lat,
           lng: stage0Lng,
           kind: "stage0",
@@ -532,7 +557,9 @@ export default function ErrandPage() {
     const lng = numberOrNull(stop?.lng);
     if (lat == null || lng == null) return points;
     points.push({
-      label: text(stop?.location_label) || `Stop ${Number(stop?.sequence || points.length + 1)}`,
+      label:
+        text(stop?.location_label) ||
+        `Task Stop ${Number(stop?.sequence || points.length + 1)}`,
       lat,
       lng,
       kind: "stop",
@@ -546,7 +573,10 @@ export default function ErrandPage() {
   const finalMapPoint: MapPoint | null =
     finalLat != null && finalLng != null
       ? {
-          label: text(job?.final_label) || text(booking?.to_label) || "Final destination",
+          label:
+            text(job?.final_label) ||
+            text(booking?.to_label) ||
+            (returnsToCustomer ? "Return to you" : "Final destination"),
           lat: finalLat,
           lng: finalLng,
           kind: "final",
@@ -562,9 +592,9 @@ export default function ErrandPage() {
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
                 JRide Passenger
               </div>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Errand / Pabili</h1>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Errand</h1>
               <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                The driver meets you first at Stage 0, reviews the task with you, then you confirm the final task before the Errand starts.
+                The driver meets you first, reviews the task with you, then you confirm it before the Errand starts. Select Pabili only when the driver needs to buy something.
               </p>
             </div>
             <button
@@ -606,7 +636,7 @@ export default function ErrandPage() {
           <div className="rounded-[24px] border border-red-200 bg-red-50 p-5 shadow-sm">
             <div className="font-semibold text-red-950">Full verification required</div>
             <div className="mt-1 text-sm text-red-900">
-              Current verification status: {text(eligibility?.verification_status) || "not approved"}. Errand/Pabili is available only after admin approval.
+              Current verification status: {text(eligibility?.verification_status) || "not approved"}. Errand and Pabili Errand are available only after admin approval.
             </div>
             <button
               type="button"
@@ -723,7 +753,7 @@ export default function ErrandPage() {
                     <div className="mt-1 text-slate-800">{text(job?.task_description) || "--"}</div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Stage 0</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">Customer meeting point</div>
                     <div className="mt-1 text-slate-800">{text(booking?.from_label) || "--"}</div>
                   </div>
                   <div>
@@ -740,7 +770,7 @@ export default function ErrandPage() {
                           }
                         >
                           <div className="font-semibold text-slate-800">
-                            Stop {String(stop?.sequence || "-")}: {text(stop?.location_label) || "--"}
+                            Task Stop {String(stop?.sequence || "-")}: {text(stop?.location_label) || "--"}
                           </div>
                           {text(stop?.instructions) ? (
                             <div className="mt-1 text-xs text-slate-600">{text(stop.instructions)}</div>
@@ -754,7 +784,9 @@ export default function ErrandPage() {
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Final destination</div>
+                    <div className="text-xs uppercase tracking-wide text-slate-400">
+                      {returnsToCustomer ? "Return to you" : "Final destination"}
+                    </div>
                     <div className="mt-1 text-slate-800">{text(job?.final_label) || text(booking?.to_label) || "--"}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
@@ -791,7 +823,7 @@ export default function ErrandPage() {
                   <FareRow label="Base fare" value={fare?.base_fare} />
                   <FareRow label="Pickup distance" value={fare?.pickup_distance_fee} />
                   <FareRow label={`Confirmed route (${km(job?.confirmed_route_distance_km)})`} value={fare?.distance_fare} />
-                  <FareRow label="Additional stops" value={fare?.extra_stop_fee} />
+                  <FareRow label="Additional task stops" value={fare?.extra_stop_fee} />
                   <FareRow label="Waiting" value={fare?.waiting_fee} />
                   <FareRow label="Elevation" value={fare?.elevation_surcharge} />
                   <FareRow label="Heavy load" value={fare?.heavy_load_fee} />
@@ -813,7 +845,7 @@ export default function ErrandPage() {
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-white/70 p-4">
                     <div className="text-sm font-semibold text-amber-950">Your confirmation locks the task.</div>
                     <div className="mt-1 text-xs text-amber-900">
-                      Check the stops, cargo and starting fare above. After confirmation there is no normal edit flow; exceptions require explicit handling.
+                      Check the task stops, cargo and starting fare above. After confirmation there is no normal edit flow; exceptions require explicit handling.
                     </div>
                     <button
                       type="button"
@@ -854,7 +886,7 @@ export default function ErrandPage() {
                 <div>
                   <div className="text-sm font-semibold text-slate-950">New Errand</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    Passenger: {profileName}. Stage 0 is where the driver meets you and confirms the task.
+                    Passenger: {profileName}. The customer meeting point is where the driver meets you and confirms the task.
                   </div>
                 </div>
                 <button
@@ -870,10 +902,10 @@ export default function ErrandPage() {
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
               <div className="space-y-4 lg:col-span-2">
                 <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">1. Meet the driver at Stage 0</div>
+                  <div className="text-sm font-semibold text-slate-950">1. Set the customer meeting point</div>
                   <div className="mt-3">
                     <ErrandLocationField
-                      title="Stage 0 location"
+                      title="Customer meeting point"
                       value={stage0}
                       onChange={setStage0}
                       allowCurrentLocation
@@ -897,14 +929,14 @@ export default function ErrandPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold text-slate-950">3. Task stops</div>
-                      <div className="text-xs text-slate-500">Stop 1 is included. Each confirmed stop after Stop 1 currently adds PHP 40.</div>
+                      <div className="text-xs text-slate-500">Task Stop 1 is included. Each confirmed task stop after Task Stop 1 currently adds PHP 40.</div>
                     </div>
                     <button
                       type="button"
                       onClick={addStop}
                       className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
                     >
-                      Add stop
+                      Add task stop
                     </button>
                   </div>
 
@@ -912,7 +944,7 @@ export default function ErrandPage() {
                     {stops.map((stop, index) => (
                       <div key={stop.id} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
                         <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-800">Stop {index + 1}</div>
+                          <div className="text-sm font-semibold text-slate-800">Task Stop {index + 1}</div>
                           {stops.length > 1 ? (
                             <button
                               type="button"
@@ -925,7 +957,7 @@ export default function ErrandPage() {
                         </div>
                         <div className="mt-3">
                           <ErrandLocationField
-                            title={`Stop ${index + 1} location`}
+                            title={`Task Stop ${index + 1} location`}
                             value={stop.location}
                             onChange={(location) => updateStopLocation(stop.id, location)}
                             proximity={stage0 ? { lat: stage0.lat, lng: stage0.lng } : null}
@@ -935,7 +967,7 @@ export default function ErrandPage() {
                         <input
                           value={stop.instructions}
                           onChange={(event) => updateStopInstructions(stop.id, event.target.value)}
-                          placeholder="Optional instructions for this stop"
+                          placeholder="Optional instructions for this task stop"
                           className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
                         />
                       </div>
@@ -944,7 +976,7 @@ export default function ErrandPage() {
                 </div>
 
                 <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">4. Final destination</div>
+                  <div className="text-sm font-semibold text-slate-950">4. Where should the Errand end?</div>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <button
                       type="button"
@@ -957,7 +989,7 @@ export default function ErrandPage() {
                       }
                     >
                       <div className="font-semibold">Return to me</div>
-                      <div className="mt-1 text-xs opacity-70">Final handoff is back at your Stage 0 pin.</div>
+                      <div className="mt-1 text-xs opacity-70">The driver returns to your customer meeting point.</div>
                     </button>
                     <button
                       type="button"
@@ -969,8 +1001,8 @@ export default function ErrandPage() {
                           : "border-slate-200 bg-white text-slate-700")
                       }
                     >
-                      <div className="font-semibold">Different address</div>
-                      <div className="mt-1 text-xs opacity-70">Deliver or finish somewhere else.</div>
+                      <div className="font-semibold">Different destination</div>
+                      <div className="mt-1 text-xs opacity-70">End the Errand somewhere else.</div>
                     </button>
                   </div>
 
@@ -986,7 +1018,7 @@ export default function ErrandPage() {
                     </div>
                   ) : stage0 ? (
                     <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-                      Final handoff: {stage0.label}
+                      Return to you: {stage0.label}
                     </div>
                   ) : null}
                 </div>
@@ -994,7 +1026,7 @@ export default function ErrandPage() {
 
               <aside className="space-y-4">
                 <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">Pabili</div>
+                  <div className="text-sm font-semibold text-slate-950">Pabili option</div>
                   <label className="mt-3 flex items-start gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
                     <input
                       type="checkbox"
@@ -1003,8 +1035,8 @@ export default function ErrandPage() {
                       className="mt-1"
                     />
                     <span>
-                      <span className="font-semibold text-slate-800">Driver will buy something for me</span>
-                      <span className="mt-1 block text-xs text-slate-500">Customer-funded only. Do not hand cash until the driver checks the task and cargo at Stage 0.</span>
+                      <span className="font-semibold text-slate-800">Buy something for me (Pabili)</span>
+                      <span className="mt-1 block text-xs text-slate-500">Customer-funded only. Do not hand over cash until the driver checks the task and cargo with you at the meeting point.</span>
                     </span>
                   </label>
 
@@ -1075,12 +1107,12 @@ export default function ErrandPage() {
                   <div className="mt-2 space-y-1 text-xs text-emerald-900">
                     <div>Base: PHP 40 candidate</div>
                     <div>Confirmed Errand route: PHP 15/km candidate</div>
-                    <div>Stop 1 included; +PHP 40 each additional stop</div>
+                    <div>Task Stop 1 included; +PHP 40 each additional task stop</div>
                     <div>Waiting: first 15 cumulative minutes free; then PHP 20 per started 15 minutes</div>
                     <div>Pickup distance uses the existing JRide pickup surcharge separately</div>
                   </div>
                   <div className="mt-3 text-[11px] text-emerald-800">
-                    Stage 0 review determines the exact starting fare. Field-test rates can still be adjusted before public rollout.
+                    The in-person task review determines the exact starting fare. Field-test rates can still be adjusted before public rollout.
                   </div>
                 </div>
 
@@ -1101,8 +1133,8 @@ export default function ErrandPage() {
                 </button>
 
                 {!formReady ? (
-                  <div className="text-center text-[11px] text-slate-500">
-                    Add Stage 0, task details, every stop pin, final destination and valid cargo/Pabili information.
+                  <div className="text-center text-[11px] font-medium text-amber-700">
+                    Missing: {missingRequirement || "required Errand information"}.
                   </div>
                 ) : null}
               </aside>
