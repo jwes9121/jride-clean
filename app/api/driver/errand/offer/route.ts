@@ -127,6 +127,14 @@ export async function POST(req: Request) {
         p_booking_id: bookingId,
         p_driver_id: identity.driverId,
       };
+    } else if (action === "release_before_customer") {
+      rpcName = "errand_driver_release_before_customer_v1";
+      rpcArgs = {
+        p_booking_id: bookingId,
+        p_driver_id: identity.driverId,
+        p_reason_code:
+          text(body?.reason_code) || "driver_release_before_customer",
+      };
     } else if (action === "vehicle_not_suitable") {
       rpcName = "errand_driver_vehicle_not_suitable_v1";
       rpcArgs = {
