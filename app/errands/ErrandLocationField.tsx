@@ -206,7 +206,7 @@ export default function ErrandLocationField({
 
   function commit(next: ErrandLocationValue): boolean {
     if (allowCurrentLocation && !insideIfugao(next.lat, next.lng)) {
-      setError("Stage 0 must be inside Ifugao Province.");
+      setError("The customer meeting point must be inside Ifugao Province.");
       return false;
     }
     setQuery(next.label);
@@ -352,7 +352,9 @@ export default function ErrandLocationField({
       if (preferredStage0) {
         commit(preferredStage0);
       } else {
-        setError("Desktop GPS is unreliable. Open Map and choose the exact Stage 0 within Ifugao.");
+        setError(
+          "Desktop GPS is unreliable. Open Map and choose the exact customer meeting point within Ifugao."
+        );
       }
       return;
     }
@@ -376,13 +378,15 @@ export default function ErrandLocationField({
         }
         if (accuracy != null && accuracy > MAX_MOBILE_GPS_ACCURACY_METERS) {
           setError(
-            `Current location is too approximate (${Math.ceil(accuracy / 1000)} km). Wait for GPS or search the meeting place.`
+            `Current location is too approximate (${Math.ceil(accuracy / 1000)} km). Wait for GPS or search the meeting point.`
           );
           setLocating(false);
           return;
         }
         if (!insideIfugao(lat, lng)) {
-          setError("The detected location is outside Ifugao. Stage 0 must be inside Ifugao Province.");
+          setError(
+            "The detected location is outside Ifugao. The customer meeting point must be inside Ifugao Province."
+          );
           setLocating(false);
           return;
         }
@@ -419,7 +423,7 @@ export default function ErrandLocationField({
       initial = { label: "Map pin", lat: proximity.lat, lng: proximity.lng };
     } else {
       initial = {
-        label: "Ifugao Province - tap the exact Stage 0 location",
+        label: "Ifugao Province - tap the exact customer meeting point",
         lat: IFUGAO_CENTER.lat,
         lng: IFUGAO_CENTER.lng,
       };
@@ -470,7 +474,7 @@ export default function ErrandLocationField({
           const lat = finite(event?.lngLat?.lat);
           if (lat == null || lng == null) return;
           if (allowCurrentLocation && !insideIfugao(lat, lng)) {
-            setError("Stage 0 must be inside Ifugao Province.");
+            setError("The customer meeting point must be inside Ifugao Province.");
             return;
           }
           markerRef.current?.setLngLat?.([lng, lat]);
@@ -496,7 +500,7 @@ export default function ErrandLocationField({
 
   function confirmMapPin() {
     if (!draft || draftNeedsMove) {
-      setError("Tap the map to set the exact Stage 0 pin.");
+      setError("Tap the map to set the exact customer meeting point.");
       return;
     }
     if (commit(draft)) setMapOpen(false);
@@ -506,7 +510,9 @@ export default function ErrandLocationField({
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <label className="text-xs font-semibold text-slate-700">{title}</label>
-        {value ? <span className="text-[11px] font-medium text-emerald-700">Pin set</span> : null}
+        {value ? (
+          <span className="text-[11px] font-medium text-emerald-700">Pin set</span>
+        ) : null}
       </div>
 
       <div className="relative">
@@ -557,12 +563,14 @@ export default function ErrandLocationField({
             {locating
               ? "Locating..."
               : desktopRecentAvailable
-                ? "Use recent Stage 0"
+                ? "Use recent meeting point"
                 : "Use my current location"}
           </button>
         ) : null}
         {allowCurrentLocation && preferredStage0 ? (
-          <span className="text-[11px] text-slate-500">Recent Stage 0: {preferredStage0.label}</span>
+          <span className="text-[11px] text-slate-500">
+            Recent meeting point: {preferredStage0.label}
+          </span>
         ) : null}
         {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
         {value ? (
@@ -574,7 +582,7 @@ export default function ErrandLocationField({
 
       {allowCurrentLocation ? (
         <div className="text-[11px] text-slate-500">
-          Stage 0 search and map are limited to Ifugao Province. Task stops and the final destination may be outside Ifugao.
+          The customer meeting point search and map are limited to Ifugao Province. Task stops and the final destination may be outside Ifugao.
         </div>
       ) : null}
       {helpText ? <div className="text-[11px] text-slate-500">{helpText}</div> : null}
@@ -587,7 +595,9 @@ export default function ErrandLocationField({
               <div>
                 <div className="font-semibold text-slate-900">Set {title}</div>
                 <div className="text-xs text-slate-500">
-                  {draftNeedsMove ? "Tap the exact location before confirming." : "Tap the map to move the pin."}
+                  {draftNeedsMove
+                    ? "Tap the exact location before confirming."
+                    : "Tap the map to move the pin."}
                 </div>
               </div>
               <button
