@@ -10,7 +10,7 @@ const supabase = createClient(
 );
 
 type AnyRow = Record<string, any>;
-type ServiceKey = "rides" | "takeout";
+type ServiceKey = "rides" | "takeout" | "errand";
 
 function withNoStore(res: NextResponse) {
   res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -64,7 +64,14 @@ function manilaWeekStart(date = new Date()): Date {
 
 function serviceType(row: AnyRow): ServiceKey {
   const explicit = text(row.service_type || row.serviceType || row.trip_type || row.tripType).toLowerCase();
-  if (explicit.includes("takeout") || explicit.includes("food") || explicit.includes("delivery")) return "takeout";
+
+  if (explicit.includes("errand") || text(row.booking_code).toUpperCase().startsWith("JR-ERR-")) {
+    return "errand";
+  }
+
+  if (explicit.includes("takeout") || explicit.includes("food") || explicit.includes("delivery")) {
+    return "takeout";
+  }
 
   if (
     row.takeout_total_payable != null ||
@@ -78,7 +85,6 @@ function serviceType(row: AnyRow): ServiceKey {
 
   return "rides";
 }
-
 
 function manilaNextDayStart(date: Date): Date {
   const start = new Date(`${manilaDateKey(date)}T00:00:00+08:00`);
@@ -176,13 +182,16 @@ export async function GET(req: NextRequest) {
 
     let rideCompleted = 0;
     let takeoutCompleted = 0;
+    let errandCompleted = 0;
 
     for (const row of data || []) {
       const at = completedAt(row);
       if (!at) continue;
       if (manilaDateKey(at) !== todayKey) continue;
 
-      if (serviceType(row) === "takeout") takeoutCompleted += 1;
+      const service = serviceType(row);
+      if (service === "takeout") takeoutCompleted += 1;
+      else if (service === "errand") errandCompleted += 1;
       else rideCompleted += 1;
     }
 
@@ -194,6 +203,7 @@ export async function GET(req: NextRequest) {
       .limit(10000);
 
     const sessionRows = sessionsRes.error ? [] : sessionsRes.data || [];
+    const totalCompleted = rideCompleted + takeoutCompleted + errandCompleted;
 
     return withNoStore(
       NextResponse.json({
@@ -203,13 +213,14 @@ export async function GET(req: NextRequest) {
         date: todayKey,
         ride_completed: rideCompleted,
         takeout_completed: takeoutCompleted,
-        total_completed: rideCompleted + takeoutCompleted,
+        errand_completed: errandCompleted,
+        total_completed: totalCompleted,
         today_online_minutes: mergedFreshOnlineMinutes(sessionRows, dayStart, now),
         week_online_minutes: mergedFreshOnlineMinutes(sessionRows, weekStart, now),
         month_online_minutes: mergedFreshOnlineMinutes(sessionRows, monthStart, now),
         session_source: "driver_presence_sessions_fresh_login_day_v2",
         session_error: sessionsRes.error?.message || null,
-        source: "bookings_completed_driver_today_v2",
+        source: "bookings_completed_driver_today_v3_errand",
       })
     );
   } catch (e: any) {
