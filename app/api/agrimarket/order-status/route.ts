@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,total_payable,created_at,updated_at"
+        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -78,6 +78,16 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const collectedBeforeFarmer = num(order.customer_cash_collected_amount);
+    const finalCashDue = Math.max(0, num(order.total_payable) - collectedBeforeFarmer);
+    const status = text(order.status).toLowerCase();
+    const cashDueNow =
+      Boolean(order.cash_collection_required) && !order.customer_cash_collected_at && status === "driver_assigned"
+        ? num(order.cash_collection_amount)
+        : ["picked_up", "delivering"].includes(status)
+          ? finalCashDue
+          : 0;
+
     return jsonNoStore(200, {
       ok: true,
       order: {
@@ -96,6 +106,8 @@ export async function GET(req: NextRequest) {
         product_subtotal: num(order.product_subtotal),
         cash_collection_required: Boolean(order.cash_collection_required),
         cash_collection_amount: num(order.cash_collection_amount),
+        customer_cash_collected_at: order.customer_cash_collected_at,
+        customer_cash_collected_amount: collectedBeforeFarmer,
         route_plan: order.route_plan,
         assignment_anchor: order.assignment_anchor,
         service_route_distance_km: num(order.route_distance_km),
@@ -110,7 +122,16 @@ export async function GET(req: NextRequest) {
         pickup_fee_locked_at: order.pickup_fee_locked_at,
         handling_fee: num(order.handling_fee),
         handling_reason: order.handling_reason,
+        handling_fee_locked: order.handling_locked_at != null,
         total_payable: num(order.total_payable),
+        cash_due_now: cashDueNow,
+        final_cash_due: finalCashDue,
+        final_cash_collected_at: order.final_cash_collected_at,
+        final_cash_collected_amount: num(order.final_cash_collected_amount),
+        picked_up_at: order.picked_up_at,
+        delivering_at: order.delivering_at,
+        delivered_at: order.delivered_at,
+        completed_at: order.completed_at,
         items: Array.isArray(itemsRes.data) ? itemsRes.data : [],
         created_at: order.created_at,
         updated_at: order.updated_at,
@@ -118,6 +139,8 @@ export async function GET(req: NextRequest) {
       producer_location_disclosure: "hidden",
       pickup_surcharge_status:
         order.pickup_fee_locked_at != null ? "final" : "pending_driver_assignment",
+      handling_fee_status:
+        order.handling_locked_at != null ? "final" : "may_change_at_pickup_within_php_0_to_50",
     });
   } catch (error: any) {
     return jsonNoStore(500, {
