@@ -1,5 +1,10 @@
 import { NextRequest } from "next/server";
 import {
+  RIDE_PICKUP_FREE_KM,
+  RIDE_PICKUP_NORMAL_MAX_FEE,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+} from "@/lib/pricing/pickupFee";
+import {
   AgrimarketRequestError,
   loadAgrimarketOrderContext,
   normalizeAgrimarketAddressId,
@@ -18,6 +23,8 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+
+const AGRIMARKET_CASH_FIRST_THRESHOLD = 500;
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -49,12 +56,46 @@ function rpcFailureStatus(message: string): number {
     message.includes("INSUFFICIENT") ||
     message.includes("MISMATCH") ||
     message.includes("SINGLE_PRODUCER") ||
-    message.includes("SCHEDULED_HARVEST")
+    message.includes("SCHEDULED_HARVEST") ||
+    message.includes("PRICE_CHANGED_RETRY")
   ) {
     return 409;
   }
   if (message.includes("REQUIRED") || message.includes("INVALID") || message.includes("DUPLICATE")) return 400;
   return 500;
+}
+
+function orderPayload(order: any) {
+  return {
+    order_code: order.order_code,
+    status: order.status,
+    producer_confirm_expires_at: order.producer_confirm_expires_at,
+    product_subtotal: Number(order.product_subtotal || 0),
+    cash_collection_required: Boolean(order.cash_collection_required),
+    cash_collection_amount: Number(order.cash_collection_amount || 0),
+    route_plan: order.route_plan,
+    assignment_anchor: order.assignment_anchor,
+    delivery_base_fee: Number(order.delivery_base_fee || 0),
+    delivery_distance_fee: Number(order.delivery_distance_fee || 0),
+    delivery_fee: Number(order.delivery_fee || 0),
+    pickup_distance_fee: Number(order.pickup_distance_fee || 0),
+    handling_fee: Number(order.handling_fee || 0),
+    total_payable: Number(order.total_payable || 0),
+    route_distance_km: Number(order.route_distance_km || 0),
+    route_duration_seconds: Number(order.route_duration_seconds || 0),
+    farmer_to_customer_distance_km: Number(order.farmer_to_customer_distance_km || 0),
+    farmer_to_customer_duration_seconds: Number(order.farmer_to_customer_duration_seconds || 0),
+    customer_to_farmer_distance_km:
+      order.customer_to_farmer_distance_km == null ? null : Number(order.customer_to_farmer_distance_km),
+    customer_to_farmer_duration_seconds:
+      order.customer_to_farmer_duration_seconds == null ? null : Number(order.customer_to_farmer_duration_seconds),
+    driver_to_first_pickup_km:
+      order.driver_to_first_pickup_km == null ? null : Number(order.driver_to_first_pickup_km),
+    preparation_minutes: Number(order.preparation_minutes || 0),
+    preferred_vehicle_type: order.preferred_vehicle_type,
+    required_vehicle_type: order.required_vehicle_type,
+    pricing_version: Number(order.pricing_version || 1),
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -74,7 +115,7 @@ export async function POST(req: NextRequest) {
     const existingRes = await admin
       .from("agrimarket_orders")
       .select(
-        "order_code,status,producer_confirm_expires_at,product_subtotal,delivery_base_fee,delivery_distance_fee,delivery_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version"
+        "order_code,status,producer_confirm_expires_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,delivery_base_fee,delivery_distance_fee,delivery_fee,pickup_distance_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version"
       )
       .eq("customer_user_id", passengerAuth.user.id)
       .eq("client_request_id", clientRequestId)
@@ -90,26 +131,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (existingRes.data) {
-      const existing: any = existingRes.data;
       return jsonNoStore(200, {
         ok: true,
         idempotent_replay: true,
-        order: {
-          order_code: existing.order_code,
-          status: existing.status,
-          producer_confirm_expires_at: existing.producer_confirm_expires_at,
-          product_subtotal: Number(existing.product_subtotal || 0),
-          delivery_base_fee: Number(existing.delivery_base_fee || 0),
-          delivery_distance_fee: Number(existing.delivery_distance_fee || 0),
-          delivery_fee: Number(existing.delivery_fee || 0),
-          handling_fee: Number(existing.handling_fee || 0),
-          total_payable: Number(existing.total_payable || 0),
-          route_distance_km: Number(existing.route_distance_km || 0),
-          route_duration_seconds: Number(existing.route_duration_seconds || 0),
-          preparation_minutes: Number(existing.preparation_minutes || 0),
-          preferred_vehicle_type: existing.preferred_vehicle_type,
-          required_vehicle_type: existing.required_vehicle_type,
-          pricing_version: Number(existing.pricing_version || 1),
+        order: orderPayload(existingRes.data),
+        pickup_distance_policy: {
+          first_km_free: RIDE_PICKUP_FREE_KM,
+          normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
+          normal_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
+          distance_basis: "driver_to_first_pickup_road_route",
         },
       });
     }
@@ -122,22 +152,34 @@ export async function POST(req: NextRequest) {
       preferredVehicleType
     );
 
-    const route = await fetchAgrimarketDrivingRoute(
+    const farmerToCustomer = await fetchAgrimarketDrivingRoute(
       context.producer.pickup_lat,
       context.producer.pickup_lng,
       context.address.lat,
       context.address.lng
     );
 
-    const orderRes = await admin.rpc("agrimarket_create_reserved_order_v2", {
+    const cashFirst = context.productSubtotal > AGRIMARKET_CASH_FIRST_THRESHOLD;
+    const customerToFarmer = cashFirst
+      ? await fetchAgrimarketDrivingRoute(
+          context.address.lat,
+          context.address.lng,
+          context.producer.pickup_lat,
+          context.producer.pickup_lng
+        )
+      : null;
+
+    const orderRes = await admin.rpc("agrimarket_create_reserved_order_v3", {
       p_customer_user_id: passengerAuth.user.id,
       p_client_request_id: clientRequestId,
       p_delivery_address_id: addressId,
       p_items: items,
-      p_route_distance_km: route.distanceKm,
-      p_route_duration_seconds: route.durationSeconds,
+      p_farmer_to_customer_distance_km: farmerToCustomer.distanceKm,
+      p_farmer_to_customer_duration_seconds: farmerToCustomer.durationSeconds,
+      p_customer_to_farmer_distance_km: customerToFarmer?.distanceKm ?? null,
+      p_customer_to_farmer_duration_seconds: customerToFarmer?.durationSeconds ?? null,
       p_preferred_vehicle_type: preferredVehicleType,
-      p_route_provider: route.provider,
+      p_route_provider: farmerToCustomer.provider,
     });
 
     if (orderRes.error) {
@@ -150,8 +192,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = Array.isArray(orderRes.data) ? orderRes.data : [];
-    const order: any = rows[0] || orderRes.data || null;
-    if (!order) {
+    const created: any = rows[0] || orderRes.data || null;
+    if (!created) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_ORDER_CREATE_EMPTY",
@@ -159,25 +201,35 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const readBackRes = await admin
+      .from("agrimarket_orders")
+      .select(
+        "order_code,status,producer_confirm_expires_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,delivery_base_fee,delivery_distance_fee,delivery_fee,pickup_distance_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version"
+      )
+      .eq("order_code", created.order_code)
+      .limit(1)
+      .single();
+
+    if (readBackRes.error || !readBackRes.data) {
+      return jsonNoStore(500, {
+        ok: false,
+        error: "AGRIMARKET_ORDER_READBACK_FAILED",
+        message: readBackRes.error?.message || "Order created but could not be read back.",
+      });
+    }
+
     return jsonNoStore(201, {
       ok: true,
       idempotent_replay: false,
-      order: {
-        order_code: order.order_code,
-        status: order.status,
-        producer_confirm_expires_at: order.producer_confirm_expires_at,
-        product_subtotal: Number(order.product_subtotal || 0),
-        delivery_base_fee: Number(order.delivery_base_fee || 0),
-        delivery_distance_fee: Number(order.delivery_distance_fee || 0),
-        delivery_fee: Number(order.delivery_fee || 0),
-        handling_fee: Number(order.handling_fee || 0),
-        total_payable: Number(order.total_payable || 0),
-        route_distance_km: Number(order.route_distance_km || route.distanceKm),
-        route_duration_seconds: Number(order.route_duration_seconds || route.durationSeconds),
-        preparation_minutes: Number(order.preparation_minutes || 0),
-        preferred_vehicle_type: order.preferred_vehicle_type,
-        required_vehicle_type: order.required_vehicle_type,
-        pricing_version: Number(order.pricing_version || 1),
+      order: orderPayload(readBackRes.data),
+      cash_collection_threshold_php: AGRIMARKET_CASH_FIRST_THRESHOLD,
+      pickup_distance_policy: {
+        status: "pending_driver_assignment",
+        first_km_free: RIDE_PICKUP_FREE_KM,
+        normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
+        normal_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
+        distance_basis: "driver_to_first_pickup_road_route",
+        first_pickup: readBackRes.data.assignment_anchor,
       },
       producer_location_disclosure: "hidden",
       producer_marketplace_commission_charged_to_customer: false,
