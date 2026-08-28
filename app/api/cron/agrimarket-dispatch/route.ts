@@ -43,6 +43,18 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
 
+  const settlementRes = await admin.rpc("agrimarket_retry_pending_settlements_v1", {
+    p_now: nowIso,
+    p_limit: 100,
+  });
+  const settlementRows = settlementRes.error
+    ? []
+    : Array.isArray(settlementRes.data)
+      ? settlementRes.data
+      : [];
+  const settlementCompleted = settlementRows.filter((row: any) => row?.settled === true).length;
+  const settlementPending = settlementRows.filter((row: any) => row?.settled !== true).length;
+
   const expiryRes = await admin
     .from("agrimarket_driver_offers")
     .update({
@@ -61,6 +73,7 @@ export async function GET(req: NextRequest) {
         ok: false,
         error: "AGRIMARKET_DRIVER_OFFER_EXPIRY_FAILED",
         message: expiryRes.error.message,
+        settlement_retry_error: settlementRes.error?.message || null,
       },
       { status: 500, headers: headers() }
     );
@@ -80,6 +93,7 @@ export async function GET(req: NextRequest) {
         ok: false,
         error: "AGRIMARKET_DISPATCH_SCAN_FAILED",
         message: pendingRes.error.message,
+        settlement_retry_error: settlementRes.error?.message || null,
       },
       { status: 500, headers: headers() }
     );
@@ -90,7 +104,7 @@ export async function GET(req: NextRequest) {
   let offered = 0;
   let waitingForPrep = 0;
   let noDriver = 0;
-  let failures = 0;
+  let failures = settlementRes.error ? 1 : 0;
 
   for (const row of rows as any[]) {
     const readyAtMs = Date.parse(text(row.ready_at));
@@ -118,7 +132,8 @@ export async function GET(req: NextRequest) {
         result.error === "NO_PREFERRED_VEHICLE_DRIVER_AVAILABLE" ||
         result.error === "NO_ELIGIBLE_DRIVER_AVAILABLE" ||
         result.error === "NO_DRIVER_WITHIN_NORMAL_PICKUP_RANGE" ||
-        result.error === "ROAD_DISTANCE_UNAVAILABLE"
+        result.error === "ROAD_DISTANCE_UNAVAILABLE" ||
+        result.error === "AGRIMARKET_DRIVER_OFFER_RACE_LOST"
       ) {
         noDriver += 1;
       } else if (!result.ok) {
@@ -141,6 +156,10 @@ export async function GET(req: NextRequest) {
       ok: failures === 0,
       enabled: true,
       generated_at: nowIso,
+      settlement_retry_error: settlementRes.error?.message || null,
+      settlement_retried: settlementRows.length,
+      settlement_completed: settlementCompleted,
+      settlement_pending: settlementPending,
       expired_offers: Array.isArray(expiryRes.data) ? expiryRes.data.length : 0,
       scanned_orders: rows.length,
       offered,
