@@ -117,6 +117,22 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const pricingRes = await admin
+      .from("agrimarket_pricing_settings")
+      .select("pricing_version,currency,base_delivery_fee,route_fee_per_km,rounding_mode")
+      .eq("id", 1)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (pricingRes.error || !pricingRes.data) {
+      return jsonNoStore(503, {
+        ok: false,
+        error: "AGRIMARKET_PRICING_UNAVAILABLE",
+        message: pricingRes.error?.message || "Agrimarket pricing is not configured.",
+      });
+    }
+
     const productRes = await admin
       .from("agrimarket_products")
       .select(
@@ -140,13 +156,21 @@ export async function GET(req: NextRequest) {
     if (!producerIds.length) {
       return jsonNoStore(200, {
         ok: true,
-        ordering_enabled: false,
-        ordering_blocker: "AGRIMARKET_PRICING_POLICY_REQUIRED",
+        ordering_enabled: true,
         address: {
           id: address.id,
           label: address.label || address.address_text,
         },
+        delivery_pricing: {
+          pricing_version: Number((pricingRes.data as any).pricing_version || 1),
+          currency: String((pricingRes.data as any).currency || "PHP"),
+          base_fee: numberValue((pricingRes.data as any).base_delivery_fee),
+          rate_per_road_km: numberValue((pricingRes.data as any).route_fee_per_km),
+          rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
+          route_basis: "road_route",
+        },
         ranking_basis: "proximity_to_selected_delivery_pin",
+        producer_location_disclosure: "hidden",
         products: [],
       });
     }
@@ -208,6 +232,7 @@ export async function GET(req: NextRequest) {
       .map((row) => {
         const normalizedName = row.name.trim().toLowerCase();
         const proximityRank = rankByProductAndProducer.get(`${normalizedName}|${row.producer_id}`) || 1;
+        const scheduledHarvest = row.availability_mode === "scheduled_harvest";
 
         return {
           id: row.id,
@@ -232,11 +257,8 @@ export async function GET(req: NextRequest) {
           vehicle_requirement: row.vehicle_requirement,
           handling_eligible: row.handling_eligible,
           photo_urls: Array.isArray(row.photo_urls) ? row.photo_urls : [],
-          can_order_now: false,
-          order_blocker:
-            row.availability_mode === "scheduled_harvest"
-              ? "AGRIMARKET_SCHEDULED_HARVEST_POLICY_REQUIRED"
-              : "AGRIMARKET_PRICING_POLICY_REQUIRED",
+          can_order_now: !scheduledHarvest,
+          order_blocker: scheduledHarvest ? "AGRIMARKET_SCHEDULED_HARVEST_POLICY_REQUIRED" : null,
         };
       })
       .sort((a, b) => {
@@ -248,11 +270,18 @@ export async function GET(req: NextRequest) {
 
     return jsonNoStore(200, {
       ok: true,
-      ordering_enabled: false,
-      ordering_blocker: "AGRIMARKET_PRICING_POLICY_REQUIRED",
+      ordering_enabled: true,
       address: {
         id: address.id,
         label: address.label || address.address_text,
+      },
+      delivery_pricing: {
+        pricing_version: Number((pricingRes.data as any).pricing_version || 1),
+        currency: String((pricingRes.data as any).currency || "PHP"),
+        base_fee: numberValue((pricingRes.data as any).base_delivery_fee),
+        rate_per_road_km: numberValue((pricingRes.data as any).route_fee_per_km),
+        rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
+        route_basis: "road_route",
       },
       ranking_basis: "proximity_to_selected_delivery_pin",
       producer_location_disclosure: "hidden",
