@@ -35,10 +35,21 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,handling_fee,total_payable,created_at,updated_at"
+        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
-      .in("status", ["awaiting_producer", "producer_accepted", "preparing", "ready_for_dispatch"])
+      .in("status", [
+        "awaiting_producer",
+        "producer_accepted",
+        "preparing",
+        "ready_for_dispatch",
+        "dispatching",
+        "driver_assigned",
+        "picked_up",
+        "delivering",
+        "delivered",
+        "completed",
+      ])
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -111,14 +122,21 @@ export async function GET(req: NextRequest) {
         producer_rejected_at: row.producer_rejected_at,
         producer_timeout_at: row.producer_timeout_at,
         preparation_minutes: row.preparation_minutes,
+        ready_at: row.ready_at,
         preferred_vehicle_type: row.preferred_vehicle_type,
         required_vehicle_type: row.required_vehicle_type,
         product_subtotal: Number(row.product_subtotal || 0),
         producer_marketplace_commission: Number(row.marketplace_fee || 0),
         producer_product_net: Number(row.producer_product_net || 0),
+        producer_paid_at: row.producer_paid_at,
+        producer_paid_amount: Number(row.producer_paid_amount || 0),
+        producer_payment_status: row.producer_paid_at ? "paid" : "pending",
         customer_delivery_fee: Number(row.delivery_fee || 0),
         customer_handling_fee: Number(row.handling_fee || 0),
         customer_total_payable: Number(row.total_payable || 0),
+        picked_up_at: row.picked_up_at,
+        delivered_at: row.delivered_at,
+        completed_at: row.completed_at,
         items: itemsByOrder.get(String(row.id)) || [],
         created_at: row.created_at,
         updated_at: row.updated_at,
