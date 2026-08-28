@@ -21,6 +21,10 @@
       "schedule": "*/1 * * * *"
     },
     {
+      "path": "/api/cron/agrimarket-dispatch",
+      "schedule": "*/1 * * * *"
+    },
+    {
       "path": "/api/cron/vendor-compliance",
       "schedule": "10 16 * * *"
     }
