@@ -30,6 +30,10 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function roundRouteKm(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
 export async function POST(req: NextRequest) {
   if (!agrimarketEnabled()) return agrimarketDisabledResponse();
 
@@ -68,7 +72,7 @@ export async function POST(req: NextRequest) {
         )
       : null;
 
-    const serviceDistanceKm = roundMoney(
+    const serviceDistanceKm = roundRouteKm(
       farmerToCustomer.distanceKm + (customerToFarmer?.distanceKm || 0)
     );
     const serviceDurationSeconds =
