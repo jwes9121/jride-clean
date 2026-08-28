@@ -98,14 +98,24 @@ export async function POST(req: Request) {
 
     const result = (resultRes.data as any) || {};
     if (result.ok === false) {
+      let reassignment: any = null;
+      if (result.released === true) {
+        reassignment = await offerAgrimarketDriver({
+          orderId: text((offerRead.data as any).order_id),
+        });
+      }
+
       const error = text(result.error) || "AGRIMARKET_DRIVER_DECISION_BLOCKED";
       const status = error.includes("NOT_FOUND")
         ? 404
-        : error.includes("EXPIRED") || error.includes("ALREADY_ASSIGNED") || error.includes("NOT_DRIVER_ASSIGNABLE")
+        : error.includes("EXPIRED") ||
+            error.includes("ALREADY_ASSIGNED") ||
+            error.includes("NOT_DRIVER_ASSIGNABLE") ||
+            result.released === true
           ? 409
           : 403;
       return NextResponse.json(
-        { ...result, ok: false },
+        { ...result, ok: false, reassignment },
         { status, headers: headers() }
       );
     }
