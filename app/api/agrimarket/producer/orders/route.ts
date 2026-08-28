@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,handling_fee,total_payable,created_at,updated_at"
+        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,handling_fee,total_payable,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
       .in("status", ["awaiting_producer", "producer_accepted", "preparing", "ready_for_dispatch"])
@@ -114,10 +114,11 @@ export async function GET(req: NextRequest) {
         preferred_vehicle_type: row.preferred_vehicle_type,
         required_vehicle_type: row.required_vehicle_type,
         product_subtotal: Number(row.product_subtotal || 0),
-        delivery_fee: Number(row.delivery_fee || 0),
-        marketplace_fee: Number(row.marketplace_fee || 0),
-        handling_fee: Number(row.handling_fee || 0),
-        total_payable: Number(row.total_payable || 0),
+        producer_marketplace_commission: Number(row.marketplace_fee || 0),
+        producer_product_net: Number(row.producer_product_net || 0),
+        customer_delivery_fee: Number(row.delivery_fee || 0),
+        customer_handling_fee: Number(row.handling_fee || 0),
+        customer_total_payable: Number(row.total_payable || 0),
         items: itemsByOrder.get(String(row.id)) || [],
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -127,6 +128,7 @@ export async function GET(req: NextRequest) {
     return jsonNoStore(200, {
       ok: true,
       producer_id: producerAuth.producer.id,
+      marketplace_commission_is_customer_surcharge: false,
       orders: safeOrders,
     });
   } catch (error: any) {
