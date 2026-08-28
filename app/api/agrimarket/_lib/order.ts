@@ -17,7 +17,7 @@ export type AgrimarketOrderContext = {
     handling_eligible: boolean;
   }>;
   productSubtotal: number;
-  requiredVehicleType: "either" | "motorcycle" | "tricycle";
+  requiredVehicleType: "either" | "tricycle";
   preferredVehicleType: "motorcycle" | "tricycle";
   handlingEligible: boolean;
 };
@@ -158,7 +158,6 @@ export async function loadAgrimarketOrderContext(
   let productSubtotal = 0;
   let handlingEligible = false;
   let requiresTricycle = false;
-  let allRequireMotorcycle = true;
 
   for (const requested of items) {
     const product: any = productById.get(requested.product_id);
@@ -183,9 +182,9 @@ export async function loadAgrimarketOrderContext(
     }
 
     producerIds.add(String(product.producer_id || ""));
-    const vehicle = String(product.vehicle_requirement || "either").toLowerCase();
-    if (vehicle === "tricycle") requiresTricycle = true;
-    if (vehicle !== "motorcycle") allRequireMotorcycle = false;
+    if (String(product.vehicle_requirement || "either").toLowerCase() === "tricycle") {
+      requiresTricycle = true;
+    }
 
     const unitPrice = money(product.unit_price);
     const lineTotal = money(unitPrice * requested.quantity);
@@ -244,17 +243,13 @@ export async function loadAgrimarketOrderContext(
     );
   }
 
-  const requiredVehicleType: "either" | "motorcycle" | "tricycle" = requiresTricycle
-    ? "tricycle"
-    : allRequireMotorcycle
-      ? "motorcycle"
-      : "either";
+  const requiredVehicleType: "either" | "tricycle" = requiresTricycle ? "tricycle" : "either";
 
-  if (requiredVehicleType !== "either" && preferredVehicleType !== requiredVehicleType) {
+  if (requiredVehicleType === "tricycle" && preferredVehicleType !== "tricycle") {
     throw new AgrimarketRequestError(
       "AGRIMARKET_VEHICLE_REQUIREMENT_MISMATCH",
       409,
-      `This order requires a ${requiredVehicleType}.`
+      "This order requires a tricycle."
     );
   }
 
