@@ -19,10 +19,18 @@ export async function GET(req: NextRequest) {
     if (producerAuth.ok === false) return producerAuth.response;
 
     const admin = createServiceSupabase();
-    await admin.rpc("agrimarket_expire_pending_orders_v1", {
+    const expiryRes = await admin.rpc("agrimarket_expire_pending_orders_v1", {
       p_now: new Date().toISOString(),
       p_limit: 200,
     });
+
+    if (expiryRes.error) {
+      return jsonNoStore(503, {
+        ok: false,
+        error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED",
+        message: "Agrimarket order expiry processing is temporarily unavailable.",
+      });
+    }
 
     const ordersRes = await admin
       .from("agrimarket_orders")
