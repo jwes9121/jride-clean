@@ -22,6 +22,11 @@ export async function POST(req: NextRequest) {
     const orderCode = String(body?.order_code || body?.orderCode || "").trim();
     const decision = String(body?.decision || "").trim().toLowerCase();
     const reason = String(body?.reason || "").trim() || null;
+    const preparationMinutesRaw = body?.preparation_minutes ?? body?.preparationMinutes;
+    const preparationMinutes =
+      preparationMinutesRaw === null || preparationMinutesRaw === undefined || preparationMinutesRaw === ""
+        ? null
+        : Number(preparationMinutesRaw);
 
     if (!orderCode) {
       return jsonNoStore(400, {
@@ -39,11 +44,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (
+      decision === "accept" &&
+      (preparationMinutes == null ||
+        !Number.isInteger(preparationMinutes) ||
+        preparationMinutes < 0 ||
+        preparationMinutes > 1440)
+    ) {
+      return jsonNoStore(400, {
+        ok: false,
+        error: "AGRIMARKET_PREPARATION_MINUTES_REQUIRED",
+        message: "Accepting a request requires preparation_minutes from 0 to 1440.",
+      });
+    }
+
     const admin = createServiceSupabase();
-    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v1", {
+    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v2", {
       p_order_code: orderCode,
       p_vendor_account_id: producerAuth.vendorId,
       p_decision: decision,
+      p_preparation_minutes: decision === "accept" ? preparationMinutes : null,
       p_reason: reason,
       p_now: new Date().toISOString(),
     });
@@ -56,7 +76,7 @@ export async function POST(req: NextRequest) {
           ? 403
           : message.includes("AUTH_REQUIRED")
             ? 401
-            : message.includes("INVALID_PRODUCER_DECISION")
+            : message.includes("INVALID_PRODUCER_DECISION") || message.includes("PREPARATION_MINUTES")
               ? 400
               : 409;
 
