@@ -12,6 +12,7 @@ export default function PassengerDashboardPage() {
   const [authed, setAuthed] = React.useState(false);
   const [verified, setVerified] = React.useState(false);
   const [nightAllowed, setNightAllowed] = React.useState(false);
+  const [agrimarketEnabled, setAgrimarketEnabled] = React.useState(false);
 
   const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
   const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
@@ -20,11 +21,18 @@ export default function PassengerDashboardPage() {
     let alive = true;
     (async () => {
       try {
-        const r = await fetch("/api/public/auth/session", { cache: "no-store" });
-        const j: any = await r.json().catch(() => ({}));
+        const [sessionResponse, agrimarketResponse] = await Promise.all([
+          fetch("/api/public/auth/session", { cache: "no-store" }),
+          fetch("/api/agrimarket/status", { cache: "no-store" }).catch(() => null),
+        ]);
+        const j: any = await sessionResponse.json().catch(() => ({}));
+        const agrimarketJson: any = agrimarketResponse
+          ? await agrimarketResponse.json().catch(() => ({}))
+          : {};
         if (!alive) return;
         const ok = !!j?.authed;
         setAuthed(ok);
+        setAgrimarketEnabled(agrimarketJson?.enabled === true);
 
         try {
           const cr = await fetch("/api/public/passenger/can-book", { cache: "no-store" });
@@ -68,6 +76,7 @@ export default function PassengerDashboardPage() {
       } catch {
         if (!alive) return;
         setAuthed(false);
+        setAgrimarketEnabled(false);
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -154,7 +163,7 @@ export default function PassengerDashboardPage() {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5">
+        <div className={"grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 " + (agrimarketEnabled ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
           <button
             type="button"
             onClick={goBookRide}
@@ -182,14 +191,16 @@ export default function PassengerDashboardPage() {
             <div className="text-sm opacity-70">Pabili / padala (pilot)</div>
           </button>
 
-          <button
-            type="button"
-            onClick={() => (authed ? router.push("/agrimarket") : gotoLogin())}
-            className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3"
-          >
-            <div className="font-semibold text-emerald-900">Agrimarket</div>
-            <div className="text-sm text-emerald-800/70">Buy from local farmers (pre-launch)</div>
-          </button>
+          {agrimarketEnabled ? (
+            <button
+              type="button"
+              onClick={() => (authed ? router.push("/agrimarket") : gotoLogin())}
+              className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3"
+            >
+              <div className="font-semibold text-emerald-900">Agrimarket</div>
+              <div className="text-sm text-emerald-800/70">Buy from local farmers</div>
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 flex gap-3">
