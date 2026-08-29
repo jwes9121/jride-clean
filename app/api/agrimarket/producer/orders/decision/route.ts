@@ -45,21 +45,18 @@ export async function POST(req: NextRequest) {
     }
 
     if (
-      decision === "accept" &&
-      (preparationMinutes == null ||
-        !Number.isInteger(preparationMinutes) ||
-        preparationMinutes < 0 ||
-        preparationMinutes > 1440)
+      preparationMinutes != null &&
+      (!Number.isInteger(preparationMinutes) || preparationMinutes < 0 || preparationMinutes > 1440)
     ) {
       return jsonNoStore(400, {
         ok: false,
-        error: "AGRIMARKET_PREPARATION_MINUTES_REQUIRED",
-        message: "Accepting a request requires preparation_minutes from 0 to 1440.",
+        error: "AGRIMARKET_PREPARATION_MINUTES_INVALID",
+        message: "preparation_minutes must be from 0 to 1440 when supplied.",
       });
     }
 
     const admin = createServiceSupabase();
-    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v3", {
+    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v4", {
       p_order_code: orderCode,
       p_producer_id: producerAuth.producer.id,
       p_decision: decision,
@@ -69,30 +66,31 @@ export async function POST(req: NextRequest) {
     });
 
     if (decisionRes.error) {
-      const message = String(decisionRes.error.message || "");
-      const status = message.includes("NOT_FOUND")
-        ? 404
-        : message.includes("NOT_OWNED")
-          ? 403
-          : message.includes("AUTH_REQUIRED")
-            ? 401
-            : message.includes("INVALID_PRODUCER_DECISION") || message.includes("PREPARATION_MINUTES")
-              ? 400
-              : 409;
-
-      return jsonNoStore(status, {
+      return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_PRODUCER_DECISION_FAILED",
-        message,
+        message: decisionRes.error.message,
       });
     }
 
-    const rows = Array.isArray(decisionRes.data) ? decisionRes.data : [];
-    const order = rows[0] || decisionRes.data || null;
+    const result: any = decisionRes.data || null;
+    if (result?.ok === false) {
+      const code = String(result.error || "AGRIMARKET_PRODUCER_DECISION_FAILED");
+      const status = code.includes("NOT_FOUND")
+        ? 404
+        : code.includes("NOT_OWNED")
+          ? 403
+          : code.includes("AUTH_REQUIRED")
+            ? 401
+            : code.includes("INVALID") || code.includes("PREPARATION_MINUTES")
+              ? 400
+              : 409;
+      return jsonNoStore(status, { ok: false, error: code, order: result });
+    }
 
     return jsonNoStore(200, {
       ok: true,
-      order,
+      order: result,
     });
   } catch (error: any) {
     return jsonNoStore(500, {
