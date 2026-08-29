@@ -15,11 +15,19 @@ export type AgrimarketOrderContext = {
     quantity: number;
     line_total: number;
     handling_eligible: boolean;
+    availability_mode: "always_available" | "scheduled_harvest";
+    harvest_start_at: string | null;
+    harvest_end_at: string | null;
+    harvest_order_cutoff_at: string | null;
   }>;
   productSubtotal: number;
   requiredVehicleType: "either" | "tricycle";
   preferredVehicleType: "motorcycle" | "tricycle";
   handlingEligible: boolean;
+  fulfillmentMode: "always_available" | "scheduled_harvest";
+  harvestExpectedStartAt: string | null;
+  harvestExpectedEndAt: string | null;
+  harvestOrderCutoffAt: string | null;
 };
 
 export class AgrimarketRequestError extends Error {
@@ -41,6 +49,13 @@ function money(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;
   return Math.round(n * 100) / 100;
+}
+
+function normalizedIso(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 export function normalizeAgrimarketItems(body: any): RequestedAgrimarketItem[] {
@@ -137,7 +152,7 @@ export async function loadAgrimarketOrderContext(
   const productsRes = await admin
     .from("agrimarket_products")
     .select(
-      "id,producer_id,name,selling_unit,unit_price,remaining_quantity,availability_mode,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
+      "id,producer_id,name,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
     )
     .in("id", productIds);
 
@@ -154,22 +169,53 @@ export async function loadAgrimarketOrderContext(
   for (const product of products) productById.set(String((product as any).id), product);
 
   const producerIds = new Set<string>();
+  const modes = new Set<string>();
+  const harvestStarts = new Set<string>();
+  const harvestEnds = new Set<string>();
   const itemSnapshots: AgrimarketOrderContext["itemSnapshots"] = [];
   let productSubtotal = 0;
   let handlingEligible = false;
   let requiresTricycle = false;
+  let earliestCutoffMs = Number.POSITIVE_INFINITY;
+  let earliestCutoffIso: string | null = null;
 
   for (const requested of items) {
     const product: any = productById.get(requested.product_id);
     if (!product || product.is_active !== true) {
       throw new AgrimarketRequestError("AGRIMARKET_ITEM_UNAVAILABLE", 409, "One or more selected Agrimarket items are unavailable.");
     }
-    if (String(product.availability_mode || "") === "scheduled_harvest") {
-      throw new AgrimarketRequestError(
-        "AGRIMARKET_SCHEDULED_HARVEST_POLICY_REQUIRED",
-        409,
-        "Scheduled-harvest ordering is not enabled yet."
-      );
+
+    const mode = String(product.availability_mode || "always_available").toLowerCase();
+    if (mode !== "always_available" && mode !== "scheduled_harvest") {
+      throw new AgrimarketRequestError("AGRIMARKET_AVAILABILITY_MODE_INVALID", 409, "A selected product has an invalid availability mode.");
+    }
+
+    const harvestStartAt = normalizedIso(product.harvest_start_at);
+    const harvestEndAt = normalizedIso(product.harvest_end_at);
+    const harvestCutoffAt = normalizedIso(product.harvest_order_cutoff_at);
+
+    if (mode === "scheduled_harvest") {
+      if (!harvestStartAt || !harvestCutoffAt) {
+        throw new AgrimarketRequestError(
+          "AGRIMARKET_HARVEST_WINDOW_INCOMPLETE",
+          409,
+          `${String(product.name || "Product")} does not have a complete harvest reservation window.`
+        );
+      }
+      const cutoffMs = Date.parse(harvestCutoffAt);
+      if (!Number.isFinite(cutoffMs) || cutoffMs <= Date.now()) {
+        throw new AgrimarketRequestError(
+          "AGRIMARKET_HARVEST_ORDER_CUTOFF_PASSED",
+          409,
+          `The reservation cutoff has passed for ${String(product.name || "this harvest")}.`
+        );
+      }
+      harvestStarts.add(harvestStartAt);
+      harvestEnds.add(harvestEndAt || harvestStartAt);
+      if (cutoffMs < earliestCutoffMs) {
+        earliestCutoffMs = cutoffMs;
+        earliestCutoffIso = harvestCutoffAt;
+      }
     }
 
     const available = Number(product.remaining_quantity);
@@ -177,11 +223,12 @@ export async function loadAgrimarketOrderContext(
       throw new AgrimarketRequestError(
         "AGRIMARKET_INSUFFICIENT_STOCK",
         409,
-        `${String(product.name || "Product")} does not have enough available quantity.`
+        `${String(product.name || "Product")} does not have enough reservable quantity.`
       );
     }
 
     producerIds.add(String(product.producer_id || ""));
+    modes.add(mode);
     if (String(product.vehicle_requirement || "either").toLowerCase() === "tricycle") {
       requiresTricycle = true;
     }
@@ -199,6 +246,10 @@ export async function loadAgrimarketOrderContext(
       quantity: requested.quantity,
       line_total: lineTotal,
       handling_eligible: product.handling_eligible === true,
+      availability_mode: mode as "always_available" | "scheduled_harvest",
+      harvest_start_at: harvestStartAt,
+      harvest_end_at: harvestEndAt,
+      harvest_order_cutoff_at: harvestCutoffAt,
     });
   }
 
@@ -206,8 +257,33 @@ export async function loadAgrimarketOrderContext(
     throw new AgrimarketRequestError(
       "AGRIMARKET_SINGLE_PRODUCER_ORDER_REQUIRED",
       409,
-      "Each Agrimarket order must contain products from one producer only."
+      "Each Agrimarket cart must contain products from one farmer only. Finish or clear the current farmer cart before adding another farmer."
     );
+  }
+
+  if (modes.size !== 1) {
+    throw new AgrimarketRequestError(
+      "AGRIMARKET_MIXED_AVAILABILITY_CART_NOT_ALLOWED",
+      409,
+      "Always Available and Scheduled Harvest products cannot be placed in the same order."
+    );
+  }
+
+  const fulfillmentMode = Array.from(modes)[0] as "always_available" | "scheduled_harvest";
+  let harvestExpectedStartAt: string | null = null;
+  let harvestExpectedEndAt: string | null = null;
+
+  if (fulfillmentMode === "scheduled_harvest") {
+    if (harvestStarts.size !== 1 || harvestEnds.size !== 1) {
+      throw new AgrimarketRequestError(
+        "AGRIMARKET_SCHEDULED_ITEMS_REQUIRE_SAME_HARVEST_WINDOW",
+        409,
+        "Scheduled Harvest products may share one order only when they use the same harvest window."
+      );
+    }
+    harvestExpectedStartAt = Array.from(harvestStarts)[0] || null;
+    const end = Array.from(harvestEnds)[0] || harvestExpectedStartAt;
+    harvestExpectedEndAt = end === harvestExpectedStartAt ? null : end;
   }
 
   const producerId = Array.from(producerIds)[0];
@@ -229,7 +305,7 @@ export async function loadAgrimarketOrderContext(
     throw new AgrimarketRequestError(
       "AGRIMARKET_PRODUCER_UNAVAILABLE",
       409,
-      "This producer is not accepting Agrimarket orders right now."
+      "This farmer is not accepting Agrimarket orders right now."
     );
   }
 
@@ -239,7 +315,7 @@ export async function loadAgrimarketOrderContext(
     throw new AgrimarketRequestError(
       "AGRIMARKET_PRODUCER_PIN_REQUIRED",
       409,
-      "The producer pickup pin is not configured correctly."
+      "The farmer pickup pin is not configured correctly."
     );
   }
 
@@ -249,7 +325,7 @@ export async function loadAgrimarketOrderContext(
     throw new AgrimarketRequestError(
       "AGRIMARKET_VEHICLE_REQUIREMENT_MISMATCH",
       409,
-      "This order requires a tricycle."
+      "This cart requires a tricycle."
     );
   }
 
@@ -262,5 +338,9 @@ export async function loadAgrimarketOrderContext(
     requiredVehicleType,
     preferredVehicleType,
     handlingEligible,
+    fulfillmentMode,
+    harvestExpectedStartAt,
+    harvestExpectedEndAt,
+    harvestOrderCutoffAt: fulfillmentMode === "scheduled_harvest" ? earliestCutoffIso : null,
   };
 }
