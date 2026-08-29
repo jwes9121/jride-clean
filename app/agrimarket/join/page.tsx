@@ -19,7 +19,7 @@ export default function AgrimarketFarmerJoinPage() {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
-  const [onboardingEnabled, setOnboardingEnabled] = useState<boolean | null>(null);
+  const [onboardingEnabled, setOnboardingEnabled] = useState(false);
   const [pin, setPin] = useState<Pin | null>(null);
   const [form, setForm] = useState({
     applicant_name: "", phone: "", town: "Lagawe", barangay: "", pickup_label: "",
