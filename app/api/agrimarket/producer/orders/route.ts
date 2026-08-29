@@ -111,6 +111,7 @@ export async function GET(req: NextRequest) {
       const secondsRemaining = Number.isFinite(deadlineMs)
         ? Math.max(0, Math.floor((deadlineMs - nowMs) / 1000))
         : 0;
+      const productSubtotal = Number(row.product_subtotal || 0);
 
       return {
         order_code: row.order_code,
@@ -125,9 +126,11 @@ export async function GET(req: NextRequest) {
         ready_at: row.ready_at,
         preferred_vehicle_type: row.preferred_vehicle_type,
         required_vehicle_type: row.required_vehicle_type,
-        product_subtotal: Number(row.product_subtotal || 0),
-        producer_marketplace_commission: Number(row.marketplace_fee || 0),
-        producer_product_net: Number(row.producer_product_net || 0),
+        product_subtotal: productSubtotal,
+        farmer_platform_fee: 0,
+        producer_marketplace_commission: 0,
+        producer_product_net: productSubtotal,
+        farmer_receives_full_product_subtotal: true,
         producer_paid_at: row.producer_paid_at,
         producer_paid_amount: Number(row.producer_paid_amount || 0),
         producer_payment_status: row.producer_paid_at ? "paid" : "pending",
@@ -146,6 +149,11 @@ export async function GET(req: NextRequest) {
     return jsonNoStore(200, {
       ok: true,
       producer_id: producerAuth.producer.id,
+      farmer_fee_policy: "free_launch_v1",
+      farmer_wallet_enabled: false,
+      joining_fee: 0,
+      listing_fee: 0,
+      marketplace_commission_percent: 0,
       marketplace_commission_is_customer_surcharge: false,
       orders: safeOrders,
     });
