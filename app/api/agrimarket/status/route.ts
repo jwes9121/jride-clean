@@ -1,4 +1,4 @@
-import { agrimarketEnabled, jsonNoStore } from "../_lib/server";
+import { agrimarketEnabled, agrimarketOnboardingEnabled, jsonNoStore } from "../_lib/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,5 +8,6 @@ export async function GET() {
   return jsonNoStore(200, {
     ok: true,
     enabled: agrimarketEnabled(),
+    onboarding_enabled: agrimarketOnboardingEnabled(),
   });
 }
