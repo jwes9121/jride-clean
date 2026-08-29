@@ -35,11 +35,12 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
       .in("status", [
         "awaiting_producer",
+        "awaiting_harvest",
         "producer_accepted",
         "preparing",
         "ready_for_dispatch",
@@ -64,15 +65,24 @@ export async function GET(req: NextRequest) {
     const orders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
     const orderIds = orders.map((row: any) => String(row.id || "")).filter(Boolean);
     const itemsByOrder = new Map<string, any[]>();
+    const proposalByOrder = new Map<string, any>();
 
     if (orderIds.length) {
-      const itemsRes = await admin
-        .from("agrimarket_order_items")
-        .select(
-          "order_id,product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible"
-        )
-        .in("order_id", orderIds)
-        .order("created_at", { ascending: true });
+      const [itemsRes, proposalsRes] = await Promise.all([
+        admin
+          .from("agrimarket_order_items")
+          .select(
+            "order_id,product_id,product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at"
+          )
+          .in("order_id", orderIds)
+          .order("created_at", { ascending: true }),
+        admin
+          .from("agrimarket_harvest_proposals")
+          .select("id,order_id,proposal_type,status,proposed_items,proposed_harvest_start_at,proposed_harvest_end_at,producer_reason,proposed_at")
+          .in("order_id", orderIds)
+          .eq("status", "pending_customer")
+          .order("proposed_at", { ascending: false }),
+      ]);
 
       if (itemsRes.error) {
         return jsonNoStore(500, {
@@ -81,12 +91,20 @@ export async function GET(req: NextRequest) {
           message: itemsRes.error.message,
         });
       }
+      if (proposalsRes.error) {
+        return jsonNoStore(500, {
+          ok: false,
+          error: "AGRIMARKET_HARVEST_PROPOSAL_READ_FAILED",
+          message: proposalsRes.error.message,
+        });
+      }
 
       for (const item of (Array.isArray(itemsRes.data) ? itemsRes.data : []) as any[]) {
         const orderId = String(item.order_id || "");
         if (!orderId) continue;
         const list = itemsByOrder.get(orderId) || [];
         list.push({
+          product_id: item.product_id,
           product_name: item.product_name,
           product_group: item.product_group,
           species: item.species,
@@ -100,8 +118,28 @@ export async function GET(req: NextRequest) {
           quantity: Number(item.quantity || 0),
           line_total: Number(item.line_total || 0),
           handling_eligible: Boolean(item.handling_eligible),
+          availability_mode: item.availability_mode,
+          harvest_start_at: item.harvest_start_at,
+          harvest_end_at: item.harvest_end_at,
+          harvest_order_cutoff_at: item.harvest_order_cutoff_at,
         });
         itemsByOrder.set(orderId, list);
+      }
+
+      for (const proposal of (Array.isArray(proposalsRes.data) ? proposalsRes.data : []) as any[]) {
+        const orderId = String(proposal.order_id || "");
+        if (orderId && !proposalByOrder.has(orderId)) {
+          proposalByOrder.set(orderId, {
+            id: proposal.id,
+            proposal_type: proposal.proposal_type,
+            status: proposal.status,
+            proposed_items: Array.isArray(proposal.proposed_items) ? proposal.proposed_items : [],
+            proposed_harvest_start_at: proposal.proposed_harvest_start_at,
+            proposed_harvest_end_at: proposal.proposed_harvest_end_at,
+            producer_reason: proposal.producer_reason,
+            proposed_at: proposal.proposed_at,
+          });
+        }
       }
     }
 
@@ -116,6 +154,11 @@ export async function GET(req: NextRequest) {
       return {
         order_code: row.order_code,
         status: row.status,
+        fulfillment_mode: row.fulfillment_mode || "always_available",
+        harvest_expected_start_at: row.harvest_expected_start_at,
+        harvest_expected_end_at: row.harvest_expected_end_at,
+        harvest_ready_at: row.harvest_ready_at,
+        pending_harvest_proposal: proposalByOrder.get(String(row.id)) || null,
         producer_confirm_expires_at: row.producer_confirm_expires_at,
         confirmation_seconds_remaining: secondsRemaining,
         producer_responded_at: row.producer_responded_at,
