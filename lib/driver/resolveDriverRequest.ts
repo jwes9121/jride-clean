@@ -47,7 +47,11 @@ async function previewDeviceLockAuthorized(
     return null;
   }
 
-  const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  // Preview-only native dry runs can legitimately last well beyond 10 minutes.
+  // Keep the device binding requirement, but allow a 24-hour lock age so the
+  // test session does not lose auth halfway through an assigned delivery.
+  // Production requests never enter this branch.
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const admin = supabaseAdmin();
   const lock = await admin
     .from("driver_device_locks")
