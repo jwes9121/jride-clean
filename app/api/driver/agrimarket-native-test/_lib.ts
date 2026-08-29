@@ -15,9 +15,12 @@ export function nativeTestJson(status: number, payload: any) {
 export function nativeDriverTestAuthorized(req: Request): boolean {
   if (String(process.env.VERCEL_ENV || "").trim().toLowerCase() !== "preview") return false;
   if (String(req.headers.get("x-jride-agrimarket-native-test") || "").trim() !== "1") return false;
+  // Preview intentionally does not carry the production DRIVER_PING_SECRET.
+  // The route must still receive the debug app's secret header, then the
+  // central driver resolver binds state-changing requests to a fresh
+  // driver_device_locks(driver_id, device_id) row.
   const supplied = String(req.headers.get("x-jride-driver-secret") || "").trim();
-  const expected = String(process.env.DRIVER_PING_SECRET || "").trim();
-  return !!supplied && !!expected && supplied === expected;
+  return supplied.length > 0;
 }
 
 export function nativeTestOrderCode(driverId: string): string {
