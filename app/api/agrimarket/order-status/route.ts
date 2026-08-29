@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -62,19 +62,36 @@ export async function GET(req: NextRequest) {
     }
 
     const order: any = orderRes.data;
-    const itemsRes = await admin
-      .from("agrimarket_order_items")
-      .select(
-        "product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible"
-      )
-      .eq("order_id", order.id)
-      .order("created_at", { ascending: true });
+    const [itemsRes, proposalRes] = await Promise.all([
+      admin
+        .from("agrimarket_order_items")
+        .select(
+          "product_id,product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible,availability_mode,harvest_start_at,harvest_end_at"
+        )
+        .eq("order_id", order.id)
+        .order("created_at", { ascending: true }),
+      admin
+        .from("agrimarket_harvest_proposals")
+        .select("id,proposal_type,status,proposed_items,proposed_harvest_start_at,proposed_harvest_end_at,producer_reason,proposed_at")
+        .eq("order_id", order.id)
+        .eq("status", "pending_customer")
+        .order("proposed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
     if (itemsRes.error) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_ORDER_ITEMS_READ_FAILED",
         message: itemsRes.error.message,
+      });
+    }
+    if (proposalRes.error) {
+      return jsonNoStore(500, {
+        ok: false,
+        error: "AGRIMARKET_HARVEST_PROPOSAL_READ_FAILED",
+        message: proposalRes.error.message,
       });
     }
 
@@ -88,17 +105,34 @@ export async function GET(req: NextRequest) {
           ? finalCashDue
           : 0;
 
+    const proposal: any = proposalRes.data || null;
     return jsonNoStore(200, {
       ok: true,
       order: {
         order_code: order.order_code,
         status: order.status,
+        fulfillment_mode: order.fulfillment_mode || "always_available",
+        harvest_expected_start_at: order.harvest_expected_start_at,
+        harvest_expected_end_at: order.harvest_expected_end_at,
+        harvest_ready_at: order.harvest_ready_at,
+        pending_harvest_proposal: proposal
+          ? {
+              id: proposal.id,
+              proposal_type: proposal.proposal_type,
+              proposed_items: Array.isArray(proposal.proposed_items) ? proposal.proposed_items : [],
+              proposed_harvest_start_at: proposal.proposed_harvest_start_at,
+              proposed_harvest_end_at: proposal.proposed_harvest_end_at,
+              reason: proposal.producer_reason,
+              proposed_at: proposal.proposed_at,
+              customer_response_required: true,
+            }
+          : null,
         producer_confirm_expires_at: order.producer_confirm_expires_at,
         producer_responded_at: order.producer_responded_at,
         producer_accepted_at: order.producer_accepted_at,
         producer_rejected_at: order.producer_rejected_at,
         producer_timeout_at: order.producer_timeout_at,
-        preparation_minutes: order.preparation_minutes,
+        preparation_minutes: order.preparation_minutes == null ? null : num(order.preparation_minutes),
         ready_at: order.ready_at,
         preferred_vehicle_type: order.preferred_vehicle_type,
         required_vehicle_type: order.required_vehicle_type,
