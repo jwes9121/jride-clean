@@ -204,7 +204,6 @@ export async function ensureNativeDriverTestFixture(driverId: string) {
         native_test_driver_id: driverId,
         warning: "NO_REAL_MONEY",
       },
-      producer_product_net: 0,
       cash_collection_required: false,
       cash_collection_amount: 0,
       route_plan: "farmer_first",
