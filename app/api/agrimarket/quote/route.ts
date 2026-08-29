@@ -112,6 +112,15 @@ export async function POST(req: NextRequest) {
         label: context.address.label || context.address.address_text,
       },
       items: context.itemSnapshots,
+      fulfillment: {
+        mode: context.fulfillmentMode,
+        is_scheduled_harvest: context.fulfillmentMode === "scheduled_harvest",
+        expected_harvest_start_at: context.harvestExpectedStartAt,
+        expected_harvest_end_at: context.harvestExpectedEndAt,
+        order_cutoff_at: context.harvestOrderCutoffAt,
+        customer_reserves_expected_quantity: context.fulfillmentMode === "scheduled_harvest",
+        driver_assignment_waits_for_farmer_ready: context.fulfillmentMode === "scheduled_harvest",
+      },
       product_subtotal: context.productSubtotal,
       cash_collection: {
         threshold_php: AGRIMARKET_CASH_FIRST_THRESHOLD,
