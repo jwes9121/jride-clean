@@ -9,9 +9,9 @@ export default function AdminPage() {
       <ul className="list-disc pl-6">
         <li><Link className="underline" href="/admin/towns">Manage Towns & Colors</Link></li>
         <li><Link className="underline" href="/admin/drivers">Manage Drivers (Online/Offline)</Link></li>
+        <li><Link className="underline" href="/admin/agrimarket/farmers">Review Agrimarket Farmer Applications</Link></li>
         <li><Link className="underline" href="/admin/audit">Audit Log</Link></li>
       </ul>
     </div>
   );
 }
-
