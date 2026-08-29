@@ -60,16 +60,18 @@ export default function AgrimarketFarmerJoinPage() {
   }, []);
 
   useEffect(() => {
-    if (!pin || !mapRef.current) return;
-    if (!markerRef.current) {
-      const marker = new mapboxgl.Marker({ draggable: true });
+    const map = mapRef.current;
+    if (!pin || !map) return;
+    let marker = markerRef.current;
+    if (!marker) {
+      marker = new mapboxgl.Marker({ draggable: true });
       marker.on("dragend", () => {
-        const point = marker.getLngLat();
+        const point = marker!.getLngLat();
         setPin({ lat: point.lat, lng: point.lng });
       });
       markerRef.current = marker;
     }
-    markerRef.current.setLngLat([pin.lng, pin.lat]).addTo(mapRef.current);
+    marker.setLngLat([pin.lng, pin.lat]).addTo(map);
   }, [pin]);
 
   function useCurrentLocation() {
