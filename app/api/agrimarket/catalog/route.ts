@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
+import { fetchAgrimarketDrivingRoute } from "../_lib/routing";
 import {
   agrimarketDisabledResponse,
   agrimarketEnabled,
   createServiceSupabase,
-  haversineKm,
   jsonNoStore,
   requireAgrimarketPassenger,
 } from "../_lib/server";
@@ -44,6 +44,11 @@ type ProducerRow = {
   accepting_orders: boolean;
 };
 
+type ProducerRoadMetric = {
+  distanceKm: number;
+  durationSeconds: number;
+};
+
 function cleanUuid(value: string | null): string | null {
   const v = String(value || "").trim();
   if (!v) return null;
@@ -56,6 +61,50 @@ function cleanUuid(value: string | null): string | null {
 function numberValue(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function roundedHalfKm(value: number): number {
+  return Math.round(value * 2) / 2;
+}
+
+async function loadRoadMetrics(
+  producers: ProducerRow[],
+  customerLat: number,
+  customerLng: number
+): Promise<Map<string, ProducerRoadMetric>> {
+  const valid = producers.filter((producer) => {
+    const lat = Number(producer.pickup_lat);
+    const lng = Number(producer.pickup_lng);
+    return Number.isFinite(lat) && Number.isFinite(lng);
+  });
+  const metrics = new Map<string, ProducerRoadMetric>();
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < valid.length) {
+      const index = cursor;
+      cursor += 1;
+      const producer = valid[index];
+      try {
+        const route = await fetchAgrimarketDrivingRoute(
+          producer.pickup_lat,
+          producer.pickup_lng,
+          customerLat,
+          customerLng
+        );
+        metrics.set(producer.id, {
+          distanceKm: route.distanceKm,
+          durationSeconds: route.durationSeconds,
+        });
+      } catch {
+        // A farmer without a road route is not ranked or displayed for this address.
+      }
+    }
+  }
+
+  const workerCount = Math.min(6, valid.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return metrics;
 }
 
 export async function GET(req: NextRequest) {
@@ -157,10 +206,7 @@ export async function GET(req: NextRequest) {
       return jsonNoStore(200, {
         ok: true,
         ordering_enabled: true,
-        address: {
-          id: address.id,
-          label: address.label || address.address_text,
-        },
+        address: { id: address.id, label: address.label || address.address_text },
         delivery_pricing: {
           pricing_version: Number((pricingRes.data as any).pricing_version || 1),
           currency: String((pricingRes.data as any).currency || "PHP"),
@@ -169,7 +215,7 @@ export async function GET(req: NextRequest) {
           rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
           route_basis: "road_route",
         },
-        ranking_basis: "proximity_to_selected_delivery_pin",
+        ranking_basis: "road_route_proximity_to_selected_delivery_pin",
         producer_location_disclosure: "hidden",
         products: [],
       });
@@ -192,16 +238,9 @@ export async function GET(req: NextRequest) {
 
     const producers = (Array.isArray(producerRes.data) ? producerRes.data : []) as ProducerRow[];
     const producerById = new Map<string, ProducerRow>();
-    const distanceByProducer = new Map<string, number>();
+    for (const producer of producers) producerById.set(producer.id, producer);
 
-    for (const producer of producers) {
-      const lat = Number(producer.pickup_lat);
-      const lng = Number(producer.pickup_lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-      producerById.set(producer.id, producer);
-      distanceByProducer.set(producer.id, haversineKm(customerLat, customerLng, lat, lng));
-    }
-
+    const roadMetrics = await loadRoadMetrics(producers, customerLat, customerLng);
     const rankByProductAndProducer = new Map<string, number>();
     const productNames = Array.from(new Set(products.map((row) => row.name.trim().toLowerCase())));
 
@@ -211,13 +250,13 @@ export async function GET(req: NextRequest) {
           products
             .filter((row) => row.name.trim().toLowerCase() === normalizedName)
             .map((row) => row.producer_id)
-            .filter((producerId) => producerById.has(producerId))
+            .filter((producerId) => producerById.has(producerId) && roadMetrics.has(producerId))
         )
       );
 
       ids.sort((a, b) => {
-        const da = distanceByProducer.get(a) ?? Number.POSITIVE_INFINITY;
-        const db = distanceByProducer.get(b) ?? Number.POSITIVE_INFINITY;
+        const da = roadMetrics.get(a)?.distanceKm ?? Number.POSITIVE_INFINITY;
+        const db = roadMetrics.get(b)?.distanceKm ?? Number.POSITIVE_INFINITY;
         if (da !== db) return da - db;
         return a.localeCompare(b);
       });
@@ -228,17 +267,21 @@ export async function GET(req: NextRequest) {
     }
 
     const safeProducts = products
-      .filter((row) => producerById.has(row.producer_id))
+      .filter((row) => producerById.has(row.producer_id) && roadMetrics.has(row.producer_id))
       .map((row) => {
         const normalizedName = row.name.trim().toLowerCase();
         const proximityRank = rankByProductAndProducer.get(`${normalizedName}|${row.producer_id}`) || 1;
         const scheduledHarvest = row.availability_mode === "scheduled_harvest";
+        const metric = roadMetrics.get(row.producer_id)!;
 
         return {
           id: row.id,
           name: row.name,
           producer_alias: `${row.name} Farmer ${proximityRank}`,
           proximity_rank: proximityRank,
+          approximate_road_distance_km: roundedHalfKm(metric.distanceKm),
+          approximate_road_duration_minutes: Math.max(1, Math.round(metric.durationSeconds / 60)),
+          distance_disclosure: "road_route_rounded_to_nearest_0_5_km",
           description: row.description,
           product_group: row.product_group,
           species: row.species,
@@ -271,10 +314,7 @@ export async function GET(req: NextRequest) {
     return jsonNoStore(200, {
       ok: true,
       ordering_enabled: true,
-      address: {
-        id: address.id,
-        label: address.label || address.address_text,
-      },
+      address: { id: address.id, label: address.label || address.address_text },
       delivery_pricing: {
         pricing_version: Number((pricingRes.data as any).pricing_version || 1),
         currency: String((pricingRes.data as any).currency || "PHP"),
@@ -283,7 +323,7 @@ export async function GET(req: NextRequest) {
         rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
         route_basis: "road_route",
       },
-      ranking_basis: "proximity_to_selected_delivery_pin",
+      ranking_basis: "road_route_proximity_to_selected_delivery_pin",
       producer_location_disclosure: "hidden",
       products: safeProducts,
     });
