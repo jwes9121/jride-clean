@@ -27,7 +27,17 @@ function temporaryPin(): string {
   return String(randomInt(100000, 1000000));
 }
 
-function applicationPayload(row: any, credentialByProducer: Map<string, string>) {
+function applicationPayload(
+  row: any,
+  producerById: Map<string, any>,
+  credentialByProducer: Map<string, any>,
+  latestAccessEventByProducer: Map<string, any>
+) {
+  const producerId = String(row.approved_producer_id || "");
+  const producer = producerId ? producerById.get(producerId) || null : null;
+  const credential = producerId ? credentialByProducer.get(producerId) || null : null;
+  const lastAccessEvent = producerId ? latestAccessEventByProducer.get(producerId) || null : null;
+
   return {
     id: row.id,
     application_code: row.application_code,
@@ -48,7 +58,21 @@ function applicationPayload(row: any, credentialByProducer: Map<string, string>)
     reviewed_by: row.reviewed_by,
     reviewed_at: row.reviewed_at,
     approved_producer_id: row.approved_producer_id,
-    farmer_access_code: row.approved_producer_id ? credentialByProducer.get(String(row.approved_producer_id)) || null : null,
+    farmer_access_code: credential?.access_code || null,
+    producer_status: producer?.status || null,
+    accepting_orders: producer?.accepting_orders ?? null,
+    credential_status: credential?.status || null,
+    credential_failed_attempts: Number(credential?.failed_attempts || 0),
+    credential_locked_until: credential?.locked_until || null,
+    credential_last_used_at: credential?.last_used_at || null,
+    last_access_event: lastAccessEvent
+      ? {
+          event_type: lastAccessEvent.event_type,
+          actor: lastAccessEvent.actor,
+          reason: lastAccessEvent.reason,
+          created_at: lastAccessEvent.created_at,
+        }
+      : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -81,20 +105,49 @@ export async function GET(req: NextRequest) {
   }
 
   const rows = Array.isArray(appsRes.data) ? appsRes.data : [];
-  const producerIds = rows.map((row: any) => String(row.approved_producer_id || "")).filter(Boolean);
-  const credentialByProducer = new Map<string, string>();
+  const producerIds = Array.from(
+    new Set(rows.map((row: any) => String(row.approved_producer_id || "")).filter(Boolean))
+  );
+  const producerById = new Map<string, any>();
+  const credentialByProducer = new Map<string, any>();
+  const latestAccessEventByProducer = new Map<string, any>();
 
   if (producerIds.length) {
-    const credentialsRes = await admin
-      .from("agrimarket_producer_credentials")
-      .select("producer_id,access_code,status")
-      .in("producer_id", producerIds);
+    const [producersRes, credentialsRes, eventsRes] = await Promise.all([
+      admin
+        .from("agrimarket_producers")
+        .select("id,status,accepting_orders")
+        .in("id", producerIds),
+      admin
+        .from("agrimarket_producer_credentials")
+        .select("producer_id,access_code,status,failed_attempts,locked_until,last_used_at")
+        .in("producer_id", producerIds),
+      admin
+        .from("agrimarket_producer_access_events")
+        .select("producer_id,event_type,actor,reason,created_at")
+        .in("producer_id", producerIds)
+        .order("created_at", { ascending: false })
+        .limit(1000),
+    ]);
 
-    if (!credentialsRes.error) {
-      for (const credential of Array.isArray(credentialsRes.data) ? credentialsRes.data : []) {
-        if (String((credential as any).status || "") === "active") {
-          credentialByProducer.set(String((credential as any).producer_id), String((credential as any).access_code));
-        }
+    if (producersRes.error || credentialsRes.error || eventsRes.error) {
+      return jsonNoStore(500, {
+        ok: false,
+        error: "AGRIMARKET_FARMER_ACCESS_STATE_FAILED",
+        message: producersRes.error?.message || credentialsRes.error?.message || eventsRes.error?.message,
+      });
+    }
+
+    for (const producer of Array.isArray(producersRes.data) ? producersRes.data : []) {
+      producerById.set(String((producer as any).id), producer);
+    }
+    for (const credential of Array.isArray(credentialsRes.data) ? credentialsRes.data : []) {
+      credentialByProducer.set(String((credential as any).producer_id), credential);
+    }
+    for (const event of Array.isArray(eventsRes.data) ? eventsRes.data : []) {
+      const producerId = String((event as any).producer_id || "");
+      if (producerId && !latestAccessEventByProducer.has(producerId)) {
+        latestAccessEventByProducer.set(producerId, event);
       }
     }
   }
@@ -102,7 +155,9 @@ export async function GET(req: NextRequest) {
   return jsonNoStore(200, {
     ok: true,
     staff_role: staff.role,
-    applications: rows.map((row: any) => applicationPayload(row, credentialByProducer)),
+    applications: rows.map((row: any) =>
+      applicationPayload(row, producerById, credentialByProducer, latestAccessEventByProducer)
+    ),
   });
 }
 
