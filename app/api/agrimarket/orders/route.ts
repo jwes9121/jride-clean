@@ -56,7 +56,9 @@ function rpcFailureStatus(message: string): number {
     message.includes("INSUFFICIENT") ||
     message.includes("MISMATCH") ||
     message.includes("SINGLE_PRODUCER") ||
-    message.includes("SCHEDULED_HARVEST") ||
+    message.includes("SCHEDULED") ||
+    message.includes("HARVEST") ||
+    message.includes("MIXED_AVAILABILITY") ||
     message.includes("PRICE_CHANGED_RETRY")
   ) {
     return 409;
@@ -69,6 +71,10 @@ function orderPayload(order: any) {
   return {
     order_code: order.order_code,
     status: order.status,
+    fulfillment_mode: order.fulfillment_mode || "always_available",
+    harvest_expected_start_at: order.harvest_expected_start_at || null,
+    harvest_expected_end_at: order.harvest_expected_end_at || null,
+    harvest_ready_at: order.harvest_ready_at || null,
     producer_confirm_expires_at: order.producer_confirm_expires_at,
     product_subtotal: Number(order.product_subtotal || 0),
     cash_collection_required: Boolean(order.cash_collection_required),
@@ -91,12 +97,15 @@ function orderPayload(order: any) {
       order.customer_to_farmer_duration_seconds == null ? null : Number(order.customer_to_farmer_duration_seconds),
     driver_to_first_pickup_km:
       order.driver_to_first_pickup_km == null ? null : Number(order.driver_to_first_pickup_km),
-    preparation_minutes: Number(order.preparation_minutes || 0),
+    preparation_minutes: order.preparation_minutes == null ? null : Number(order.preparation_minutes),
     preferred_vehicle_type: order.preferred_vehicle_type,
     required_vehicle_type: order.required_vehicle_type,
     pricing_version: Number(order.pricing_version || 1),
   };
 }
+
+const ORDER_READ_COLUMNS =
+  "order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,delivery_base_fee,delivery_distance_fee,delivery_fee,pickup_distance_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version";
 
 export async function POST(req: NextRequest) {
   if (!agrimarketEnabled()) return agrimarketDisabledResponse();
@@ -114,9 +123,7 @@ export async function POST(req: NextRequest) {
 
     const existingRes = await admin
       .from("agrimarket_orders")
-      .select(
-        "order_code,status,producer_confirm_expires_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,delivery_base_fee,delivery_distance_fee,delivery_fee,pickup_distance_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version"
-      )
+      .select(ORDER_READ_COLUMNS)
       .eq("customer_user_id", passengerAuth.user.id)
       .eq("client_request_id", clientRequestId)
       .limit(1)
@@ -169,7 +176,7 @@ export async function POST(req: NextRequest) {
         )
       : null;
 
-    const orderRes = await admin.rpc("agrimarket_create_reserved_order_v3", {
+    const orderRes = await admin.rpc("agrimarket_create_reserved_order_v4", {
       p_customer_user_id: passengerAuth.user.id,
       p_client_request_id: clientRequestId,
       p_delivery_address_id: addressId,
@@ -203,9 +210,7 @@ export async function POST(req: NextRequest) {
 
     const readBackRes = await admin
       .from("agrimarket_orders")
-      .select(
-        "order_code,status,producer_confirm_expires_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,delivery_base_fee,delivery_distance_fee,delivery_fee,pickup_distance_fee,handling_fee,total_payable,route_distance_km,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,preparation_minutes,preferred_vehicle_type,required_vehicle_type,pricing_version"
-      )
+      .select(ORDER_READ_COLUMNS)
       .eq("order_code", created.order_code)
       .limit(1)
       .single();
@@ -218,10 +223,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const payload = orderPayload(readBackRes.data);
     return jsonNoStore(201, {
       ok: true,
       idempotent_replay: false,
-      order: orderPayload(readBackRes.data),
+      order: payload,
+      harvest_reservation:
+        payload.fulfillment_mode === "scheduled_harvest"
+          ? {
+              expected_start_at: payload.harvest_expected_start_at,
+              expected_end_at: payload.harvest_expected_end_at,
+              driver_assignment_waits_for_farmer_ready: true,
+              changes_require_customer_approval: true,
+            }
+          : null,
       cash_collection_threshold_php: AGRIMARKET_CASH_FIRST_THRESHOLD,
       pickup_distance_policy: {
         status: "pending_driver_assignment",
