@@ -62,16 +62,20 @@ export default function AgrimarketFarmerJoinPage() {
   useEffect(() => {
     const map = mapRef.current;
     if (!pin || !map) return;
-    let marker = markerRef.current;
-    if (!marker) {
-      marker = new mapboxgl.Marker({ draggable: true });
-      marker.on("dragend", () => {
-        const point = marker!.getLngLat();
-        setPin({ lat: point.lat, lng: point.lng });
-      });
-      markerRef.current = marker;
+
+    const existingMarker = markerRef.current;
+    if (existingMarker) {
+      existingMarker.setLngLat([pin.lng, pin.lat]).addTo(map);
+      return;
     }
-    marker.setLngLat([pin.lng, pin.lat]).addTo(map);
+
+    const createdMarker = new mapboxgl.Marker({ draggable: true });
+    createdMarker.on("dragend", () => {
+      const point = createdMarker.getLngLat();
+      setPin({ lat: point.lat, lng: point.lng });
+    });
+    createdMarker.setLngLat([pin.lng, pin.lat]).addTo(map);
+    markerRef.current = createdMarker;
   }, [pin]);
 
   function useCurrentLocation() {
