@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
 import { fetchAgrimarketDrivingRoute } from "../_lib/routing";
 import {
@@ -30,6 +31,7 @@ type ProductRow = {
   availability_mode: string;
   harvest_start_at: string | null;
   harvest_end_at: string | null;
+  harvest_order_cutoff_at: string | null;
   default_prep_minutes: number;
   vehicle_requirement: string;
   handling_eligible: boolean;
@@ -65,6 +67,11 @@ function numberValue(value: unknown): number {
 
 function roundedHalfKm(value: number): number {
   return Math.round(value * 2) / 2;
+}
+
+function validFutureIso(value: unknown, nowMs: number): boolean {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) && ms > nowMs;
 }
 
 async function loadRoadMetrics(
@@ -185,7 +192,7 @@ export async function GET(req: NextRequest) {
     const productRes = await admin
       .from("agrimarket_products")
       .select(
-        "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
+        "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
       )
       .eq("is_active", true)
       .gt("remaining_quantity", 0)
@@ -202,23 +209,25 @@ export async function GET(req: NextRequest) {
     const products = (Array.isArray(productRes.data) ? productRes.data : []) as ProductRow[];
     const producerIds = Array.from(new Set(products.map((row) => row.producer_id).filter(Boolean)));
 
+    const baseResponse = {
+      ok: true,
+      ordering_enabled: true,
+      address: { id: address.id, label: address.label || address.address_text },
+      delivery_pricing: {
+        pricing_version: Number((pricingRes.data as any).pricing_version || 1),
+        currency: String((pricingRes.data as any).currency || "PHP"),
+        base_fee: numberValue((pricingRes.data as any).base_delivery_fee),
+        rate_per_road_km: numberValue((pricingRes.data as any).route_fee_per_km),
+        rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
+        route_basis: "road_route",
+      },
+      ranking_basis: "road_route_proximity_to_selected_delivery_pin",
+      producer_location_disclosure: "hidden",
+      cart_policy: "single_farmer_single_fulfillment_mode",
+    };
+
     if (!producerIds.length) {
-      return jsonNoStore(200, {
-        ok: true,
-        ordering_enabled: true,
-        address: { id: address.id, label: address.label || address.address_text },
-        delivery_pricing: {
-          pricing_version: Number((pricingRes.data as any).pricing_version || 1),
-          currency: String((pricingRes.data as any).currency || "PHP"),
-          base_fee: numberValue((pricingRes.data as any).base_delivery_fee),
-          rate_per_road_km: numberValue((pricingRes.data as any).route_fee_per_km),
-          rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
-          route_basis: "road_route",
-        },
-        ranking_basis: "road_route_proximity_to_selected_delivery_pin",
-        producer_location_disclosure: "hidden",
-        products: [],
-      });
+      return jsonNoStore(200, { ...baseResponse, products: [] });
     }
 
     const producerRes = await admin
@@ -242,7 +251,10 @@ export async function GET(req: NextRequest) {
 
     const roadMetrics = await loadRoadMetrics(producers, customerLat, customerLng);
     const rankByProductAndProducer = new Map<string, number>();
+    const cartGroupByProducer = new Map<string, string>();
     const productNames = Array.from(new Set(products.map((row) => row.name.trim().toLowerCase())));
+
+    for (const producer of producers) cartGroupByProducer.set(producer.id, randomUUID());
 
     for (const normalizedName of productNames) {
       const ids = Array.from(
@@ -266,6 +278,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const nowMs = Date.now();
     const safeProducts = products
       .filter((row) => producerById.has(row.producer_id) && roadMetrics.has(row.producer_id))
       .map((row) => {
@@ -273,12 +286,18 @@ export async function GET(req: NextRequest) {
         const proximityRank = rankByProductAndProducer.get(`${normalizedName}|${row.producer_id}`) || 1;
         const scheduledHarvest = row.availability_mode === "scheduled_harvest";
         const metric = roadMetrics.get(row.producer_id)!;
+        const reservationOpen = !scheduledHarvest || validFutureIso(row.harvest_order_cutoff_at, nowMs);
+        const harvestWindowKey = scheduledHarvest
+          ? `${row.harvest_start_at || ""}|${row.harvest_end_at || row.harvest_start_at || ""}`
+          : "always_available";
 
         return {
           id: row.id,
           name: row.name,
           producer_alias: `${row.name} Farmer ${proximityRank}`,
           proximity_rank: proximityRank,
+          cart_group_key: cartGroupByProducer.get(row.producer_id),
+          harvest_window_key: harvestWindowKey,
           approximate_road_distance_km: roundedHalfKm(metric.distanceKm),
           approximate_road_duration_minutes: Math.max(1, Math.round(metric.durationSeconds / 60)),
           distance_disclosure: "road_route_rounded_to_nearest_0_5_km",
@@ -296,12 +315,14 @@ export async function GET(req: NextRequest) {
           availability_mode: row.availability_mode,
           harvest_start_at: row.harvest_start_at,
           harvest_end_at: row.harvest_end_at,
+          harvest_order_cutoff_at: row.harvest_order_cutoff_at,
           preparation_minutes: row.default_prep_minutes,
           vehicle_requirement: row.vehicle_requirement,
           handling_eligible: row.handling_eligible,
           photo_urls: Array.isArray(row.photo_urls) ? row.photo_urls : [],
-          can_order_now: !scheduledHarvest,
-          order_blocker: scheduledHarvest ? "AGRIMARKET_SCHEDULED_HARVEST_POLICY_REQUIRED" : null,
+          can_order_now: reservationOpen,
+          order_action: scheduledHarvest ? "Reserve harvest" : "Add to cart",
+          order_blocker: reservationOpen ? null : "AGRIMARKET_HARVEST_ORDER_CUTOFF_PASSED",
         };
       })
       .sort((a, b) => {
@@ -311,22 +332,7 @@ export async function GET(req: NextRequest) {
         return a.unit_price - b.unit_price;
       });
 
-    return jsonNoStore(200, {
-      ok: true,
-      ordering_enabled: true,
-      address: { id: address.id, label: address.label || address.address_text },
-      delivery_pricing: {
-        pricing_version: Number((pricingRes.data as any).pricing_version || 1),
-        currency: String((pricingRes.data as any).currency || "PHP"),
-        base_fee: numberValue((pricingRes.data as any).base_delivery_fee),
-        rate_per_road_km: numberValue((pricingRes.data as any).route_fee_per_km),
-        rounding_mode: String((pricingRes.data as any).rounding_mode || "nearest_whole_peso"),
-        route_basis: "road_route",
-      },
-      ranking_basis: "road_route_proximity_to_selected_delivery_pin",
-      producer_location_disclosure: "hidden",
-      products: safeProducts,
-    });
+    return jsonNoStore(200, { ...baseResponse, products: safeProducts });
   } catch (error: any) {
     return jsonNoStore(500, {
       ok: false,
