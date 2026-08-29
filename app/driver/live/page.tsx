@@ -6,7 +6,7 @@ import {
   stopDriverTracking,
   UpsertResult,
 } from "@/lib/driver-tracking";
-import AgrimarketDriverPanel from "./AgrimarketDriverPanel";
+import AgrimarketDriverGate from "./AgrimarketDriverGate";
 
 export default function DriverLivePage() {
   const [online, setOnline] = useState(false);
@@ -93,7 +93,7 @@ export default function DriverLivePage() {
           </p>
         ) : null}
 
-        <AgrimarketDriverPanel online={online} />
+        <AgrimarketDriverGate online={online} />
       </div>
     </main>
   );
