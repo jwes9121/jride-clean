@@ -59,9 +59,9 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v2", {
+    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v3", {
       p_order_code: orderCode,
-      p_vendor_account_id: producerAuth.vendorId,
+      p_producer_id: producerAuth.producer.id,
       p_decision: decision,
       p_preparation_minutes: decision === "accept" ? preparationMinutes : null,
       p_reason: reason,
