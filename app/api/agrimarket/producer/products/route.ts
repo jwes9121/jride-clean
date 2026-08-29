@@ -5,7 +5,7 @@ import {
   createServiceSupabase,
   jsonNoStore,
   requireAgrimarketProducer,
-} from "../../../_lib/server";
+} from "../../_lib/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
