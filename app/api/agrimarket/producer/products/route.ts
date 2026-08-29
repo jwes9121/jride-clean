@@ -50,6 +50,13 @@ function uuid(value: unknown): string | null {
   return raw;
 }
 
+function isoOrNull(value: unknown): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+}
+
 function productPayload(row: any) {
   return {
     id: row.id,
@@ -71,6 +78,7 @@ function productPayload(row: any) {
     availability_mode: row.availability_mode,
     harvest_start_at: row.harvest_start_at,
     harvest_end_at: row.harvest_end_at,
+    harvest_order_cutoff_at: row.harvest_order_cutoff_at,
     default_prep_minutes: Number(row.default_prep_minutes || 0),
     vehicle_requirement: row.vehicle_requirement,
     handling_eligible: Boolean(row.handling_eligible),
@@ -84,7 +92,7 @@ async function readOwnProducts(admin: any, producerId: string) {
   return admin
     .from("agrimarket_products")
     .select(
-      "id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,listed_quantity,reserved_quantity,sold_quantity,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls,is_active,updated_at"
+      "id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,listed_quantity,reserved_quantity,sold_quantity,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls,is_active,updated_at"
     )
     .eq("producer_id", producerId)
     .order("is_active", { ascending: false })
@@ -197,8 +205,9 @@ export async function POST(req: NextRequest) {
       const unitPrice = finiteNumber(body?.unit_price ?? body?.unitPrice);
       const availableQuantity = finiteNumber(body?.available_quantity ?? body?.availableQuantity ?? body?.listed_quantity);
       const availabilityMode = lower(body?.availability_mode || body?.availabilityMode || "always_available");
-      const harvestStartAt = text(body?.harvest_start_at || body?.harvestStartAt) || null;
-      const harvestEndAt = text(body?.harvest_end_at || body?.harvestEndAt) || null;
+      const harvestStartAt = isoOrNull(body?.harvest_start_at || body?.harvestStartAt);
+      const harvestEndAt = isoOrNull(body?.harvest_end_at || body?.harvestEndAt);
+      const harvestOrderCutoffAt = isoOrNull(body?.harvest_order_cutoff_at || body?.harvestOrderCutoffAt);
       const prepMinutes = finiteNumber(body?.default_prep_minutes ?? body?.preparation_minutes ?? 15);
       let vehicleRequirement = lower(body?.vehicle_requirement || body?.vehicleRequirement || "either");
       const handlingEligible = body?.handling_eligible === true;
@@ -218,12 +227,27 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      if (availabilityMode === "scheduled_harvest" && !harvestStartAt) {
-        return jsonNoStore(400, {
-          ok: false,
-          error: "AGRIMARKET_HARVEST_START_REQUIRED",
-          message: "Scheduled-harvest listings require a harvest start date.",
-        });
+      if (availabilityMode === "scheduled_harvest") {
+        if (!harvestStartAt || !harvestOrderCutoffAt) {
+          return jsonNoStore(400, {
+            ok: false,
+            error: "AGRIMARKET_HARVEST_WINDOW_REQUIRED",
+            message: "Scheduled Harvest requires an expected harvest date and an order cutoff.",
+          });
+        }
+        if (Date.parse(harvestOrderCutoffAt) >= Date.parse(harvestStartAt)) {
+          return jsonNoStore(400, {
+            ok: false,
+            error: "AGRIMARKET_HARVEST_CUTOFF_INVALID",
+            message: "The reservation cutoff must be before the expected harvest starts.",
+          });
+        }
+        if (harvestEndAt && Date.parse(harvestEndAt) < Date.parse(harvestStartAt)) {
+          return jsonNoStore(400, {
+            ok: false,
+            error: "AGRIMARKET_HARVEST_WINDOW_INVALID",
+          });
+        }
       }
 
       if (cargoClass === "live_livestock" || productGroup === "livestock") {
@@ -247,8 +271,9 @@ export async function POST(req: NextRequest) {
           unit_price: unitPrice,
           listed_quantity: availableQuantity,
           availability_mode: availabilityMode,
-          harvest_start_at: harvestStartAt,
-          harvest_end_at: harvestEndAt,
+          harvest_start_at: availabilityMode === "scheduled_harvest" ? harvestStartAt : null,
+          harvest_end_at: availabilityMode === "scheduled_harvest" ? harvestEndAt : null,
+          harvest_order_cutoff_at: availabilityMode === "scheduled_harvest" ? harvestOrderCutoffAt : null,
           default_prep_minutes: prepMinutes,
           vehicle_requirement: vehicleRequirement,
           handling_eligible: handlingEligible,
