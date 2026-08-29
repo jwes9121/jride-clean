@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { createClient as createCookieSupabase } from "@/utils/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
@@ -7,7 +8,11 @@ export type PassengerAuthResult =
   | { ok: false; response: NextResponse };
 
 export type ProducerAuthResult =
-  | { ok: true; vendorId: string; producer: any }
+  | { ok: true; accessCode: string; producer: any }
+  | { ok: false; response: NextResponse };
+
+export type StaffAuthResult =
+  | { ok: true; role: "admin" | "dispatcher"; user: any; actor: string }
   | { ok: false; response: NextResponse };
 
 function envEnabled(value: string | undefined): boolean {
@@ -19,12 +24,25 @@ export function agrimarketEnabled(): boolean {
   return envEnabled(process.env.AGRIMARKET_ENABLED);
 }
 
+export function agrimarketOnboardingEnabled(): boolean {
+  return agrimarketEnabled() || envEnabled(process.env.AGRIMARKET_ONBOARDING_ENABLED);
+}
+
 export function agrimarketDisabledResponse() {
   return jsonNoStore(503, {
     ok: false,
     enabled: false,
     error: "AGRIMARKET_DISABLED",
     message: "Agrimarket is prepared but not enabled yet.",
+  });
+}
+
+export function agrimarketOnboardingDisabledResponse() {
+  return jsonNoStore(503, {
+    ok: false,
+    onboarding_enabled: false,
+    error: "AGRIMARKET_ONBOARDING_DISABLED",
+    message: "Agrimarket farmer applications are not open yet.",
   });
 }
 
@@ -147,60 +165,91 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
   return { ok: true, user };
 }
 
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+export async function requireAgrimarketStaff(adminOnly = false): Promise<StaffAuthResult> {
+  const session = await auth();
+  const user = (session?.user || null) as any;
+  const role = String(user?.role || "").trim().toLowerCase();
+
+  if (!user || (role !== "admin" && role !== "dispatcher")) {
+    return {
+      ok: false,
+      response: jsonNoStore(401, {
+        ok: false,
+        error: "AGRIMARKET_STAFF_AUTH_REQUIRED",
+        message: "JRide staff sign-in is required.",
+      }),
+    };
+  }
+
+  if (adminOnly && role !== "admin") {
+    return {
+      ok: false,
+      response: jsonNoStore(403, {
+        ok: false,
+        error: "AGRIMARKET_ADMIN_REQUIRED",
+        message: "Administrator approval is required for this action.",
+      }),
+    };
+  }
+
+  const actor = String(user?.email || user?.name || user?.id || role).trim();
+  return { ok: true, role: role as "admin" | "dispatcher", user, actor };
+}
+
+function validProducerAccessCode(value: string): boolean {
+  return /^AGF-[A-Z0-9]{6,12}$/.test(value);
 }
 
 export async function requireAgrimarketProducer(req: NextRequest): Promise<ProducerAuthResult> {
-  const vendorId = String(req.headers.get("x-jride-vendor-id") || "").trim();
-  const accessPin = String(req.headers.get("x-jride-vendor-pin") || "").trim();
+  const accessCode = String(req.headers.get("x-jride-agrimarket-code") || "").trim().toUpperCase();
+  const accessPin = String(req.headers.get("x-jride-agrimarket-pin") || "").trim();
 
-  if (!vendorId || !accessPin || !isUuid(vendorId)) {
+  if (!validProducerAccessCode(accessCode) || !/^[0-9]{6}$/.test(accessPin)) {
     return {
       ok: false,
       response: jsonNoStore(401, {
         ok: false,
         error: "AGRIMARKET_PRODUCER_AUTH_REQUIRED",
-        message: "Valid producer credentials are required.",
+        message: "Valid Agrimarket farmer credentials are required.",
       }),
     };
   }
 
   const admin = createServiceSupabase();
-  const credentialRes = await admin
-    .from("vendor_onboarding_credentials")
-    .select("vendor_id,status")
-    .eq("vendor_id", vendorId)
-    .eq("access_pin", accessPin)
-    .limit(1)
-    .maybeSingle();
+  const verifyRes = await admin.rpc("agrimarket_verify_producer_credential_v1", {
+    p_access_code: accessCode,
+    p_pin: accessPin,
+    p_now: new Date().toISOString(),
+  });
 
-  if (credentialRes.error) {
+  if (verifyRes.error) {
     return {
       ok: false,
-      response: jsonNoStore(500, {
+      response: jsonNoStore(503, {
         ok: false,
         error: "AGRIMARKET_PRODUCER_AUTH_FAILED",
-        message: credentialRes.error.message,
+        message: "Farmer sign-in is temporarily unavailable.",
       }),
     };
   }
 
-  if (!credentialRes.data) {
+  const rows = Array.isArray(verifyRes.data) ? verifyRes.data : [];
+  const verified: any = rows[0] || null;
+  if (!verified?.producer_id) {
     return {
       ok: false,
       response: jsonNoStore(401, {
         ok: false,
         error: "AGRIMARKET_PRODUCER_AUTH_REQUIRED",
-        message: "Valid producer credentials are required.",
+        message: "The farmer access code or PIN is invalid, inactive, or temporarily locked.",
       }),
     };
   }
 
   const producerRes = await admin
     .from("agrimarket_producers")
-    .select("id,vendor_account_id,status,accepting_orders")
-    .eq("vendor_account_id", vendorId)
+    .select("id,status,accepting_orders,contact_name,town,barangay")
+    .eq("id", verified.producer_id)
     .limit(1)
     .maybeSingle();
 
@@ -221,12 +270,12 @@ export async function requireAgrimarketProducer(req: NextRequest): Promise<Produ
       response: jsonNoStore(403, {
         ok: false,
         error: "AGRIMARKET_PRODUCER_NOT_ACTIVE",
-        message: "This vendor is not an active Agrimarket producer.",
+        message: "This Agrimarket farmer account is not active.",
       }),
     };
   }
 
-  return { ok: true, vendorId, producer: producerRes.data };
+  return { ok: true, accessCode, producer: producerRes.data };
 }
 
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
