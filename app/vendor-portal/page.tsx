@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V5
 // JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
+// JRIDE_VENDOR_TAKEOUT_QUEUE_HIERARCHY_V1
 
 type VendorRow = {
   id?: string | null;
@@ -344,24 +345,26 @@ function normalizeVendorStatus(s: any) {
 
 function statusLabel(s: any) {
   const x = normalizeVendorStatus(s);
-  if (x === "vendor_pending") return "Waiting for vendor confirmation";
-  if (x === "vendor_accepted") return "Vendor accepted";
-  if (x === "driver_assigned") return "Driver assigned";
-  if (x === "driver_accepted") return "Driver accepted";
-  if (x === "pickup_ready") return "Order ready";
-  if (x === "preparing") return "Preparing";
-  if (x === "completed") return "Completed";
-  if (x === "vendor_timeout") return "Vendor timeout";
-  if (x === "cancelled") return "Cancelled";
-  return x || "Waiting for vendor confirmation";
+  if (x === "vendor_pending") return "NEW ORDER - ACCEPT OR DECLINE";
+  if (x === "vendor_accepted") return "ACCEPTED - WAITING FOR DRIVER";
+  if (x === "driver_assigned") return "DRIVER SELECTED";
+  if (x === "driver_accepted") return "DRIVER ACCEPTED";
+  if (x === "pickup_ready") return "READY FOR PICKUP";
+  if (x === "preparing") return "PREPARING ORDER";
+  if (x === "completed") return "COMPLETED";
+  if (x === "vendor_timeout") return "MISSED - ACCEPTANCE TIME EXPIRED";
+  if (x === "cancelled") return "CANCELLED";
+  if (!x) return "NEW ORDER - ACCEPT OR DECLINE";
+  return x.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function orderClass(s: any) {
   const x = normalizeVendorStatus(s);
-  if (x === "vendor_pending") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (x === "vendor_pending") return "border-amber-300 bg-amber-50 text-amber-800";
   if (x === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "driver_assigned") return "border-blue-300 bg-blue-50 text-blue-800";
   if (x === "driver_accepted") return "border-blue-300 bg-blue-50 text-blue-800";
+  if (x === "preparing") return "border-amber-300 bg-amber-50 text-amber-800";
   if (x === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (x === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
   if (x === "vendor_timeout") return "border-rose-300 bg-rose-50 text-rose-700";
@@ -955,17 +958,24 @@ export default function VendorPortalPage() {
     return vendors.find((v) => vendorKey(v) === vendorId) || null;
   }, [vendors, vendorId]);
 
+  const newOrders = useMemo(() => {
+    return orders
+      .filter((o) => isActivePendingVendorOrder(o, nowMs))
+      .sort(
+        (a, b) =>
+          vendorAcceptTimer(a, nowMs).remainingMs -
+          vendorAcceptTimer(b, nowMs).remainingMs
+      );
+  }, [orders, nowMs]);
+
   const activeOrders = useMemo(() => {
     return orders.filter((o) => {
       const status = normalizeVendorStatus(o.vendor_status);
-      if (status === "vendor_pending") return !vendorAcceptTimer(o, nowMs).expired;
-      return ["vendor_accepted", "driver_assigned", "driver_accepted", "pickup_ready"].includes(status);
+      return ["vendor_accepted", "driver_assigned", "driver_accepted", "preparing", "pickup_ready"].includes(status);
     });
-  }, [orders, nowMs]);
+  }, [orders]);
 
-  const pendingVendorOrdersForAlert = useMemo(() => {
-    return orders.filter((o) => isActivePendingVendorOrder(o, nowMs));
-  }, [orders, nowMs]);
+  const pendingVendorOrdersForAlert = newOrders;
 
 
   useEffect(() => {
@@ -2432,7 +2442,7 @@ export default function VendorPortalPage() {
                   <h2 className="text-lg font-semibold">Live order queue</h2>
                   <p className="text-xs text-slate-500">Live orders first. Keep sound on and watch this panel during service hours.</p>
                 </div>
-                <div className="text-xs text-slate-500">Active: {activeOrders.length} | History: {historyOrders.length}</div>
+                <div className="text-xs text-slate-500">New: {newOrders.length} | Active: {activeOrders.length} | History: {historyOrders.length}</div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <button
                     type="button"
@@ -2469,7 +2479,7 @@ export default function VendorPortalPage() {
   <div className="flex flex-wrap items-center justify-between gap-2">
     <div>
       <div className="text-xs font-bold uppercase tracking-wide text-emerald-300">Live operations</div>
-      <div className="mt-1 text-sm font-semibold text-slate-100">{activeOrders.length} active order{activeOrders.length === 1 ? "" : "s"}</div>
+      <div className="mt-1 text-sm font-semibold text-slate-100">{newOrders.length + activeOrders.length} live order{newOrders.length + activeOrders.length === 1 ? "" : "s"}</div>
     </div>
     <div className="flex flex-wrap items-center gap-2 text-[11px]">
       {pendingVendorOrdersForAlert.length > 0 ? (
@@ -2483,8 +2493,90 @@ export default function VendorPortalPage() {
     </div>
   </div>
 </div>
-<h3 className="mb-2 text-sm font-semibold">Active vendor workflow</h3>
-                  <div className="mb-2 text-[11px] text-slate-500">Shows customer, address, items, receipt request, packaging, and notes.</div>
+<div className="mb-5 rounded-2xl border-2 border-amber-400 bg-amber-50 p-3 shadow-sm ring-1 ring-amber-200">
+  <div className="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <div className="text-xs font-black uppercase tracking-wider text-amber-800">NEW ORDERS - ACTION REQUIRED</div>
+      <div className="mt-1 text-xs text-amber-900">Accept or decline each order within 5 minutes. The most urgent order appears first.</div>
+    </div>
+    <span className="rounded-full border border-amber-400 bg-white px-3 py-1 text-xs font-black text-amber-900">
+      {newOrders.length} waiting
+    </span>
+  </div>
+
+  <div className="mt-3 space-y-3">
+    {newOrders.length === 0 ? (
+      <div className="rounded-xl border border-emerald-200 bg-white p-3 text-sm text-emerald-800">No new orders waiting for action.</div>
+    ) : null}
+
+    {newOrders.map((o) => {
+      const acceptDeadline = vendorAcceptTimer(o, nowMs);
+      const items = orderItems(o);
+      return (
+        <div key={o.id || o.booking_code || Math.random()} className="rounded-2xl border border-amber-300 bg-white p-3 shadow-sm ring-1 ring-amber-200">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-black uppercase tracking-wide text-amber-700">NEW ORDER - ACCEPT OR DECLINE</div>
+              <div className="mt-1 text-base font-black text-slate-900">{o.booking_code || o.id}</div>
+            </div>
+            <div className={"inline-flex items-center rounded-full border px-3 py-1 text-xs font-black " + vendorAcceptTimerClass(acceptDeadline.tone)}>
+              Accept within: {acceptDeadline.label}
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-1 rounded-xl border bg-slate-50 p-3 text-xs text-slate-700">
+            <div><span className="font-semibold text-slate-900">Customer:</span> {orderCustomerName(o)}</div>
+            <div><span className="font-semibold text-slate-900">Phone:</span> {orderCustomerPhone(o)}</div>
+            <div><span className="font-semibold text-slate-900">Delivery address:</span> {orderDeliveryAddress(o)}</div>
+            {hasDeliveryPin(o) ? <div><span className="font-semibold text-slate-900">Map pin:</span> Saved for driver navigation</div> : null}
+          </div>
+
+          <div className="mt-3 rounded-xl border bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-2 text-xs font-semibold text-slate-700">
+              <span>Order details</span>
+              <span>{items.length} item{items.length === 1 ? "" : "s"}</span>
+            </div>
+            {items.length ? (
+              <div className="mt-2 space-y-1">
+                {items.map((it, idx) => {
+                  const qty = Math.max(1, parseInt(String(it.quantity ?? 1), 10) || 1);
+                  return (
+                    <div key={`${clean(it.menu_item_id) || clean(it.name) || idx}-${idx}`} className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900">
+                      {qty} x {clean(it.name)}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-2 rounded-lg bg-white px-3 py-2 text-xs text-rose-700">No item details returned. Refresh the queue before accepting this order.</div>
+            )}
+          </div>
+
+          <div className="mt-2 text-sm font-bold text-slate-900">Subtotal: {money(orderSubtotal(o))}</div>
+
+          <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950">
+            <div className="font-semibold">Order instructions</div>
+            <div className="mt-1">Receipt requested: {orderReceiptRequested(o) ? "YES" : "NO"}</div>
+            <div className="mt-1">Packaging: {orderPackagingInstruction(o)}</div>
+            <div className="mt-1">Customer note: {orderCustomerNoteOnly(o) || "none"}</div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button type="button" disabled={busy} onClick={() => moveOrder(o, "vendor_accepted")} className="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white hover:bg-emerald-700 disabled:bg-slate-300">
+              ACCEPT ORDER
+            </button>
+            <button type="button" disabled={busy} onClick={() => openCancelOrderDialog(o)} className="rounded-xl border border-rose-300 bg-white px-4 py-3 text-sm font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+              DECLINE ORDER
+            </button>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+</div>
+
+<h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-200">ACTIVE ORDERS</h3>
+                  <div className="mb-2 text-[11px] text-slate-500">Accepted and in-progress orders stay here until completed or cancelled. Customer details remain visible throughout.</div>
                   <div className="space-y-2">
                     {activeOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No active orders.</div> : null}
                     {activeOrders.map((o) => {
@@ -2570,7 +2662,7 @@ export default function VendorPortalPage() {
                             {s === "vendor_accepted" ? (
                               <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">Vendor accepted. Dispatch can proceed. No second vendor action is required. Wait for driver assignment, driver fee proposal, and customer confirmation before preparing.</div>
                             ) : null}
-                            {["driver_assigned", "driver_accepted"].includes(s) ? (
+                            {["driver_assigned", "driver_accepted", "preparing"].includes(s) ? (
                               <>
                                 <button type="button" disabled={busy || !customerConfirmedForVendor(o)} title={!customerConfirmedForVendor(o) ? "Waiting for customer approval of the proposed delivery fee before the vendor can prepare." : "Mark this order ready for pickup."} onClick={() => moveOrder(o, "pickup_ready")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:bg-slate-300">{vendorPrepGateButtonLabel(o)}</button>
                                 <button type="button" disabled={true} title="Cancellation is locked after rider assignment. Contact dispatch if this order must be stopped." className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-500 opacity-50 cursor-not-allowed">Cancel</button>
@@ -2584,7 +2676,7 @@ export default function VendorPortalPage() {
                 </div>
 
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold text-slate-300">Completed and cancelled history <span className="ml-2 text-[11px] font-normal text-slate-500">Reference only</span></h3>
+                  <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-300">COMPLETED / HISTORY <span className="ml-2 text-[11px] font-normal normal-case tracking-normal text-slate-500">Reference only</span></h3>
                   <div className="max-h-[340px] space-y-2 overflow-auto pr-1 opacity-90">
                     {historyOrders.length === 0 ? <div className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">No completed or cancelled orders.</div> : null}
                     {historyOrders.map((o) => (
