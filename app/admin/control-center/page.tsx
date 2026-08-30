@@ -217,6 +217,19 @@ export default function AdminControlCenter() {
               href="/admin/dispatch"
             />
             <Tile
+              title="Ride Rescue Mode"
+              desc="Temporarily allow visiting drivers physically in a town to help with Ride demand."
+              href="/admin/rescue-mode"
+              disabled={isDispatcher}
+              right={
+                isDispatcher ? (
+                  <div className="text-xs rounded-full bg-slate-100 border border-black/10 px-2 py-1">
+                    admin-only
+                  </div>
+                ) : null
+              }
+            />
+            <Tile
               title="Passenger Ride"
               desc="Passenger booking UI (for quick checks)."
               href="/ride"

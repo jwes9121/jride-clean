@@ -197,10 +197,12 @@ export async function assignErrandStage0V2(input: {
       .filter(Boolean)
   );
 
+  // JRIDE_ERRAND_NO_MUNICIPAL_BOUNDARY_V1
+  // Errand eligibility is based on the driver's fresh live coordinates and
+  // road-route distance to Stage 0, not registered town or municipal borders.
   const locationRes = await admin
     .from("driver_locations")
-    .select("driver_id,status,updated_at,lat,lng,town,home_town,vehicle_type")
-    .eq("town", town);
+    .select("driver_id,status,updated_at,lat,lng,town,home_town,vehicle_type");
   if (locationRes.error) {
     return {
       ok: false,
@@ -234,8 +236,7 @@ export async function assignErrandStage0V2(input: {
       online &&
       lat != null &&
       lng != null &&
-      vehicleEligible &&
-      lower(row.town) === lower(town)
+      vehicleEligible
     );
   });
 
@@ -245,7 +246,7 @@ export async function assignErrandStage0V2(input: {
       assigned: false,
       booking_id: text(booking.id),
       booking_code: text(booking.booking_code),
-      error: "NO_SAME_TOWN_DRIVER_AVAILABLE",
+      error: "NO_NEARBY_DRIVER_AVAILABLE",
       excluded_driver_count: excludedDriverIds.size,
     };
   }

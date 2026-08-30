@@ -49,17 +49,12 @@ async function requireAdmin() {
       response: json(403, {
         ok: false,
         error: "ADMIN_REQUIRED",
-        message: "Admin access is required to change Rescue Mode.",
+        message: "Admin access is required to change Ride Rescue Mode.",
       }),
     };
   }
 
-  const actor =
-    clean(user?.email) ||
-    clean(user?.name) ||
-    clean(user?.id) ||
-    "admin";
-
+  const actor = clean(user?.email) || clean(user?.name) || clean(user?.id) || "admin";
   return { ok: true as const, actor };
 }
 
@@ -77,20 +72,22 @@ export async function GET() {
   }
 
   const nowIso = new Date().toISOString();
+  const columns =
+    "id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at";
 
   const [activeRes, recentRes] = await Promise.all([
     db
       .from("service_town_rescue_overrides")
-      .select("id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at")
-      .eq("scope", "non_ride")
+      .select(columns)
+      .eq("scope", "ride")
       .is("disabled_at", null)
       .gt("expires_at", nowIso)
       .order("expires_at", { ascending: true })
       .limit(50),
     db
       .from("service_town_rescue_overrides")
-      .select("id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at")
-      .eq("scope", "non_ride")
+      .select(columns)
+      .eq("scope", "ride")
       .order("created_at", { ascending: false })
       .limit(40),
   ]);
@@ -98,18 +95,23 @@ export async function GET() {
   if (activeRes.error) {
     return json(500, { ok: false, error: "ACTIVE_READ_FAILED", message: activeRes.error.message });
   }
-
   if (recentRes.error) {
     return json(500, { ok: false, error: "HISTORY_READ_FAILED", message: recentRes.error.message });
   }
 
   return json(200, {
     ok: true,
-    scope: "non_ride",
-    ride_affected: false,
-    current_enforcement: "takeout",
+    scope: "ride",
     active: activeRes.data || [],
     recent: recentRes.data || [],
+    rule: {
+      normal:
+        "Ride driver registered town and current live town must match the booking town.",
+      rescue:
+        "During Rescue Mode, current live town must still match the target town, but registered town is temporarily waived.",
+      non_ride:
+        "Takeout, Errand and AgriMarket do not use Ride Rescue Mode.",
+    },
   });
 }
 
@@ -134,11 +136,7 @@ export async function POST(req: NextRequest) {
   if (action === "enable") {
     const town = canonicalTown(body?.town ?? body?.target_town);
     if (!town) {
-      return json(400, {
-        ok: false,
-        error: "BAD_TOWN",
-        message: "Select a valid JRide service town.",
-      });
+      return json(400, { ok: false, error: "BAD_TOWN", message: "Select a valid JRide service town." });
     }
 
     const reason = clean(body?.reason).replace(/\s+/g, " ");
@@ -146,11 +144,11 @@ export async function POST(req: NextRequest) {
       return json(400, {
         ok: false,
         error: "REASON_REQUIRED",
-        message: "Enter a short operational reason (5 to 300 characters).",
+        message: "Enter an operational reason (5 to 300 characters).",
       });
     }
 
-    const durationMinutes = Math.round(Number(body?.duration_minutes ?? body?.durationMinutes ?? 240));
+    const durationMinutes = Math.round(Number(body?.duration_minutes ?? body?.durationMinutes ?? 60));
     if (
       !Number.isFinite(durationMinutes) ||
       durationMinutes < MIN_DURATION_MINUTES ||
@@ -159,20 +157,16 @@ export async function POST(req: NextRequest) {
       return json(400, {
         ok: false,
         error: "BAD_DURATION",
-        message: "Rescue Mode duration must be between 30 minutes and 24 hours.",
+        message: "Ride Rescue Mode duration must be between 30 minutes and 24 hours.",
       });
     }
 
     const expiresAt = new Date(now.getTime() + durationMinutes * 60 * 1000).toISOString();
 
-    // Close any still-active override for this town before opening the new window.
     const closeExisting = await db
       .from("service_town_rescue_overrides")
-      .update({
-        disabled_at: nowIso,
-        disabled_by: adminAuth.actor,
-      })
-      .eq("scope", "non_ride")
+      .update({ disabled_at: nowIso, disabled_by: adminAuth.actor })
+      .eq("scope", "ride")
       .eq("target_town", town)
       .is("disabled_at", null)
       .gt("expires_at", nowIso);
@@ -188,14 +182,16 @@ export async function POST(req: NextRequest) {
     const insert = await db
       .from("service_town_rescue_overrides")
       .insert({
-        scope: "non_ride",
+        scope: "ride",
         target_town: town,
         reason,
         enabled_at: nowIso,
         expires_at: expiresAt,
         created_by: adminAuth.actor,
       })
-      .select("id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at")
+      .select(
+        "id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at"
+      )
       .single();
 
     if (insert.error) {
@@ -206,13 +202,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return json(200, {
-      ok: true,
-      action: "enabled",
-      override: insert.data,
-      ride_affected: false,
-      current_enforcement: "takeout",
-    });
+    return json(200, { ok: true, action: "enabled", override: insert.data, scope: "ride" });
   }
 
   if (action === "disable") {
@@ -223,27 +213,22 @@ export async function POST(req: NextRequest) {
       return json(400, {
         ok: false,
         error: "OVERRIDE_REQUIRED",
-        message: "Provide the active Rescue Mode id or town.",
+        message: "Provide the active Ride Rescue Mode id or town.",
       });
     }
 
     let update = db
       .from("service_town_rescue_overrides")
-      .update({
-        disabled_at: nowIso,
-        disabled_by: adminAuth.actor,
-      })
-      .eq("scope", "non_ride")
+      .update({ disabled_at: nowIso, disabled_by: adminAuth.actor })
+      .eq("scope", "ride")
       .is("disabled_at", null);
 
-    if (Number.isFinite(id) && id > 0) {
-      update = update.eq("id", id);
-    } else if (town) {
-      update = update.eq("target_town", town);
-    }
+    if (Number.isFinite(id) && id > 0) update = update.eq("id", id);
+    else if (town) update = update.eq("target_town", town);
 
-    const disabled = await update
-      .select("id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at");
+    const disabled = await update.select(
+      "id,scope,target_town,reason,enabled_at,expires_at,disabled_at,created_by,disabled_by,created_at"
+    );
 
     if (disabled.error) {
       return json(500, {
@@ -253,12 +238,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return json(200, {
-      ok: true,
-      action: "disabled",
-      disabled: disabled.data || [],
-      ride_affected: false,
-    });
+    return json(200, { ok: true, action: "disabled", disabled: disabled.data || [], scope: "ride" });
   }
 
   return json(400, {

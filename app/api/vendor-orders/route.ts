@@ -627,55 +627,6 @@ function takeoutAutoAssignDriverIsFreshAndOnline(row: any): boolean {
   return ageMinutes <= 10;
 }
 
-// JRIDE_TAKEOUT_CURRENT_TOWN_RESCUE_MODE_V1
-// Normal Takeout rule: the driver's latest CURRENT live town must match the
-// vendor/pickup town. Registered municipality/home town is intentionally not used.
-// Admin Rescue Mode can temporarily remove this town restriction for one target town.
-// Ride dispatch is not handled here and remains untouched.
-function takeoutAutoAssignTown(value: unknown): string {
-  return String(value || "").trim().toLowerCase();
-}
-
-async function takeoutAutoAssignRescueMode(admin: any, targetTown: string) {
-  const normalizedTargetTown = takeoutAutoAssignTown(targetTown);
-  if (!normalizedTargetTown) {
-    return { active: false, id: null, reason: null, expires_at: null, lookup_error: null };
-  }
-
-  const nowIso = new Date().toISOString();
-  const lookup = await admin
-    .from("service_town_rescue_overrides")
-    .select("id,target_town,reason,expires_at")
-    .eq("scope", "non_ride")
-    .is("disabled_at", null)
-    .gt("expires_at", nowIso)
-    .order("expires_at", { ascending: false })
-    .limit(50);
-
-  if (lookup.error || !Array.isArray(lookup.data)) {
-    // Fail closed: if Rescue Mode cannot be read, keep normal same-current-town restriction.
-    return {
-      active: false,
-      id: null,
-      reason: null,
-      expires_at: null,
-      lookup_error: lookup.error?.message || "rescue_mode_lookup_failed",
-    };
-  }
-
-  const match = (lookup.data as any[]).find(
-    (row) => takeoutAutoAssignTown(row?.target_town) === normalizedTargetTown,
-  );
-
-  return {
-    active: !!match,
-    id: match?.id ?? null,
-    reason: match?.reason ?? null,
-    expires_at: match?.expires_at ?? null,
-    lookup_error: null,
-  };
-}
-
 async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
   const alreadyAssigned = String(order?.assigned_driver_id || order?.driver_id || "").trim();
   if (alreadyAssigned) {
@@ -697,20 +648,6 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
   if (anchorLat == null || anchorLng == null || anchorLat === 0 || anchorLng === 0) {
     return { attempted: true, assigned: false, reason: "missing_anchor_coords", anchor, subtotal, cash_first: cashFirst };
   }
-
-  const pickupTown = String(order?.town || "").trim();
-  if (!pickupTown) {
-    return {
-      attempted: true,
-      assigned: false,
-      reason: "missing_pickup_town",
-      anchor,
-      subtotal,
-      cash_first: cashFirst,
-    };
-  }
-
-  const rescueMode = await takeoutAutoAssignRescueMode(admin, pickupTown);
 
     const activeCanonicalStatuses = new Set([
     "requested",
@@ -763,14 +700,6 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
     if (!did || reserved.has(did)) continue;
     if (!takeoutAutoAssignDriverIsFreshAndOnline(row)) continue;
 
-    // Current physical town is authoritative for Takeout eligibility.
-    // Never substitute registered municipality or home_town here.
-    const currentTown = String(row?.town || "").trim();
-    if (!rescueMode.active) {
-      if (!currentTown) continue;
-      if (takeoutAutoAssignTown(currentTown) !== takeoutAutoAssignTown(pickupTown)) continue;
-    }
-
     const lat = takeoutAutoAssignNum(row?.lat);
     const lng = takeoutAutoAssignNum(row?.lng);
     if (lat == null || lng == null || lat === 0 || lng === 0) continue;
@@ -785,44 +714,23 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
         driver_lat: lat,
         driver_lng: lng,
         driver_status: row?.status || null,
-        driver_town: currentTown || null,
+        driver_town: row?.town || row?.home_town || null,
         vehicle_type: row?.vehicle_type || null,
       };
     }
   }
 
   if (!best) {
-    return {
-      attempted: true,
-      assigned: false,
-      reason: rescueMode.active
-        ? "no_fresh_online_driver_rescue_mode"
-        : "no_fresh_online_driver_in_current_town",
-      anchor,
-      subtotal,
-      cash_first: cashFirst,
-      pickup_town: pickupTown,
-      rescue_mode_active: rescueMode.active,
-      rescue_mode_id: rescueMode.id,
-      rescue_mode_expires_at: rescueMode.expires_at,
-      rescue_mode_lookup_error: rescueMode.lookup_error,
-    };
+    return { attempted: true, assigned: false, reason: "no_fresh_online_driver", anchor, subtotal, cash_first: cashFirst };
   }
 
   return {
     attempted: true,
     assigned: true,
-    reason: rescueMode.active
-      ? "nearest_fresh_online_driver_rescue_mode"
-      : "nearest_fresh_online_driver_same_current_town",
+    reason: "nearest_fresh_online_driver",
     anchor,
     subtotal,
     cash_first: cashFirst,
-    pickup_town: pickupTown,
-    rescue_mode_active: rescueMode.active,
-    rescue_mode_id: rescueMode.id,
-    rescue_mode_expires_at: rescueMode.expires_at,
-    rescue_mode_lookup_error: rescueMode.lookup_error,
     ...best,
   };
 }
