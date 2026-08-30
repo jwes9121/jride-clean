@@ -516,6 +516,7 @@ const passengerLng =
     const expiresIso = new Date(Date.now() + PROPOSAL_TTL_SECONDS * 1000).toISOString();
 
     const snapshot = {
+      ...pricingSnapshot,
       version: "takeout_driver_fee_proposal_v1",
       food_subtotal: computedSubtotal,
       packaging_subtotal: packagingSubtotal,
