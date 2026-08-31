@@ -1,9 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
-import {
-  computeRidePickupFee,
-  RIDE_PICKUP_NORMAL_MAX_KM,
-} from "@/lib/pricing/pickupFee";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
@@ -59,6 +55,37 @@ function isUniqueViolation(error: any): boolean {
   return text(error?.code) === "23505" || lower(error?.message).includes("duplicate key");
 }
 
+function computeAgrimarketApproachFee(input: {
+  distanceKm: number;
+  freeKm: number;
+  feePerStartedKm: number;
+  feeCap: number;
+}): number {
+  const distanceKm = Number(input.distanceKm.toFixed(3));
+  const freeKm = Number(input.freeKm.toFixed(3));
+
+  if (
+    !Number.isFinite(distanceKm) ||
+    distanceKm < 0 ||
+    !Number.isFinite(freeKm) ||
+    freeKm < 0 ||
+    !Number.isFinite(input.feePerStartedKm) ||
+    input.feePerStartedKm < 0 ||
+    !Number.isFinite(input.feeCap) ||
+    input.feeCap < 0
+  ) {
+    throw new RangeError("AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID");
+  }
+
+  if (distanceKm <= freeKm) return 0;
+
+  const chargeableKm = Math.max(0, distanceKm - freeKm);
+  const startedKm = Math.max(0, Math.ceil(chargeableKm - 1e-9));
+  return Number(
+    Math.min(input.feeCap, startedKm * input.feePerStartedKm).toFixed(2)
+  );
+}
+
 export type AgrimarketDispatchResult = {
   ok: boolean;
   order_id?: string;
@@ -70,6 +97,7 @@ export type AgrimarketDispatchResult = {
   offer_rank?: number;
   assignment_anchor?: "customer" | "farmer";
   pickup_road_distance_km?: number;
+  driver_approach_distance_km?: number;
   pickup_distance_fee?: number;
   eta_seconds_to_first_pickup?: number;
   eta_seconds_to_farmer?: number;
@@ -144,6 +172,14 @@ export async function offerAgrimarketDriver(input: {
   }
   if (offeredRes.data) {
     const active: any = offeredRes.data;
+    const activeAnchor: "customer" | "farmer" =
+      lower(active.assignment_anchor) === "customer" ? "customer" : "farmer";
+    const activeFirstPickupKm = Number(active.pickup_road_distance_km || 0);
+    const activeCustomerToFarmerKm =
+      activeAnchor === "customer"
+        ? Math.max(0, numberOrNull(order.customer_to_farmer_distance_km) ?? 0)
+        : 0;
+
     return {
       ok: true,
       order_id: resolvedOrderId,
@@ -152,8 +188,11 @@ export async function offerAgrimarketDriver(input: {
       offer_id: text(active.id),
       driver_id: text(active.driver_id),
       offer_rank: Number(active.offer_rank || 1),
-      assignment_anchor: lower(active.assignment_anchor) === "customer" ? "customer" : "farmer",
-      pickup_road_distance_km: Number(active.pickup_road_distance_km || 0),
+      assignment_anchor: activeAnchor,
+      pickup_road_distance_km: activeFirstPickupKm,
+      driver_approach_distance_km: Number(
+        (activeFirstPickupKm + activeCustomerToFarmerKm).toFixed(3)
+      ),
       pickup_distance_fee: Number(active.pickup_distance_fee || 0),
       eta_seconds_to_first_pickup: numberOrNull(active.estimated_seconds_to_first_pickup) ?? undefined,
       eta_seconds_to_farmer: numberOrNull(active.estimated_seconds_to_farmer) ?? undefined,
@@ -175,6 +214,45 @@ export async function offerAgrimarketDriver(input: {
 
   if (expireRes.error) {
     return { ok: false, error: "AGRIMARKET_OFFER_EXPIRY_FAILED", message: expireRes.error.message };
+  }
+
+  const approachSettingsRes = await admin
+    .from("agrimarket_pricing_settings")
+    .select(
+      "driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
+    )
+    .eq("id", 1)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (approachSettingsRes.error || !approachSettingsRes.data) {
+    return {
+      ok: false,
+      error: "AGRIMARKET_DRIVER_APPROACH_SETTINGS_READ_FAILED",
+      message: approachSettingsRes.error?.message,
+    };
+  }
+
+  const approachFreeKm = numberOrNull(
+    (approachSettingsRes.data as any).driver_approach_free_km
+  );
+  const approachFeePerStartedKm = numberOrNull(
+    (approachSettingsRes.data as any).driver_approach_fee_per_started_km
+  );
+  const approachFeeCap = numberOrNull(
+    (approachSettingsRes.data as any).driver_approach_fee_cap
+  );
+
+  if (
+    approachFreeKm == null ||
+    approachFreeKm < 0 ||
+    approachFeePerStartedKm == null ||
+    approachFeePerStartedKm < 0 ||
+    approachFeeCap == null ||
+    approachFeeCap < 0
+  ) {
+    return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID" };
   }
 
   const producerRes = await admin
@@ -367,7 +445,8 @@ export async function offerAgrimarketDriver(input: {
       (entry) =>
         entry.metric != null &&
         entry.metric.durationSeconds != null &&
-        entry.metric.distanceKm <= RIDE_PICKUP_NORMAL_MAX_KM
+        Number.isFinite(entry.metric.distanceKm) &&
+        entry.metric.distanceKm >= 0
     )
     .sort((a, b) => (a.metric?.distanceKm || 0) - (b.metric?.distanceKm || 0));
 
@@ -377,10 +456,7 @@ export async function offerAgrimarketDriver(input: {
       order_id: resolvedOrderId,
       order_code: resolvedOrderCode,
       offered: false,
-      error:
-        roadMetrics.size === 0
-          ? "ROAD_DISTANCE_UNAVAILABLE"
-          : "NO_DRIVER_WITHIN_NORMAL_PICKUP_RANGE",
+      error: "ROAD_DISTANCE_UNAVAILABLE",
       assignment_anchor: assignmentAnchor,
     };
   }
@@ -417,8 +493,29 @@ export async function offerAgrimarketDriver(input: {
     };
   }
 
-  const pickupDistanceKm = nearest.metric.distanceKm;
-  const pickupFee = computeRidePickupFee(pickupDistanceKm);
+  const pickupDistanceKm = Number(nearest.metric.distanceKm.toFixed(3));
+  const customerToFarmerDistanceKm =
+    assignmentAnchor === "customer"
+      ? numberOrNull(order.customer_to_farmer_distance_km)
+      : 0;
+
+  if (assignmentAnchor === "customer" && customerToFarmerDistanceKm == null) {
+    return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_CUSTOMER_FARMER_ROUTE_REQUIRED" };
+  }
+
+  const driverApproachDistanceKm = Number(
+    (
+      pickupDistanceKm +
+      Math.max(0, customerToFarmerDistanceKm ?? 0)
+    ).toFixed(3)
+  );
+  const pickupFee = computeAgrimarketApproachFee({
+    distanceKm: driverApproachDistanceKm,
+    freeKm: approachFreeKm,
+    feePerStartedKm: approachFeePerStartedKm,
+    feeCap: approachFeeCap,
+  });
+
   const priorCountRes = await admin
     .from("agrimarket_driver_offers")
     .select("id", { count: "exact", head: true })
@@ -437,7 +534,7 @@ export async function offerAgrimarketDriver(input: {
       offer_rank: offerRank,
       status: "offered",
       assignment_anchor: assignmentAnchor,
-      pickup_road_distance_km: Number(pickupDistanceKm.toFixed(3)),
+      pickup_road_distance_km: pickupDistanceKm,
       pickup_distance_fee: pickupFee,
       estimated_seconds_to_first_pickup: etaToFirstPickup,
       estimated_seconds_to_farmer: etaToFarmer,
@@ -446,7 +543,7 @@ export async function offerAgrimarketDriver(input: {
       created_at: nowIso,
       updated_at: nowIso,
     })
-    .select("id")
+    .select("id,pickup_distance_fee")
     .single();
 
   if (insertRes.error) {
@@ -461,6 +558,9 @@ export async function offerAgrimarketDriver(input: {
     }
     return { ok: false, error: "AGRIMARKET_DRIVER_OFFER_INSERT_FAILED", message: insertRes.error.message };
   }
+
+  const storedPickupFee =
+    numberOrNull((insertRes.data as any).pickup_distance_fee) ?? pickupFee;
 
   const updateRes = await admin
     .from("agrimarket_orders")
@@ -492,8 +592,13 @@ export async function offerAgrimarketDriver(input: {
       driver_id: nearest.driverId,
       offer_rank: offerRank,
       assignment_anchor: assignmentAnchor,
-      pickup_road_distance_km: Number(pickupDistanceKm.toFixed(3)),
-      pickup_distance_fee: pickupFee,
+      pickup_road_distance_km: pickupDistanceKm,
+      driver_approach_distance_km: driverApproachDistanceKm,
+      driver_approach_fee_rule: "agrimarket_driver_approach_v1",
+      driver_approach_free_km: approachFreeKm,
+      driver_approach_fee_per_started_km: approachFeePerStartedKm,
+      driver_approach_fee_cap: approachFeeCap,
+      pickup_distance_fee: storedPickupFee,
       eta_seconds_to_first_pickup: etaToFirstPickup,
       eta_seconds_to_farmer: etaToFarmer,
       remaining_preparation_seconds: remainingPreparationSeconds,
@@ -510,8 +615,9 @@ export async function offerAgrimarketDriver(input: {
     driver_id: nearest.driverId,
     offer_rank: offerRank,
     assignment_anchor: assignmentAnchor,
-    pickup_road_distance_km: Number(pickupDistanceKm.toFixed(3)),
-    pickup_distance_fee: pickupFee,
+    pickup_road_distance_km: pickupDistanceKm,
+    driver_approach_distance_km: driverApproachDistanceKm,
+    pickup_distance_fee: storedPickupFee,
     eta_seconds_to_first_pickup: etaToFirstPickup,
     eta_seconds_to_farmer: etaToFarmer,
     remaining_preparation_seconds: remainingPreparationSeconds,
