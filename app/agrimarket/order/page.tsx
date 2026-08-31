@@ -31,6 +31,18 @@ type OrderStatus = {
   ready_at?: string | null;
   selected_vehicle_type?: string | null;
   preferred_vehicle_type?: string | null;
+  required_vehicle_type?: string | null;
+  customer_reapproval_required?: boolean;
+  customer_reapproval?: {
+    approved_total: number;
+    revised_total: number;
+    increase_amount: number;
+    approved_vehicle_type: string;
+    revised_vehicle_type: string;
+    price_increased: boolean;
+    vehicle_escalated: boolean;
+    required_at?: string | null;
+  } | null;
   product_subtotal: number;
   cash_collection_required: boolean;
   cash_collection_amount: number;
@@ -93,6 +105,7 @@ function progressLabel(order: OrderStatus): string {
   if (order.delivering_at || order.status === "delivering") return "Driver is delivering your order";
   if (order.picked_up_at || order.status === "picked_up") return "Items verified and picked up";
   if (order.status === "driver_assigned") return order.cash_collection_required && !order.customer_cash_collected_at ? "Driver assigned - prepare product cash" : "Driver assigned";
+  if (order.status === "awaiting_customer_reapproval") return "Review revised delivery charges";
   if (["dispatching", "ready_for_dispatch"].includes(order.status)) return "Finding an eligible driver";
   if (order.status === "awaiting_harvest") return order.pending_harvest_proposal ? "Farmer needs your decision" : "Harvest reservation confirmed";
   if (["producer_accepted", "preparing"].includes(order.status)) return "Farmer is preparing your order";
@@ -145,6 +158,31 @@ export default function AgrimarketOrderTrackingPage() {
     setResponding(false);
   }
 
+  async function respondReapproval(responseValue: "accept" | "reject") {
+    if (!order) return;
+    setResponding(true);
+    setError("");
+    const response = await fetch("/api/agrimarket/order-reapproval-response", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({
+        order_code: order.order_code,
+        response: responseValue,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      setError(
+        payload?.message ||
+          payload?.error ||
+          "Unable to respond to the revised Agrimarket charges."
+      );
+    } else {
+      await loadOrder(order.order_code, true);
+    }
+    setResponding(false);
+  }
+
   if (disabled) return <main className="min-h-screen bg-emerald-50 p-8"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8"><h1 className="text-2xl font-bold">Agrimarket is still in pre-launch</h1></div></main>;
 
   return (
@@ -161,10 +199,12 @@ export default function AgrimarketOrderTrackingPage() {
 
           {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New expected harvest: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}
 
+          {order.customer_reapproval_required && order.customer_reapproval ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer confirmation changed your delivery requirements</h3><div className="mt-3 space-y-1 text-sm"><p>Previously approved total: <strong>{money(order.customer_reapproval.approved_total)}</strong></p><p>Revised total: <strong>{money(order.customer_reapproval.revised_total)}</strong></p>{order.customer_reapproval.price_increased ? <p>Increase: <strong>{money(order.customer_reapproval.increase_amount)}</strong></p> : null}{order.customer_reapproval.vehicle_escalated ? <p>Vehicle change: <strong>{titleCase(order.customer_reapproval.approved_vehicle_type)} to Tricycle required</strong></p> : null}</div><p className="mt-3 text-xs">No driver will be dispatched until you accept. If you do not want the revised charges or vehicle requirement, cancel this order and the reserved inventory will be released.</p><div className="mt-3 flex flex-wrap gap-2"><button disabled={responding} onClick={() => respondReapproval("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">Accept revised charges</button><button disabled={responding} onClick={() => respondReapproval("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">Cancel order</button></div></div> : null}
+
           {order.cash_due_now > 0 ? <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-blue-950"><p className="text-sm font-semibold">Cash due now</p><p className="mt-1 text-2xl font-bold">{money(order.cash_due_now)}</p><p className="mt-1 text-xs">Pay only to the assigned JRide driver as instructed.</p></div> : null}
 
           <div className="mt-5 overflow-hidden rounded-xl border">{order.items.map((item, index) => <div key={`${order.order_code}-${index}`} className="flex flex-wrap justify-between gap-2 border-b px-4 py-3 last:border-b-0"><div><p className="font-semibold">{item.product_name}</p><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit} x {money(item.unit_price)}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
-          <div className="mt-5 space-y-2 text-sm"><div className="flex justify-between"><span>Products</span><strong>{money(order.product_subtotal)}</strong></div><div className="flex justify-between"><span>Delivery</span><strong>{money(order.delivery_fee)}</strong></div><div className="flex justify-between"><span>Driver pickup surcharge</span><strong>{order.pickup_fee_locked ? money(order.pickup_distance_fee) : "Pending assignment"}</strong></div><div className="flex justify-between"><span>Handling</span><strong>{order.handling_fee_locked ? money(order.handling_fee) : "PHP 0 to PHP 50 if needed"}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Total</span><strong>{money(order.total_payable)}</strong></div></div>
+          <div className="mt-5 space-y-2 text-sm"><div className="flex justify-between"><span>Products</span><strong>{money(order.product_subtotal)}</strong></div><div className="flex justify-between"><span>Delivery</span><strong>{money(order.delivery_fee)}</strong></div><div className="flex justify-between"><span>Driver pickup surcharge</span><strong>{order.pickup_fee_locked ? money(order.pickup_distance_fee) : "Pending assignment"}</strong></div><div className="flex justify-between"><span>Handling</span><strong>{order.handling_fee_locked ? money(order.handling_fee) : "Pending farmer confirmation"}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Total</span><strong>{money(order.total_payable)}</strong></div></div>
           {order.cash_collection_required ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">Product cash-first order: {money(order.cash_collection_amount)} is collected before farmer pickup. Remaining delivery/pickup/handling charges are settled at final delivery.</div> : null}
           <p className="mt-5 text-xs text-slate-500">Farmer identity, personal contact details, and exact source location are protected by JRide.</p>
         </section> : null}

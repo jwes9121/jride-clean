@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -106,6 +106,20 @@ export async function GET(req: NextRequest) {
           : 0;
 
     const proposal: any = proposalRes.data || null;
+    const customerReapprovalRequired =
+      status === "awaiting_customer_reapproval" &&
+      order.customer_reapproval_response == null;
+    const approvedTotal = num(order.customer_approved_total);
+    const revisedTotal =
+      order.customer_reapproval_proposed_total == null
+        ? num(order.total_payable)
+        : num(order.customer_reapproval_proposed_total);
+    const approvedVehicleType =
+      text(order.customer_approved_vehicle_type) || "motorcycle";
+    const revisedVehicleType =
+      text(order.customer_reapproval_proposed_vehicle_type) ||
+      approvedVehicleType;
+
     return jsonNoStore(200, {
       ok: true,
       order: {
@@ -137,6 +151,21 @@ export async function GET(req: NextRequest) {
         preferred_vehicle_type: order.preferred_vehicle_type,
         required_vehicle_type: order.required_vehicle_type,
         selected_vehicle_type: order.selected_vehicle_type,
+        customer_reapproval_required: customerReapprovalRequired,
+        customer_reapproval: customerReapprovalRequired
+          ? {
+              approved_total: approvedTotal,
+              revised_total: revisedTotal,
+              increase_amount: Math.max(0, revisedTotal - approvedTotal),
+              approved_vehicle_type: approvedVehicleType,
+              revised_vehicle_type: revisedVehicleType,
+              price_increased: revisedTotal > approvedTotal,
+              vehicle_escalated:
+                approvedVehicleType !== "tricycle" &&
+                revisedVehicleType === "tricycle",
+              required_at: order.customer_reapproval_required_at,
+            }
+          : null,
         product_subtotal: num(order.product_subtotal),
         cash_collection_required: Boolean(order.cash_collection_required),
         cash_collection_amount: num(order.cash_collection_amount),
@@ -174,7 +203,7 @@ export async function GET(req: NextRequest) {
       pickup_surcharge_status:
         order.pickup_fee_locked_at != null ? "final" : "pending_driver_assignment",
       handling_fee_status:
-        order.handling_locked_at != null ? "final" : "may_change_at_pickup_within_php_0_to_50",
+        order.handling_locked_at != null ? "final" : "pending_farmer_confirmation",
     });
   } catch (error: any) {
     return jsonNoStore(500, {

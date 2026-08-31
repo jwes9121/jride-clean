@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
         "awaiting_harvest",
         "producer_accepted",
         "preparing",
+        "awaiting_customer_reapproval",
         "ready_for_dispatch",
         "dispatching",
         "driver_assigned",
