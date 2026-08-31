@@ -136,6 +136,38 @@ on public.agrimarket_orders
 for each row
 execute function public.agrimarket_apply_special_handling_fee_v1();
 
+-- Retire the legacy driver-selection write path at the table boundary too.
+-- Normal system fee recalculation can still update handling_fee directly in a
+-- later migration, but no caller may write the legacy driver-selection metadata.
+create or replace function public.agrimarket_reject_driver_handling_selection_v1()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if new.handling_selected_by_driver_id is distinct from old.handling_selected_by_driver_id
+     or new.handling_selected_at is distinct from old.handling_selected_at then
+    raise exception 'AGRIMARKET_DRIVER_HANDLING_FEE_SELECTION_RETIRED'
+      using errcode = 'P0001';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.agrimarket_reject_driver_handling_selection_v1()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists agrimarket_reject_driver_handling_selection_trg
+  on public.agrimarket_orders;
+
+create trigger agrimarket_reject_driver_handling_selection_trg
+before update of handling_selected_by_driver_id, handling_selected_at
+on public.agrimarket_orders
+for each row
+execute function public.agrimarket_reject_driver_handling_selection_v1();
+
 -- Backfill any already-confirmed pre-Step-3 rows through the same authoritative
 -- trigger path. This is a no-op on environments with no confirmed orders.
 update public.agrimarket_orders
@@ -183,6 +215,9 @@ comment on column public.agrimarket_orders.handling_selected_at is
 comment on function public.agrimarket_apply_special_handling_fee_v1() is
   'Derives and locks agrimarket_orders.handling_fee from confirmed_handling_tier at farmer confirmation.';
 
+comment on function public.agrimarket_reject_driver_handling_selection_v1() is
+  'Blocks the retired driver-selected Agrimarket handling-fee write path.';
+
 -- Self-verifying postconditions.
 do $$
 declare
@@ -196,6 +231,16 @@ begin
       and not tgisinternal
   ) then
     raise exception 'AGRIMARKET_STEP3_SPECIAL_HANDLING_TRIGGER_MISSING';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger
+    where tgrelid = 'public.agrimarket_orders'::regclass
+      and tgname = 'agrimarket_reject_driver_handling_selection_trg'
+      and not tgisinternal
+  ) then
+    raise exception 'AGRIMARKET_STEP3_DRIVER_SELECTION_GUARD_MISSING';
   end if;
 
   if exists (
