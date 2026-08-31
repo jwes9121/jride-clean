@@ -27,6 +27,13 @@ export async function POST(req: NextRequest) {
       preparationMinutesRaw === null || preparationMinutesRaw === undefined || preparationMinutesRaw === ""
         ? null
         : Number(preparationMinutesRaw);
+    const confirmedCargoWeightRaw = body?.confirmed_cargo_weight_kg ?? body?.confirmedCargoWeightKg;
+    const confirmedCargoWeightKg =
+      confirmedCargoWeightRaw === null || confirmedCargoWeightRaw === undefined || confirmedCargoWeightRaw === ""
+        ? null
+        : Number(confirmedCargoWeightRaw);
+    const confirmedHandlingTier =
+      String(body?.confirmed_handling_tier || body?.confirmedHandlingTier || "").trim().toLowerCase() || null;
 
     if (!orderCode) {
       return jsonNoStore(400, {
@@ -55,13 +62,32 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (confirmedCargoWeightKg != null && (!Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0)) {
+      return jsonNoStore(400, {
+        ok: false,
+        error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_INVALID",
+      });
+    }
+
+    if (
+      confirmedHandlingTier != null &&
+      !new Set(["standard", "bulky", "live_single", "live_difficult"]).has(confirmedHandlingTier)
+    ) {
+      return jsonNoStore(400, {
+        ok: false,
+        error: "AGRIMARKET_INVALID_HANDLING_TIER",
+      });
+    }
+
     const admin = createServiceSupabase();
-    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v4", {
+    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v5", {
       p_order_code: orderCode,
       p_producer_id: producerAuth.producer.id,
       p_decision: decision,
       p_preparation_minutes: decision === "accept" ? preparationMinutes : null,
       p_reason: reason,
+      p_confirmed_cargo_weight_kg: decision === "accept" ? confirmedCargoWeightKg : null,
+      p_confirmed_handling_tier: decision === "accept" ? confirmedHandlingTier : null,
       p_now: new Date().toISOString(),
     });
 
@@ -82,7 +108,7 @@ export async function POST(req: NextRequest) {
           ? 403
           : code.includes("AUTH_REQUIRED")
             ? 401
-            : code.includes("INVALID") || code.includes("PREPARATION_MINUTES")
+            : code.includes("INVALID") || code.includes("REQUIRED") || code.includes("HANDLING_TIER") || code.includes("PREPARATION_MINUTES")
               ? 400
               : 409;
       return jsonNoStore(status, { ok: false, error: code, order: result });

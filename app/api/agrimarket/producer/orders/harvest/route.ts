@@ -48,6 +48,13 @@ export async function POST(req: NextRequest) {
     const orderCode = text(body?.order_code || body?.orderCode);
     const action = text(body?.action).toLowerCase();
     const reason = text(body?.reason).slice(0, 1000) || null;
+    const confirmedCargoWeightRaw = body?.confirmed_cargo_weight_kg ?? body?.confirmedCargoWeightKg;
+    const confirmedCargoWeightKg =
+      confirmedCargoWeightRaw === null || confirmedCargoWeightRaw === undefined || confirmedCargoWeightRaw === ""
+        ? null
+        : Number(confirmedCargoWeightRaw);
+    const confirmedHandlingTier =
+      text(body?.confirmed_handling_tier || body?.confirmedHandlingTier).toLowerCase() || null;
 
     if (!orderCode) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ORDER_CODE_REQUIRED" });
@@ -68,6 +75,19 @@ export async function POST(req: NextRequest) {
           ok: false,
           error: "AGRIMARKET_PREPARATION_MINUTES_REQUIRED",
           message: "Choose the actual preparation time after harvest is ready.",
+        });
+      }
+      if (confirmedCargoWeightKg == null || !Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0) {
+        return jsonNoStore(400, {
+          ok: false,
+          error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_REQUIRED",
+          message: "Confirm the actual total cargo weight before marking the harvest ready.",
+        });
+      }
+      if (!confirmedHandlingTier || !new Set(["standard", "bulky", "live_single", "live_difficult"]).has(confirmedHandlingTier)) {
+        return jsonNoStore(400, {
+          ok: false,
+          error: "AGRIMARKET_INVALID_HANDLING_TIER",
         });
       }
     }
@@ -100,7 +120,7 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const actionRes = await admin.rpc("agrimarket_producer_harvest_action_v1", {
+    const actionRes = await admin.rpc("agrimarket_producer_harvest_action_v2", {
       p_order_code: orderCode,
       p_producer_id: producerAuth.producer.id,
       p_action: action,
@@ -109,6 +129,8 @@ export async function POST(req: NextRequest) {
       p_proposed_end_at: proposedEndAt,
       p_proposed_items: proposedItems,
       p_reason: reason,
+      p_confirmed_cargo_weight_kg: action === "ready" ? confirmedCargoWeightKg : null,
+      p_confirmed_handling_tier: action === "ready" ? confirmedHandlingTier : null,
       p_now: new Date().toISOString(),
     });
 

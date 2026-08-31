@@ -11,6 +11,18 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+type HandlingTier = "standard" | "bulky" | "live_single" | "live_difficult";
+
+function minimumHandlingTier(items: any[]): HandlingTier {
+  let rank = 0;
+  for (const item of items) {
+    const cargoClass = String(item?.cargo_class || "").trim().toLowerCase();
+    if (cargoClass === "live_livestock") rank = Math.max(rank, 2);
+    else if (new Set(["crate", "bulk_sack", "live_poultry"]).has(cargoClass)) rank = Math.max(rank, 1);
+  }
+  return rank >= 2 ? "live_single" : rank >= 1 ? "bulky" : "standard";
+}
+
 export async function GET(req: NextRequest) {
   if (!agrimarketEnabled()) return agrimarketDisabledResponse();
 
@@ -35,7 +47,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_handling_tier,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
       .in("status", [
@@ -150,6 +162,7 @@ export async function GET(req: NextRequest) {
         ? Math.max(0, Math.floor((deadlineMs - nowMs) / 1000))
         : 0;
       const productSubtotal = Number(row.product_subtotal || 0);
+      const orderItems = itemsByOrder.get(String(row.id)) || [];
 
       return {
         order_code: row.order_code,
@@ -169,6 +182,10 @@ export async function GET(req: NextRequest) {
         ready_at: row.ready_at,
         preferred_vehicle_type: row.preferred_vehicle_type,
         required_vehicle_type: row.required_vehicle_type,
+        estimated_cargo_weight_kg: row.estimated_cargo_weight_kg == null ? null : Number(row.estimated_cargo_weight_kg),
+        confirmed_cargo_weight_kg: row.confirmed_cargo_weight_kg == null ? null : Number(row.confirmed_cargo_weight_kg),
+        confirmed_handling_tier: row.confirmed_handling_tier || null,
+        minimum_handling_tier: minimumHandlingTier(orderItems),
         product_subtotal: productSubtotal,
         farmer_platform_fee: 0,
         producer_marketplace_commission: 0,
@@ -183,7 +200,7 @@ export async function GET(req: NextRequest) {
         picked_up_at: row.picked_up_at,
         delivered_at: row.delivered_at,
         completed_at: row.completed_at,
-        items: itemsByOrder.get(String(row.id)) || [],
+        items: orderItems,
         created_at: row.created_at,
         updated_at: row.updated_at,
       };

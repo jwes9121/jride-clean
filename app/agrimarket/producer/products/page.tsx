@@ -8,6 +8,7 @@ type Product = {
   name: string;
   product_group: string;
   selling_unit: string;
+  unit_weight_kg?: number | null;
   unit_price: number;
   listed_quantity: number;
   reserved_quantity: number;
@@ -64,6 +65,7 @@ const initialForm = {
   condition: "normal",
   cargo_class: "standard_produce",
   selling_unit: "kg",
+  unit_weight_kg: "1",
   unit_price: "",
   available_quantity: "",
   availability_mode: "always_available",
@@ -83,6 +85,7 @@ export default function AgrimarketProducerProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [form, setForm] = useState(initialForm);
   const [stockDraft, setStockDraft] = useState<Record<string, string>>({});
+  const [weightDraft, setWeightDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -118,6 +121,7 @@ export default function AgrimarketProducerProductsPage() {
       const rows = Array.isArray(payload?.products) ? payload.products : [];
       setProducts(rows);
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
+      setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
       setConnected(true);
       window.sessionStorage.setItem(SESSION_ACCESS_CODE, code.trim().toUpperCase());
       window.sessionStorage.setItem(SESSION_PIN, accessPin.trim());
@@ -141,6 +145,7 @@ export default function AgrimarketProducerProductsPage() {
       const rows = Array.isArray(payload?.products) ? payload.products : [];
       setProducts(rows);
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
+      setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
       setMessage("Product list updated.");
     }
     setBusy("");
@@ -194,6 +199,7 @@ export default function AgrimarketProducerProductsPage() {
             <label className="text-sm font-semibold">Product name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Category<select value={form.product_group} onChange={(e) => setForm({ ...form, product_group: e.target.value })} className="mt-1 w-full rounded-xl border bg-white px-3 py-3"><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Fresh Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other Agri</option></select></label>
             <label className="text-sm font-semibold">Selling unit<input required value={form.selling_unit} onChange={(e) => setForm({ ...form, selling_unit: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" placeholder="kg / head / sack / tray" /></label>
+            <label className="text-sm font-semibold">Estimated weight per selling unit (kg)<input required type="number" min="0.001" step="0.001" value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Use 1.000 when the selling unit itself is 1 kg.</span></label>
             <label className="text-sm font-semibold">Price per unit<input required type="number" min="0" step="0.01" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">{form.availability_mode === "scheduled_harvest" ? "Expected reservable harvest quantity" : "Available quantity"}<input required type="number" min="0" step="0.01" value={form.available_quantity} onChange={(e) => setForm({ ...form, available_quantity: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Preparation minutes<input type="number" min="0" max="1440" value={form.default_prep_minutes} onChange={(e) => setForm({ ...form, default_prep_minutes: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
@@ -219,9 +225,10 @@ export default function AgrimarketProducerProductsPage() {
         <section className="mt-5 grid gap-4 md:grid-cols-2">
           {products.map((product) => (
             <article key={product.id} className="rounded-2xl border bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-bold">{product.name}</h3><p className="text-sm text-slate-500">{product.product_group} - {product.selling_unit}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${product.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{product.is_active ? "Active" : "Paused"}</span></div>
+              <div className="flex items-start justify-between gap-3"><div><h3 className="text-xl font-bold">{product.name}</h3><p className="text-sm text-slate-500">{product.product_group} - {product.selling_unit}</p><p className="mt-1 text-xs text-slate-500">Estimated unit weight: {product.unit_weight_kg == null ? "Not set" : `${product.unit_weight_kg} kg per ${product.selling_unit}`}</p></div><span className={`rounded-full px-3 py-1 text-xs font-bold ${product.is_active ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{product.is_active ? "Active" : "Paused"}</span></div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div className="rounded-xl bg-slate-50 p-3">Price<br/><strong>{money(product.unit_price)}</strong></div><div className="rounded-xl bg-slate-50 p-3">Reservable now<br/><strong>{product.remaining_quantity}</strong></div><div className="rounded-xl bg-slate-50 p-3">Reserved<br/><strong>{product.reserved_quantity}</strong></div><div className="rounded-xl bg-slate-50 p-3">Sold<br/><strong>{product.sold_quantity}</strong></div></div>
               {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>Scheduled Harvest</strong><br/>Order cutoff: {formatDate(product.harvest_order_cutoff_at)}<br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}</div> : null}
+              <div className="mt-3 flex flex-wrap items-end gap-2"><label className="text-xs font-semibold">Unit weight (kg)<input type="number" min="0.001" step="0.001" value={weightDraft[product.id] ?? ""} onChange={(e) => setWeightDraft((current) => ({ ...current, [product.id]: e.target.value }))} className="mt-1 block w-32 rounded-xl border px-3 py-2"/></label><button onClick={() => productAction({ action: "set_unit_weight", product_id: product.id, unit_weight_kg: Number(weightDraft[product.id]) }, `weight-${product.id}`)} className="rounded-xl border px-3 py-2 text-sm font-semibold">Update weight</button></div>
               <div className="mt-4 flex flex-wrap gap-2"><input type="number" min="0" step="0.01" value={stockDraft[product.id] ?? ""} onChange={(e) => setStockDraft((current) => ({ ...current, [product.id]: e.target.value }))} className="w-32 rounded-xl border px-3 py-2"/><button onClick={() => productAction({ action: "set_available_quantity", product_id: product.id, available_quantity: Number(stockDraft[product.id]) }, `stock-${product.id}`)} className="rounded-xl border px-3 py-2 text-sm font-semibold">Update quantity</button><button onClick={() => productAction({ action: "set_active", product_id: product.id, is_active: !product.is_active }, `active-${product.id}`)} className="rounded-xl border px-3 py-2 text-sm font-semibold">{product.is_active ? "Pause" : "Reopen"}</button></div>
             </article>
           ))}

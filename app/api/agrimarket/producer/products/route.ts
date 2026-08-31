@@ -70,6 +70,7 @@ function productPayload(row: any) {
     condition: row.condition,
     cargo_class: row.cargo_class,
     selling_unit: row.selling_unit,
+    unit_weight_kg: row.unit_weight_kg == null ? null : Number(row.unit_weight_kg),
     unit_price: Number(row.unit_price || 0),
     listed_quantity: Number(row.listed_quantity || 0),
     reserved_quantity: Number(row.reserved_quantity || 0),
@@ -92,7 +93,7 @@ async function readOwnProducts(admin: any, producerId: string) {
   return admin
     .from("agrimarket_products")
     .select(
-      "id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,listed_quantity,reserved_quantity,sold_quantity,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls,is_active,updated_at"
+      "id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_weight_kg,unit_price,listed_quantity,reserved_quantity,sold_quantity,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls,is_active,updated_at"
     )
     .eq("producer_id", producerId)
     .order("is_active", { ascending: false })
@@ -190,6 +191,25 @@ export async function POST(req: NextRequest) {
       if (updateRes.error) {
         return jsonNoStore(409, { ok: false, error: "AGRIMARKET_PRODUCT_QUANTITY_UPDATE_FAILED", message: updateRes.error.message });
       }
+    } else if (action === "set_unit_weight") {
+      const productId = uuid(body?.product_id || body?.productId);
+      const unitWeightKg = finiteNumber(body?.unit_weight_kg ?? body?.unitWeightKg);
+      if (!productId || unitWeightKg == null || unitWeightKg <= 0) {
+        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_UNIT_WEIGHT_INVALID" });
+      }
+
+      const updateRes = await admin
+        .from("agrimarket_products")
+        .update({ unit_weight_kg: unitWeightKg, updated_at: new Date().toISOString() })
+        .eq("id", productId)
+        .eq("producer_id", producerAuth.producer.id)
+        .select("id")
+        .maybeSingle();
+
+      if (updateRes.error) {
+        return jsonNoStore(409, { ok: false, error: "AGRIMARKET_PRODUCT_WEIGHT_UPDATE_FAILED", message: updateRes.error.message });
+      }
+      if (!updateRes.data) return jsonNoStore(404, { ok: false, error: "AGRIMARKET_PRODUCT_NOT_FOUND" });
     } else if (action === "create") {
       const name = text(body?.name);
       const description = text(body?.description) || null;
@@ -202,6 +222,10 @@ export async function POST(req: NextRequest) {
       const condition = lower(body?.condition || "normal");
       const cargoClass = lower(body?.cargo_class || body?.cargoClass);
       const sellingUnit = text(body?.selling_unit || body?.sellingUnit);
+      const unitWeightInput = finiteNumber(body?.unit_weight_kg ?? body?.unitWeightKg);
+      const unitWeightKg =
+        unitWeightInput ??
+        (new Set(["kg", "kgs", "kilo", "kilos", "kilogram", "kilograms"]).has(lower(sellingUnit)) ? 1 : null);
       const unitPrice = finiteNumber(body?.unit_price ?? body?.unitPrice);
       const availableQuantity = finiteNumber(body?.available_quantity ?? body?.availableQuantity ?? body?.listed_quantity);
       const availabilityMode = lower(body?.availability_mode || body?.availabilityMode || "always_available");
@@ -216,7 +240,8 @@ export async function POST(req: NextRequest) {
         : [];
 
       if (name.length < 2 || !PRODUCT_GROUPS.has(productGroup) || !CONDITIONS.has(condition) ||
-          !CARGO_CLASSES.has(cargoClass) || !sellingUnit || unitPrice == null || unitPrice < 0 ||
+          !CARGO_CLASSES.has(cargoClass) || !sellingUnit || unitWeightKg == null || unitWeightKg <= 0 ||
+          unitPrice == null || unitPrice < 0 ||
           availableQuantity == null || availableQuantity < 0 || !AVAILABILITY_MODES.has(availabilityMode) ||
           prepMinutes == null || !Number.isInteger(prepMinutes) || prepMinutes < 0 || prepMinutes > 1440 ||
           !VEHICLES.has(vehicleRequirement) || (processingForm && !PROCESSING_FORMS.has(processingForm))) {
@@ -268,6 +293,7 @@ export async function POST(req: NextRequest) {
           condition,
           cargo_class: cargoClass,
           selling_unit: sellingUnit,
+          unit_weight_kg: unitWeightKg,
           unit_price: unitPrice,
           listed_quantity: availableQuantity,
           availability_mode: availabilityMode,
