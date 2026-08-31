@@ -31,9 +31,11 @@ function isUuid(value: string) {
   );
 }
 
-// Identical to app/api/admin/driver-availability-pings/route.ts's
-// getAuthorizedUser() — same session shape, same admin/dispatcher
-// resolution, kept in sync deliberately rather than re-derived.
+const TEST_DRIVER_IDS = new Set([
+  "00000000-0000-4000-8000-000000000001",
+  "00000000-0000-4000-8000-000000000002",
+]);
+
 async function getAuthorizedUser() {
   const session = await auth();
   const user = (session?.user || null) as
@@ -85,10 +87,13 @@ async function getAuthorizedUser() {
 }
 
 const CLAIMABILITY_COLUMNS =
-  "driver_id,driver_name,policy_code,display_name,cycle_number,cycle_weeks,cycle_start,cycle_end,achieved_presence_days,required_presence_days,achieved_total_hours,required_total_hours,achieved_booking_count,required_booking_count,cycle_missed_checks,calendar_cumulative_missed_checks,allowed_missed_checks,miss_check_scope,presence_requirement_met,hours_requirement_met,booking_requirement_met,duty_check_requirement_met,qualified,already_awarded,claimable";
+  "driver_id,driver_name,policy_code,display_name,cycle_number,cycle_weeks,cycle_start,cycle_end,achieved_presence_days,required_presence_days,achieved_total_hours,required_total_hours,achieved_booking_count,required_booking_count,cycle_missed_checks,calendar_cumulative_missed_checks,allowed_missed_checks,miss_check_scope,presence_requirement_met,hours_requirement_met,booking_requirement_met,duty_check_requirement_met,qualified,already_awarded,claimable,ping_requirement_met,midday_gate_requirement_met,award_week,window_start_week,window_end_week,midday_gate_weeks_met,midday_gate_weeks_required,midday_hours,required_midday_hours";
 
 const AWARD_COLUMNS =
   "id,driver_id,policy_code,cycle_number,cycle_start,cycle_end,qualified,reward_given,reward_given_at,awarded_by,remarks,created_at";
+
+const SCHEDULE_COLUMNS =
+  "policy_code,attempt_number,award_week,window_start_week,window_end_week";
 
 export async function GET(request: NextRequest) {
   try {
@@ -120,7 +125,17 @@ export async function GET(request: NextRequest) {
     if (policyCode) claimabilityQuery = claimabilityQuery.eq("policy_code", policyCode);
     if (onlyClaimable) claimabilityQuery = claimabilityQuery.eq("claimable", true);
 
-    const claimabilityRes = await claimabilityQuery;
+    const [claimabilityRes, scheduleRes, policiesRes] = await Promise.all([
+      claimabilityQuery,
+      admin
+        .from("driver_incentive_reward_schedule")
+        .select(SCHEDULE_COLUMNS)
+        .order("award_week", { ascending: true })
+        .order("policy_code", { ascending: true }),
+      admin
+        .from("driver_incentive_policies")
+        .select("policy_code,display_name,cycle_weeks"),
+    ]);
 
     if (claimabilityRes.error) {
       console.error(
@@ -129,6 +144,28 @@ export async function GET(request: NextRequest) {
       );
       return NextResponse.json(
         { ok: false, error: claimabilityRes.error.message },
+        { status: 500 }
+      );
+    }
+
+    if (scheduleRes.error) {
+      console.error(
+        "[INCENTIVE_AWARDS_SCHEDULE_FAILED]",
+        JSON.stringify({ message: scheduleRes.error.message })
+      );
+      return NextResponse.json(
+        { ok: false, error: scheduleRes.error.message },
+        { status: 500 }
+      );
+    }
+
+    if (policiesRes.error) {
+      console.error(
+        "[INCENTIVE_AWARDS_POLICIES_FAILED]",
+        JSON.stringify({ message: policiesRes.error.message })
+      );
+      return NextResponse.json(
+        { ok: false, error: policiesRes.error.message },
         { status: 500 }
       );
     }
@@ -169,44 +206,60 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const historyPolicyCodes = Array.from(
-      new Set(historyRows.map((h: any) => String(h?.policy_code || "")).filter(Boolean))
-    );
-
     const policyByCode: Record<string, { display_name: string; cycle_weeks: number }> = {};
-    if (historyPolicyCodes.length > 0) {
-      const policiesRes = await admin
-        .from("driver_incentive_policies")
-        .select("policy_code,display_name,cycle_weeks")
-        .in("policy_code", historyPolicyCodes);
-
-      if (!policiesRes.error && Array.isArray(policiesRes.data)) {
-        for (const p of policiesRes.data as any[]) {
-          const code = String(p?.policy_code || "");
-          if (code) {
-            policyByCode[code] = {
-              display_name: String(p?.display_name || code),
-              cycle_weeks: Number(p?.cycle_weeks || 0),
-            };
-          }
-        }
+    if (Array.isArray(policiesRes.data)) {
+      for (const p of policiesRes.data as any[]) {
+        const code = String(p?.policy_code || "");
+        if (!code) continue;
+        policyByCode[code] = {
+          display_name: String(p?.display_name || code),
+          cycle_weeks: Number(p?.cycle_weeks || 0),
+        };
       }
     }
 
+    const scheduleRows = Array.isArray(scheduleRes.data)
+      ? (scheduleRes.data as any[])
+      : [];
+    const scheduleByKey: Record<string, any> = {};
+    for (const s of scheduleRows) {
+      scheduleByKey[
+        String(s?.policy_code || "") + "::" + String(Number(s?.attempt_number || 0))
+      ] = s;
+    }
+
     const historyWithNames = historyRows.map((h: any) => {
-      const policy = policyByCode[String(h?.policy_code || "")];
+      const code = String(h?.policy_code || "");
+      const policy = policyByCode[code];
+      const schedule = scheduleByKey[code + "::" + String(Number(h?.cycle_number || 0))];
+      const windowStartWeek = Number(schedule?.window_start_week || 0);
+      const windowEndWeek = Number(schedule?.window_end_week || 0);
       return {
         ...h,
         driver_name: driverNameById[String(h?.driver_id || "")] || "Unknown driver",
-        display_name: policy?.display_name || String(h?.policy_code || ""),
-        cycle_weeks: policy?.cycle_weeks || 0,
+        display_name: policy?.display_name || code,
+        cycle_weeks:
+          windowStartWeek > 0 && windowEndWeek >= windowStartWeek
+            ? windowEndWeek - windowStartWeek + 1
+            : policy?.cycle_weeks || 0,
+        award_week: Number(schedule?.award_week || 0),
+        window_start_week: windowStartWeek,
+        window_end_week: windowEndWeek,
       };
     });
+
+    const scheduleWithNames = scheduleRows.map((s: any) => ({
+      ...s,
+      display_name:
+        policyByCode[String(s?.policy_code || "")]?.display_name ||
+        String(s?.policy_code || ""),
+    }));
 
     return NextResponse.json({
       ok: true,
       rows: claimabilityRes.data || [],
       history: historyWithNames,
+      schedule: scheduleWithNames,
       auth_debug: {
         requester_email: authorization.email,
         requester_role: authorization.role,
@@ -269,6 +322,18 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (TEST_DRIVER_IDS.has(driverId)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "TEST_DRIVER_NOT_AWARDABLE",
+          error: "Test drivers cannot receive production incentives.",
+        },
+        { status: 409 }
+      );
+    }
+
     if (!policyCode) {
       return NextResponse.json(
         {
@@ -302,15 +367,10 @@ export async function POST(request: NextRequest) {
 
     const admin = supabaseAdmin();
 
-    // Re-derive current truth directly from the engine right before
-    // writing — never trust a qualified/claimable value the client already
-    // had, since it may be stale (another dispatcher may have already
-    // awarded this exact cycle in the meantime, or the driver's
-    // qualification may have changed since the page loaded).
     const currentRes = await admin
       .from("driver_incentive_claimability_v1")
       .select(
-        "driver_id,policy_code,cycle_number,cycle_start,cycle_end,qualified,already_awarded,claimable"
+        "driver_id,policy_code,cycle_number,cycle_start,cycle_end,qualified,already_awarded,claimable,award_week,window_start_week,window_end_week"
       )
       .eq("driver_id", driverId)
       .eq("policy_code", policyCode)
@@ -322,7 +382,7 @@ export async function POST(request: NextRequest) {
         {
           ok: false,
           code: "CYCLE_NOT_FOUND",
-          error: "This driver has no matching qualification cycle.",
+          error: "This driver has no matching scheduled qualification window.",
         },
         { status: 404 }
       );
@@ -337,7 +397,7 @@ export async function POST(request: NextRequest) {
           code: current.already_awarded ? "ALREADY_AWARDED" : "NOT_QUALIFIED",
           error: current.already_awarded
             ? "This reward has already been awarded."
-            : "This driver is not currently qualified for this cycle.",
+            : "This driver is not currently qualified for this scheduled reward.",
         },
         { status: 409 }
       );
@@ -361,11 +421,6 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (awardError) {
-      // The two partial unique indexes on driver_incentive_awards (one per
-      // WEEKLY cycle, one ever per one-time tier) are the actual safety net
-      // against a double-award race between two dispatchers acting on the
-      // same stale claimable=true at once — a 23505 here means someone else
-      // won that race in the moments between our SELECT and this INSERT.
       if (String((awardError as any).code) === "23505") {
         return NextResponse.json(
           {
