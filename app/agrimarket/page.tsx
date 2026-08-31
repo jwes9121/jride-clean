@@ -92,6 +92,7 @@ export default function AgrimarketPage() {
   const [placed, setPlaced] = useState<any>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [quoting, setQuoting] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -135,6 +136,7 @@ export default function AgrimarketPage() {
     setPlaced(null);
     setCart([]);
     setCartMessage("");
+    setSelectedProductId(null);
     if (!nextAddressId) return setProducts([]);
     const params = new URLSearchParams({ address_id: nextAddressId });
     const response = await fetch(`/api/agrimarket/catalog?${params.toString()}`, { cache: "no-store", headers: authHeaders() });
@@ -156,6 +158,27 @@ export default function AgrimarketPage() {
     });
   }, [products, query, category]);
 
+  const selectedProduct = useMemo(
+    () => products.find((product) => product.id === selectedProductId) || null,
+    [products, selectedProductId]
+  );
+
+  const moreFromSelectedFarmer = useMemo(() => {
+    if (!selectedProduct) return [];
+    return products
+      .filter(
+        (product) =>
+          product.id !== selectedProduct.id &&
+          product.cart_group_key === selectedProduct.cart_group_key
+      )
+      .sort((a, b) => {
+        const byName = a.name.localeCompare(b.name);
+        if (byName !== 0) return byName;
+        if (a.proximity_rank !== b.proximity_rank) return a.proximity_rank - b.proximity_rank;
+        return a.unit_price - b.unit_price;
+      });
+  }, [products, selectedProduct]);
+
   const cartSubtotal = useMemo(
     () => cart.reduce((sum, line) => sum + line.product.unit_price * line.quantity, 0),
     [cart]
@@ -167,6 +190,10 @@ export default function AgrimarketPage() {
   useEffect(() => {
     if (requiresTricycle && preferredVehicle !== "tricycle") setPreferredVehicle("tricycle");
   }, [requiresTricycle, preferredVehicle]);
+
+  function openProduct(product: ProductRow) {
+    setSelectedProductId(product.id);
+  }
 
   function addToCart(product: ProductRow) {
     setCartMessage("");
@@ -285,22 +312,74 @@ export default function AgrimarketPage() {
         <section className="mt-5 rounded-2xl border bg-white p-4 shadow-sm">
           <label className="text-sm font-semibold">Deliver to<select value={addressId} onChange={(e) => { setAddressId(e.target.value); void loadCatalog(e.target.value); }} className="mt-2 w-full rounded-xl border bg-white px-3 py-3"><option value="">Select delivery address</option>{addresses.filter((row) => row.has_valid_pin).map((address) => <option key={address.id} value={address.id}>{address.label || address.address_text}{address.is_primary ? " (Primary)" : ""}</option>)}</select></label>
           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]"><input value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-xl border px-3 py-3" placeholder="Search products"/><select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-xl border bg-white px-3 py-3"><option value="all">All categories</option><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other</option></select></div>
+          <p className="mt-2 text-xs text-slate-500">Browse by product first. Open a listing to see other current products from that same farmer.</p>
         </section>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_380px]">
-          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {loading ? <div className="rounded-2xl border bg-white p-6">Loading Agrimarket...</div> : null}
-            {!loading && filteredProducts.map((product) => (
-              <article key={product.id} className="rounded-2xl border bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p><h2 className="mt-1 text-xl font-bold">{product.name}</h2></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{product.approximate_road_distance_km ?? "?"} km</span></div>
-                <p className="mt-2 text-sm text-slate-600">{product.description || `${titleCase(product.condition)} - ${titleCase(product.cargo_class)}`}</p>
-                <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} reservable</span></div>
-                {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Scheduled Harvest</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
-                {product.vehicle_requirement === "tricycle" ? <p className="mt-2 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
-                <button disabled={!product.can_order_now} onClick={() => addToCart(product)} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white disabled:bg-slate-300">{product.can_order_now ? (product.availability_mode === "scheduled_harvest" ? "Reserve in cart" : "Add to cart") : "Reservation closed"}</button>
-              </article>
-            ))}
-          </section>
+          <div className="min-w-0">
+            {selectedProduct ? (
+              <section id="agrimarket-product-detail" className="mb-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{selectedProduct.producer_alias}</p>
+                    <h2 className="mt-1 text-2xl font-bold">{selectedProduct.name}</h2>
+                    <p className="mt-1 text-sm text-slate-500">Approximately {selectedProduct.approximate_road_distance_km ?? "?"} km by road from your selected delivery address.</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedProductId(null)} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-700">Close</button>
+                </div>
+
+                <p className="mt-4 text-sm text-slate-700">{selectedProduct.description || `${titleCase(selectedProduct.condition)} - ${titleCase(selectedProduct.cargo_class)}`}</p>
+                <div className="mt-4 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3">
+                  <div><p className="text-xs uppercase text-slate-500">Price</p><p className="font-bold">{money(selectedProduct.unit_price)} / {selectedProduct.selling_unit}</p></div>
+                  <div><p className="text-xs uppercase text-slate-500">Available</p><p className="font-bold">{selectedProduct.remaining_quantity} reservable</p></div>
+                  <div><p className="text-xs uppercase text-slate-500">Cargo</p><p className="font-bold">{titleCase(selectedProduct.cargo_class)}</p></div>
+                </div>
+                {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Scheduled Harvest</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)}{selectedProduct.harvest_end_at ? ` to ${formatDate(selectedProduct.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
+                {selectedProduct.vehicle_requirement === "tricycle" ? <p className="mt-3 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
+                <button disabled={!selectedProduct.can_order_now} onClick={() => addToCart(selectedProduct)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:bg-slate-300">{selectedProduct.can_order_now ? (selectedProduct.availability_mode === "scheduled_harvest" ? "Reserve in cart" : "Add to cart") : "Reservation closed"}</button>
+
+                {moreFromSelectedFarmer.length ? (
+                  <div className="mt-6 border-t pt-5">
+                    <div>
+                      <h3 className="text-lg font-bold">More from this farmer</h3>
+                      <p className="mt-1 text-sm text-slate-600">Other current listings from this same farmer. The farmer's real identity and exact pickup location remain private.</p>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {moreFromSelectedFarmer.map((product) => (
+                        <article key={product.id} className="rounded-2xl border bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p>
+                          <h4 className="mt-1 font-bold">{product.name}</h4>
+                          <p className="mt-2 text-sm text-slate-600">{money(product.unit_price)} / {product.selling_unit}</p>
+                          <p className="mt-1 text-xs text-slate-500">{product.approximate_road_distance_km ?? "?"} km - {product.remaining_quantity} reservable</p>
+                          <button type="button" onClick={() => openProduct(product)} className="mt-3 w-full rounded-xl border border-emerald-700 bg-white px-3 py-2 text-sm font-bold text-emerald-800">View product</button>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-5 border-t pt-4 text-sm text-slate-500">No other current listings from this farmer.</p>
+                )}
+              </section>
+            ) : null}
+
+            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {loading ? <div className="rounded-2xl border bg-white p-6">Loading Agrimarket...</div> : null}
+              {!loading && !filteredProducts.length ? <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">No products match your search.</div> : null}
+              {!loading && filteredProducts.map((product) => (
+                <article key={product.id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p><h2 className="mt-1 text-xl font-bold">{product.name}</h2></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{product.approximate_road_distance_km ?? "?"} km</span></div>
+                  <p className="mt-2 text-sm text-slate-600">{product.description || `${titleCase(product.condition)} - ${titleCase(product.cargo_class)}`}</p>
+                  <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} reservable</span></div>
+                  {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Scheduled Harvest</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
+                  {product.vehicle_requirement === "tricycle" ? <p className="mt-2 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => openProduct(product)} className="rounded-xl border border-emerald-700 bg-white px-3 py-3 font-bold text-emerald-800">View product</button>
+                    <button disabled={!product.can_order_now} onClick={() => addToCart(product)} className="rounded-xl bg-emerald-700 px-3 py-3 font-bold text-white disabled:bg-slate-300">{product.can_order_now ? (product.availability_mode === "scheduled_harvest" ? "Reserve" : "Add to cart") : "Closed"}</button>
+                  </div>
+                </article>
+              ))}
+            </section>
+          </div>
 
           <aside className="h-fit rounded-3xl border bg-white p-5 shadow-sm xl:sticky xl:top-4">
             <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Cart</h2>{cart.length ? <button onClick={clearCart} className="text-sm font-semibold text-red-700">Clear</button> : null}</div>
