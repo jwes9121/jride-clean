@@ -122,6 +122,11 @@ export async function POST(req: NextRequest) {
         driver_assignment_waits_for_farmer_ready: context.fulfillmentMode === "scheduled_harvest",
       },
       product_subtotal: context.productSubtotal,
+      estimated_cargo_weight_kg: context.estimatedCargoWeightKg,
+      cargo_weight_estimate_status:
+        context.estimatedCargoWeightKg == null
+          ? "farmer_confirmation_required"
+          : "estimated_from_listing_unit_weights",
       cash_collection: {
         threshold_php: AGRIMARKET_CASH_FIRST_THRESHOLD,
         rule: "product_subtotal_over_500_customer_cash_first",

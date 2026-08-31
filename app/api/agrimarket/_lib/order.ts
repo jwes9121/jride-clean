@@ -21,6 +21,7 @@ export type AgrimarketOrderContext = {
     harvest_order_cutoff_at: string | null;
   }>;
   productSubtotal: number;
+  estimatedCargoWeightKg: number | null;
   requiredVehicleType: "either" | "tricycle";
   preferredVehicleType: "motorcycle" | "tricycle";
   handlingEligible: boolean;
@@ -152,7 +153,7 @@ export async function loadAgrimarketOrderContext(
   const productsRes = await admin
     .from("agrimarket_products")
     .select(
-      "id,producer_id,name,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
+      "id,producer_id,name,selling_unit,unit_weight_kg,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
     )
     .in("id", productIds);
 
@@ -174,6 +175,8 @@ export async function loadAgrimarketOrderContext(
   const harvestEnds = new Set<string>();
   const itemSnapshots: AgrimarketOrderContext["itemSnapshots"] = [];
   let productSubtotal = 0;
+  let estimatedCargoWeightKg = 0;
+  let cargoWeightEstimateComplete = true;
   let handlingEligible = false;
   let requiresTricycle = false;
   let earliestCutoffMs = Number.POSITIVE_INFINITY;
@@ -236,6 +239,17 @@ export async function loadAgrimarketOrderContext(
     const unitPrice = money(product.unit_price);
     const lineTotal = money(unitPrice * requested.quantity);
     productSubtotal = money(productSubtotal + lineTotal);
+
+    const unitWeightKg =
+      product.unit_weight_kg === null || product.unit_weight_kg === undefined
+        ? null
+        : Number(product.unit_weight_kg);
+    if (unitWeightKg == null || !Number.isFinite(unitWeightKg) || unitWeightKg <= 0) {
+      cargoWeightEstimateComplete = false;
+    } else {
+      estimatedCargoWeightKg += unitWeightKg * requested.quantity;
+    }
+
     handlingEligible = handlingEligible || product.handling_eligible === true;
 
     itemSnapshots.push({
@@ -335,6 +349,9 @@ export async function loadAgrimarketOrderContext(
     items,
     itemSnapshots,
     productSubtotal,
+    estimatedCargoWeightKg: cargoWeightEstimateComplete
+      ? Math.round(estimatedCargoWeightKg * 1000) / 1000
+      : null,
     requiredVehicleType,
     preferredVehicleType,
     handlingEligible,
