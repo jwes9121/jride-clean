@@ -1,10 +1,5 @@
 import { NextRequest } from "next/server";
 import {
-  RIDE_PICKUP_FREE_KM,
-  RIDE_PICKUP_NORMAL_MAX_FEE,
-  RIDE_PICKUP_NORMAL_MAX_KM,
-} from "@/lib/pricing/pickupFee";
-import {
   AgrimarketRequestError,
   loadAgrimarketOrderContext,
   normalizeAgrimarketAddressId,
@@ -47,6 +42,56 @@ function requestId(req: NextRequest, body: any): string {
     );
   }
   return value;
+}
+
+async function loadDriverApproachPolicy(admin: any) {
+  const settingsRes = await admin
+    .from("agrimarket_pricing_settings")
+    .select(
+      "driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
+    )
+    .eq("id", 1)
+    .eq("is_active", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (settingsRes.error || !settingsRes.data) {
+    throw new AgrimarketRequestError(
+      "AGRIMARKET_DRIVER_APPROACH_SETTINGS_UNAVAILABLE",
+      500,
+      settingsRes.error?.message || "AgriMarket Driver Approach pricing is not configured."
+    );
+  }
+
+  const freeKm = Number((settingsRes.data as any).driver_approach_free_km);
+  const feePerStartedKm = Number(
+    (settingsRes.data as any).driver_approach_fee_per_started_km
+  );
+  const feeCap = Number((settingsRes.data as any).driver_approach_fee_cap);
+
+  if (
+    !Number.isFinite(freeKm) ||
+    freeKm < 0 ||
+    !Number.isFinite(feePerStartedKm) ||
+    feePerStartedKm < 0 ||
+    !Number.isFinite(feeCap) ||
+    feeCap < 0
+  ) {
+    throw new AgrimarketRequestError(
+      "AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID",
+      500,
+      "AgriMarket Driver Approach pricing settings are invalid."
+    );
+  }
+
+  return {
+    rule: "agrimarket_driver_approach_v1",
+    free_km: freeKm,
+    fee_per_started_km: feePerStartedKm,
+    fee_cap: feeCap,
+    distance_basis: "assigned_driver_to_farmer_road_route",
+    charging_unit: "started_km_above_free_distance",
+  };
 }
 
 function rpcFailureStatus(message: string): number {
@@ -120,6 +165,7 @@ export async function POST(req: NextRequest) {
     const items = normalizeAgrimarketItems(body);
     const preferredVehicleType = normalizeAgrimarketPreferredVehicle(body);
     const admin = createServiceSupabase();
+    const driverApproachPolicy = await loadDriverApproachPolicy(admin);
 
     const existingRes = await admin
       .from("agrimarket_orders")
@@ -143,10 +189,11 @@ export async function POST(req: NextRequest) {
         idempotent_replay: true,
         order: orderPayload(existingRes.data),
         pickup_distance_policy: {
-          first_km_free: RIDE_PICKUP_FREE_KM,
-          normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
-          normal_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
-          distance_basis: "driver_to_first_pickup_road_route",
+          ...driverApproachPolicy,
+          status:
+            existingRes.data.driver_to_first_pickup_km == null
+              ? "pending_driver_assignment"
+              : "locked_after_driver_assignment",
         },
       });
     }
@@ -239,11 +286,8 @@ export async function POST(req: NextRequest) {
           : null,
       cash_collection_threshold_php: AGRIMARKET_CASH_FIRST_THRESHOLD,
       pickup_distance_policy: {
+        ...driverApproachPolicy,
         status: "pending_driver_assignment",
-        first_km_free: RIDE_PICKUP_FREE_KM,
-        normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
-        normal_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
-        distance_basis: "driver_to_first_pickup_road_route",
         first_pickup: readBackRes.data.assignment_anchor,
       },
       producer_location_disclosure: "hidden",
