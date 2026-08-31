@@ -427,9 +427,12 @@ export async function POST(req: NextRequest) {
     const bookingDbId = text((booking as any).id);
     const currentStatus = cleanStatus((booking as any).status);
     const currentDriverId = text((booking as any).assigned_driver_id || (booking as any).driver_id);
-    const isTakeoutBooking =
-      cleanStatus((booking as any).service_type || (booking as any).booking_type) ===
-      "takeout";
+    const bookingServiceType = cleanStatus(
+      (booking as any).service_type || (booking as any).booking_type
+    );
+    const isRideBooking =
+      bookingServiceType === "motorcycle" || bookingServiceType === "tricycle";
+    const isTakeoutBooking = bookingServiceType === "takeout";
 
     if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
       return NextResponse.json(
@@ -538,7 +541,45 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (!normalizedDriverTown || !allowedManualTowns.includes(normalizedDriverTown)) {
+      // JRIDE_RIDE_RESCUE_DISPATCH_TOWN_V1
+      // Normal/Rescue Ride assignment must use the server GPS-derived town
+      // helper. Emergency Booking keeps its existing neighboring-town rule.
+      if (isRideBooking && !emergencyMode) {
+        const { data: rideTownEligible, error: rideTownError } = await supabase.rpc(
+          "jride_ride_driver_town_eligible_v1",
+          {
+            p_driver_id: explicitDriverId,
+            p_booking_town: bookingTown,
+          }
+        );
+
+        if (rideTownError) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "ride_town_eligibility_check_failed",
+              message: rideTownError.message,
+              booking_town: bookingTown || null,
+              driver_id: explicitDriverId,
+            },
+            { status: 500 }
+          );
+        }
+
+        if (rideTownEligible !== true) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: "ride_driver_town_ineligible",
+              booking_town: bookingTown || null,
+              driver_town_legacy: driverTown || null,
+              emergency_mode: false,
+              driver_id: explicitDriverId,
+            },
+            { status: 409 }
+          );
+        }
+      } else if (!normalizedDriverTown || !allowedManualTowns.includes(normalizedDriverTown)) {
         return NextResponse.json(
           {
             ok: false,

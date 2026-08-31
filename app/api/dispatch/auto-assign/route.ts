@@ -311,7 +311,10 @@ async function matchSingle(
   const targetCoords = assignmentTargetCoords(booking);
   const pickupLat = targetCoords.lat;
   const pickupLng = targetCoords.lng;
-  const isTakeoutBooking = norm(booking?.service_type) === "takeout";
+  const bookingServiceType = norm(booking?.service_type);
+  const isRideBooking =
+    bookingServiceType === "motorcycle" || bookingServiceType === "tricycle";
+  const isTakeoutBooking = bookingServiceType === "takeout";
 
   const debug: MatchDebug = {
     booking_id: booking?.id ?? null,
@@ -459,7 +462,24 @@ async function matchSingle(
       continue;
     }
 
-    if (!driverTown || !allowedTownSet.has(driverTown)) {
+    // JRIDE_RIDE_RESCUE_DISPATCH_TOWN_V1
+    // Normal/Rescue Ride eligibility uses the server GPS-derived town helper.
+    // Emergency Booking keeps its existing neighboring-town rule, and
+    // non-Ride services keep their existing assignment behavior.
+    if (isRideBooking && !emergencyMode) {
+      const { data: rideTownEligible, error: rideTownError } = await supabase.rpc(
+        "jride_ride_driver_town_eligible_v1",
+        {
+          p_driver_id: d.driver_id,
+          p_booking_town: bookingTown,
+        }
+      );
+
+      if (rideTownError || rideTownEligible !== true) {
+        debug.rejected_wrong_town_count++;
+        continue;
+      }
+    } else if (!driverTown || !allowedTownSet.has(driverTown)) {
       debug.rejected_wrong_town_count++;
       continue;
     }
