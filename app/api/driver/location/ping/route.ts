@@ -54,6 +54,246 @@ function normalizeVehicleType(v: unknown): string {
   return s;
 }
 
+// JRIDE_DRIVER_GPS_TOWN_RESOLVER_V1
+// driver_locations.town is legacy/client-reported telemetry and is not a
+// trustworthy source for Ride town eligibility. This server-owned cache is
+// resolved from actual GPS coordinates using Mapbox. Resolution is throttled
+// by movement and cache age so normal heartbeat frequency does not cause a
+// reverse-geocode request on every ping.
+const JRIDE_SERVICE_TOWNS = ["Lagawe", "Lamut", "Banaue", "Hingyon", "Kiangan"] as const;
+const JRIDE_GPS_TOWN_RECHECK_DISTANCE_KM = 0.75;
+const JRIDE_GPS_TOWN_MAX_CACHE_AGE_MS = 6 * 60 * 60 * 1000;
+
+function jrideGpsTownHaversineKm(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number
+): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const p1 = toRad(aLat);
+  const p2 = toRad(bLat);
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const h =
+    s1 * s1 +
+    Math.cos(p1) * Math.cos(p2) * s2 * s2;
+  const clamped = Math.max(0, Math.min(1, h));
+  return 6371 * 2 * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+}
+
+function jrideCanonicalGpsTown(value: unknown): string | null {
+  const raw = text(value);
+  if (!raw) return null;
+
+  const normalized = raw
+    .toLowerCase()
+    .replace(/^municipality\s+of\s+/, "")
+    .replace(/^city\s+of\s+/, "")
+    .trim();
+
+  const exact = JRIDE_SERVICE_TOWNS.find(
+    (townName) => townName.toLowerCase() === normalized
+  );
+
+  return exact || raw;
+}
+
+function jrideMapboxToken(): string {
+  return envAny([
+    "MAPBOX_ACCESS_TOKEN",
+    "MAPBOX_TOKEN",
+    "NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN",
+    "NEXT_PUBLIC_MAPBOX_TOKEN",
+  ]);
+}
+
+async function syncDriverGpsTownResolution(opts: {
+  supabase: any;
+  driverId: string;
+  lat: number;
+  lng: number;
+  hasFreshGps: boolean;
+  nowIso: string;
+}) {
+  const { supabase, driverId, lat, lng, hasFreshGps, nowIso } = opts;
+
+  if (!hasFreshGps || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return {
+      attempted: false,
+      ok: true,
+      skipped: true,
+      reason: "no_fresh_gps",
+    };
+  }
+
+  try {
+    const existingRes = await supabase
+      .from("driver_gps_town_resolutions")
+      .select(
+        "driver_id,current_town,raw_place_name,source_lat,source_lng,resolved_at,source"
+      )
+      .eq("driver_id", driverId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingRes.error) {
+      return {
+        attempted: false,
+        ok: false,
+        skipped: true,
+        reason: "cache_read_failed",
+        message: existingRes.error.message,
+      };
+    }
+
+    const existing: any = existingRes.data || null;
+    const nowMs = Date.parse(nowIso) || Date.now();
+
+    let movementKm = Number.POSITIVE_INFINITY;
+    let cacheAgeMs = Number.POSITIVE_INFINITY;
+
+    if (
+      existing &&
+      Number.isFinite(Number(existing.source_lat)) &&
+      Number.isFinite(Number(existing.source_lng))
+    ) {
+      movementKm = jrideGpsTownHaversineKm(
+        Number(existing.source_lat),
+        Number(existing.source_lng),
+        lat,
+        lng
+      );
+    }
+
+    if (existing?.resolved_at) {
+      const resolvedMs = Date.parse(String(existing.resolved_at));
+      if (Number.isFinite(resolvedMs)) {
+        cacheAgeMs = Math.max(0, nowMs - resolvedMs);
+      }
+    }
+
+    const shouldResolve =
+      !existing ||
+      text(existing.source) !== "mapbox_place" ||
+      movementKm >= JRIDE_GPS_TOWN_RECHECK_DISTANCE_KM ||
+      cacheAgeMs >= JRIDE_GPS_TOWN_MAX_CACHE_AGE_MS;
+
+    if (!shouldResolve) {
+      return {
+        attempted: false,
+        ok: true,
+        skipped: true,
+        reason: "cache_fresh",
+        current_town: existing?.current_town ?? null,
+        movement_km: Number.isFinite(movementKm)
+          ? Number(movementKm.toFixed(3))
+          : null,
+      };
+    }
+
+    const token = jrideMapboxToken();
+    if (!token) {
+      return {
+        attempted: false,
+        ok: false,
+        skipped: true,
+        reason: "mapbox_token_missing",
+      };
+    }
+
+    const url =
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+      `${encodeURIComponent(String(lng))},${encodeURIComponent(String(lat))}.json` +
+      `?types=place&limit=1&language=en&access_token=${encodeURIComponent(token)}`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return {
+        attempted: true,
+        ok: false,
+        reason: "mapbox_http_failed",
+        status: response.status,
+      };
+    }
+
+    const payload: any = await response.json().catch(() => ({}));
+    const features = Array.isArray(payload?.features) ? payload.features : [];
+    const feature = features.find(
+      (item: any) =>
+        Array.isArray(item?.place_type) &&
+        item.place_type.includes("place")
+    ) || features[0] || null;
+
+    const rawPlace =
+      text(feature?.text) ||
+      text(feature?.place_name) ||
+      "";
+
+    const currentTown = jrideCanonicalGpsTown(rawPlace);
+
+    if (!currentTown) {
+      return {
+        attempted: true,
+        ok: false,
+        reason: "mapbox_place_missing",
+      };
+    }
+
+    const cacheWrite = await supabase
+      .from("driver_gps_town_resolutions")
+      .upsert(
+        {
+          driver_id: driverId,
+          current_town: currentTown,
+          raw_place_name: rawPlace || null,
+          source_lat: lat,
+          source_lng: lng,
+          resolved_at: nowIso,
+          source: "mapbox_place",
+          updated_at: nowIso,
+        },
+        {
+          onConflict: "driver_id",
+          ignoreDuplicates: false,
+        }
+      );
+
+    if (cacheWrite.error) {
+      return {
+        attempted: true,
+        ok: false,
+        reason: "cache_write_failed",
+        message: cacheWrite.error.message,
+      };
+    }
+
+    return {
+      attempted: true,
+      ok: true,
+      reason: "resolved",
+      current_town: currentTown,
+      raw_place_name: rawPlace || null,
+      movement_km: Number.isFinite(movementKm)
+        ? Number(movementKm.toFixed(3))
+        : null,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      reason: "resolver_exception",
+      message: String(e?.message ?? e),
+    };
+  }
+}
+
 async function resolveDriverIdFromBearer(serviceSupabase: any, authUserId: string): Promise<string | null> {
   const directProfile = await serviceSupabase
     .from("driver_profiles")
@@ -724,6 +964,21 @@ export async function POST(req: NextRequest) {
           },
         });
     }
+
+    const gpsTownResolutionResult = await syncDriverGpsTownResolution({
+      supabase,
+      driverId,
+      lat: incomingLat,
+      lng: incomingLng,
+      hasFreshGps: hasIncomingCoords,
+      nowIso,
+    });
+
+    console.log("[DISPATCH_TRACE] ping:gps_town_resolution", {
+      driver_id: driverId,
+      client_reported_town: town || null,
+      gps_town_resolution: gpsTownResolutionResult,
+    });
 
     const presenceSessionResult = await syncDriverPresenceSession({
       supabase,
