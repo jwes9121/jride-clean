@@ -24,14 +24,52 @@ function formatShortDate(iso: any) {
   return month + " " + day;
 }
 
-function formatCycleLabel(cycleNumber: any, cycleWeeks: any) {
-  const n = Number(cycleNumber || 0);
-  const w = Number(cycleWeeks || 0);
-  if (!n) return "Cycle " + cycleNumber;
+function policyLabel(code: any, displayName?: any) {
+  const key = String(code || "").toUpperCase();
+  if (key === "WEEKLY") return "Weekly Load";
+  if (key === "PHONE_CLAMP") return "Phone Clamp";
+  if (key === "SHIRT") return "JRide Shirt";
+  if (key === "MONTHLY") return "Power Bank";
+  if (key === "THERMAL_BAG") return "Thermal Bag";
+  if (key === "SMARTPHONE") return "Android Phone";
+  return String(displayName || code || "Unknown incentive");
+}
+
+type ScheduleLike = {
+  cycle_number?: number;
+  cycle_weeks?: number;
+  award_week?: number;
+  window_start_week?: number;
+  window_end_week?: number;
+};
+
+function formatScheduleLabel(value: ScheduleLike) {
+  const awardWeek = Number(value.award_week || 0);
+  const startWeek = Number(value.window_start_week || 0);
+  const endWeek = Number(value.window_end_week || 0);
+
+  if (startWeek > 0 && endWeek >= startWeek) {
+    if (startWeek === endWeek) return "Week " + endWeek;
+    return (
+      "Weeks " +
+      startWeek +
+      "-" +
+      endWeek +
+      " (award Week " +
+      (awardWeek || endWeek) +
+      ")"
+    );
+  }
+
+  const n = Number(value.cycle_number || 0);
+  const w = Number(value.cycle_weeks || 0);
+  if (!n) return "Cycle " + String(value.cycle_number || "-");
   if (!w) return "Cycle " + n;
-  const startWeek = (n - 1) * w + 1;
-  const endWeek = n * w;
-  return w === 1 ? "Week " + startWeek : "Weeks " + startWeek + "-" + endWeek;
+  const fallbackStart = (n - 1) * w + 1;
+  const fallbackEnd = n * w;
+  return w === 1
+    ? "Week " + fallbackStart
+    : "Weeks " + fallbackStart + "-" + fallbackEnd;
 }
 
 const POLICY_ORDER: string[] = [
@@ -43,6 +81,15 @@ const POLICY_ORDER: string[] = [
   "SMARTPHONE",
 ];
 
+type ScheduleRow = {
+  policy_code: string;
+  display_name: string;
+  attempt_number: number;
+  award_week: number;
+  window_start_week: number;
+  window_end_week: number;
+};
+
 type ClaimableRow = {
   driver_id: string;
   driver_name: string;
@@ -52,6 +99,9 @@ type ClaimableRow = {
   cycle_weeks: number;
   cycle_start: string;
   cycle_end: string;
+  award_week: number;
+  window_start_week: number;
+  window_end_week: number;
   achieved_presence_days: number;
   required_presence_days: number;
   achieved_total_hours: number;
@@ -62,6 +112,10 @@ type ClaimableRow = {
   calendar_cumulative_missed_checks: number;
   allowed_missed_checks: number;
   miss_check_scope: string;
+  midday_gate_weeks_met: number;
+  midday_gate_weeks_required: number;
+  midday_hours: number;
+  required_midday_hours: number;
   qualified: boolean;
   already_awarded: boolean;
   claimable: boolean;
@@ -77,6 +131,9 @@ type AwardRecord = {
   cycle_weeks: number;
   cycle_start: string;
   cycle_end: string;
+  award_week: number;
+  window_start_week: number;
+  window_end_week: number;
   qualified: boolean;
   reward_given: boolean;
   reward_given_at: string | null;
@@ -92,6 +149,7 @@ function rowKey(r: { driver_id: string; policy_code: string; cycle_number: numbe
 export default function IncentiveAwardsPage() {
   const [rows, setRows] = React.useState<ClaimableRow[]>([]);
   const [history, setHistory] = React.useState<AwardRecord[]>([]);
+  const [schedule, setSchedule] = React.useState<ScheduleRow[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState("");
   const [errorMessage, setErrorMessage] = React.useState("");
@@ -115,10 +173,12 @@ export default function IncentiveAwardsPage() {
         setErrorMessage(json?.error || "Failed to load claimable incentives.");
         setRows([]);
         setHistory([]);
+        setSchedule([]);
         return;
       }
       setRows(Array.isArray(json.rows) ? json.rows : []);
       setHistory(Array.isArray(json.history) ? json.history : []);
+      setSchedule(Array.isArray(json.schedule) ? json.schedule : []);
     } catch (err: any) {
       setErrorMessage(String(err?.message || err));
     } finally {
@@ -141,6 +201,9 @@ export default function IncentiveAwardsPage() {
         cycle_weeks: number;
         cycle_start: string;
         cycle_end: string;
+        award_week: number;
+        window_start_week: number;
+        window_end_week: number;
       }
     >();
 
@@ -152,6 +215,9 @@ export default function IncentiveAwardsPage() {
         cycle_weeks: Number(row.cycle_weeks || 0),
         cycle_start: row.cycle_start,
         cycle_end: row.cycle_end,
+        award_week: Number(row.award_week || 0),
+        window_start_week: Number(row.window_start_week || 0),
+        window_end_week: Number(row.window_end_week || 0),
       });
     }
 
@@ -163,11 +229,16 @@ export default function IncentiveAwardsPage() {
         cycle_weeks: Number(award.cycle_weeks || 0),
         cycle_start: award.cycle_start,
         cycle_end: award.cycle_end,
+        award_week: Number(award.award_week || 0),
+        window_start_week: Number(award.window_start_week || 0),
+        window_end_week: Number(award.window_end_week || 0),
       });
     }
 
     return Array.from(byCycle.values()).sort(
-      (a, b) => b.cycle_number - a.cycle_number
+      (a, b) =>
+        Number(b.award_week || 0) - Number(a.award_week || 0) ||
+        b.cycle_number - a.cycle_number
     );
   }, [rows, history, policyFilter]);
 
@@ -217,6 +288,26 @@ export default function IncentiveAwardsPage() {
     );
   }
 
+  const remainingSchedule = React.useMemo(() => {
+    const byWeek = new Map<number, ScheduleRow[]>();
+    for (const item of schedule) {
+      const week = Number(item.award_week || 0);
+      if (week < 5 || week > 12) continue;
+      const existing = byWeek.get(week) || [];
+      existing.push(item);
+      byWeek.set(week, existing);
+    }
+    return Array.from(byWeek.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([week, items]) => ({
+        week,
+        items: items.sort(
+          (a, b) =>
+            POLICY_ORDER.indexOf(a.policy_code) - POLICY_ORDER.indexOf(b.policy_code)
+        ),
+      }));
+  }, [schedule]);
+
   async function submitAward(row: ClaimableRow) {
     const key = rowKey(row);
     setSubmittingKey(key);
@@ -246,7 +337,12 @@ export default function IncentiveAwardsPage() {
         return;
       }
       setMessage(
-        row.driver_name + " awarded " + row.display_name + " (" + formatCycleLabel(row.cycle_number, row.cycle_weeks) + ")."
+        row.driver_name +
+          " awarded " +
+          policyLabel(row.policy_code, row.display_name) +
+          " (" +
+          formatScheduleLabel(row) +
+          ")."
       );
       setAwardingKey("");
       await load();
@@ -261,9 +357,37 @@ export default function IncentiveAwardsPage() {
     <div className="mx-auto max-w-6xl p-4">
       <h1 className="text-2xl font-bold text-slate-950">Driver Incentive Awards</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Drivers currently qualified and not yet awarded for each incentive tier. Awarding here
-        records the reward permanently and cannot be undone by re-running qualification.
+        Only currently qualified, closed, and not-yet-awarded incentive windows are shown.
+        Test driver accounts are excluded from production awards.
       </p>
+
+      {remainingSchedule.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+          <div className="font-semibold text-sky-950">Campaign schedule - Weeks 5 to 12</div>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+            {remainingSchedule.map(({ week, items }) => (
+              <div key={week} className="rounded-lg border border-sky-100 bg-white px-3 py-2 text-xs">
+                <div className="font-semibold text-slate-900">Week {week}</div>
+                <div className="mt-1 text-slate-600">
+                  {items
+                    .map((item) => policyLabel(item.policy_code, item.display_name))
+                    .join(" + ")}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-sky-800">
+            One-time rewards are not repeated after a driver has received them. Drivers who missed an
+            earlier attempt may qualify at the next scheduled attempt for that reward.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        Important: Confirm Award records the reward as already given. It does not send mobile load or
+        physically release an item. Complete the payout or handoff first, then record it here and place
+        the load reference or handoff note in Remarks.
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <input
@@ -284,7 +408,7 @@ export default function IncentiveAwardsPage() {
           <option value="">All incentives</option>
           {POLICY_ORDER.map((code) => (
             <option key={code} value={code}>
-              {code}
+              {policyLabel(code)}
             </option>
           ))}
         </select>
@@ -297,12 +421,12 @@ export default function IncentiveAwardsPage() {
             disabled={cycleOptions.length === 0}
           >
             {cycleOptions.length === 0 ? (
-              <option value="">No completed cycle</option>
+              <option value="">No completed claimable window</option>
             ) : (
               cycleOptions.map((item) => (
                 <option key={item.cycle_number} value={String(item.cycle_number)}>
-                  {formatCycleLabel(item.cycle_number, item.cycle_weeks)} -{" "}
-                  {formatShortDate(item.cycle_start)} - {formatShortDate(item.cycle_end)}
+                  {formatScheduleLabel(item)} - {formatShortDate(item.cycle_start)} -{" "}
+                  {formatShortDate(item.cycle_end)}
                 </option>
               ))
             )}
@@ -322,8 +446,7 @@ export default function IncentiveAwardsPage() {
       {policyFilter && selectedCycle ? (
         <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           <span className="font-semibold">
-            Showing {policyFilter} -{" "}
-            {formatCycleLabel(selectedCycle.cycle_number, selectedCycle.cycle_weeks)}
+            Showing {policyLabel(policyFilter)} - {formatScheduleLabel(selectedCycle)}
           </span>
           {" - "}
           {formatShortDate(selectedCycle.cycle_start)} - {formatShortDate(selectedCycle.cycle_end)}
@@ -346,7 +469,7 @@ export default function IncentiveAwardsPage() {
       <div className="mt-4 space-y-3">
         {Object.keys(groupedByDriver).length === 0 && !loading ? (
           <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">
-            No drivers are currently claimable for an award.
+            No drivers are currently claimable for this scheduled award window.
           </div>
         ) : null}
 
@@ -363,8 +486,10 @@ export default function IncentiveAwardsPage() {
                     key={key}
                     className="rounded border border-emerald-200 bg-emerald-50 p-2 text-xs"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">{row.display_name}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">
+                        {policyLabel(row.policy_code, row.display_name)}
+                      </span>
                       <span className="text-emerald-700">Claimable</span>
                     </div>
                     <div className="mt-1 text-slate-600">
@@ -376,22 +501,28 @@ export default function IncentiveAwardsPage() {
                           &middot; Bookings {count(row.achieved_booking_count)}/{count(row.required_booking_count)}
                         </>
                       ) : null}
+                      {Number(row.midday_gate_weeks_required || 0) > 0 ? (
+                        <>
+                          {" "}
+                          &middot; Midday {count(row.midday_gate_weeks_met)}/{count(row.midday_gate_weeks_required)} weeks ({hours(row.midday_hours)}/{hours(row.required_midday_hours)})
+                        </>
+                      ) : null}
                       {" "}
-                      &middot; Missed checks{" "}
+                      &middot; Missed security checks{" "}
                       {row.miss_check_scope === "cycle"
                         ? count(row.cycle_missed_checks)
                         : count(row.calendar_cumulative_missed_checks)}
                       /{count(row.allowed_missed_checks)}
                     </div>
                     <div className="mt-1 text-slate-400">
-                      {formatCycleLabel(row.cycle_number, row.cycle_weeks)} &middot;{" "}
-                      {formatShortDate(row.cycle_start)} - {formatShortDate(row.cycle_end)}
+                      {formatScheduleLabel(row)} &middot; {formatShortDate(row.cycle_start)} -{" "}
+                      {formatShortDate(row.cycle_end)}
                     </div>
 
                     {isAwarding ? (
                       <div className="mt-2 space-y-1">
                         <textarea
-                          placeholder="Optional remarks..."
+                          placeholder="Load reference / handoff note..."
                           value={remarksByKey[key] || ""}
                           onChange={(e) =>
                             setRemarksByKey((prev) => ({ ...prev, [key]: e.target.value }))
@@ -406,7 +537,7 @@ export default function IncentiveAwardsPage() {
                             onClick={() => submitAward(row)}
                             className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
                           >
-                            {isSubmitting ? "Awarding..." : "Confirm Award"}
+                            {isSubmitting ? "Recording..." : "Confirm Award Given"}
                           </button>
                           <button
                             type="button"
@@ -423,7 +554,7 @@ export default function IncentiveAwardsPage() {
                         onClick={() => setAwardingKey(key)}
                         className="mt-2 rounded bg-slate-950 px-2 py-1 text-xs font-semibold text-white"
                       >
-                        Award
+                        Record Award
                       </button>
                     )}
                   </div>
@@ -441,7 +572,7 @@ export default function IncentiveAwardsPage() {
             <tr>
               <th className="p-2">Driver</th>
               <th className="p-2">Incentive</th>
-              <th className="p-2">Cycle</th>
+              <th className="p-2">Qualification window</th>
               <th className="p-2">Awarded At</th>
               <th className="p-2">Remarks</th>
             </tr>
@@ -457,10 +588,10 @@ export default function IncentiveAwardsPage() {
               filteredHistory.map((a) => (
                 <tr key={a.id} className="border-t border-slate-100">
                   <td className="p-2">{a.driver_name}</td>
-                  <td className="p-2">{a.display_name || a.policy_code}</td>
+                  <td className="p-2">{policyLabel(a.policy_code, a.display_name)}</td>
                   <td className="p-2">
-                    {formatCycleLabel(a.cycle_number, a.cycle_weeks)} &middot;{" "}
-                    {formatShortDate(a.cycle_start)} - {formatShortDate(a.cycle_end)}
+                    {formatScheduleLabel(a)} &middot; {formatShortDate(a.cycle_start)} -{" "}
+                    {formatShortDate(a.cycle_end)}
                   </td>
                   <td className="p-2">
                     {a.reward_given_at ? new Date(a.reward_given_at).toLocaleString() : "-"}
