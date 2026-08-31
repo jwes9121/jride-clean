@@ -3,6 +3,7 @@ import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
+const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = 10;
 const ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 const ACTIVE_BOOKING_STATUSES = [
   "assigned",
@@ -427,6 +428,15 @@ export async function offerAgrimarketDriver(input: {
     };
   }
 
+  const customerToFarmerDistanceKm =
+    assignmentAnchor === "customer"
+      ? numberOrNull(order.customer_to_farmer_distance_km)
+      : 0;
+
+  if (assignmentAnchor === "customer" && customerToFarmerDistanceKm == null) {
+    return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_CUSTOMER_FARMER_ROUTE_REQUIRED" };
+  }
+
   const roadMetrics = await getDrivingRoadMetricsToTarget(
     { lat: targetLat, lng: targetLng },
     locations.map((row: any) => ({
@@ -437,16 +447,30 @@ export async function offerAgrimarketDriver(input: {
   );
 
   const ranked = locations
-    .map((row: any) => ({
-      driverId: text(row.driver_id),
-      metric: roadMetrics.get(text(row.driver_id)) || null,
-    }))
+    .map((row: any) => {
+      const driverId = text(row.driver_id);
+      const metric = roadMetrics.get(driverId) || null;
+      const firstPickupKm = metric?.distanceKm;
+      const approachDistanceKm =
+        metric != null && Number.isFinite(firstPickupKm)
+          ? Number(
+              (
+                Number(firstPickupKm) +
+                Math.max(0, customerToFarmerDistanceKm ?? 0)
+              ).toFixed(3)
+            )
+          : null;
+
+      return { driverId, metric, approachDistanceKm };
+    })
     .filter(
       (entry) =>
         entry.metric != null &&
         entry.metric.durationSeconds != null &&
         Number.isFinite(entry.metric.distanceKm) &&
-        entry.metric.distanceKm >= 0
+        entry.metric.distanceKm >= 0 &&
+        entry.approachDistanceKm != null &&
+        entry.approachDistanceKm <= AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM
     )
     .sort((a, b) => (a.metric?.distanceKm || 0) - (b.metric?.distanceKm || 0));
 
@@ -456,7 +480,10 @@ export async function offerAgrimarketDriver(input: {
       order_id: resolvedOrderId,
       order_code: resolvedOrderCode,
       offered: false,
-      error: "ROAD_DISTANCE_UNAVAILABLE",
+      error:
+        roadMetrics.size === 0
+          ? "ROAD_DISTANCE_UNAVAILABLE"
+          : "NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT",
       assignment_anchor: assignmentAnchor,
     };
   }
@@ -487,6 +514,7 @@ export async function offerAgrimarketDriver(input: {
       assignment_anchor: assignmentAnchor,
       driver_id: nearest.driverId,
       pickup_road_distance_km: Number(nearest.metric.distanceKm.toFixed(3)),
+      driver_approach_distance_km: nearest.approachDistanceKm ?? undefined,
       eta_seconds_to_first_pickup: etaToFirstPickup,
       eta_seconds_to_farmer: etaToFarmer,
       remaining_preparation_seconds: remainingPreparationSeconds,
@@ -494,21 +522,12 @@ export async function offerAgrimarketDriver(input: {
   }
 
   const pickupDistanceKm = Number(nearest.metric.distanceKm.toFixed(3));
-  const customerToFarmerDistanceKm =
-    assignmentAnchor === "customer"
-      ? numberOrNull(order.customer_to_farmer_distance_km)
-      : 0;
+  const driverApproachDistanceKm = nearest.approachDistanceKm;
 
-  if (assignmentAnchor === "customer" && customerToFarmerDistanceKm == null) {
-    return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_CUSTOMER_FARMER_ROUTE_REQUIRED" };
+  if (driverApproachDistanceKm == null) {
+    return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_DISTANCE_UNAVAILABLE" };
   }
 
-  const driverApproachDistanceKm = Number(
-    (
-      pickupDistanceKm +
-      Math.max(0, customerToFarmerDistanceKm ?? 0)
-    ).toFixed(3)
-  );
   const pickupFee = computeAgrimarketApproachFee({
     distanceKm: driverApproachDistanceKm,
     freeKm: approachFreeKm,
@@ -594,6 +613,7 @@ export async function offerAgrimarketDriver(input: {
       assignment_anchor: assignmentAnchor,
       pickup_road_distance_km: pickupDistanceKm,
       driver_approach_distance_km: driverApproachDistanceKm,
+      driver_approach_max_assignment_km: AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM,
       driver_approach_fee_rule: "agrimarket_driver_approach_v1",
       driver_approach_free_km: approachFreeKm,
       driver_approach_fee_per_started_km: approachFeePerStartedKm,
