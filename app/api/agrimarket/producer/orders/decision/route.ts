@@ -27,11 +27,15 @@ export async function POST(req: NextRequest) {
       preparationMinutesRaw === null || preparationMinutesRaw === undefined || preparationMinutesRaw === ""
         ? null
         : Number(preparationMinutesRaw);
+    const confirmedCargoWeightBasis =
+      String(body?.confirmed_cargo_weight_basis || body?.confirmedCargoWeightBasis || "").trim().toLowerCase() || null;
     const confirmedCargoWeightRaw = body?.confirmed_cargo_weight_kg ?? body?.confirmedCargoWeightKg;
     const confirmedCargoWeightKg =
       confirmedCargoWeightRaw === null || confirmedCargoWeightRaw === undefined || confirmedCargoWeightRaw === ""
         ? null
         : Number(confirmedCargoWeightRaw);
+    const confirmedCargoWeightBand =
+      String(body?.confirmed_cargo_weight_band || body?.confirmedCargoWeightBand || "").trim().toLowerCase() || null;
     const confirmedHandlingTier =
       String(body?.confirmed_handling_tier || body?.confirmedHandlingTier || "").trim().toLowerCase() || null;
 
@@ -62,11 +66,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (
+      confirmedCargoWeightBasis != null &&
+      !new Set(["exact", "approximate"]).has(confirmedCargoWeightBasis)
+    ) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_INVALID_CARGO_WEIGHT_BASIS" });
+    }
+
     if (confirmedCargoWeightKg != null && (!Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0)) {
       return jsonNoStore(400, {
         ok: false,
         error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_INVALID",
       });
+    }
+
+    if (
+      confirmedCargoWeightBand != null &&
+      !new Set(["1_15", "16_25", "26_50", "51_100", "over_100"]).has(confirmedCargoWeightBand)
+    ) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_INVALID_CARGO_WEIGHT_BAND" });
     }
 
     if (
@@ -80,13 +98,15 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v5", {
+    const decisionRes = await admin.rpc("agrimarket_producer_decide_order_v6", {
       p_order_code: orderCode,
       p_producer_id: producerAuth.producer.id,
       p_decision: decision,
       p_preparation_minutes: decision === "accept" ? preparationMinutes : null,
       p_reason: reason,
+      p_confirmed_cargo_weight_basis: decision === "accept" ? confirmedCargoWeightBasis : null,
       p_confirmed_cargo_weight_kg: decision === "accept" ? confirmedCargoWeightKg : null,
+      p_confirmed_cargo_weight_band: decision === "accept" ? confirmedCargoWeightBand : null,
       p_confirmed_handling_tier: decision === "accept" ? confirmedHandlingTier : null,
       p_now: new Date().toISOString(),
     });

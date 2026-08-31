@@ -35,7 +35,9 @@ type ProducerOrder = {
   preferred_vehicle_type: string;
   required_vehicle_type: string;
   estimated_cargo_weight_kg?: number | null;
+  confirmed_cargo_weight_basis?: "exact" | "approximate" | null;
   confirmed_cargo_weight_kg?: number | null;
+  confirmed_cargo_weight_band?: string | null;
   confirmed_handling_tier?: string | null;
   minimum_handling_tier: string;
   product_subtotal: number;
@@ -51,6 +53,13 @@ const SESSION_ACCESS_CODE = "JRIDE_AGRIMARKET_ACCESS_CODE";
 const SESSION_PIN = "JRIDE_AGRIMARKET_ACCESS_PIN";
 const PREP_OPTIONS = [0, 10, 15, 20, 30, 45, 60, 90, 120];
 const HANDLING_TIERS = ["standard", "bulky", "live_single", "live_difficult"] as const;
+const WEIGHT_BANDS = [
+  ["1_15", "1-15 kg"],
+  ["16_25", "16-25 kg"],
+  ["26_50", "26-50 kg"],
+  ["51_100", "51-100 kg"],
+  ["over_100", "Above 100 kg (not supported in V1)"],
+] as const;
 
 function allowedHandlingTiers(minimum: string): string[] {
   const index = Math.max(0, HANDLING_TIERS.indexOf(minimum as (typeof HANDLING_TIERS)[number]));
@@ -97,7 +106,9 @@ export default function AgrimarketProducerPage() {
   const [disabled, setDisabled] = useState(false);
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
   const [prep, setPrep] = useState<Record<string, number>>({});
+  const [weightBasis, setWeightBasis] = useState<Record<string, "exact" | "approximate">>({});
   const [cargoWeight, setCargoWeight] = useState<Record<string, string>>({});
+  const [weightBand, setWeightBand] = useState<Record<string, string>>({});
   const [handlingTier, setHandlingTier] = useState<Record<string, string>>({});
   const [reason, setReason] = useState<Record<string, string>>({});
   const [delayStart, setDelayStart] = useState<Record<string, string>>({});
@@ -146,12 +157,30 @@ export default function AgrimarketProducerPage() {
         rows.forEach((order) => { if (next[order.order_code] == null) next[order.order_code] = order.preparation_minutes ?? 15; });
         return next;
       });
+      setWeightBasis((current) => {
+        const next = { ...current };
+        rows.forEach((order) => {
+          if (next[order.order_code] == null) {
+            next[order.order_code] = order.confirmed_cargo_weight_basis || "approximate";
+          }
+        });
+        return next;
+      });
       setCargoWeight((current) => {
         const next = { ...current };
         rows.forEach((order) => {
           if (next[order.order_code] == null) {
             const initial = order.confirmed_cargo_weight_kg ?? order.estimated_cargo_weight_kg;
             next[order.order_code] = initial == null ? "" : String(initial);
+          }
+        });
+        return next;
+      });
+      setWeightBand((current) => {
+        const next = { ...current };
+        rows.forEach((order) => {
+          if (next[order.order_code] == null) {
+            next[order.order_code] = order.confirmed_cargo_weight_band || "";
           }
         });
         return next;
@@ -198,8 +227,16 @@ export default function AgrimarketProducerPage() {
       order_code: order.order_code,
       decision,
       preparation_minutes: decision === "accept" && !scheduled ? prep[order.order_code] ?? 15 : null,
+      confirmed_cargo_weight_basis:
+        decision === "accept" && !scheduled ? weightBasis[order.order_code] || "approximate" : null,
       confirmed_cargo_weight_kg:
-        decision === "accept" && !scheduled ? Number(cargoWeight[order.order_code]) : null,
+        decision === "accept" && !scheduled && cargoWeight[order.order_code]
+          ? Number(cargoWeight[order.order_code])
+          : null,
+      confirmed_cargo_weight_band:
+        decision === "accept" && !scheduled && (weightBasis[order.order_code] || "approximate") === "approximate"
+          ? weightBand[order.order_code] || null
+          : null,
       confirmed_handling_tier:
         decision === "accept" && !scheduled
           ? handlingTier[order.order_code] || order.minimum_handling_tier || "standard"
@@ -213,7 +250,12 @@ export default function AgrimarketProducerPage() {
       order_code: order.order_code,
       action: "ready",
       preparation_minutes: prep[order.order_code] ?? 15,
-      confirmed_cargo_weight_kg: Number(cargoWeight[order.order_code]),
+      confirmed_cargo_weight_basis: weightBasis[order.order_code] || "approximate",
+      confirmed_cargo_weight_kg: cargoWeight[order.order_code] ? Number(cargoWeight[order.order_code]) : null,
+      confirmed_cargo_weight_band:
+        (weightBasis[order.order_code] || "approximate") === "approximate"
+          ? weightBand[order.order_code] || null
+          : null,
       confirmed_handling_tier: handlingTier[order.order_code] || order.minimum_handling_tier || "standard",
     }, `ready-${order.order_code}`);
   }
@@ -287,12 +329,13 @@ export default function AgrimarketProducerPage() {
                         <label className="mt-3 block text-sm font-semibold">Preparation time<select value={prep[order.order_code] ?? 15} onChange={(e) => setPrep((current) => ({ ...current, [order.order_code]: Number(e.target.value) }))} className="ml-2 rounded-lg border bg-white px-2 py-2">{PREP_OPTIONS.map((value) => <option key={value} value={value}>{value} min</option>)}</select></label>
                         <div className="mt-3 grid gap-3 rounded-xl border border-blue-200 bg-white p-3 md:grid-cols-2">
                           <p className="text-xs text-slate-600 md:col-span-2">Checkout estimated cargo weight: <strong>{order.estimated_cargo_weight_kg == null ? "Not available" : `${order.estimated_cargo_weight_kg} kg`}</strong></p>
-                          <label className="text-sm font-semibold">Confirmed actual total weight (kg)<input type="number" min="0.001" step="0.001" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>
+                          <label className="text-sm font-semibold">How are you confirming transport weight?<select value={weightBasis[order.order_code] || "approximate"} onChange={(e) => setWeightBasis((current) => ({ ...current, [order.order_code]: e.target.value as "exact" | "approximate" }))} className="mt-1 w-full rounded-lg border bg-white px-3 py-2"><option value="approximate">Approximate - no weighing scale</option><option value="exact">Exact - weighed</option></select></label>
+                          {(weightBasis[order.order_code] || "approximate") === "exact" ? <label className="text-sm font-semibold">Exact total weight (kg)<input type="number" min="0.001" max="100" step="0.001" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-1 w-full rounded-lg border px-3 py-2" /></label> : <label className="text-sm font-semibold">Approximate total load<select value={weightBand[order.order_code] || ""} onChange={(e) => setWeightBand((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-1 w-full rounded-lg border bg-white px-3 py-2"><option value="">Choose weight range</option>{WEIGHT_BANDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">You may optionally enter a rough kg estimate below; the selected band remains authoritative.</span><input type="number" min="0.001" step="0.001" placeholder="Optional rough kg estimate" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-1 w-full rounded-lg border px-3 py-2" /></label>}
                           <label className="text-sm font-semibold">Handling classification<select value={handlingTier[order.order_code] || order.minimum_handling_tier || "standard"} onChange={(e) => setHandlingTier((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-1 w-full rounded-lg border bg-white px-3 py-2">{allowedHandlingTiers(order.minimum_handling_tier).map((tier) => <option key={tier} value={tier}>{titleCase(tier)}</option>)}</select><span className="mt-1 block text-xs font-normal text-slate-500">Minimum from the ordered cargo: {titleCase(order.minimum_handling_tier)}</span></label>
                         </div>
                       </>
                     )}
-                    <div className="mt-3 flex gap-2"><button disabled={busy.includes(order.order_code) || (!scheduled && !(Number(cargoWeight[order.order_code]) > 0))} onClick={() => decide(order, "accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">{scheduled ? "Accept harvest reservation" : "Accept"}</button><button disabled={busy.includes(order.order_code)} onClick={() => decide(order, "reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cannot fulfill</button></div>
+                    <div className="mt-3 flex gap-2"><button disabled={busy.includes(order.order_code) || (!scheduled && ((weightBasis[order.order_code] || "approximate") === "exact" ? !(Number(cargoWeight[order.order_code]) > 0) : !weightBand[order.order_code] || weightBand[order.order_code] === "over_100"))} onClick={() => decide(order, "accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">{scheduled ? "Accept harvest reservation" : "Accept"}</button><button disabled={busy.includes(order.order_code)} onClick={() => decide(order, "reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cannot fulfill</button></div>
                   </div>
                 ) : null}
 
@@ -300,7 +343,7 @@ export default function AgrimarketProducerPage() {
                   {pendingProposal ? <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>Waiting for customer decision</strong><br/>{pendingProposal.proposal_type === "delay" ? `New proposed window: ${formatDate(pendingProposal.proposed_harvest_start_at)}${pendingProposal.proposed_harvest_end_at ? ` to ${formatDate(pendingProposal.proposed_harvest_end_at)}` : ""}` : "A lower harvest quantity has been proposed."}<br/>{pendingProposal.producer_reason || ""}</div> : <>
                     <h3 className="font-bold">Harvest update</h3>
                     <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <div className="rounded-xl bg-emerald-50 p-3"><p className="text-sm font-semibold">Harvest is ready</p><p className="mt-1 text-xs text-emerald-900">Checkout estimate: {order.estimated_cargo_weight_kg == null ? "Not available" : `${order.estimated_cargo_weight_kg} kg`}</p><select value={prep[order.order_code] ?? 15} onChange={(e) => setPrep((current) => ({ ...current, [order.order_code]: Number(e.target.value) }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2">{PREP_OPTIONS.map((value) => <option key={value} value={value}>{value} min prep</option>)}</select><input type="number" min="0.001" step="0.001" placeholder="Actual total weight (kg)" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2"/><select value={handlingTier[order.order_code] || order.minimum_handling_tier || "standard"} onChange={(e) => setHandlingTier((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2">{allowedHandlingTiers(order.minimum_handling_tier).map((tier) => <option key={tier} value={tier}>{titleCase(tier)}</option>)}</select><p className="mt-1 text-xs text-emerald-900">Minimum handling: {titleCase(order.minimum_handling_tier)}</p><button disabled={!(Number(cargoWeight[order.order_code]) > 0)} onClick={() => harvestReady(order)} className="mt-2 w-full rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:bg-slate-400">Mark ready</button></div>
+                      <div className="rounded-xl bg-emerald-50 p-3"><p className="text-sm font-semibold">Harvest is ready</p><p className="mt-1 text-xs text-emerald-900">Checkout estimate: {order.estimated_cargo_weight_kg == null ? "Estimated cargo weight unavailable - farmer will confirm the load before dispatch." : `${order.estimated_cargo_weight_kg} kg`}</p><select value={prep[order.order_code] ?? 15} onChange={(e) => setPrep((current) => ({ ...current, [order.order_code]: Number(e.target.value) }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2">{PREP_OPTIONS.map((value) => <option key={value} value={value}>{value} min prep</option>)}</select><select value={weightBasis[order.order_code] || "approximate"} onChange={(e) => setWeightBasis((current) => ({ ...current, [order.order_code]: e.target.value as "exact" | "approximate" }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2"><option value="approximate">Approximate - no weighing scale</option><option value="exact">Exact - weighed</option></select>{(weightBasis[order.order_code] || "approximate") === "exact" ? <input type="number" min="0.001" max="100" step="0.001" placeholder="Exact total weight (kg)" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2"/> : <><select value={weightBand[order.order_code] || ""} onChange={(e) => setWeightBand((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2"><option value="">Choose approximate range</option>{WEIGHT_BANDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><input type="number" min="0.001" step="0.001" placeholder="Optional rough kg estimate" value={cargoWeight[order.order_code] ?? ""} onChange={(e) => setCargoWeight((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2"/></>}<select value={handlingTier[order.order_code] || order.minimum_handling_tier || "standard"} onChange={(e) => setHandlingTier((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border bg-white px-2 py-2">{allowedHandlingTiers(order.minimum_handling_tier).map((tier) => <option key={tier} value={tier}>{titleCase(tier)}</option>)}</select><p className="mt-1 text-xs text-emerald-900">Minimum handling: {titleCase(order.minimum_handling_tier)}</p><button disabled={(weightBasis[order.order_code] || "approximate") === "exact" ? !(Number(cargoWeight[order.order_code]) > 0) : !weightBand[order.order_code] || weightBand[order.order_code] === "over_100"} onClick={() => harvestReady(order)} className="mt-2 w-full rounded-lg bg-emerald-700 px-3 py-2 font-bold text-white disabled:bg-slate-400">Mark ready</button></div>
                       <div className="rounded-xl bg-blue-50 p-3"><p className="text-sm font-semibold">Harvest delayed</p><input type="datetime-local" value={delayStart[order.order_code] || ""} onChange={(e) => setDelayStart((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border px-2 py-2"/><input type="datetime-local" value={delayEnd[order.order_code] || ""} onChange={(e) => setDelayEnd((current) => ({ ...current, [order.order_code]: e.target.value }))} className="mt-2 w-full rounded-lg border px-2 py-2"/><button onClick={() => proposeDelay(order)} className="mt-2 w-full rounded-lg bg-blue-800 px-3 py-2 font-bold text-white">Propose new date</button></div>
                       <div className="rounded-xl bg-amber-50 p-3"><p className="text-sm font-semibold">Quantity is short</p>{order.items.map((item) => <label key={item.product_id} className="mt-2 block text-xs">{item.product_name}<input type="number" min="0" max={item.quantity} step="0.01" value={shortfall[order.order_code]?.[item.product_id] ?? String(item.quantity)} onChange={(e) => setShortfall((current) => ({ ...current, [order.order_code]: { ...(current[order.order_code] || {}), [item.product_id]: e.target.value } }))} className="mt-1 w-full rounded-lg border px-2 py-2"/></label>)}<button onClick={() => proposeShortfall(order)} className="mt-2 w-full rounded-lg bg-amber-700 px-3 py-2 font-bold text-white">Propose lower quantity</button></div>
                     </div>
@@ -308,7 +351,7 @@ export default function AgrimarketProducerPage() {
                   </>}
                 </div> : null}
 
-                {["preparing", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : titleCase(order.status)}</strong>{order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_kg != null ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_kg} kg - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
+                {["preparing", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : titleCase(order.status)}</strong>{order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_basis ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_basis === "exact" ? `${order.confirmed_cargo_weight_kg ?? "?"} kg exact` : `${String(order.confirmed_cargo_weight_band || "").replace(/_/g, "-")} kg approximate`} - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
               </article>
             );
           })}

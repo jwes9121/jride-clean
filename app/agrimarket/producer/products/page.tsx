@@ -65,7 +65,7 @@ const initialForm = {
   condition: "normal",
   cargo_class: "standard_produce",
   selling_unit: "kg",
-  unit_weight_kg: "1",
+  unit_weight_kg: "",
   unit_price: "",
   available_quantity: "",
   availability_mode: "always_available",
@@ -198,8 +198,8 @@ export default function AgrimarketProducerProductsPage() {
           <form onSubmit={createProduct} className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
             <label className="text-sm font-semibold">Product name<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Category<select value={form.product_group} onChange={(e) => setForm({ ...form, product_group: e.target.value })} className="mt-1 w-full rounded-xl border bg-white px-3 py-3"><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Fresh Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other Agri</option></select></label>
-            <label className="text-sm font-semibold">Selling unit<input required value={form.selling_unit} onChange={(e) => setForm({ ...form, selling_unit: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" placeholder="kg / head / sack / tray" /></label>
-            <label className="text-sm font-semibold">Estimated weight per selling unit (kg)<input required type="number" min="0.001" step="0.001" value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Use 1.000 when the selling unit itself is 1 kg.</span></label>
+            <label className="text-sm font-semibold">How is this product priced?<input required value={form.selling_unit} onChange={(e) => setForm({ ...form, selling_unit: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" placeholder="kg / head (standing price) / sack / tray / bundle" /><span className="mt-1 block text-xs font-normal text-slate-500">For livestock, use "head" when selling the whole animal at a standing price. Use "kg" only when pricing by measured weight.</span></label>
+            <label className="text-sm font-semibold">Estimated weight per selling unit (kg) - optional<input type="number" min="0.001" step="0.001" value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /><span className="mt-1 block text-xs font-normal text-slate-500">Leave blank if you do not know the weight. If the selling unit is 1 kg, the system can treat it as 1 kg.</span></label>
             <label className="text-sm font-semibold">Price per unit<input required type="number" min="0" step="0.01" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">{form.availability_mode === "scheduled_harvest" ? "Expected reservable harvest quantity" : "Available quantity"}<input required type="number" min="0" step="0.01" value={form.available_quantity} onChange={(e) => setForm({ ...form, available_quantity: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Preparation minutes<input type="number" min="0" max="1440" value={form.default_prep_minutes} onChange={(e) => setForm({ ...form, default_prep_minutes: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>

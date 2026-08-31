@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_handling_tier,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
       .in("status", [
@@ -183,7 +183,9 @@ export async function GET(req: NextRequest) {
         preferred_vehicle_type: row.preferred_vehicle_type,
         required_vehicle_type: row.required_vehicle_type,
         estimated_cargo_weight_kg: row.estimated_cargo_weight_kg == null ? null : Number(row.estimated_cargo_weight_kg),
+        confirmed_cargo_weight_basis: row.confirmed_cargo_weight_basis || null,
         confirmed_cargo_weight_kg: row.confirmed_cargo_weight_kg == null ? null : Number(row.confirmed_cargo_weight_kg),
+        confirmed_cargo_weight_band: row.confirmed_cargo_weight_band || null,
         confirmed_handling_tier: row.confirmed_handling_tier || null,
         minimum_handling_tier: minimumHandlingTier(orderItems),
         product_subtotal: productSubtotal,

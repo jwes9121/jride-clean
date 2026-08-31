@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
     } else if (action === "set_unit_weight") {
       const productId = uuid(body?.product_id || body?.productId);
       const unitWeightKg = finiteNumber(body?.unit_weight_kg ?? body?.unitWeightKg);
-      if (!productId || unitWeightKg == null || unitWeightKg <= 0) {
+      if (!productId || (unitWeightKg != null && unitWeightKg <= 0)) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_UNIT_WEIGHT_INVALID" });
       }
 
@@ -240,7 +240,7 @@ export async function POST(req: NextRequest) {
         : [];
 
       if (name.length < 2 || !PRODUCT_GROUPS.has(productGroup) || !CONDITIONS.has(condition) ||
-          !CARGO_CLASSES.has(cargoClass) || !sellingUnit || unitWeightKg == null || unitWeightKg <= 0 ||
+          !CARGO_CLASSES.has(cargoClass) || !sellingUnit || (unitWeightKg != null && unitWeightKg <= 0) ||
           unitPrice == null || unitPrice < 0 ||
           availableQuantity == null || availableQuantity < 0 || !AVAILABILITY_MODES.has(availabilityMode) ||
           prepMinutes == null || !Number.isInteger(prepMinutes) || prepMinutes < 0 || prepMinutes > 1440 ||

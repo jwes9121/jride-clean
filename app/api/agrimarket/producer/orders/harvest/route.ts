@@ -48,11 +48,15 @@ export async function POST(req: NextRequest) {
     const orderCode = text(body?.order_code || body?.orderCode);
     const action = text(body?.action).toLowerCase();
     const reason = text(body?.reason).slice(0, 1000) || null;
+    const confirmedCargoWeightBasis =
+      text(body?.confirmed_cargo_weight_basis || body?.confirmedCargoWeightBasis).toLowerCase() || null;
     const confirmedCargoWeightRaw = body?.confirmed_cargo_weight_kg ?? body?.confirmedCargoWeightKg;
     const confirmedCargoWeightKg =
       confirmedCargoWeightRaw === null || confirmedCargoWeightRaw === undefined || confirmedCargoWeightRaw === ""
         ? null
         : Number(confirmedCargoWeightRaw);
+    const confirmedCargoWeightBand =
+      text(body?.confirmed_cargo_weight_band || body?.confirmedCargoWeightBand).toLowerCase() || null;
     const confirmedHandlingTier =
       text(body?.confirmed_handling_tier || body?.confirmedHandlingTier).toLowerCase() || null;
 
@@ -77,11 +81,30 @@ export async function POST(req: NextRequest) {
           message: "Choose the actual preparation time after harvest is ready.",
         });
       }
-      if (confirmedCargoWeightKg == null || !Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0) {
+      if (!confirmedCargoWeightBasis || !new Set(["exact", "approximate"]).has(confirmedCargoWeightBasis)) {
+        return jsonNoStore(400, {
+          ok: false,
+          error: "AGRIMARKET_CARGO_WEIGHT_BASIS_REQUIRED",
+        });
+      }
+      if (
+        confirmedCargoWeightBasis === "exact" &&
+        (confirmedCargoWeightKg == null || !Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0)
+      ) {
         return jsonNoStore(400, {
           ok: false,
           error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_REQUIRED",
-          message: "Confirm the actual total cargo weight before marking the harvest ready.",
+          message: "Enter the weighed total cargo weight.",
+        });
+      }
+      if (
+        confirmedCargoWeightBasis === "approximate" &&
+        (!confirmedCargoWeightBand || !new Set(["1_15", "16_25", "26_50", "51_100", "over_100"]).has(confirmedCargoWeightBand))
+      ) {
+        return jsonNoStore(400, {
+          ok: false,
+          error: "AGRIMARKET_CARGO_WEIGHT_BAND_REQUIRED",
+          message: "Choose the estimated cargo-weight range.",
         });
       }
       if (!confirmedHandlingTier || !new Set(["standard", "bulky", "live_single", "live_difficult"]).has(confirmedHandlingTier)) {
@@ -120,7 +143,7 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const actionRes = await admin.rpc("agrimarket_producer_harvest_action_v2", {
+    const actionRes = await admin.rpc("agrimarket_producer_harvest_action_v3", {
       p_order_code: orderCode,
       p_producer_id: producerAuth.producer.id,
       p_action: action,
@@ -129,7 +152,9 @@ export async function POST(req: NextRequest) {
       p_proposed_end_at: proposedEndAt,
       p_proposed_items: proposedItems,
       p_reason: reason,
+      p_confirmed_cargo_weight_basis: action === "ready" ? confirmedCargoWeightBasis : null,
       p_confirmed_cargo_weight_kg: action === "ready" ? confirmedCargoWeightKg : null,
+      p_confirmed_cargo_weight_band: action === "ready" ? confirmedCargoWeightBand : null,
       p_confirmed_handling_tier: action === "ready" ? confirmedHandlingTier : null,
       p_now: new Date().toISOString(),
     });
