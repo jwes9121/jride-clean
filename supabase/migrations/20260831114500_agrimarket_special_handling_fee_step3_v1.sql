@@ -89,52 +89,6 @@ begin
     return new;
   end if;
 
-  new.handling_fee := case new.confirmed_handling_tier
-    when 'standard' then 0
-    when 'bulky' then 20
-    when 'live_single' then 40
-    when 'live_difficult' then 60
-    else raise_exception('AGRIMARKET_INVALID_HANDLING_TIER')
-  end;
-
-  -- These fields belonged to the retired driver-selection mechanism. Keep the
-  -- columns for historical compatibility, but new confirmations never populate
-  -- them.
-  new.handling_reason := null;
-  new.handling_selected_by_driver_id := null;
-  new.handling_selected_at := null;
-
-  -- Lock at farmer confirmation, before driver assignment. The existing
-  -- set_handling_fee branch already refuses changes whenever this is non-null.
-  new.handling_locked_at := coalesce(
-    old.handling_locked_at,
-    new.handling_locked_at,
-    new.updated_at,
-    clock_timestamp()
-  );
-
-  return new;
-end;
-$$;
-
--- PostgreSQL has no built-in raise_exception() expression helper. Replace the
--- function above with an explicit validation guard before installing it.
-create or replace function public.agrimarket_apply_special_handling_fee_v1()
-returns trigger
-language plpgsql
-security invoker
-set search_path = public
-as $$
-begin
-  if new.confirmed_handling_tier is null then
-    new.handling_fee := 0;
-    new.handling_reason := null;
-    new.handling_selected_by_driver_id := null;
-    new.handling_selected_at := null;
-    new.handling_locked_at := null;
-    return new;
-  end if;
-
   if new.confirmed_handling_tier not in (
     'standard','bulky','live_single','live_difficult'
   ) then
@@ -148,9 +102,15 @@ begin
     when 'live_difficult' then 60
   end;
 
+  -- These fields belonged to the retired driver-selection mechanism. Keep the
+  -- columns for historical compatibility, but new confirmations never populate
+  -- them.
   new.handling_reason := null;
   new.handling_selected_by_driver_id := null;
   new.handling_selected_at := null;
+
+  -- Lock at farmer confirmation, before driver assignment. The existing
+  -- set_handling_fee branch already refuses changes whenever this is non-null.
   new.handling_locked_at := coalesce(
     old.handling_locked_at,
     new.handling_locked_at,
@@ -260,8 +220,8 @@ begin
     'public.agrimarket_driver_execute_v1(text,uuid,text,jsonb,timestamptz)'::regprocedure
   ) into v_driver_def;
 
-  if position('set_handling_fee' in v_driver_def) = 0
-     or position('handling_locked_at is not null' in v_driver_def) = 0 then
+  if position('set_handling_fee' in lower(v_driver_def)) = 0
+     or position('handling_locked_at is not null' in lower(v_driver_def)) = 0 then
     raise exception 'AGRIMARKET_STEP3_DRIVER_LOCK_GUARD_NOT_FOUND';
   end if;
 end;
