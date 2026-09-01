@@ -393,7 +393,33 @@ export default function AgrimarketPage() {
               <button onClick={getQuote} disabled={quoting || !addressId} className="mt-4 w-full rounded-xl border-2 border-emerald-700 px-4 py-3 font-bold text-emerald-800 disabled:border-slate-300 disabled:text-slate-400">{quoting ? "Calculating..." : "Review delivery quote"}</button>
             </>}
 
-            {quote ? <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm"><h3 className="font-bold">Order quote</h3><div className="mt-3 space-y-2"><div className="flex justify-between"><span>Products</span><strong>{money(quote.product_subtotal)}</strong></div><div className="flex justify-between"><span>Delivery</span><strong>{money(quote.delivery?.delivery_fee)}</strong></div>{quote.estimated_cargo_weight_kg == null ? <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Estimated cargo weight unavailable - farmer will confirm the load before dispatch.</p> : <div className="flex justify-between"><span>Estimated cargo weight</span><strong>{quote.estimated_cargo_weight_kg} kg</strong></div>}<div className="flex justify-between"><span>Driver pickup surcharge</span><strong>Finalized on assignment</strong></div><div className="flex justify-between"><span>Handling</span><strong>PHP 0-50 if needed</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Current total</span><strong>{money(quote.total_before_driver_pickup_surcharge)}</strong></div></div>{quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves expected harvest quantity. No driver is assigned until the farmer marks the harvest ready. Delay or shortfall needs your approval.</p> : null}{quote.cash_collection?.required ? <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Product subtotal is above PHP 500. The assigned driver will collect {money(quote.cash_collection.amount)} product cash from you before going to the farmer.</p> : null}<button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve harvest order" : "Place order"}</button></div> : null}
+            {quote ? (
+              <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-sm">
+                <h3 className="font-bold">Order quote</h3>
+                <p className="mt-1 text-xs text-slate-600">Delivery is calculated now. Heavy Load and Special Handling are confirmed by the farmer before dispatch. Driver Approach is finalized only after an actual driver is assigned.</p>
+                <div className="mt-3 space-y-2">
+                  <div className="flex justify-between"><span>Products</span><strong>{money(quote.product_subtotal)}</strong></div>
+                  <div className="flex justify-between"><span>Delivery</span><strong>{money(quote.delivery?.delivery_fee)}</strong></div>
+                  {quote.estimated_cargo_weight_kg == null ? (
+                    <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Estimated cargo weight unavailable - farmer will confirm the load before dispatch.</p>
+                  ) : (
+                    <div className="flex justify-between"><span>Estimated cargo weight</span><strong>{quote.estimated_cargo_weight_kg} kg</strong></div>
+                  )}
+                  <div className="flex justify-between gap-3"><span>Heavy Load Fee</span><strong className="text-right">{quote.heavy_load_fee?.estimate_exceeds_v1_limit ? "Farmer confirmation required" : quote.heavy_load_fee?.estimated_fee == null ? "Pending farmer confirmation" : `${money(quote.heavy_load_fee.estimated_fee)} estimated`}</strong></div>
+                  <div className="flex justify-between gap-3"><span>Special Handling Fee</span><strong className="text-right">Pending farmer confirmation</strong></div>
+                  <div className="flex justify-between gap-3"><span>Driver Approach Fee</span><strong className="text-right">Pending driver assignment</strong></div>
+                  <div className="flex justify-between border-t pt-2 text-base"><span>Initial approved amount</span><strong>{money(quote.initial_approved_total ?? quote.total_before_driver_pickup_surcharge)}</strong></div>
+                </div>
+                {quote.heavy_load_fee?.estimate_exceeds_v1_limit ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800">The listing-based weight estimate is above the V1 100 kg limit. The farmer must confirm the actual load; orders above 100 kg are not supported in V1.</p> : null}
+                {Array.isArray(quote.heavy_load_fee?.tiers) ? <p className="mt-3 text-xs text-slate-600">Heavy Load tiers: {quote.heavy_load_fee.tiers.map((tier: any) => `up to ${tier.max_kg} kg = ${money(tier.fee)}`).join(" / ")}. The farmer's exact weight or selected weight band is authoritative.</p> : null}
+                {quote.special_handling_fee?.tiers ? <p className="mt-2 text-xs text-slate-600">Special Handling tiers: {Object.entries(quote.special_handling_fee.tiers).map(([tier, fee]) => `${titleCase(tier)} = ${money(fee)}`).join(" / ")}.</p> : null}
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">If the farmer confirmation increases your total or changes the required vehicle to Tricycle, JRide pauses the order and asks you to accept the revised charges before dispatch.</p>
+                <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Driver Approach Fee: first {quote.driver_approach_fee?.first_km_free ?? 2} km free, then {money(quote.driver_approach_fee?.fee_per_started_km ?? 0)} per started km, capped at {money(quote.driver_approach_fee?.normal_max_fee ?? 0)}. Only drivers within {quote.driver_approach_fee?.normal_assignment_max_km ?? 10} km on the applicable approach route are eligible for normal assignment.</p>
+                {quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves expected harvest quantity. No driver is assigned until the farmer marks the harvest ready. Delay or shortfall needs your approval.</p> : null}
+                {quote.cash_collection?.required ? <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Product subtotal is above PHP 500. The assigned driver will collect {money(quote.cash_collection.amount)} product cash from you before going to the farmer.</p> : null}
+                <button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve harvest order" : "Place order"}</button>
+              </div>
+            ) : null}
           </aside>
         </div>
       </div>

@@ -47,7 +47,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,picked_up_at,delivered_at,completed_at,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
       .in("status", [
@@ -164,6 +164,9 @@ export async function GET(req: NextRequest) {
         : 0;
       const productSubtotal = Number(row.product_subtotal || 0);
       const orderItems = itemsByOrder.get(String(row.id)) || [];
+      const reapprovalRequired =
+        String(row.status || "").toLowerCase() === "awaiting_customer_reapproval" &&
+        row.customer_reapproval_response == null;
 
       return {
         order_code: row.order_code,
@@ -198,8 +201,20 @@ export async function GET(req: NextRequest) {
         producer_paid_amount: Number(row.producer_paid_amount || 0),
         producer_payment_status: row.producer_paid_at ? "paid" : "pending",
         customer_delivery_fee: Number(row.delivery_fee || 0),
+        customer_driver_approach_fee: Number(row.pickup_distance_fee || 0),
+        customer_driver_approach_fee_locked: row.pickup_fee_locked_at != null,
+        customer_heavy_load_fee: Number(row.heavy_load_fee || 0),
         customer_handling_fee: Number(row.handling_fee || 0),
+        customer_special_handling_fee: Number(row.handling_fee || 0),
         customer_total_payable: Number(row.total_payable || 0),
+        customer_approved_total: Number(row.customer_approved_total || 0),
+        customer_reapproval_required: reapprovalRequired,
+        customer_reapproval_proposed_total:
+          row.customer_reapproval_proposed_total == null
+            ? null
+            : Number(row.customer_reapproval_proposed_total),
+        customer_reapproval_proposed_vehicle_type:
+          row.customer_reapproval_proposed_vehicle_type || null,
         picked_up_at: row.picked_up_at,
         delivered_at: row.delivered_at,
         completed_at: row.completed_at,

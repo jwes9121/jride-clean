@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -119,6 +119,29 @@ export async function GET(req: NextRequest) {
     const revisedVehicleType =
       text(order.customer_reapproval_proposed_vehicle_type) ||
       approvedVehicleType;
+    const cargoBasis = text(order.confirmed_cargo_weight_basis).toLowerCase() || null;
+    const cargoConfirmation = cargoBasis
+      ? {
+          weight_basis: cargoBasis,
+          exact_weight_kg:
+            cargoBasis === "exact" && order.confirmed_cargo_weight_kg != null
+              ? num(order.confirmed_cargo_weight_kg)
+              : null,
+          weight_band:
+            cargoBasis === "approximate"
+              ? text(order.confirmed_cargo_weight_band) || null
+              : null,
+          handling_tier: text(order.confirmed_handling_tier) || null,
+        }
+      : null;
+    const chargeBreakdown = {
+      products: num(order.product_subtotal),
+      delivery: num(order.delivery_fee),
+      heavy_load_fee: num(order.heavy_load_fee),
+      special_handling_fee: num(order.handling_fee),
+      driver_approach_fee: num(order.pickup_distance_fee),
+      driver_approach_fee_locked: order.pickup_fee_locked_at != null,
+    };
 
     return jsonNoStore(200, {
       ok: true,
@@ -151,6 +174,14 @@ export async function GET(req: NextRequest) {
         preferred_vehicle_type: order.preferred_vehicle_type,
         required_vehicle_type: order.required_vehicle_type,
         selected_vehicle_type: order.selected_vehicle_type,
+        estimated_cargo_weight_kg:
+          order.estimated_cargo_weight_kg == null ? null : num(order.estimated_cargo_weight_kg),
+        confirmed_cargo_weight_basis: cargoBasis,
+        confirmed_cargo_weight_kg:
+          order.confirmed_cargo_weight_kg == null ? null : num(order.confirmed_cargo_weight_kg),
+        confirmed_cargo_weight_band: text(order.confirmed_cargo_weight_band) || null,
+        confirmed_handling_tier: text(order.confirmed_handling_tier) || null,
+        cargo_confirmation: cargoConfirmation,
         customer_reapproval_required: customerReapprovalRequired,
         customer_reapproval: customerReapprovalRequired
           ? {
@@ -164,6 +195,8 @@ export async function GET(req: NextRequest) {
                 approvedVehicleType !== "tricycle" &&
                 revisedVehicleType === "tricycle",
               required_at: order.customer_reapproval_required_at,
+              confirmed_cargo: cargoConfirmation,
+              charge_breakdown: chargeBreakdown,
             }
           : null,
         product_subtotal: num(order.product_subtotal),
@@ -183,9 +216,14 @@ export async function GET(req: NextRequest) {
         pickup_distance_fee: num(order.pickup_distance_fee),
         pickup_fee_locked: order.pickup_fee_locked_at != null,
         pickup_fee_locked_at: order.pickup_fee_locked_at,
+        heavy_load_fee: num(order.heavy_load_fee),
+        heavy_load_fee_confirmed: cargoBasis != null,
         handling_fee: num(order.handling_fee),
+        special_handling_fee: num(order.handling_fee),
         handling_reason: order.handling_reason,
         handling_fee_locked: order.handling_locked_at != null,
+        special_handling_fee_confirmed: order.handling_locked_at != null,
+        charge_breakdown: chargeBreakdown,
         total_payable: num(order.total_payable),
         cash_due_now: cashDueNow,
         final_cash_due: finalCashDue,
@@ -202,8 +240,14 @@ export async function GET(req: NextRequest) {
       producer_location_disclosure: "hidden",
       pickup_surcharge_status:
         order.pickup_fee_locked_at != null ? "final" : "pending_driver_assignment",
+      driver_approach_fee_status:
+        order.pickup_fee_locked_at != null ? "final" : "pending_driver_assignment",
+      heavy_load_fee_status:
+        cargoBasis != null ? "confirmed" : "pending_farmer_confirmation",
       handling_fee_status:
         order.handling_locked_at != null ? "final" : "pending_farmer_confirmation",
+      special_handling_fee_status:
+        order.handling_locked_at != null ? "confirmed" : "pending_farmer_confirmation",
     });
   } catch (error: any) {
     return jsonNoStore(500, {

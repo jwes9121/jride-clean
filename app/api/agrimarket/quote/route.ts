@@ -1,10 +1,5 @@
 import { NextRequest } from "next/server";
 import {
-  RIDE_PICKUP_FREE_KM,
-  RIDE_PICKUP_NORMAL_MAX_FEE,
-  RIDE_PICKUP_NORMAL_MAX_KM,
-} from "@/lib/pricing/pickupFee";
-import {
   AgrimarketRequestError,
   loadAgrimarketOrderContext,
   normalizeAgrimarketAddressId,
@@ -25,6 +20,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 const AGRIMARKET_CASH_FIRST_THRESHOLD = 500;
+const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = 10;
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -32,6 +28,20 @@ function roundMoney(value: number): number {
 
 function roundRouteKm(value: number): number {
   return Math.round(value * 1000) / 1000;
+}
+
+function num(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function estimateHeavyLoadFee(weightKg: number | null, pricing: any): number | null {
+  if (weightKg == null || !Number.isFinite(weightKg) || weightKg <= 0) return null;
+  if (weightKg <= num(pricing.heavy_load_exact_tier1_max_kg)) return num(pricing.heavy_load_tier1_fee);
+  if (weightKg <= num(pricing.heavy_load_exact_tier2_max_kg)) return num(pricing.heavy_load_tier2_fee);
+  if (weightKg <= num(pricing.heavy_load_exact_tier3_max_kg)) return num(pricing.heavy_load_tier3_fee);
+  if (weightKg <= num(pricing.heavy_load_exact_tier4_max_kg)) return num(pricing.heavy_load_tier4_fee);
+  return null;
 }
 
 export async function POST(req: NextRequest) {
@@ -78,21 +88,33 @@ export async function POST(req: NextRequest) {
     const serviceDurationSeconds =
       farmerToCustomer.durationSeconds + (customerToFarmer?.durationSeconds || 0);
 
-    const quoteRes = await admin.rpc("agrimarket_quote_delivery_v1", {
-      p_route_distance_km: serviceDistanceKm,
-    });
+    const [quoteRes, pricingRes] = await Promise.all([
+      admin.rpc("agrimarket_quote_delivery_v1", {
+        p_route_distance_km: serviceDistanceKm,
+      }),
+      admin
+        .from("agrimarket_pricing_settings")
+        .select(
+          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee,driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
+        )
+        .eq("id", 1)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-    if (quoteRes.error) {
+    if (quoteRes.error || pricingRes.error) {
       return jsonNoStore(503, {
         ok: false,
         error: "AGRIMARKET_PRICING_FAILED",
-        message: quoteRes.error.message,
+        message: quoteRes.error?.message || pricingRes.error?.message,
       });
     }
 
     const quoteRows = Array.isArray(quoteRes.data) ? quoteRes.data : [];
     const quote: any = quoteRows[0] || quoteRes.data || null;
-    if (!quote) {
+    const pricing: any = pricingRes.data || null;
+    if (!quote || !pricing) {
       return jsonNoStore(503, {
         ok: false,
         error: "AGRIMARKET_PRICING_UNAVAILABLE",
@@ -101,7 +123,21 @@ export async function POST(req: NextRequest) {
     }
 
     const deliveryFee = Number(quote.delivery_fee || 0);
-    const totalBeforePickupSurcharge = roundMoney(context.productSubtotal + deliveryFee);
+    const initialApprovedTotal = roundMoney(context.productSubtotal + deliveryFee);
+    const estimatedHeavyLoadFee = estimateHeavyLoadFee(context.estimatedCargoWeightKg, pricing);
+    const estimateExceedsV1Limit =
+      context.estimatedCargoWeightKg != null &&
+      context.estimatedCargoWeightKg > num(pricing.heavy_load_exact_tier4_max_kg);
+    const driverApproachPolicy = {
+      status: "pending_driver_assignment",
+      current_fee: 0,
+      first_km_free: num(pricing.driver_approach_free_km),
+      fee_per_started_km: num(pricing.driver_approach_fee_per_started_km),
+      normal_assignment_max_km: AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM,
+      normal_max_fee: num(pricing.driver_approach_fee_cap),
+      distance_basis: "driver_approach_road_route",
+      first_pickup: cashCollectionRequired ? "customer" : "farmer",
+    };
 
     return jsonNoStore(200, {
       ok: true,
@@ -167,19 +203,45 @@ export async function POST(req: NextRequest) {
               },
             ],
       },
-      pickup_distance_surcharge: {
-        status: "pending_driver_assignment",
+      heavy_load_fee: {
+        status: "pending_farmer_confirmation",
         current_fee: 0,
-        first_km_free: RIDE_PICKUP_FREE_KM,
-        normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
-        normal_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
-        distance_basis: "driver_to_first_pickup_road_route",
-        first_pickup: cashCollectionRequired ? "customer" : "farmer",
+        estimated_fee: estimatedHeavyLoadFee,
+        estimate_basis:
+          context.estimatedCargoWeightKg == null
+            ? "unavailable"
+            : "listing_unit_weight_estimate",
+        estimate_exceeds_v1_limit: estimateExceedsV1Limit,
+        tiers: [
+          { max_kg: num(pricing.heavy_load_exact_tier1_max_kg), fee: num(pricing.heavy_load_tier1_fee) },
+          { max_kg: num(pricing.heavy_load_exact_tier2_max_kg), fee: num(pricing.heavy_load_tier2_fee) },
+          { max_kg: num(pricing.heavy_load_exact_tier3_max_kg), fee: num(pricing.heavy_load_tier3_fee) },
+          { max_kg: num(pricing.heavy_load_exact_tier4_max_kg), fee: num(pricing.heavy_load_tier4_fee) },
+        ],
       },
+      special_handling_fee: {
+        status: "pending_farmer_confirmation",
+        current_fee: 0,
+        handling_eligible: context.handlingEligible,
+        tiers: {
+          standard: num(pricing.special_handling_standard_fee),
+          bulky: num(pricing.special_handling_bulky_fee),
+          live_single: num(pricing.special_handling_live_single_fee),
+          live_difficult: num(pricing.special_handling_live_difficult_fee),
+        },
+      },
+      driver_approach_fee: driverApproachPolicy,
+      pickup_distance_surcharge: driverApproachPolicy,
       handling_fee_at_checkout: 0,
       handling_eligible: context.handlingEligible,
-      total_before_driver_pickup_surcharge: totalBeforePickupSurcharge,
-      final_total_status: "pickup_surcharge_pending_driver_assignment",
+      initial_approved_total: initialApprovedTotal,
+      total_before_driver_pickup_surcharge: initialApprovedTotal,
+      final_total_status: "farmer_confirmation_and_driver_approach_pending",
+      reapproval_policy: {
+        farmer_confirmation_increase_requires_customer_approval: true,
+        vehicle_escalation_requires_customer_approval: true,
+        driver_approach_fee_finalized_after_assignment: true,
+      },
       preferred_vehicle_type: context.preferredVehicleType,
       required_vehicle_type: context.requiredVehicleType,
       producer_location_disclosure: "hidden",
