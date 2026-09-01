@@ -192,7 +192,7 @@ export default function AgrimarketFarmerAdminPage() {
             <p className="mt-2 text-sm text-slate-600">Review applications, protect private pickup information, and manage approved farmer access.</p>
           </div>
           <div className="flex gap-2">
-            <Link href="/admin" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Admin home</Link>
+            <Link href="/admin/control-center" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Control Center</Link>
             <button onClick={() => loadApplications()} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Refresh</button>
           </div>
         </div>

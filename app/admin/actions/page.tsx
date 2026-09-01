@@ -106,7 +106,7 @@ export default function AdminActionsPage() {
           <h1 className="text-2xl font-semibold">Admin Actions</h1>
           <p className="text-sm opacity-70">Ops guardrails: readiness + separated logs.</p>
         </div>
-        <a className="px-3 py-2 rounded border text-sm" href="/admin">Back</a>
+        <a className="px-3 py-2 rounded border text-sm" href="/admin/control-center">Control Center</a>
       </div>
 
       <div className={"p-3 rounded border " + (ready ? "bg-green-50" : "bg-red-50")}>

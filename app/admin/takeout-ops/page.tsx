@@ -182,13 +182,13 @@ export default function AdminTakeoutOpsPage() {
           <div className="text-xs font-bold uppercase tracking-wide text-emerald-700">JRIDE TAKEOUT</div>
           <h1 className="text-2xl font-bold text-slate-950">Admin Takeout Ops</h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Read-only monitor for takeout orders. Ride dispatch and trip lifecycle stay isolated.
+            Monitor Takeout orders and use the supported recovery actions when intervention is required.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <a href="/admin" className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50">
-            Admin home
+          <a href="/admin/control-center" className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50">
+            Control Center
           </a>
           <a href="/vendor-portal" className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50">
             Vendor portal

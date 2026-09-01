@@ -11,6 +11,12 @@ export default function VendorAdminLayout({
             JRide Vendor Admin
           </span>
           <a
+            href="/admin/control-center"
+            className="rounded-full border border-emerald-500/60 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-100 hover:bg-emerald-500/20"
+          >
+            All admin tools
+          </a>
+          <a
             href="/admin/vendors"
             className="rounded-full border border-slate-700 px-3 py-1.5 text-xs font-bold hover:border-emerald-400 hover:bg-emerald-500/10"
           >

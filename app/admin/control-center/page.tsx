@@ -17,6 +17,7 @@ function setSelectedAnalyticsSegment(seg: AnalyticsSegment) {
   window.location.href = url.toString();
 }
 import * as React from "react";
+import AdminLinkDirectory from "./AdminLinkDirectory";
 
 type AnyObj = Record<string, any>;
 
@@ -88,7 +89,7 @@ async function safeJson(url: string): Promise<AnyObj | null> {
 }
 
 export default function AdminControlCenter() {
-  const [role, setRole] = React.useState<string>("admin");
+  const [role, setRole] = React.useState<string>("checking");
   const isDispatcher = role === "dispatcher";
 
   const [loading, setLoading] = React.useState(true);
@@ -98,29 +99,30 @@ export default function AdminControlCenter() {
   const [ratingsAverage, setRatingsAverage] = React.useState<number>(0);
   const [lastRefresh, setLastRefresh] = React.useState<string>("");
 
-  React.useEffect(() => {
-    try {
-      const qs = new URLSearchParams(window.location.search);
-      const r = (qs.get("role") || "admin").toLowerCase();
-      setRole(r);
-    } catch {
-      setRole("admin");
-    }
-  }, []);
-
   async function load() {
     setLoading(true);
     setMsg("");
 
     try {
-      const verification = await safeJson("/api/admin/verification/pending");
+      const [session, verification, ratings] = await Promise.all([
+        safeJson("/api/auth/session"),
+        safeJson("/api/admin/verification/pending"),
+        safeJson("/api/admin/ratings?limit=1"),
+      ]);
+
+      const authenticatedRole = String(session?.user?.role || "").toLowerCase();
+      setRole(
+        authenticatedRole === "admin" || authenticatedRole === "dispatcher"
+          ? authenticatedRole
+          : "unknown"
+      );
+
       if (verification?.ok && Array.isArray(verification.rows)) {
         setPendingVerifications(verification.rows.length);
       } else {
         setPendingVerifications(0);
       }
 
-      const ratings = await safeJson("/api/admin/ratings?limit=1");
       if (ratings?.ok && ratings.stats) {
         setRatingsCount(Number(ratings.stats.total || 0));
         setRatingsAverage(Number(ratings.stats.average_rating || 0));
@@ -203,6 +205,8 @@ export default function AdminControlCenter() {
 
         {msg ? <div className="mt-4 text-sm text-amber-700">{msg}</div> : null}
 
+        <AdminLinkDirectory role={role} />
+
         <div className="mt-6">
           <div className="text-sm font-semibold mb-2">Operations</div>
           <div className="grid gap-4 md:grid-cols-3">
@@ -264,6 +268,14 @@ export default function AdminControlCenter() {
               title="Wallet Adjust"
               desc="Manual wallet adjustments / admin tools."
               href="/admin/wallet-adjust"
+              disabled={isDispatcher}
+              right={
+                isDispatcher ? (
+                  <div className="text-xs rounded-full bg-slate-100 border border-black/10 px-2 py-1">
+                    admin-only
+                  </div>
+                ) : null
+              }
             />
           </div>
         </div>
@@ -275,16 +287,19 @@ export default function AdminControlCenter() {
               title="Finance Summary"
               desc="High-level finance dashboards."
               href="/admin/finance/summary"
+              disabled={isDispatcher}
             />
             <Tile
               title="Driver Payouts"
               desc="Approve/track driver payout requests."
               href="/admin/driver-payouts"
+              disabled={isDispatcher}
             />
             <Tile
               title="Vendor Payouts"
               desc="Approve/track vendor payout requests."
               href="/admin/vendor-payouts"
+              disabled={isDispatcher}
             />
           </div>
           <div className="text-xs opacity-60 mt-2">
@@ -320,30 +335,10 @@ export default function AdminControlCenter() {
           </div>
         </div>
 
-        <div className="mt-8">
-          <div className="text-sm font-semibold mb-2">System</div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Tile
-              title="Admin Profile / Auth Check"
-              desc="Quick auth sanity checks."
-              href="/api/auth/session"
-            />
-            <Tile
-              title="Verification API (pending)"
-              desc="Raw JSON view (debug)."
-              href="/api/admin/verification/pending"
-            />
-            <Tile
-              title="Notes"
-              desc="Dispatcher gating is still UI-only until we enforce server checks in decide route."
-              badge={null}
-            />
-          </div>
-        </div>
-
         {isDispatcher ? (
           <div className="mt-8 text-xs text-slate-600">
-            Dispatcher mode: Admin approve/reject tiles are disabled here (UI). Next step is server enforcement in decide route.
+            Dispatcher mode: restricted navigation is hidden or disabled here. This visibility
+            filter does not replace server-side authorization.
           </div>
         ) : null}
       </div>
