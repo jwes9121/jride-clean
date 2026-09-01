@@ -25,7 +25,7 @@ export function agrimarketEnabled(): boolean {
 }
 
 export function agrimarketOnboardingEnabled(): boolean {
-  return agrimarketEnabled() || envEnabled(process.env.AGRIMARKET_ONBOARDING_ENABLED);
+  return envEnabled(process.env.AGRIMARKET_ONBOARDING_ENABLED);
 }
 
 export function agrimarketDisabledResponse() {
