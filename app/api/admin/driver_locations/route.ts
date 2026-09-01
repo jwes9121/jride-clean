@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireStaff } from "@/lib/auth/requireStaff";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,8 +33,52 @@ type DriverProfileRowDb = {
   driver_id?: string | null;
   phone?: string | null;
   full_name?: string | null;
+  callsign?: string | null;
+  municipality?: string | null;
+  vehicle_type?: string | null;
+  plate_number?: string | null;
   [key: string]: any;
 };
+
+type DriverGpsTownRowDb = {
+  driver_id?: string | null;
+  current_town?: string | null;
+  source_lat?: number | null;
+  source_lng?: number | null;
+  resolved_at?: string | null;
+  [key: string]: any;
+};
+
+const GPS_TOWN_MAX_DELTA_KM = 0.8;
+
+function finiteNumber(input: unknown): number | null {
+  if (input == null || String(input).trim() === "") return null;
+  const value = Number(input);
+  return Number.isFinite(value) ? value : null;
+}
+
+function textOrNull(input: unknown): string | null {
+  const value = String(input ?? "").trim();
+  return value || null;
+}
+
+function haversineKm(
+  aLat: number,
+  aLng: number,
+  bLat: number,
+  bLng: number
+): number {
+  const toRad = (value: number) => (value * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const p1 = toRad(aLat);
+  const p2 = toRad(bLat);
+  const s1 = Math.sin(dLat / 2);
+  const s2 = Math.sin(dLng / 2);
+  const h = s1 * s1 + Math.cos(p1) * Math.cos(p2) * s2 * s2;
+  const clamped = Math.max(0, Math.min(1, h));
+  return 6371 * 2 * Math.atan2(Math.sqrt(clamped), Math.sqrt(1 - clamped));
+}
 
 function toPhilippineTime(input: string | null | undefined) {
   if (!input) return null;
@@ -73,6 +118,14 @@ function ts(input: string | null | undefined) {
 
 export async function GET() {
   try {
+    const access = await requireStaff();
+    if (!access.ok) {
+      return NextResponse.json(
+        { ok: false, error: access.error },
+        { status: access.status }
+      );
+    }
+
     const staleAfterSeconds = 120;
     const assignCutoffMinutes = Number(process.env.JRIDE_DRIVER_FRESH_MINUTES || "10");
     const assignCutoffSeconds = assignCutoffMinutes * 60;
@@ -132,12 +185,27 @@ export async function GET() {
 
     let identityById: Record<string, DriverIdentityRowDb> = {};
     let profileByDriverId: Record<string, DriverProfileRowDb> = {};
+    let gpsTownByDriverId: Record<string, DriverGpsTownRowDb> = {};
 
     if (driverIds.length > 0) {
-      const { data: driversData, error: driversError } = await supabase
-        .from("drivers")
-        .select("id,driver_name,driver_status,zone_id,toda_name")
-        .in("id", driverIds);
+      const [driversResult, profilesResult, gpsTownResult] = await Promise.all([
+        supabase
+          .from("drivers")
+          .select("id,driver_name,driver_status,zone_id,toda_name")
+          .in("id", driverIds),
+        supabase
+          .from("driver_profiles")
+          .select(
+            "driver_id,phone,full_name,callsign,municipality,vehicle_type,plate_number"
+          )
+          .in("driver_id", driverIds),
+        supabase
+          .from("driver_gps_town_resolutions")
+          .select("driver_id,current_town,source_lat,source_lng,resolved_at")
+          .in("driver_id", driverIds),
+      ]);
+
+      const { data: driversData, error: driversError } = driversResult;
 
       if (driversError) {
         console.error("ADMIN_DRIVER_LOCATIONS_DRIVERS_JOIN_ERROR", driversError);
@@ -148,10 +216,7 @@ export async function GET() {
         );
       }
 
-      const { data: profilesData, error: profilesError } = await supabase
-        .from("driver_profiles")
-        .select("driver_id,phone,full_name")
-        .in("driver_id", driverIds);
+      const { data: profilesData, error: profilesError } = profilesResult;
 
       if (profilesError) {
         console.error("ADMIN_DRIVER_LOCATIONS_DRIVER_PROFILES_JOIN_ERROR", profilesError);
@@ -161,10 +226,23 @@ export async function GET() {
           profiles.map((p) => [String(p.driver_id || ""), p])
         );
       }
+
+      const { data: gpsTownData, error: gpsTownError } = gpsTownResult;
+
+      if (gpsTownError) {
+        console.error("ADMIN_DRIVER_LOCATIONS_GPS_TOWN_JOIN_ERROR", gpsTownError);
+      } else {
+        const gpsRows = Array.isArray(gpsTownData)
+          ? (gpsTownData as DriverGpsTownRowDb[])
+          : [];
+        gpsTownByDriverId = Object.fromEntries(
+          gpsRows.map((row) => [String(row.driver_id || ""), row])
+        );
+      }
     }
 
     const drivers = rows.map((row) => {
-      const updatedAt = row.updated_at ?? null;
+      const updatedAt = row.updated_at ?? row.created_at ?? null;
       const createdAt = row.created_at ?? null;
       const ageSeconds = ageSecondsFromIso(updatedAt);
       const isStale = ageSeconds == null ? true : ageSeconds > staleAfterSeconds;
@@ -176,16 +254,54 @@ export async function GET() {
 
       const driverId = String(row.driver_id || "").trim();
       const identity = driverId ? identityById[driverId] : null;
-            const profile = driverId ? profileByDriverId[driverId] : null;
+      const profile = driverId ? profileByDriverId[driverId] : null;
+      const gpsTown = driverId ? gpsTownByDriverId[driverId] : null;
       const masterStatus = String(identity?.driver_status ?? "").trim().toLowerCase();
-      const profileStatus = String((profile as any)?.status ?? "").trim().toLowerCase();
       const hiddenStatuses = new Set(["deactivated", "deleted", "removed", "removed_from_pilot", "inactive"]);
-      if (hiddenStatuses.has(masterStatus) || hiddenStatuses.has(profileStatus)) return null;
+      if (hiddenStatuses.has(masterStatus)) return null;
+
+      const liveLat = finiteNumber(row.lat);
+      const liveLng = finiteNumber(row.lng);
+      const cacheLat = finiteNumber(gpsTown?.source_lat);
+      const cacheLng = finiteNumber(gpsTown?.source_lng);
+      const gpsTownDeltaKm =
+        liveLat == null || liveLng == null || cacheLat == null || cacheLng == null
+          ? null
+          : haversineKm(liveLat, liveLng, cacheLat, cacheLng);
+      const gpsTownVerified =
+        textOrNull(gpsTown?.current_town) != null &&
+        gpsTownDeltaKm != null &&
+        gpsTownDeltaKm <= GPS_TOWN_MAX_DELTA_KM;
+      const reportedTown = textOrNull(row.town);
+      const homeTown = textOrNull(profile?.municipality) ?? textOrNull(row.home_town);
+      const currentTown = gpsTownVerified
+        ? textOrNull(gpsTown?.current_town)
+        : reportedTown ?? homeTown;
+      const townSource = gpsTownVerified
+        ? "server_gps"
+        : reportedTown
+        ? "client_reported"
+        : homeTown
+        ? "registered_fallback"
+        : "unknown";
 
       return {
         ...row,
         name: identity?.driver_name ?? profile?.full_name ?? null,
         phone: profile?.phone ?? null,
+        callsign: profile?.callsign ?? null,
+        plate_number: profile?.plate_number ?? null,
+        vehicle_type: row.vehicle_type ?? profile?.vehicle_type ?? null,
+        home_town: homeTown,
+        reported_town: reportedTown,
+        town: currentTown,
+        current_town: currentTown,
+        gps_town: gpsTown?.current_town ?? null,
+        gps_town_verified: gpsTownVerified,
+        gps_town_delta_km:
+          gpsTownDeltaKm == null ? null : Number(gpsTownDeltaKm.toFixed(3)),
+        gps_town_resolved_at: gpsTown?.resolved_at ?? null,
+        town_source: townSource,
         zone_id: identity?.zone_id ?? null,
         toda_name: identity?.toda_name ?? null,
         driver_status_master: identity?.driver_status ?? null,
@@ -200,7 +316,8 @@ export async function GET() {
         assign_cutoff_minutes: assignCutoffMinutes,
         assign_fresh: assignFresh,
         assign_online_eligible: assignOnlineEligible,
-        assign_eligible: assignEligible};
+        assign_eligible: assignEligible,
+      };
     }).filter(Boolean);
 
     return NextResponse.json(
@@ -237,4 +354,3 @@ export async function GET() {
     );
   }
 }
-

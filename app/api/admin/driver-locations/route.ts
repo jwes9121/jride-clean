@@ -1,1 +1,1 @@
-export { GET } from "../driver_locations/route";
+export { GET, dynamic, revalidate } from "../driver_locations/route";
