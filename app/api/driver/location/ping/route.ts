@@ -25,6 +25,53 @@ function text(v: any): string {
   return String(v ?? "").trim();
 }
 
+const ONLINE_OBSERVATION_STATUSES = new Set([
+  "online",
+  "available",
+  "idle",
+  "waiting",
+]);
+const LOCATION_OBSERVATION_DEADLINE_MS = 1500;
+
+function isUsableGpsFix(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180 &&
+    !(lat === 0 && lng === 0)
+  );
+}
+
+function clientReportedAccuracyMeters(body: any): number | null {
+  const raw =
+    body?.accuracy_m ??
+    body?.accuracy_meters ??
+    body?.accuracyMeters ??
+    body?.accuracy;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 1000000
+    ? value
+    : null;
+}
+
+function clientReportedMockLocation(body: any): boolean | null {
+  const values = [
+    body?.is_mock_location,
+    body?.isMockLocation,
+    body?.is_mock,
+    body?.isMock,
+  ];
+
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+  }
+
+  return null;
+}
+
 function normDeviceId(s: any): string {
   return String(s ?? "").trim().toLowerCase();
 }
@@ -626,6 +673,307 @@ async function syncDriverPresenceSession(opts: {
     return { attempted: true, ok: false, reason: "presence_session_exception", message: String(e?.message ?? e) };
   }
 }
+
+type DriverTripContext = {
+  context:
+    | "none"
+    | "pre_pickup"
+    | "post_pickup"
+    | "ambiguous"
+    | "not_evaluable";
+  candidateCount: number;
+  reference: string | null;
+  serviceType: string | null;
+  status: string | null;
+  pickupTown: string | null;
+  observedAt: string | null;
+  lookupError?: string;
+};
+
+type TripCandidate = {
+  reference: string;
+  serviceType: string;
+  status: string;
+  pickupTown: string | null;
+  observedAt: string | null;
+  context: "pre_pickup" | "post_pickup";
+};
+
+function bookingTripStatus(row: any): string {
+  const serviceType = norm(row?.service_type);
+  if (serviceType !== "takeout") return norm(row?.status) || "unknown";
+
+  return [
+    "status=" + (norm(row?.status) || "unknown"),
+    "vendor=" + (norm(row?.vendor_status) || "unknown"),
+    "customer=" + (norm(row?.customer_status) || "unknown"),
+    "driver=" + (norm(row?.driver_status) || "unknown"),
+  ].join(";");
+}
+
+function bookingTripContext(row: any): "pre_pickup" | "post_pickup" {
+  if (norm(row?.status) === "on_trip") return "post_pickup";
+
+  if (norm(row?.service_type) === "takeout") {
+    const postPickupStates = new Set(["picked_up", "delivering"]);
+    if (
+      [row?.vendor_status, row?.customer_status, row?.driver_status].some(
+        (value) => postPickupStates.has(norm(value))
+      )
+    ) {
+      return "post_pickup";
+    }
+  }
+
+  return "pre_pickup";
+}
+
+async function resolveDriverTripContext(
+  supabase: any,
+  driverId: string,
+  signal: AbortSignal
+): Promise<DriverTripContext> {
+  const activeBookingFilter =
+    "status.in.(assigned,accepted,fare_proposed,ready,on_the_way,arrived,on_trip)," +
+    "and(service_type.eq.takeout,vendor_status.in.(driver_assigned,driver_accepted,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))," +
+    "and(service_type.eq.takeout,customer_status.in.(driver_assigned,driver_accepted,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))," +
+    "and(service_type.eq.takeout,driver_status.in.(driver_assigned,driver_accepted,preparing,pickup_ready,arrived_customer_cash,cash_collected,rider_arrived_vendor,picked_up,delivering))";
+
+  const [bookingRes, agrimarketRes] = await Promise.all([
+    supabase
+      .from("bookings")
+      .select(
+        "id,booking_code,service_type,status,vendor_status,customer_status,driver_status,town,updated_at"
+      )
+      .or(`driver_id.eq.${driverId},assigned_driver_id.eq.${driverId}`)
+      .or(activeBookingFilter)
+      .order("updated_at", { ascending: false })
+      .limit(10)
+      .abortSignal(signal),
+    supabase
+      .from("agrimarket_orders")
+      .select(
+        "id,order_code,status,delivery_booking_id,picked_up_at,updated_at"
+      )
+      .eq("assigned_driver_id", driverId)
+      .in("status", ["driver_assigned", "picked_up", "delivering"])
+      .order("updated_at", { ascending: false })
+      .limit(10)
+      .abortSignal(signal),
+  ]);
+
+  if (bookingRes.error || agrimarketRes.error) {
+    return {
+      context: "not_evaluable",
+      candidateCount: 0,
+      reference: null,
+      serviceType: null,
+      status: null,
+      pickupTown: null,
+      observedAt: null,
+      lookupError:
+        bookingRes.error?.message ||
+        agrimarketRes.error?.message ||
+        "trip_context_lookup_failed",
+    };
+  }
+
+  const bookingRows = Array.isArray(bookingRes.data) ? bookingRes.data : [];
+  const agrimarketRows = Array.isArray(agrimarketRes.data)
+    ? agrimarketRes.data
+    : [];
+  const agrimarketBookingIds = new Set(
+    agrimarketRows
+      .map((row: any) => text(row?.delivery_booking_id))
+      .filter(Boolean)
+  );
+
+  const candidates: TripCandidate[] = [];
+
+  for (const row of bookingRows) {
+    const bookingId = text((row as any)?.id);
+    if (!bookingId || agrimarketBookingIds.has(bookingId)) continue;
+
+    candidates.push({
+      reference: "booking:" + bookingId,
+      serviceType: norm((row as any)?.service_type) || "ride",
+      status: bookingTripStatus(row),
+      pickupTown: text((row as any)?.town) || null,
+      observedAt: text((row as any)?.updated_at) || null,
+      context: bookingTripContext(row),
+    });
+  }
+
+  for (const row of agrimarketRows) {
+    const orderId = text((row as any)?.id);
+    if (!orderId) continue;
+
+    const orderStatus = norm((row as any)?.status) || "unknown";
+    const hasConfirmedPickup =
+      !!text((row as any)?.picked_up_at) &&
+      new Set(["picked_up", "delivering"]).has(orderStatus);
+
+    candidates.push({
+      reference: "agrimarket:" + orderId,
+      serviceType: "agrimarket",
+      status: orderStatus,
+      pickupTown: null,
+      observedAt: text((row as any)?.updated_at) || null,
+      context: hasConfirmedPickup ? "post_pickup" : "pre_pickup",
+    });
+  }
+
+  if (candidates.length === 0) {
+    return {
+      context: "none",
+      candidateCount: 0,
+      reference: null,
+      serviceType: null,
+      status: null,
+      pickupTown: null,
+      observedAt: null,
+    };
+  }
+
+  if (candidates.length > 1) {
+    return {
+      context: "ambiguous",
+      candidateCount: candidates.length,
+      reference: null,
+      serviceType: null,
+      status: null,
+      pickupTown: null,
+      observedAt: null,
+    };
+  }
+
+  const candidate = candidates[0];
+  return {
+    context: candidate.context,
+    candidateCount: 1,
+    reference: candidate.reference,
+    serviceType: candidate.serviceType,
+    status: candidate.status,
+    pickupTown: candidate.pickupTown,
+    observedAt: candidate.observedAt,
+  };
+}
+
+async function syncDriverLocationObservation(opts: {
+  supabase: any;
+  driverId: string;
+  lat: number;
+  lng: number;
+  hasFreshGps: boolean;
+  status: string;
+  authMode: "bearer" | "driver_secret";
+  observedAt: string;
+  accuracyMeters: number | null;
+  clientMockLocation: boolean | null;
+  deviceId: string | null;
+  clientReportedTown: string | null;
+}) {
+  const status = norm(opts.status);
+
+  if (
+    !opts.hasFreshGps ||
+    !isUsableGpsFix(opts.lat, opts.lng) ||
+    !ONLINE_OBSERVATION_STATUSES.has(status)
+  ) {
+    return {
+      attempted: false,
+      ok: true,
+      skipped: true,
+      reason: !opts.hasFreshGps
+        ? "no_fresh_gps"
+        : !ONLINE_OBSERVATION_STATUSES.has(status)
+          ? "not_online_like"
+          : "invalid_gps",
+    };
+  }
+
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () => controller.abort(),
+    LOCATION_OBSERVATION_DEADLINE_MS
+  );
+
+  try {
+    const tripContext = await resolveDriverTripContext(
+      opts.supabase,
+      opts.driverId,
+      controller.signal
+    );
+
+    const { data, error } = await opts.supabase.rpc(
+      "jride_record_driver_location_observation_minute_v1",
+      {
+        p_driver_id: opts.driverId,
+        p_latitude: opts.lat,
+        p_longitude: opts.lng,
+        p_driver_status: status,
+        p_auth_mode: opts.authMode,
+        p_trip_context: tripContext.context,
+        p_trip_candidate_count: tripContext.candidateCount,
+        p_observed_at: opts.observedAt,
+        p_accuracy_meters: opts.accuracyMeters,
+        p_client_mock_location: opts.clientMockLocation,
+        p_device_id: opts.deviceId,
+        p_client_reported_town: opts.clientReportedTown,
+        p_trip_reference: tripContext.reference,
+        p_trip_service_type: tripContext.serviceType,
+        p_trip_status: tripContext.status,
+        p_trip_pickup_town: tripContext.pickupTown,
+        p_trip_context_observed_at: tripContext.observedAt,
+      }
+    ).abortSignal(controller.signal);
+
+    if (error) {
+      return {
+        attempted: true,
+        ok: false,
+        reason: controller.signal.aborted
+          ? "deadline_exceeded"
+          : "rpc_failed",
+        message: error.message,
+        trip_context: tripContext.context,
+        trip_context_lookup_error: tripContext.lookupError || null,
+      };
+    }
+
+    return {
+      attempted: true,
+      ok: true,
+      inserted: data === true,
+      reason: data === true ? "minute_recorded" : "minute_already_recorded",
+      trip_context: tripContext.context,
+      trip_candidate_count: tripContext.candidateCount,
+      trip_context_lookup_error: tripContext.lookupError || null,
+    };
+  } catch (e: any) {
+    return {
+      attempted: true,
+      ok: false,
+      reason: controller.signal.aborted
+        ? "deadline_exceeded"
+        : "location_observation_exception",
+      message: String(e?.message ?? e),
+    };
+  } finally {
+    clearTimeout(deadline);
+  }
+}
+
+function publicLocationObservationResult(result: any) {
+  return {
+    attempted: result?.attempted === true,
+    ok: result?.ok === true,
+    inserted: result?.inserted === true,
+    skipped: result?.skipped === true,
+    reason: text(result?.reason) || null,
+  };
+}
+
 async function triggerRetryAutoAssign(baseUrl: string, triggerReason: string) {
   if (!baseUrl || !String(baseUrl).trim()) {
     return {
@@ -685,13 +1033,12 @@ export async function POST(req: NextRequest) {
 
     const incomingLat = Number(body?.lat);
     const incomingLng = Number(body?.lng);
+    const incomingAccuracyMeters = clientReportedAccuracyMeters(body);
+    const incomingClientMockLocation = clientReportedMockLocation(body);
     // JRIDE_PING_ZERO_COORDS_GPS_PENDING_V1
     // Treat missing, invalid, or 0/0 coordinates as no usable GPS fix.
     // 0/0 is only a placeholder for non-assignable gps_pending rows.
-    const hasIncomingCoords =
-      Number.isFinite(incomingLat) &&
-      Number.isFinite(incomingLng) &&
-      !(incomingLat === 0 && incomingLng === 0);
+    const hasIncomingCoords = isUsableGpsFix(incomingLat, incomingLng);
 
     const status = norm(body?.status ?? "online") || "online";
     const town = text(body?.town);
@@ -994,17 +1341,19 @@ export async function POST(req: NextRequest) {
       console.warn("[JRIDE_DRIVER_SESSION_TELEMETRY_V1] sync failed", presenceSessionResult);
     }
 
-    console.log("[DISPATCH_TRACE] ping:upsert_result", {
-      driver_id: driverId,
-      auth_mode: authRes.authMode,
-      previous_status: previousStatus || null,
-      current_status: status,
-      coords_source: coordsSource,
-      previous_age_seconds: previousAgeSeconds,
-      recovered_from_stale_online: recoveredFromStaleOnline,
-      vehicle_type: vehicleType,
-      presence_session: presenceSessionResult,
-      duty_check_offline_cancellation: dutyCheckOfflineCancellation,
+    const locationObservationPromise = syncDriverLocationObservation({
+      supabase,
+      driverId,
+      lat: incomingLat,
+      lng: incomingLng,
+      hasFreshGps: hasIncomingCoords,
+      status,
+      authMode: authRes.authMode,
+      observedAt: nowIso,
+      accuracyMeters: incomingAccuracyMeters,
+      clientMockLocation: incomingClientMockLocation,
+      deviceId: (lock as any).active_device_id || deviceId || null,
+      clientReportedTown: town || null,
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
@@ -1037,6 +1386,32 @@ export async function POST(req: NextRequest) {
       retryResult = await triggerRetryAutoAssign(baseUrl, triggerReason);
     }
 
+    const locationObservationResult = await locationObservationPromise;
+    const locationObservationResponse = publicLocationObservationResult(
+      locationObservationResult
+    );
+
+    if (!locationObservationResult?.ok) {
+      console.warn(
+        "[JRIDE_DRIVER_LOCATION_OBSERVATION_V1] sync failed",
+        locationObservationResult
+      );
+    }
+
+    console.log("[DISPATCH_TRACE] ping:upsert_result", {
+      driver_id: driverId,
+      auth_mode: authRes.authMode,
+      previous_status: previousStatus || null,
+      current_status: status,
+      coords_source: coordsSource,
+      previous_age_seconds: previousAgeSeconds,
+      recovered_from_stale_online: recoveredFromStaleOnline,
+      vehicle_type: vehicleType,
+      presence_session: presenceSessionResult,
+      location_observation: locationObservationResult,
+      duty_check_offline_cancellation: dutyCheckOfflineCancellation,
+    });
+
     console.log("[DISPATCH_TRACE] ping:retry_result", {
       driver_id: driverId,
       auth_mode: authRes.authMode,
@@ -1067,6 +1442,7 @@ export async function POST(req: NextRequest) {
       lng: finalLng,
       vehicle_type: vehicleType,
       presence_session: presenceSessionResult,
+      location_observation: locationObservationResponse,
       client_capability: {
         client_version_name: (lock as any).client_version_name ?? null,
         client_version_code: (lock as any).client_version_code ?? null,

@@ -36,6 +36,17 @@ function hours(v: any) {
   return v == null ? "-" : Number(v).toFixed(2) + "h";
 }
 
+function observedTownMinutes(value: any) {
+  if (!Array.isArray(value) || value.length === 0) return "-";
+
+  return value
+    .map((row: AnyRow) => {
+      const town = String(row?.town || "Unresolved");
+      return town + ": " + count(row?.minute_count) + "m";
+    })
+    .join(", ");
+}
+
 
 // Display order for incentive_qualification's policy_code keys â€” matches
 // driver_incentive_policies.sort_order. Adding a 7th tier means adding one
@@ -157,9 +168,12 @@ function Card(props: { title: string; value: string; sub?: string }) {
 }
 
 export default function AnalyticsV3Page() {
-    const [data, setData] = React.useState<any>(null);
+  const [data, setData] = React.useState<any>(null);
   const [err, setErr] = React.useState("");
   const [loading, setLoading] = React.useState(true);
+  const [locationObservation, setLocationObservation] = React.useState<any>(null);
+  const [locationObservationErr, setLocationObservationErr] = React.useState("");
+  const [locationObservationLoading, setLocationObservationLoading] = React.useState(true);
   const [days, setDays] = React.useState(30);
   const [selectedDriverId, setSelectedDriverId] = React.useState("");
   const [driverDetail, setDriverDetail] = React.useState<any>(null);
@@ -191,6 +205,42 @@ export default function AnalyticsV3Page() {
       alive = false;
     };
   }, [days]);
+
+  React.useEffect(() => {
+    let alive = true;
+    setLocationObservationLoading(true);
+    setLocationObservationErr("");
+
+    fetch("/api/admin/analytics/v3/location-observation", {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok || !payload?.ok) {
+          throw new Error(
+            payload?.message ||
+              payload?.error ||
+              "Failed to load location observations."
+          );
+        }
+        return payload;
+      })
+      .then((payload) => {
+        if (alive) setLocationObservation(payload);
+      })
+      .catch((error) => {
+        if (alive) {
+          setLocationObservationErr(String(error?.message || error));
+        }
+      })
+      .finally(() => {
+        if (alive) setLocationObservationLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function openDriver(driverId: string) {
     setSelectedDriverId(driverId);
@@ -247,6 +297,9 @@ export default function AnalyticsV3Page() {
     { level: cancellationAlerts.length ? "yellow" : "green", label: `${cancellationAlerts.length} town(s) with high cancellation rate` },
     { level: activeTrips.length ? "yellow" : "green", label: `${activeTrips.length} active/uncompleted trip(s)` },
   ];
+  const locationObservationDrivers = Array.isArray(locationObservation?.drivers)
+    ? locationObservation.drivers
+    : [];
 
   return (
     <main className="min-h-screen bg-slate-50 p-6 text-slate-900">
@@ -271,6 +324,126 @@ export default function AnalyticsV3Page() {
 
       {err ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{err}</div> : null}
       {loading ? <div className="rounded-lg bg-white p-4 text-sm shadow-sm">Loading...</div> : null}
+
+      <section className="mt-6 rounded-xl border border-blue-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold">Driver Location Observation</h2>
+            <p className="mt-1 text-sm font-semibold text-blue-800">
+              Observation only. These figures do not change incentive eligibility.
+            </p>
+          </div>
+          {locationObservation?.period ? (
+            <div className="text-right text-xs text-slate-500">
+              <div className="font-semibold text-slate-700">
+                {locationObservation.period.name || "Current incentive period"}
+              </div>
+              <div>
+                {fmtDate(locationObservation.period.start_at)} to{" "}
+                {locationObservation.period.end_at
+                  ? fmtDate(locationObservation.period.end_at)
+                  : "Open"}
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+          Town difference compares the server-resolved Mapbox town with the
+          driver&apos;s registered town. JRide does not yet have one canonical
+          enabled-area boundary in source. Post-pickup is review context, not
+          automatic authorization. Each comparison uses the registered town
+          captured for that minute; the current-town column shows the profile
+          now. Mock-location values are client-reported.
+        </div>
+
+        {locationObservation?.observation_window ? (
+          <div className="mt-2 text-xs text-slate-500">
+            Collection window: {fmtDate(locationObservation.observation_window.start_at)} to{" "}
+            {fmtDate(locationObservation.observation_window.end_at)}
+          </div>
+        ) : null}
+
+        {locationObservationErr ? (
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            {locationObservationErr}
+          </div>
+        ) : locationObservationLoading ? (
+          <div className="mt-3 text-sm text-slate-500">
+            Loading location observations...
+          </div>
+        ) : locationObservationDrivers.length === 0 ? (
+          <div className="mt-3 text-sm text-slate-500">
+            No activity this incentive period.
+          </div>
+        ) : (
+          <div className="mt-3 overflow-auto">
+            <table className="w-full min-w-[1650px] text-left text-sm">
+              <thead className="text-xs uppercase text-slate-500">
+                <tr>
+                  <th className="p-2">Driver</th>
+                  <th className="p-2">Current Registered Town</th>
+                  <th className="p-2">Observed Town Minutes</th>
+                  <th className="p-2">Collection-window Online Minutes</th>
+                  <th className="p-2">Heartbeat GPS Minutes</th>
+                  <th className="p-2">Heartbeat GPS Coverage</th>
+                  <th className="p-2">Same Town</th>
+                  <th className="p-2">Different Town</th>
+                  <th className="p-2">Town Not Evaluable</th>
+                  <th className="p-2">Different Town Context</th>
+                  <th className="p-2">Auth Evidence</th>
+                  <th className="p-2">Client-reported Mock=True</th>
+                  <th className="p-2">Last Observed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locationObservationDrivers.map((row: AnyRow) => (
+                  <tr key={row.driver_id} className="border-t align-top">
+                    <td className="p-2 font-semibold">
+                      {row.driver_name || "Unknown Driver"}
+                    </td>
+                    <td className="p-2">
+                      {row.current_registered_town || "-"}
+                    </td>
+                    <td className="max-w-sm p-2">
+                      {observedTownMinutes(row.observed_town_minutes)}
+                    </td>
+                    <td className="p-2">{count(row.online_minute_count)}</td>
+                    <td className="p-2">
+                      {count(row.online_with_fresh_gps_minute_count)}
+                    </td>
+                    <td className="p-2">{pct(row.location_coverage_pct)}</td>
+                    <td className="p-2">
+                      {count(row.same_registered_town_minute_count)}
+                    </td>
+                    <td className="p-2">
+                      {count(row.different_registered_town_minute_count)}
+                    </td>
+                    <td className="p-2">
+                      {count(row.town_not_evaluable_minute_count)}
+                    </td>
+                    <td className="p-2 text-xs text-slate-600">
+                      <div>No trip: {count(row.different_town_no_trip_minute_count)}</div>
+                      <div>Pre-pickup: {count(row.different_town_pre_pickup_minute_count)}</div>
+                      <div>Post-pickup: {count(row.different_town_post_pickup_minute_count)}</div>
+                      <div>Ambiguous: {count(row.different_town_ambiguous_minute_count)}</div>
+                      <div>Not evaluable: {count(row.different_town_context_not_evaluable_minute_count)}</div>
+                    </td>
+                    <td className="p-2 text-xs text-slate-600">
+                      <div>Bearer: {count(row.bearer_observed_minute_count)}</div>
+                      <div>Shared secret: {count(row.driver_secret_observed_minute_count)}</div>
+                    </td>
+                    <td className="p-2">
+                      {count(row.client_mock_true_minute_count)}
+                    </td>
+                    <td className="p-2">{fmtDate(row.last_observed_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {data ? (
         <>
@@ -827,5 +1000,3 @@ export default function AnalyticsV3Page() {
     </main>
   );
 }
-
-
