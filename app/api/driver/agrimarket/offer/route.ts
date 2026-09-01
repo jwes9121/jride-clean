@@ -121,7 +121,7 @@ export async function GET(req: Request) {
       const orderRes = await admin
         .from("agrimarket_orders")
         .select(
-          "id,order_code,producer_id,status,product_subtotal,marketplace_fee,producer_product_net,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,product_required_vehicle_type,checkout_preferred_vehicle_type,route_distance_km,route_duration_seconds,delivery_fee,delivery_company_cut,pickup_distance_fee,handling_fee,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,preparation_minutes,ready_at"
+          "id,order_code,producer_id,status,product_subtotal,marketplace_fee,producer_product_net,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,product_required_vehicle_type,checkout_preferred_vehicle_type,route_distance_km,route_duration_seconds,delivery_fee,delivery_company_cut,pickup_distance_fee,heavy_load_fee,handling_fee,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,preparation_minutes,ready_at"
         )
         .eq("id", offer.order_id)
         .limit(1)
@@ -160,10 +160,11 @@ export async function GET(req: Request) {
       }
 
       const order: any = orderRes.data;
-      const estimatedEarningsBeforeHandling = Math.max(
-        0,
-        num(order.delivery_fee) + num(offer.pickup_distance_fee) - num(order.delivery_company_cut)
-      );
+      const estimatedEarningsBeforeHandling =
+        Math.max(
+          0,
+          num(order.delivery_fee) + num(offer.pickup_distance_fee) - num(order.delivery_company_cut)
+        ) + num(order.heavy_load_fee);
       const estimatedDriverEarnings = estimatedEarningsBeforeHandling + num(order.handling_fee);
 
       return NextResponse.json(
@@ -195,6 +196,7 @@ export async function GET(req: Request) {
             service_route_duration_seconds: num(order.route_duration_seconds),
             estimated_driver_earnings_before_handling: estimatedEarningsBeforeHandling,
             estimated_driver_earnings: estimatedDriverEarnings,
+            heavy_load_fee: num(order.heavy_load_fee),
             special_handling_fee: num(order.handling_fee),
             handling_may_apply: (Array.isArray(itemsRes.data) ? itemsRes.data : []).some(
               (item: any) => item.handling_eligible === true
@@ -231,7 +233,7 @@ export async function GET(req: Request) {
     const assignedRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,producer_id,status,product_subtotal,producer_product_net,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,route_plan,assignment_anchor,delivery_label,delivery_lat,delivery_lng,checkout_preferred_vehicle_type,product_required_vehicle_type,preferred_vehicle_type,required_vehicle_type,route_distance_km,route_duration_seconds,pickup_distance_fee,handling_fee,handling_reason,handling_locked_at,driver_delivery_payout,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,total_payable,final_cash_collected_at,final_cash_collected_amount,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,ready_at"
+        "id,order_code,producer_id,status,product_subtotal,producer_product_net,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,route_plan,assignment_anchor,delivery_label,delivery_lat,delivery_lng,checkout_preferred_vehicle_type,product_required_vehicle_type,preferred_vehicle_type,required_vehicle_type,route_distance_km,route_duration_seconds,pickup_distance_fee,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,driver_delivery_payout,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,total_payable,final_cash_collected_at,final_cash_collected_amount,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,ready_at"
       )
       .eq("assigned_driver_id", identity.driverId)
       .in("status", ["driver_assigned", "picked_up", "delivering", "delivered"])
@@ -322,6 +324,7 @@ export async function GET(req: Request) {
           producer_paid_at: order.producer_paid_at,
           producer_paid_amount: num(order.producer_paid_amount),
           pickup_distance_fee: num(order.pickup_distance_fee),
+          heavy_load_fee: num(order.heavy_load_fee),
           handling_fee: num(order.handling_fee),
           special_handling_fee: num(order.handling_fee),
           handling_reason: order.handling_reason,
