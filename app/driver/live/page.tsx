@@ -6,6 +6,7 @@ import {
   stopDriverTracking,
   UpsertResult,
 } from "@/lib/driver-tracking";
+import AgrimarketDriverGate from "./AgrimarketDriverGate";
 
 export default function DriverLivePage() {
   const [online, setOnline] = useState(false);
@@ -14,7 +15,7 @@ export default function DriverLivePage() {
 
   const handleToggle = async () => {
     if (!online) {
-      setStatusMsg("Starting tracking…");
+      setStatusMsg("Starting tracking...");
 
       const result: UpsertResult = await startDriverTracking(town);
 
@@ -39,7 +40,7 @@ export default function DriverLivePage() {
         "You are ONLINE and sharing your live location with JRide admin."
       );
     } else {
-      setStatusMsg("Stopping tracking…");
+      setStatusMsg("Stopping tracking...");
 
       const result: UpsertResult = await stopDriverTracking(town);
 
@@ -56,40 +57,44 @@ export default function DriverLivePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100">
-      <h1 className="text-xl font-semibold mb-2">JRide Driver Live</h1>
-      <p className="text-xs text-slate-400 mb-4">
-        This page sends your live location to the JRide admin map while you are
-        Online.
-      </p>
-
-      <div className="flex items-center gap-2 mb-4">
-        <label className="text-xs text-slate-300">
-          Town:
-          <input
-            value={town}
-            onChange={(e) => setTown(e.target.value)}
-            className="ml-2 px-2 py-1 rounded bg-slate-900 border border-slate-700 text-xs"
-          />
-        </label>
-      </div>
-
-      <button
-        onClick={handleToggle}
-        className={`px-4 py-2 rounded font-medium text-sm ${
-          online
-            ? "bg-red-600 hover:bg-red-500"
-            : "bg-emerald-600 hover:bg-emerald-500"
-        }`}
-      >
-        {online ? "Go Offline" : "Go Online"}
-      </button>
-
-      {statusMsg && (
-        <p className="mt-3 text-xs text-slate-300 text-center max-w-md">
-          {statusMsg}
+    <main className="min-h-screen bg-slate-950 px-3 py-6 text-slate-100 sm:px-5">
+      <div className="mx-auto flex w-full max-w-3xl flex-col items-center">
+        <h1 className="text-xl font-semibold">JRide Driver Live</h1>
+        <p className="mt-2 max-w-xl text-center text-xs text-slate-400">
+          Keep this page Online so JRide can use your fresh location for ride and delivery assignment.
         </p>
-      )}
-    </div>
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
+          <label className="text-xs text-slate-300">
+            Town:
+            <input
+              value={town}
+              onChange={(e) => setTown(e.target.value)}
+              disabled={online}
+              className="ml-2 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-xs disabled:opacity-60"
+            />
+          </label>
+
+          <button
+            onClick={handleToggle}
+            className={`rounded px-4 py-2 text-sm font-medium ${
+              online
+                ? "bg-red-600 hover:bg-red-500"
+                : "bg-emerald-600 hover:bg-emerald-500"
+            }`}
+          >
+            {online ? "Go Offline" : "Go Online"}
+          </button>
+        </div>
+
+        {statusMsg ? (
+          <p className="mt-3 max-w-md text-center text-xs text-slate-300">
+            {statusMsg}
+          </p>
+        ) : null}
+
+        <AgrimarketDriverGate online={online} />
+      </div>
+    </main>
   );
 }
