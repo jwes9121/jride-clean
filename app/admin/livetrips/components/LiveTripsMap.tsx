@@ -12,8 +12,10 @@ export interface LiveTripsMapProps {
   trips: LiveTrip[];
   drivers: MapDriverRow[];
   selectedTripId: string | null;
+  selectedDriverId: string | null;
   townFilter?: string;
   stuckTripIds: Set<string>;
+  onDriverSelect?: (driverId: string | null) => void;
   onEmergencyAssign?: (bookingCode: any) => void | Promise<void>;
 }
 
@@ -30,7 +32,14 @@ type MapDriverRow = {
   is_stale?: boolean | null;
   name?: string | null;
   phone?: string | null;
+  callsign?: string | null;
+  plate_number?: string | null;
+  vehicle_type?: string | null;
   town?: string | null;
+  current_town?: string | null;
+  home_town?: string | null;
+  town_source?: string | null;
+  gps_town_verified?: boolean | null;
 };
 
 type LngLatTuple = [number, number];
@@ -48,6 +57,7 @@ type StandaloneDriverFeatureProperties = {
   initials: string;
   title: string;
   tone: "stale" | "online" | "busy";
+  selected: boolean;
 };
 
 const STANDALONE_DRIVER_SOURCE_ID = "jride-standalone-drivers";
@@ -88,6 +98,8 @@ function driverDisplayPoint(driver: MapDriverRow): LngLatTuple | null {
   const lat = num(driver.lat);
   const lng = num(driver.lng);
   if (lat == null || lng == null) return null;
+  if (lat === 0 && lng === 0) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
   return [lng, lat];
 }
 
@@ -115,12 +127,41 @@ function driverTone(driver: MapDriverRow): "stale" | "online" | "busy" {
 function driverMarkerTitle(driver: MapDriverRow): string {
   const titleBits = [
     String(driver.name ?? "Driver").trim() || "Driver",
+    String(driver.plate_number ?? "").trim() || null,
     String(driver.town ?? "").trim() || null,
     String(driver.effective_status ?? driver.status ?? "").trim() || null,
     driver.updated_at_ph ? "Last ping: " + driver.updated_at_ph : null,
   ].filter(Boolean);
   return titleBits.join(" | ");
 }
+
+function formatDriverAge(ageSeconds: number | null | undefined): string {
+  if (ageSeconds == null || !Number.isFinite(ageSeconds)) return "Unknown";
+  if (ageSeconds < 60) return Math.max(0, Math.floor(ageSeconds)) + "s ago";
+  if (ageSeconds < 3600) return Math.floor(ageSeconds / 60) + "m ago";
+  if (ageSeconds < 86400) return Math.floor(ageSeconds / 3600) + "h ago";
+  return Math.floor(ageSeconds / 86400) + "d ago";
+}
+
+function townSourceLabel(source: string | null): string {
+  if (source === "server_gps") return "GPS verified";
+  if (source === "client_reported") return "Driver-reported fallback";
+  if (source === "registered_fallback") return "Registered-town fallback";
+  return "Town source unavailable";
+}
+
+const ACTIVE_DRIVER_TRIP_STATUSES = new Set([
+  "requested",
+  "searching",
+  "assigned",
+  "driver_assigned",
+  "accepted",
+  "fare_proposed",
+  "ready",
+  "on_the_way",
+  "arrived",
+  "on_trip",
+]);
 
 function ensureStandaloneDriverLayers(map: mapboxgl.Map) {
   if (!map.getSource(STANDALONE_DRIVER_SOURCE_ID)) {
@@ -139,7 +180,12 @@ function ensureStandaloneDriverLayers(map: mapboxgl.Map) {
       type: "circle",
       source: STANDALONE_DRIVER_SOURCE_ID,
       paint: {
-        "circle-radius": 12,
+        "circle-radius": [
+          "case",
+          ["boolean", ["get", "selected"], false],
+          17,
+          12,
+        ],
         "circle-color": [
           "match",
           ["get", "tone"],
@@ -151,8 +197,18 @@ function ensureStandaloneDriverLayers(map: mapboxgl.Map) {
           "#9ca3af",
           "#9ca3af",
         ],
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.5,
+        "circle-stroke-color": [
+          "case",
+          ["boolean", ["get", "selected"], false],
+          "#2563eb",
+          "#ffffff",
+        ],
+        "circle-stroke-width": [
+          "case",
+          ["boolean", ["get", "selected"], false],
+          4,
+          1.5,
+        ],
       },
     });
   }
@@ -197,7 +253,8 @@ function removeStandaloneDriverLayers(map: mapboxgl.Map) {
 function buildStandaloneDriversGeoJSON(
   drivers: MapDriverRow[],
   tripDriverIds: Set<string>,
-  lastPoints: Record<string, LngLatTuple>
+  lastPoints: Record<string, LngLatTuple>,
+  selectedDriverId: string | null
 ): GeoJSON.FeatureCollection<GeoJSON.Point, StandaloneDriverFeatureProperties> {
   const features: GeoJSON.Feature<GeoJSON.Point, StandaloneDriverFeatureProperties>[] = [];
 
@@ -235,6 +292,7 @@ function buildStandaloneDriversGeoJSON(
         initials: initialsFromName(driver.name),
         title: driverMarkerTitle(driver),
         tone: driverTone(driver),
+        selected: driverId === selectedDriverId,
       },
     });
   }
@@ -424,8 +482,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   trips,
   drivers,
   selectedTripId,
+  selectedDriverId,
   townFilter = "all",
   stuckTripIds,
+  onDriverSelect,
 }) => {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -437,6 +497,12 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   const dropMarkersRef = useRef<Record<string, mapboxgl.Marker>>({});
   const routeIdsRef = useRef<Set<string>>(new Set());
   const lastFollowRef = useRef<LngLatTuple | null>(null);
+  const selectedDriverLastPointRef = useRef<LngLatTuple | null>(null);
+  const lastSelectedDriverIdRef = useRef<string | null>(null);
+  const onDriverSelectRef = useRef<LiveTripsMapProps["onDriverSelect"]>(
+    onDriverSelect
+  );
+  const [followSelectedDriver, setFollowSelectedDriver] = useState(false);
 
   const alertAudioRef = useRef<HTMLAudioElement | null>(null);
   const alertedIdsRef = useRef<Set<string>>(new Set());
@@ -448,6 +514,10 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   };
   const trackerRef = useRef<Record<string, TrackState>>({});
   const [localStuckIds, setLocalStuckIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    onDriverSelectRef.current = onDriverSelect;
+  }, [onDriverSelect]);
 
   const MOVE_THRESHOLD_M = 25;
   const STUCK_MS = 3 * 60 * 1000;
@@ -700,6 +770,70 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     };
   }, [selectedTrip, activeStuckIds]);
 
+  const selectedDriver = useMemo(() => {
+    if (!selectedDriverId) return null;
+    return (
+      drivers.find(
+        (driver) => String(driver.driver_id || "") === selectedDriverId
+      ) || null
+    );
+  }, [drivers, selectedDriverId]);
+
+  const selectedDriverTrip = useMemo(() => {
+    if (!selectedDriverId) return null;
+    return (
+      (trips as any[]).find((trip) => {
+        const driverId = String(
+          trip?.assigned_driver_id ?? trip?.driver_id ?? trip?.driverId ?? ""
+        );
+        const status = String(trip?.status ?? "").trim().toLowerCase();
+        return (
+          driverId === selectedDriverId &&
+          ACTIVE_DRIVER_TRIP_STATUSES.has(status)
+        );
+      }) || null
+    );
+  }, [trips, selectedDriverId]);
+
+  const selectedDriverOverview = useMemo(() => {
+    if (!selectedDriver || !selectedDriverId) return null;
+    const point = driverDisplayPoint(selectedDriver);
+    const ageSeconds = num(selectedDriver.age_seconds);
+    const isLiveLocation =
+      point != null &&
+      !selectedDriver.is_stale &&
+      ageSeconds != null &&
+      ageSeconds <= 120;
+
+    return {
+      id: selectedDriverId,
+      name: String(selectedDriver.name || "").trim() || "Unknown driver",
+      phone: String(selectedDriver.phone || "").trim() || null,
+      callsign: String(selectedDriver.callsign || "").trim() || null,
+      plateNumber: String(selectedDriver.plate_number || "").trim() || null,
+      vehicleType: String(selectedDriver.vehicle_type || "").trim() || null,
+      currentTown:
+        String(selectedDriver.current_town || selectedDriver.town || "").trim() ||
+        null,
+      homeTown: String(selectedDriver.home_town || "").trim() || null,
+      townSource: String(selectedDriver.town_source || "").trim() || null,
+      status: driverStatusText(selectedDriver) || "unknown",
+      updatedAt: selectedDriver.updated_at || null,
+      ageText: formatDriverAge(ageSeconds),
+      point,
+      isLiveLocation,
+      activeTripCode:
+        String(
+          selectedDriverTrip?.booking_code ??
+            selectedDriverTrip?.bookingCode ??
+            selectedDriverTrip?.id ??
+            ""
+        ).trim() || null,
+      activeTripStatus:
+        String(selectedDriverTrip?.status ?? "").trim() || null,
+    };
+  }, [selectedDriver, selectedDriverId, selectedDriverTrip]);
+
   useEffect(() => {
     if (mapRef.current || !containerRef.current) return;
 
@@ -732,7 +866,9 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const feature = e.features?.[0];
       const coordinates = (feature?.geometry as any)?.coordinates;
       const title = (feature?.properties as any)?.title;
+      const driverId = String((feature?.properties as any)?.driverId ?? "");
       if (!Array.isArray(coordinates) || coordinates.length < 2) return;
+      if (driverId) onDriverSelectRef.current?.(driverId);
       new mapboxgl.Popup({ closeButton: false, closeOnClick: true })
         .setLngLat([Number(coordinates[0]), Number(coordinates[1])])
         .setText(String(title ?? "Driver"))
@@ -774,8 +910,12 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       const id = String(raw.id ?? raw.bookingCode ?? i);
       const tripDriverId = String(raw.driver_id ?? raw.assigned_driver_id ?? "");
       if (tripDriverId) tripDriverIds.add(tripDriverId);
+      const driverRow = drivers.find(
+        (driver) => String(driver.driver_id || "") === tripDriverId
+      );
 
-      const driverReal = getDriverReal(raw);
+      const driverReal =
+        (driverRow ? driverDisplayPoint(driverRow) : null) ?? getDriverReal(raw);
       const driverDisplay = getDriverDisplay(driverReal);
       const pickup = getPickup(raw);
       const drop = getDropoff(raw);
@@ -801,6 +941,18 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
             el.classList.remove("jride-marker-blink");
           }
         }
+        const markerElement = marker.getElement();
+        markerElement.classList.toggle(
+          "jride-driver-selected",
+          Boolean(tripDriverId) && tripDriverId === selectedDriverId
+        );
+        markerElement.style.cursor = tripDriverId ? "pointer" : "default";
+        markerElement.title = driverRow
+          ? driverMarkerTitle(driverRow)
+          : String(raw.driver_name ?? raw.driverName ?? "Driver");
+        markerElement.onclick = tripDriverId
+          ? () => onDriverSelectRef.current?.(tripDriverId)
+          : null;
         nextDrivers[id] = marker;
       }
 
@@ -877,7 +1029,8 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     const standaloneDriversData = buildStandaloneDriversGeoJSON(
       drivers,
       tripDriverIds,
-      standaloneDriverLastPointRef.current
+      standaloneDriverLastPointRef.current,
+      selectedDriverId
     );
     const standaloneDriverIds = new Set(
       standaloneDriversData.features.map((feature) => String(feature.properties?.driverId ?? "")).filter(Boolean)
@@ -914,7 +1067,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
     pickupMarkersRef.current = nextPickups;
     dropMarkersRef.current = nextDrops;
     routeIdsRef.current = validRouteIds;
-  }, [visibleTrips, drivers, activeStuckIds, mapReady]);
+  }, [visibleTrips, drivers, activeStuckIds, mapReady, selectedDriverId]);
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -936,7 +1089,51 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
   }, [townFilter, mapReady]);
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedTripId) return;
+    if (!map || !mapReady) return;
+
+    if (!selectedDriverId) {
+      lastSelectedDriverIdRef.current = null;
+      selectedDriverLastPointRef.current = null;
+      setFollowSelectedDriver(false);
+      return;
+    }
+
+    const driver = drivers.find(
+      (row) => String(row.driver_id || "") === selectedDriverId
+    );
+    if (!driver) return;
+
+    const target = driverDisplayPoint(driver);
+    const isNewSelection = lastSelectedDriverIdRef.current !== selectedDriverId;
+
+    if (isNewSelection) {
+      lastSelectedDriverIdRef.current = selectedDriverId;
+      selectedDriverLastPointRef.current = null;
+      setFollowSelectedDriver(false);
+    } else if (!followSelectedDriver) {
+      return;
+    }
+
+    if (!target) return;
+
+    if (selectedDriverLastPointRef.current && !isNewSelection) {
+      const distance = distanceMeters(selectedDriverLastPointRef.current, target);
+      if (distance < 30) return;
+    }
+
+    selectedDriverLastPointRef.current = target;
+    lastFollowRef.current = null;
+
+    map.flyTo({
+      center: target,
+      zoom: 16,
+      speed: 1.2,
+      essential: true,
+    });
+  }, [selectedDriverId, drivers, mapReady, followSelectedDriver]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedTripId || selectedDriverId) return;
 
     const raw = trips.find((t: any) => String(t.id ?? t.bookingCode ?? "") === selectedTripId) as any | undefined;
     if (!raw) return;
@@ -961,7 +1158,7 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       speed: 1.2,
       essential: true,
     });
-  }, [selectedTripId, trips]);
+  }, [selectedTripId, selectedDriverId, trips]);
 
   return (
     <>
@@ -1070,7 +1267,103 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
           )}
         </div>
 
-        {selectedOverview && (
+        {selectedDriverOverview && (
+          <div className="pointer-events-auto absolute bottom-3 right-3 z-20 w-80 space-y-2 rounded-xl border border-blue-200 bg-white/95 p-3 text-xs shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                  {selectedDriverOverview.point
+                    ? selectedDriverOverview.isLiveLocation
+                      ? "Live location"
+                      : "Last known location"
+                    : "No usable GPS location"}
+                </div>
+                <div className="font-semibold text-slate-900">
+                  {selectedDriverOverview.name}
+                </div>
+                <div className="font-mono text-[9px] text-slate-400">
+                  {selectedDriverOverview.id}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onDriverSelect?.(null)}
+                className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            </div>
+
+            <div className="space-y-1 text-[11px] text-slate-700">
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Status</span>
+                <span className="font-medium">{selectedDriverOverview.status}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Last update</span>
+                <span className="text-right font-medium">
+                  {selectedDriverOverview.ageText}
+                  <br />
+                  <span className="text-[9px] font-normal text-slate-400">
+                    {formatPHDateTime(selectedDriverOverview.updatedAt)}
+                  </span>
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Current town</span>
+                <span className="text-right font-medium">
+                  {selectedDriverOverview.currentTown ?? "--"}
+                  <br />
+                  <span className="text-[9px] font-normal text-slate-400">
+                    {townSourceLabel(selectedDriverOverview.townSource)}
+                  </span>
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Registered town</span>
+                <span className="font-medium">{selectedDriverOverview.homeTown ?? "--"}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Phone</span>
+                <span className="font-medium">{selectedDriverOverview.phone ?? "--"}</span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Plate / vehicle</span>
+                <span className="text-right font-medium">
+                  {selectedDriverOverview.plateNumber ?? "--"}
+                  {selectedDriverOverview.vehicleType
+                    ? " / " + selectedDriverOverview.vehicleType
+                    : ""}
+                </span>
+              </div>
+              <div className="flex justify-between gap-3">
+                <span className="text-slate-500">Active trip</span>
+                <span className="text-right font-medium">
+                  {selectedDriverOverview.activeTripCode ?? "None"}
+                  {selectedDriverOverview.activeTripStatus
+                    ? " / " + selectedDriverOverview.activeTripStatus
+                    : ""}
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={!selectedDriverOverview.point}
+              onClick={() => setFollowSelectedDriver((value) => !value)}
+              className={[
+                "w-full rounded-lg border px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50",
+                followSelectedDriver
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+              ].join(" ")}
+            >
+              {followSelectedDriver ? "Following driver" : "Follow driver"}
+            </button>
+          </div>
+        )}
+
+        {!selectedDriverOverview && selectedOverview && (
           <div className="pointer-events-auto absolute bottom-3 right-3 z-20 w-80 rounded-xl bg-white/90 p-3 text-xs shadow-md space-y-2">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-semibold text-slate-800">Driver live overview</span>
@@ -1138,6 +1431,11 @@ export const LiveTripsMap: React.FC<LiveTripsMapProps> = ({
       <style jsx global>{`
         .jride-marker-blink {
           animation: jride-pulse 1.3s infinite;
+        }
+        .jride-driver-selected {
+          border-radius: 9999px;
+          outline: 4px solid rgba(37, 99, 235, 0.9);
+          box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.25);
         }
         @keyframes jride-pulse {
           0% {

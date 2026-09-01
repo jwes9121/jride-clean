@@ -7,7 +7,7 @@ import SmartAutoAssignSuggestions from "./components/SmartAutoAssignSuggestions"
 import TripWalletPanel from "./components/TripWalletPanel";
 import TripLifecycleActions from "./components/TripLifecycleActions";
 
-function formatLastSeen(ageSeconds?: number) {
+function formatLastSeen(ageSeconds?: number | null) {
   if (!ageSeconds && ageSeconds !== 0) return "--";
   if (ageSeconds < 60) return ageSeconds + "s ago";
   if (ageSeconds < 3600) return Math.floor(ageSeconds / 60) + "m ago";
@@ -72,18 +72,25 @@ type TripRow = {
 
 type DriverRow = {
   driver_id: string;
-  lat?: number;
-  lng?: number;
-  status?: string;
-  effective_status?: string;
-  updated_at?: string;
-  updated_at_ph?: string;
-  age_seconds?: number;
-  assign_eligible?: boolean;
-  is_stale?: boolean;
-  name?: string;
-  phone?: string;
-  town?: string;
+  lat?: number | null;
+  lng?: number | null;
+  status?: string | null;
+  effective_status?: string | null;
+  updated_at?: string | null;
+  updated_at_ph?: string | null;
+  age_seconds?: number | null;
+  assign_eligible?: boolean | null;
+  is_stale?: boolean | null;
+  name?: string | null;
+  phone?: string | null;
+  callsign?: string | null;
+  plate_number?: string | null;
+  vehicle_type?: string | null;
+  town?: string | null;
+  current_town?: string | null;
+  home_town?: string | null;
+  town_source?: string | null;
+  gps_town_verified?: boolean | null;
 };
 
 type PageData = {
@@ -643,7 +650,7 @@ function statusPillClass(status: string): string {
   return "border-slate-200 bg-white text-slate-700";
 }
 
-function seenAgoTone(ageSeconds?: number): string {
+function seenAgoTone(ageSeconds?: number | null): string {
   if (!Number.isFinite(ageSeconds as number)) return "text-slate-400";
   const age = Number(ageSeconds ?? 0);
   if (age <= 30) return "text-emerald-600 font-medium";
@@ -747,6 +754,7 @@ export default function LiveTripsClient() {
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [allTrips, setAllTrips] = useState<TripRow[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("dispatch");
   const [tripFilter, setTripFilter] = useState<FilterKey>("dispatch");
@@ -776,6 +784,15 @@ export default function LiveTripsClient() {
   const refreshAllRef = useRef<((source?: string) => Promise<void>) | null>(null);
   const supabaseRef = useRef<SupabaseClient | null>(null);
   const channelsRef = useRef<RealtimeChannel[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const driverId = new URL(window.location.href).searchParams.get("driver");
+    if (!driverId) return;
+    setSelectedDriverId(driverId);
+    setSelectedTripId(null);
+    setViewMode("drivers");
+  }, []);
 
   const loadPage = useCallback(async () => {
     const params = new URLSearchParams();
@@ -813,9 +830,6 @@ export default function LiveTripsClient() {
     const endpoints = [
       "/api/admin/driver_locations?t=" + ts,
       "/api/admin/driver-locations?t=" + ts,
-      "/api/admin/drivers?t=" + ts,
-      "/api/driver_locations?t=" + ts,
-      "/api/driver-locations?t=" + ts,
     ];
 
     for (const url of endpoints) {
@@ -1127,12 +1141,24 @@ export default function LiveTripsClient() {
 
   const mapTrips = useMemo(() => {
     if (viewMode === "drivers") {
-      return selectedTripId
-        ? allTrips.filter((t) => normTripId(t) === selectedTripId)
-        : visibleTrips.slice(0, 50);
+      const selectedDriverTrip = selectedDriverId
+        ? allTrips.find(
+            (trip) =>
+              String(trip.assigned_driver_id || trip.driver_id || "") ===
+              selectedDriverId
+          ) || null
+        : null;
+      const base = visibleTrips.slice(0, 50);
+      if (
+        selectedDriverTrip &&
+        !base.some((trip) => normTripId(trip) === normTripId(selectedDriverTrip))
+      ) {
+        return [selectedDriverTrip, ...base.slice(0, 49)];
+      }
+      return base;
     }
     return visibleTrips;
-  }, [viewMode, allTrips, visibleTrips, selectedTripId]);
+  }, [viewMode, allTrips, visibleTrips, selectedDriverId]);
 
   useEffect(() => {
     if (viewMode === "drivers") return;
@@ -1216,9 +1242,14 @@ export default function LiveTripsClient() {
       if (townFilter !== "all" && town.toLowerCase() !== townFilter.toLowerCase()) return false;
       if (!queryNeedle) return true;
       const hay = [
+        row.driver.driver_id,
         row.driver.name,
+        row.driver.callsign,
         row.driver.phone,
+        row.driver.plate_number,
+        row.driver.vehicle_type,
         row.driver.town,
+        row.driver.home_town,
         row.driver.status,
         row.driver.effective_status,
         row.activeTrip?.booking_code,
@@ -1228,6 +1259,34 @@ export default function LiveTripsClient() {
       return hay.includes(queryNeedle);
     });
   }, [driverRows, townFilter, queryNeedle]);
+
+  function selectDriver(driverId: string | null) {
+    const normalizedDriverId = String(driverId || "").trim() || null;
+    setSelectedDriverId(normalizedDriverId);
+
+    if (normalizedDriverId) {
+      setViewMode("drivers");
+      setTripFilter("dispatch");
+      setSelectedTripId(null);
+      const selected = drivers.find(
+        (driver) => String(driver.driver_id || "") === normalizedDriverId
+      );
+      setLastAction(
+        "Located driver " +
+          (String(selected?.name || "").trim() || normalizedDriverId)
+      );
+    }
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (normalizedDriverId) {
+        url.searchParams.set("driver", normalizedDriverId);
+      } else {
+        url.searchParams.delete("driver");
+      }
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
+  }
 
   function pillClass(active: boolean) {
     return [
@@ -1247,10 +1306,15 @@ export default function LiveTripsClient() {
 
   function setModeAndFocus(mode: ViewMode) {
     setViewMode(mode);
+    if (mode !== "drivers" && selectedDriverId) {
+      selectDriver(null);
+    }
     if (mode === "dispatch") {
       setTripFilter("dispatch");
     } else if (mode === "trips") {
       setTripFilter("pending");
+    } else if (mode === "drivers") {
+      setTripFilter("dispatch");
     }
     setTimeout(() => {
       if (tableRef.current) {
@@ -1514,14 +1578,35 @@ export default function LiveTripsClient() {
       <div className="mt-4 rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Filter Current View</div>
-            <div className="text-xs text-slate-500">Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup.</div>
+            <div className="text-sm font-semibold text-slate-900">
+              {viewMode === "drivers" ? "Driver Locator" : "Filter Current View"}
+            </div>
+            <div className="text-xs text-slate-500">
+              {viewMode === "drivers"
+                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point."
+                : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup."}
+            </div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(280px,1fr),200px,auto]">
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search booking / passenger / driver / phone"
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  viewMode === "drivers" &&
+                  Boolean(queryNeedle) &&
+                  filteredDriverRows.length > 0
+                ) {
+                  e.preventDefault();
+                  selectDriver(filteredDriverRows[0].driver.driver_id);
+                }
+              }}
+              placeholder={
+                viewMode === "drivers"
+                  ? "Search driver name / phone / plate / ID"
+                  : "Search booking / passenger / driver / phone"
+              }
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
             />
             <select
@@ -1714,6 +1799,7 @@ export default function LiveTripsClient() {
                   <tr className="text-left">
                     <th className="p-2">Driver</th>
                     <th className="p-2">Phone</th>
+                    <th className="p-2">Plate / Vehicle</th>
                     <th className="p-2">Town</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Trips</th>
@@ -1721,12 +1807,13 @@ export default function LiveTripsClient() {
                     <th className="p-2">Seen Ago</th>
                     <th className="p-2">Eligible</th>
                     <th className="p-2">Stale</th>
+                    <th className="p-2">Map</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDriverRows.length === 0 ? (
                     <tr>
-                      <td className="p-3 text-gray-600" colSpan={9}>
+                      <td className="p-3 text-gray-600" colSpan={11}>
                         No drivers in this view.
                       </td>
                     </tr>
@@ -1734,7 +1821,7 @@ export default function LiveTripsClient() {
                     filteredDriverRows.map((row) => {
                       const d = row.driver;
                       const trip = row.activeTrip;
-                      const isSel = trip ? selectedTripId === normTripId(trip) : false;
+                      const isSel = selectedDriverId === String(d.driver_id || "");
 
                       return (
                         <tr
@@ -1742,17 +1829,21 @@ export default function LiveTripsClient() {
                           className={[
                             "border-b",
                             driverRowTone(d),
-                            trip ? "cursor-pointer hover:bg-gray-50" : "",
+                            "hover:bg-gray-50",
                             isSel ? "ring-1 ring-inset ring-blue-300" : "",
                           ].join(" ")}
-                          onClick={() => {
-                            if (trip) {
-                              setSelectedTripId(normTripId(trip));
-                            }
-                          }}
                         >
-                          <td className="p-2 font-medium">{labelOrDash(d.name)}</td>
+                          <td className="p-2">
+                            <div className="font-medium">{labelOrDash(d.name)}</div>
+                            <div className="font-mono text-[10px] text-slate-400">
+                              {d.callsign ? d.callsign + " / " : ""}{d.driver_id}
+                            </div>
+                          </td>
                           <td className="p-2">{labelOrDash(d.phone)}</td>
+                          <td className="p-2">
+                            <div>{labelOrDash(d.plate_number)}</div>
+                            <div className="text-[10px] text-slate-500">{labelOrDash(d.vehicle_type)}</div>
+                          </td>
                           <td className="p-2">{labelOrDash(d.town)}</td>
                           <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
                           <td className="p-2">
@@ -1775,6 +1866,21 @@ export default function LiveTripsClient() {
                             {(d as any).is_stale
                               ? <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">STALE</span>
                               : <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">FRESH</span>}
+                          </td>
+                          <td className="p-2">
+                            <button
+                              type="button"
+                              aria-pressed={isSel}
+                              onClick={() => selectDriver(d.driver_id)}
+                              className={[
+                                "rounded-full border px-2.5 py-1 text-xs font-semibold",
+                                isSel
+                                  ? "border-blue-600 bg-blue-600 text-white"
+                                  : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+                              ].join(" ")}
+                            >
+                              {isSel ? "Selected" : "Locate"}
+                            </button>
                           </td>
                         </tr>
                       );
@@ -2048,8 +2154,10 @@ export default function LiveTripsClient() {
             trips={mapTrips as any}
             drivers={drivers as any}
             selectedTripId={selectedTripId}
+            selectedDriverId={selectedDriverId}
             stuckTripIds={stuckTripIds as any}
             townFilter={townFilter}
+            onDriverSelect={selectDriver}
             onEmergencyAssign={async (bookingCode) => {
               await emergencyAssignNearest(bookingCode);
             }}
