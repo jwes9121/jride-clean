@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
+import { normalizeIfugaoTown, reverseGeocodeIfugaoTown } from "../_lib/location";
 import { fetchAgrimarketDrivingRoute } from "../_lib/routing";
 import {
   agrimarketDisabledResponse,
@@ -40,6 +41,7 @@ type ProductRow = {
 
 type ProducerRow = {
   id: string;
+  town: string;
   pickup_lat: number;
   pickup_lng: number;
   status: string;
@@ -72,6 +74,12 @@ function roundedHalfKm(value: number): number {
 function validFutureIso(value: unknown, nowMs: number): boolean {
   const ms = Date.parse(String(value || ""));
   return Number.isFinite(ms) && ms > nowMs;
+}
+
+function sameTown(a: unknown, b: unknown): boolean {
+  const aa = normalizeIfugaoTown(a);
+  const bb = normalizeIfugaoTown(b);
+  return Boolean(aa && bb && aa === bb);
 }
 
 async function loadRoadMetrics(
@@ -173,13 +181,24 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const pricingRes = await admin
-      .from("agrimarket_pricing_settings")
-      .select("pricing_version,currency,base_delivery_fee,route_fee_per_km,rounding_mode")
-      .eq("id", 1)
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+    const [deliveryTown, pricingRes, productRes] = await Promise.all([
+      reverseGeocodeIfugaoTown(customerLat, customerLng),
+      admin
+        .from("agrimarket_pricing_settings")
+        .select("pricing_version,currency,base_delivery_fee,route_fee_per_km,rounding_mode")
+        .eq("id", 1)
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle(),
+      admin
+        .from("agrimarket_products")
+        .select(
+          "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
+        )
+        .eq("is_active", true)
+        .gt("remaining_quantity", 0)
+        .limit(500),
+    ]);
 
     if (pricingRes.error || !pricingRes.data) {
       return jsonNoStore(503, {
@@ -188,15 +207,6 @@ export async function GET(req: NextRequest) {
         message: pricingRes.error?.message || "Agrimarket pricing is not configured.",
       });
     }
-
-    const productRes = await admin
-      .from("agrimarket_products")
-      .select(
-        "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
-      )
-      .eq("is_active", true)
-      .gt("remaining_quantity", 0)
-      .limit(500);
 
     if (productRes.error) {
       return jsonNoStore(500, {
@@ -212,7 +222,13 @@ export async function GET(req: NextRequest) {
     const baseResponse = {
       ok: true,
       ordering_enabled: true,
-      address: { id: address.id, label: address.label || address.address_text },
+      address: {
+        id: address.id,
+        label: address.label || address.address_text,
+        town: deliveryTown,
+        town_resolution: deliveryTown ? "resolved" : "unresolved",
+        town_source: deliveryTown ? "mapbox_geocoding_v6_place" : null,
+      },
       delivery_pricing: {
         pricing_version: Number((pricingRes.data as any).pricing_version || 1),
         currency: String((pricingRes.data as any).currency || "PHP"),
@@ -222,8 +238,11 @@ export async function GET(req: NextRequest) {
         route_basis: "road_route",
       },
       ranking_basis: "road_route_proximity_to_selected_delivery_pin",
-      producer_location_disclosure: "hidden",
+      producer_location_disclosure: "town_and_road_distance_only_exact_pickup_hidden",
       cart_policy: "single_farmer_single_fulfillment_mode",
+      search_areas: ["near_me", "my_town", "nearby_towns", "all_ifugao"],
+      sort_options: ["closest_recommended", "lowest_price", "availability", "price_distance"],
+      cross_town_notice_rule: "producer_town_differs_from_delivery_town",
     };
 
     if (!producerIds.length) {
@@ -232,7 +251,7 @@ export async function GET(req: NextRequest) {
 
     const producerRes = await admin
       .from("agrimarket_producers")
-      .select("id,pickup_lat,pickup_lng,status,accepting_orders")
+      .select("id,town,pickup_lat,pickup_lng,status,accepting_orders")
       .in("id", producerIds)
       .eq("status", "active")
       .eq("accepting_orders", true);
@@ -286,6 +305,8 @@ export async function GET(req: NextRequest) {
         const proximityRank = rankByProductAndProducer.get(`${normalizedName}|${row.producer_id}`) || 1;
         const scheduledHarvest = row.availability_mode === "scheduled_harvest";
         const metric = roadMetrics.get(row.producer_id)!;
+        const producer = producerById.get(row.producer_id)!;
+        const producerTown = normalizeIfugaoTown(producer.town) || String(producer.town || "").trim() || null;
         const reservationOpen = !scheduledHarvest || validFutureIso(row.harvest_order_cutoff_at, nowMs);
         const harvestWindowKey = scheduledHarvest
           ? `${row.harvest_start_at || ""}|${row.harvest_end_at || row.harvest_start_at || ""}`
@@ -295,12 +316,17 @@ export async function GET(req: NextRequest) {
           id: row.id,
           name: row.name,
           producer_alias: `${row.name} Farmer ${proximityRank}`,
+          producer_town: producerTown,
           proximity_rank: proximityRank,
           cart_group_key: cartGroupByProducer.get(row.producer_id),
           harvest_window_key: harvestWindowKey,
+          road_distance_km: metric.distanceKm,
+          road_duration_minutes: Math.max(1, Math.round(metric.durationSeconds / 60)),
           approximate_road_distance_km: roundedHalfKm(metric.distanceKm),
           approximate_road_duration_minutes: Math.max(1, Math.round(metric.durationSeconds / 60)),
-          distance_disclosure: "road_route_rounded_to_nearest_0_5_km",
+          distance_disclosure: "exact_road_route_distance_customer_to_farmer",
+          is_cross_town: Boolean(deliveryTown && producerTown && !sameTown(deliveryTown, producerTown)),
+          cross_town_notice_required: Boolean(deliveryTown && producerTown && !sameTown(deliveryTown, producerTown)),
           description: row.description,
           product_group: row.product_group,
           species: row.species,
