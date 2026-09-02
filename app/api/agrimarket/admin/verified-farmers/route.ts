@@ -20,8 +20,12 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function singleLine(value: unknown): string {
+  return text(value).replace(/\s+/g, " ");
+}
+
 function cleanSingleLine(value: unknown, maxLength: number): string {
-  return text(value).replace(/\s+/g, " ").slice(0, maxLength);
+  return singleLine(value).slice(0, maxLength);
 }
 
 function normalizePhone(value: unknown): string | null {
@@ -33,7 +37,9 @@ function normalizePhone(value: unknown): string | null {
 }
 
 function finiteCoordinate(value: unknown, kind: "lat" | "lng"): number | null {
-  const parsed = Number(value);
+  const raw = text(value);
+  if (!raw) return null;
+  const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return null;
   if (kind === "lat" && (parsed < -90 || parsed > 90)) return null;
   if (kind === "lng" && (parsed < -180 || parsed > 180)) return null;
@@ -100,6 +106,13 @@ async function unusedAccessCode(admin: AdminClient): Promise<string> {
 
 function provisioningFailure(error: any) {
   const raw = String(error?.message || error || "");
+  if (raw.includes("AGRIMARKET_ADMIN_REQUIRED")) {
+    return jsonNoStore(403, {
+      ok: false,
+      error: "AGRIMARKET_ADMIN_REQUIRED",
+      message: "Administrator approval is required for verified-farmer provisioning.",
+    });
+  }
   if (raw.includes("FARMER_PHONE_ALREADY_REGISTERED")) {
     return jsonNoStore(409, {
       ok: false,
@@ -257,44 +270,47 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const farmerName = cleanSingleLine(body?.farmer_name || body?.contact_name || body?.name, 120);
-    const phoneDisplay = cleanSingleLine(body?.phone, 30);
+    const farmerName = singleLine(body?.farmer_name || body?.contact_name || body?.name);
+    const phoneDisplay = singleLine(body?.phone);
     const phoneNormalized = normalizePhone(phoneDisplay);
     const town = TOWN_BY_LOWER.get(text(body?.town).toLowerCase()) || null;
-    const barangay = cleanSingleLine(body?.barangay, 100) || null;
-    const pickupLabel = cleanSingleLine(body?.private_pickup_label || body?.pickup_label, 180);
+    const barangay = singleLine(body?.barangay) || null;
+    const pickupLabel = singleLine(body?.private_pickup_label || body?.pickup_label);
     const pickupLat = finiteCoordinate(body?.private_pickup_lat ?? body?.pickup_lat, "lat");
     const pickupLng = finiteCoordinate(body?.private_pickup_lng ?? body?.pickup_lng, "lng");
     const products = cleanProducts(body?.intended_products);
-    const verificationMethod = cleanSingleLine(body?.verification_method || body?.identity_type, 80);
+    const verificationMethod = singleLine(body?.verification_method || body?.identity_type);
     const identityLast4Raw = text(body?.identity_reference_last4).replace(/\s+/g, "").toUpperCase();
     const identityLast4 = identityLast4Raw || null;
-    const verificationNote = text(body?.verification_note).slice(0, 1000);
+    const verificationNote = text(body?.verification_note);
     const verificationConfirmed = body?.verification_confirmed === true;
 
-    if (farmerName.length < 2) {
-      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_NAME_INVALID", message: "Enter the farmer's full name." });
+    if (farmerName.length < 2 || farmerName.length > 120) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_NAME_INVALID", message: "Enter the farmer's full name, up to 120 characters." });
     }
-    if (!phoneNormalized) {
+    if (!phoneNormalized || phoneDisplay.length < 10 || phoneDisplay.length > 30) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PHONE_INVALID", message: "Enter a valid Philippine mobile number." });
     }
     if (!town) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_TOWN_INVALID", message: "Choose an Agrimarket launch municipality." });
     }
-    if (!pickupLabel || pickupLat == null || pickupLng == null) {
+    if (barangay && barangay.length > 100) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_BARANGAY_INVALID", message: "Barangay must be 100 characters or fewer." });
+    }
+    if (pickupLabel.length < 2 || pickupLabel.length > 180 || pickupLat == null || pickupLng == null) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID", message: "Enter the private pickup description and exact latitude/longitude." });
     }
     if (!products.length) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_INTENDED_PRODUCTS_REQUIRED", message: "List at least one product the farmer expects to sell." });
     }
-    if (verificationMethod.length < 2) {
-      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFICATION_METHOD_INVALID", message: "Record how JRide verified this farmer." });
+    if (verificationMethod.length < 2 || verificationMethod.length > 80) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFICATION_METHOD_INVALID", message: "Record how JRide verified this farmer, up to 80 characters." });
     }
     if (identityLast4 && !/^[A-Z0-9]{2,4}$/.test(identityLast4)) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ID_REFERENCE_INVALID", message: "Enter only the last 2 to 4 letters or numbers of the identity reference." });
     }
-    if (verificationNote.length < 5) {
-      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFICATION_NOTE_REQUIRED", message: "Enter a short verification note for the audit record." });
+    if (verificationNote.length < 5 || verificationNote.length > 1000) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFICATION_NOTE_REQUIRED", message: "Enter a verification note between 5 and 1000 characters for the audit record." });
     }
     if (!verificationConfirmed) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFICATION_CONFIRMATION_REQUIRED", message: "Confirm that JRide verified the farmer and private pickup pin before creating access." });
