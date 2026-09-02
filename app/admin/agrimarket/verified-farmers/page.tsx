@@ -309,7 +309,7 @@ export default function VerifiedFarmersAdminPage() {
             <button disabled={submitting || staffRole !== "admin"} className="mt-5 w-full rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:bg-slate-400">
               {submitting ? "Creating farmer access..." : "Create verified farmer access"}
             </button>
-            <p className="mt-2 text-center text-xs text-slate-500">Administrator only. No public application is created or opened for submission.</p>
+            <p className="mt-2 text-center text-xs text-slate-500">Administrator only. Public self-application remains closed; this creates an approved staff-verification audit record.</p>
           </form>
 
           <aside className="h-fit rounded-3xl border bg-white p-5 shadow-sm">
