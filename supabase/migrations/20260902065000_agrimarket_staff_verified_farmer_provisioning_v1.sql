@@ -5,7 +5,8 @@
 --   * an authenticated JRide administrator may provision a farmer already
 --     verified offline;
 --   * the existing AGF access-code + 6-digit PIN credential model is reused;
---   * the raw PIN is never stored, logged, or written into an audit row;
+--   * only a bcrypt PIN hash is persisted; the raw PIN is not written into
+--     producer, application, credential-audit, or event details;
 --   * provisioning creates a durable staff-attributed audit record.
 --
 -- Authorization is enforced twice:
@@ -124,6 +125,7 @@ DECLARE
   v_phone_display text := trim(coalesce(p_phone_display, ''));
   v_phone_normalized text := trim(coalesce(p_phone_normalized, ''));
   v_phone_digits text;
+  v_phone_display_digits text;
   v_town text := trim(coalesce(p_town, ''));
   v_barangay text := nullif(regexp_replace(trim(coalesce(p_barangay, '')), '[[:space:]]+', ' ', 'g'), '');
   v_pickup_label text := regexp_replace(trim(coalesce(p_pickup_label, '')), '[[:space:]]+', ' ', 'g');
@@ -181,6 +183,18 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  v_phone_digits := regexp_replace(v_phone_normalized, '[^0-9]', '', 'g');
+  v_phone_display_digits := regexp_replace(v_phone_display, '[^0-9]', '', 'g');
+
+  IF v_phone_display_digits NOT IN (
+    v_phone_digits,
+    substring(v_phone_digits FROM 3),
+    '0' || substring(v_phone_digits FROM 3)
+  ) THEN
+    RAISE EXCEPTION 'AGRIMARKET_VERIFIED_FARMER_PHONE_MISMATCH'
+      USING ERRCODE = 'P0001';
+  END IF;
+
   IF v_town NOT IN ('Lagawe', 'Hingyon', 'Kiangan', 'Banaue', 'Lamut') THEN
     RAISE EXCEPTION 'AGRIMARKET_VERIFIED_FARMER_TOWN_INVALID'
       USING ERRCODE = 'P0001';
@@ -234,8 +248,6 @@ BEGIN
     RAISE EXCEPTION 'AGRIMARKET_VERIFICATION_NOTE_REQUIRED'
       USING ERRCODE = 'P0001';
   END IF;
-
-  v_phone_digits := regexp_replace(v_phone_normalized, '[^0-9]', '', 'g');
 
   -- Serialize provisioning decisions for the canonical mobile number. This
   -- prevents concurrent staff requests from creating duplicate farmers.
