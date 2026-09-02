@@ -1,5 +1,5 @@
 import { randomBytes, randomInt } from "crypto";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import {
   createServiceSupabase,
   jsonNoStore,
@@ -137,7 +137,7 @@ function provisioningFailure(error: any) {
 
 export async function GET() {
   const staff = await requireAgrimarketStaff(true);
-  if (staff instanceof NextResponse) return staff;
+  if (!staff.ok) return staff.response;
 
   const admin = createServiceSupabase();
   const applicationsRes = await admin
@@ -253,7 +253,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const staff = await requireAgrimarketStaff(true);
-  if (staff instanceof NextResponse) return staff;
+  if (!staff.ok) return staff.response;
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -331,12 +331,13 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (rpcRes.error || !rpcRes.data) return provisioningFailure(rpcRes.error || new Error("No provisioning result returned."));
+    const provisioned: any = rpcRes.data;
 
     return jsonNoStore(201, {
       ok: true,
-      result: rpcRes.data,
+      result: provisioned,
       credential: {
-        access_code: rpcRes.data.access_code || generatedAccessCode,
+        access_code: provisioned.access_code || generatedAccessCode,
         temporary_pin: generatedPin,
         pin_visible_once: true,
         pin_stored_as_hash: true,
