@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
 const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
+const JRIDE_SUPPORT_EMAIL = "info@jride.net";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -63,60 +64,29 @@ function readPortalVendorId(): string {
   }
 }
 
-async function loadLegacyPortalStatus(): Promise<any | null> {
-  const vendorId = readPortalVendorId();
-  if (!vendorId) return null;
+function supportHref(status: any, suspension: any): string {
+  const vendorName = clean(status?.vendor_name) || "JRide vendor";
+  const vendorId = clean(status?.vendor_id) || "Not available";
+  const reference = clean(suspension?.reference) || "Not available";
+  const subject = `Vendor suspension question or dispute - ${reference}`;
+  const body = [
+    "Hello JRide,",
+    "",
+    "I have a question or would like to request a review of this vendor suspension.",
+    "",
+    `Vendor: ${vendorName}`,
+    `Vendor ID: ${vendorId}`,
+    `Suspension reference: ${reference}`,
+    `Suspension ends: ${fmt(suspension?.ends_at)}`,
+    `Reason shown: ${clean(suspension?.message) || "Not available"}`,
+    "",
+    "Question or dispute:",
+    "",
+  ].join("\n");
 
-  const response = await fetch(
-    `/api/vendor-hours?vendor_id=${encodeURIComponent(vendorId)}`,
-    {
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    }
-  );
-  const result = await response.json().catch(() => ({}));
-
-  if (!response.ok || result?.ok !== true) {
-    throw new Error(
-      result?.message || result?.error || "Vendor status could not be loaded."
-    );
-  }
-
-  const suspended = result?.suspended === true;
-  const warningActive = result?.public_response_warning_active === true;
-  if (!suspended && !warningActive) return null;
-
-  return {
-    ok: true,
-    vendor_id: clean(result?.vendor_id || vendorId),
-    vendor_name: clean(result?.display_name),
-    suspended,
-    legacy_session: true,
-    suspension: suspended
-      ? {
-          sanction_id: null,
-          violation_code: "COMPLIANCE_SUSPENSION",
-          message:
-            clean(result?.suspension_reason) ||
-            "JRide temporarily suspended new Takeout orders after an admin compliance review.",
-          starts_at: null,
-          ends_at: result?.suspended_until || null,
-          scope: "new_orders_only",
-          acknowledged_at: null,
-          acknowledgement_required: false,
-          reference: "SIGN-IN-REQUIRED",
-        }
-      : null,
-    public_response_warning_active: warningActive,
-    public_response_warning: warningActive
-      ? {
-          message:
-            clean(result?.public_response_warning_reason) ||
-            "Repeated expired Takeout orders",
-          ends_at: result?.public_response_warning_until || null,
-        }
-      : null,
-  };
+  return `mailto:${JRIDE_SUPPORT_EMAIL}?subject=${encodeURIComponent(
+    subject
+  )}&body=${encodeURIComponent(body)}`;
 }
 
 export default function VendorComplianceNotice() {
@@ -129,24 +99,31 @@ export default function VendorComplianceNotice() {
 
   const load = useCallback(async () => {
     if (!isVendorPortal) return;
+
     try {
-      const response = await fetch("/api/vendor/compliance-state", {
+      const vendorId = readPortalVendorId();
+      const query = vendorId
+        ? `?vendor_id=${encodeURIComponent(vendorId)}`
+        : "";
+      const response = await fetch(`/api/vendor/compliance-state${query}`, {
         cache: "no-store",
         headers: { Accept: "application/json" },
       });
       const result = await response.json().catch(() => ({}));
+
       if (!response.ok || result?.ok !== true) {
         if (response.status === 401) {
-          const legacyStatus = await loadLegacyPortalStatus();
-          setStatus(legacyStatus);
+          setStatus(null);
           setLoadError("");
-          setDetailsOpen(legacyStatus?.suspended === true);
           return;
         }
         throw new Error(
-          result?.message || result?.error || "Compliance status could not be loaded."
+          result?.message ||
+            result?.error ||
+            "Compliance status could not be loaded."
         );
       }
+
       setStatus(result);
       setLoadError("");
       if (result?.suspension?.acknowledgement_required === true) {
@@ -174,20 +151,28 @@ export default function VendorComplianceNotice() {
 
   async function acknowledge() {
     const sanctionId = clean(status?.suspension?.sanction_id);
+    const acknowledgementToken = clean(
+      status?.suspension?.acknowledgement_token
+    );
     if (!sanctionId || acknowledging) return;
 
     setAcknowledging(true);
     setLoadError("");
+
     try {
       const response = await fetch(
         "/api/vendor/compliance-state/acknowledge",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sanction_id: sanctionId }),
+          body: JSON.stringify({
+            sanction_id: sanctionId,
+            acknowledgement_token: acknowledgementToken || undefined,
+          }),
         }
       );
       const result = await response.json().catch(() => ({}));
+
       if (!response.ok || result?.ok !== true) {
         throw new Error(
           result?.message ||
@@ -195,6 +180,7 @@ export default function VendorComplianceNotice() {
             "The suspension notice could not be acknowledged."
         );
       }
+
       await load();
       setDetailsOpen(false);
     } catch (error: any) {
@@ -202,11 +188,6 @@ export default function VendorComplianceNotice() {
     } finally {
       setAcknowledging(false);
     }
-  }
-
-  function reauthenticate() {
-    if (typeof window === "undefined") return;
-    window.location.assign("/vendor-login?reason=suspension-notice");
   }
 
   if (!isVendorPortal) return null;
@@ -230,11 +211,10 @@ export default function VendorComplianceNotice() {
 
   const suspension = status?.suspension || null;
   const suspended = status?.suspended === true && Boolean(suspension);
-  const legacySession = status?.legacy_session === true;
   const acknowledgementRequired =
     suspension?.acknowledgement_required === true;
-  const showDetails =
-    suspended && (legacySession || acknowledgementRequired || detailsOpen);
+  const showDetails = suspended && (acknowledgementRequired || detailsOpen);
+  const contactHref = supportHref(status, suspension);
 
   return (
     <>
@@ -328,9 +308,7 @@ export default function VendorComplianceNotice() {
                 </div>
                 <div>
                   <span className="font-black">Reference:</span>{" "}
-                  {legacySession
-                    ? "Available after sign-in"
-                    : clean(suspension.reference) || "-"}
+                  {clean(suspension.reference) || "-"}
                 </div>
                 <div>
                   <span className="font-black">Scope:</span> New orders only
@@ -345,13 +323,14 @@ export default function VendorComplianceNotice() {
               manually open it again.
             </div>
 
-            {legacySession ? (
-              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs leading-5 text-amber-950">
-                This device is using an older vendor session. Sign in again to
-                verify the vendor identity, view the suspension reference, and
-                record acknowledgment of this notice.
+            <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs leading-5 text-blue-950">
+              <div className="font-black">Questions or disputes</div>
+              <div className="mt-1">
+                Contact JRide at {JRIDE_SUPPORT_EMAIL} and include the suspension
+                reference above. Requesting a review does not automatically
+                pause or remove the suspension.
               </div>
-            ) : null}
+            </div>
 
             {loadError ? (
               <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
@@ -359,20 +338,15 @@ export default function VendorComplianceNotice() {
               </div>
             ) : null}
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-md text-xs leading-5 text-slate-500">
-                To question or correct this action, contact JRide administration
-                and provide the suspension reference shown above.
-              </p>
-              {legacySession ? (
-                <button
-                  type="button"
-                  onClick={reauthenticate}
-                  className="rounded-xl bg-rose-700 px-5 py-3 text-sm font-black text-white"
-                >
-                  Sign in again to acknowledge
-                </button>
-              ) : acknowledgementRequired ? (
+            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <a
+                href={contactHref}
+                className="rounded-xl border border-blue-300 bg-white px-5 py-3 text-center text-sm font-black text-blue-800"
+              >
+                Question or dispute this suspension
+              </a>
+
+              {acknowledgementRequired ? (
                 <button
                   type="button"
                   disabled={acknowledging || !clean(suspension.sanction_id)}
