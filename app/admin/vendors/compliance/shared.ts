@@ -15,18 +15,6 @@ export type ManualSuspendPayload = {
 
 export const VIOLATION_OPTIONS: ViolationOption[] = [
   {
-    code: "REPEATED_ORDER_TIMEOUTS",
-    label: "Repeated expired Takeout orders",
-    defaultMessage:
-      "Your store did not respond to multiple Takeout orders within the required response time.",
-  },
-  {
-    code: "REPEATED_UNEXCUSED_OFFLINE_DAYS",
-    label: "Repeated unexcused offline days",
-    defaultMessage:
-      "Your store was unavailable for multiple scheduled operating days without an approved closure.",
-  },
-  {
     code: "CUSTOMER_COMPLAINT",
     label: "Confirmed customer complaint",
     defaultMessage:
@@ -90,14 +78,19 @@ export function fmt(value: unknown): string {
 }
 
 export function newRequestId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return "";
 }
 
 export function vendorName(vendor: any): string {
-  return clean(vendor?.display_name || vendor?.email || vendor?.id || "Vendor");
+  return clean(
+    vendor?.display_name || vendor?.email || vendor?.id || "Vendor"
+  );
 }
 
 export function isActiveSanction(row: any): boolean {
@@ -108,5 +101,10 @@ export function isActiveSanction(row: any): boolean {
 }
 
 export function isSuspension(row: any): boolean {
-  return ["suspension_7_days", "manual"].includes(clean(row?.sanction_type));
+  return [
+    "suspension_7_days",
+    "manual",
+    "automatic_7_days",
+    "automatic_30_days",
+  ].includes(clean(row?.sanction_type));
 }
