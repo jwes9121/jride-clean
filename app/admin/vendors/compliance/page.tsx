@@ -91,13 +91,13 @@ export default function VendorCompliancePage() {
     [data]
   );
 
-  const activeSuspendedVendorIds = useMemo(
+  const activeSuspendedVendorIds = useMemo<Set<string>>(
     () =>
-      new Set(
+      new Set<string>(
         activeSanctions
           .filter(isSuspension)
-          .map((row: any) => clean(row?.vendor_id))
-          .filter(Boolean)
+          .map((row: any): string => clean(row?.vendor_id))
+          .filter((vendorId: string) => vendorId.length > 0)
       ),
     [activeSanctions]
   );
