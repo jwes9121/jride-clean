@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  verifyLegacyComplianceAcknowledgementToken,
+} from "@/lib/vendorComplianceLegacyToken";
 import { requireVendorSession } from "@/lib/vendorSession";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +20,7 @@ function clean(value: unknown): string {
 }
 
 function isUuid(value: unknown): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(
     clean(value)
   );
 }
@@ -42,27 +45,56 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  const body = await req.json().catch(() => ({} as any));
+  const suppliedSanctionId = clean(body?.sanction_id);
   const session = await requireVendorSession(req, admin);
-  if (!session.ok) {
-    return json(session.status, {
-      ok: false,
-      error: session.error,
-      message: "Vendor sign-in is required.",
-    });
+
+  let vendorId = "";
+  let sanctionId = suppliedSanctionId;
+  let acknowledgementMode = "vendor_session";
+
+  if (session.ok) {
+    vendorId = clean(session.vendor.vendorId);
+  } else {
+    const legacyToken = verifyLegacyComplianceAcknowledgementToken(
+      body?.acknowledgement_token || body?.legacy_token
+    );
+
+    if (!legacyToken) {
+      return json(session.status, {
+        ok: false,
+        error: session.error,
+        message:
+          "This acknowledgement link expired. Refresh the vendor portal and try again.",
+      });
+    }
+
+    if (
+      suppliedSanctionId &&
+      suppliedSanctionId !== legacyToken.sanctionId
+    ) {
+      return json(400, {
+        ok: false,
+        error: "SUSPENSION_NOTICE_MISMATCH",
+        message: "The suspension notice changed. Refresh and try again.",
+      });
+    }
+
+    vendorId = legacyToken.vendorId;
+    sanctionId = legacyToken.sanctionId;
+    acknowledgementMode = "legacy_portal";
   }
 
-  const body = await req.json().catch(() => ({} as any));
-  const sanctionId = clean(body?.sanction_id);
-  if (!isUuid(sanctionId)) {
+  if (!isUuid(vendorId) || !isUuid(sanctionId)) {
     return json(400, {
       ok: false,
-      error: "INVALID_SANCTION_ID",
+      error: "INVALID_SUSPENSION_NOTICE",
       message: "A valid suspension notice is required.",
     });
   }
 
   const result = await admin.rpc("vendor_acknowledge_suspension_v1", {
-    p_vendor_id: clean(session.vendor.vendorId),
+    p_vendor_id: vendorId,
     p_sanction_id: sanctionId,
   });
 
@@ -82,5 +114,9 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return json(200, { ok: true, result: result.data });
+  return json(200, {
+    ok: true,
+    acknowledgement_mode: acknowledgementMode,
+    result: result.data,
+  });
 }
