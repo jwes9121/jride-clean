@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  signLegacyComplianceAcknowledgementToken,
+} from "@/lib/vendorComplianceLegacyToken";
 import { requireVendorSession } from "@/lib/vendorSession";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +17,12 @@ function json(status: number, payload: Record<string, any>) {
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function isUuid(value: unknown): boolean {
+  return /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(
+    clean(value)
+  );
 }
 
 function timestamp(value: unknown): number {
@@ -42,18 +51,26 @@ export async function GET(req: NextRequest) {
   }
 
   const session = await requireVendorSession(req, admin);
-  if (!session.ok) {
+  const legacyVendorId = clean(
+    req.nextUrl.searchParams.get("vendor_id") ||
+      req.nextUrl.searchParams.get("vendorId")
+  );
+  const legacySession = !session.ok && isUuid(legacyVendorId);
+
+  if (!session.ok && !legacySession) {
     return json(session.status, {
       ok: false,
       error: session.error,
       message:
         session.error === "VENDOR_ACCESS_DISABLED"
           ? "Vendor access is not currently enabled."
-          : "Vendor sign-in is required.",
+          : "Vendor sign-in or a remembered vendor portal is required.",
     });
   }
 
-  const vendorId = clean(session.vendor.vendorId);
+  const vendorId = session.ok
+    ? clean(session.vendor.vendorId)
+    : legacyVendorId;
   const nowIso = new Date().toISOString();
 
   const expiry = await admin.rpc("expire_vendor_sanctions_v1");
@@ -72,7 +89,7 @@ export async function GET(req: NextRequest) {
     admin
       .from("vendor_accounts")
       .select(
-        "id,public_response_warning_until,public_response_warning_reason,suspended_until,suspension_reason"
+        "id,display_name,email,public_response_warning_until,public_response_warning_reason,suspended_until,suspension_reason"
       )
       .eq("id", vendorId)
       .maybeSingle(),
@@ -118,6 +135,13 @@ export async function GET(req: NextRequest) {
   const suspended = Boolean(sanction) || accountSuspended;
   const warningActive =
     timestamp(vendor.public_response_warning_until) > Date.now();
+  const acknowledgementRequired = Boolean(
+    sanction?.id && !sanction?.acknowledged_at
+  );
+  const legacyAcknowledgementToken =
+    legacySession && acknowledgementRequired
+      ? signLegacyComplianceAcknowledgementToken(vendorId, sanction?.id)
+      : null;
 
   const suspension = suspended
     ? {
@@ -132,9 +156,8 @@ export async function GET(req: NextRequest) {
         ends_at: sanction?.ends_at || vendor.suspended_until || null,
         scope: clean(sanction?.suspension_scope) || "new_orders_only",
         acknowledged_at: sanction?.acknowledged_at || null,
-        acknowledgement_required: Boolean(
-          sanction?.id && !sanction?.acknowledged_at
-        ),
+        acknowledgement_required: acknowledgementRequired,
+        acknowledgement_token: legacyAcknowledgementToken,
         reference: clean(sanction?.id)
           ? clean(sanction.id).slice(0, 8).toUpperCase()
           : "LEGACY",
@@ -144,7 +167,10 @@ export async function GET(req: NextRequest) {
   return json(200, {
     ok: true,
     vendor_id: vendorId,
-    vendor_name: session.vendor.vendorName,
+    vendor_name: session.ok
+      ? session.vendor.vendorName
+      : clean(vendor.display_name || vendor.email || vendorId),
+    legacy_session: legacySession,
     suspended,
     suspension,
     public_response_warning_active: warningActive,
