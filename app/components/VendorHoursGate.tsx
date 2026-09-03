@@ -29,6 +29,9 @@ type HoursStatus = {
   daily_opened: boolean;
   daily_open_date: string | null;
   daily_opened_at: string | null;
+  suspended?: boolean;
+  suspended_until?: string | null;
+  suspension_reason?: string | null;
   reason: string;
 };
 
@@ -44,7 +47,10 @@ function readVendorId(): string {
   if (typeof window === "undefined") return "";
 
   for (const key of VENDOR_ID_KEYS) {
-    const values = [window.sessionStorage.getItem(key), window.localStorage.getItem(key)];
+    const values = [
+      window.sessionStorage.getItem(key),
+      window.localStorage.getItem(key),
+    ];
     for (const value of values) {
       const id = clean(value);
       if (id) return id;
@@ -64,7 +70,7 @@ function formatClock(value: string | null): string {
   return `${twelve}:${minute} ${suffix}`;
 }
 
-function formatManilaDateTime(value: string | null): string {
+function formatManilaDateTime(value: string | null | undefined): string {
   const raw = clean(value);
   if (!raw) return "";
   const date = new Date(raw);
@@ -80,35 +86,63 @@ function formatManilaDateTime(value: string | null): string {
 }
 
 function sameDayHoursValid(openTime: string, closeTime: string): boolean {
-  return /^\d{2}:\d{2}$/.test(openTime) && /^\d{2}:\d{2}$/.test(closeTime) && openTime < closeTime;
+  return (
+    /^\d{2}:\d{2}$/.test(openTime) &&
+    /^\d{2}:\d{2}$/.test(closeTime) &&
+    openTime < closeTime
+  );
 }
 
 function statusText(status: HoursStatus): string {
-  if (!status.hours_enforced || !status.hours_configured) return "Opening and closing times are required.";
-  if (!status.manual_accepting_orders) return "Closed by the vendor for today.";
-  if (status.reason === "daily_open_required") return "Store has not been opened for orders today.";
+  if (status.suspended) {
+    const until = formatManilaDateTime(status.suspended_until);
+    return until
+      ? `Suspended by JRide until ${until}. New orders are disabled.`
+      : "Suspended by JRide. New orders are disabled.";
+  }
+  if (!status.hours_enforced || !status.hours_configured) {
+    return "Opening and closing times are required.";
+  }
+  if (!status.manual_accepting_orders) {
+    return "Closed by the vendor for today.";
+  }
+  if (status.reason === "daily_open_required") {
+    return "Store has not been opened for orders today.";
+  }
   if (status.reason === "within_hours") return "Open for customer orders.";
   if (status.reason === "extended") return "Open under today's extension.";
-  if (status.reason === "outside_hours") return "Closed by today's normal operating schedule.";
-  return status.effective_accepting_orders ? "Open for customer orders." : "Closed for new customer orders.";
+  if (status.reason === "outside_hours") {
+    return "Closed by today's normal operating schedule.";
+  }
+  return status.effective_accepting_orders
+    ? "Open for customer orders."
+    : "Closed for new customer orders.";
 }
 
 function retireLegacyAvailabilityUi() {
-  const shell = document.querySelector<HTMLElement>(".jride-vendor-premium-shell");
+  const shell = document.querySelector<HTMLElement>(
+    ".jride-vendor-premium-shell"
+  );
   if (!shell) return;
 
-  const profileSection = Array.from(shell.querySelectorAll<HTMLElement>("section")).find((section) => {
+  const profileSection = Array.from(
+    shell.querySelectorAll<HTMLElement>("section")
+  ).find((section) => {
     return elementText(section.querySelector("h2")) === "Vendor profile";
   });
   if (!profileSection) return;
 
   const directChildren = Array.from(profileSection.children).filter(
-    (child): child is HTMLElement => child instanceof HTMLElement,
+    (child): child is HTMLElement => child instanceof HTMLElement
   );
 
   const legacyAvailabilityPanel = directChildren.find((child) => {
     const text = elementText(child);
-    return text.includes("Order availability") && text.includes("OPEN FOR ORDERS") && text.includes("CLOSED");
+    return (
+      text.includes("Order availability") &&
+      text.includes("OPEN FOR ORDERS") &&
+      text.includes("CLOSED")
+    );
   });
   if (legacyAvailabilityPanel) {
     legacyAvailabilityPanel.dataset.jrideLegacyAvailabilityRetired = "true";
@@ -116,7 +150,9 @@ function retireLegacyAvailabilityUi() {
     legacyAvailabilityPanel.setAttribute("aria-hidden", "true");
   }
 
-  const profileHeader = directChildren.find((child) => elementText(child.querySelector("h2")) === "Vendor profile");
+  const profileHeader = directChildren.find(
+    (child) => elementText(child.querySelector("h2")) === "Vendor profile"
+  );
   if (profileHeader) {
     const legacyBadge = Array.from(profileHeader.children).find((child) => {
       const text = elementText(child);
@@ -129,7 +165,10 @@ function retireLegacyAvailabilityUi() {
     }
 
     const subtitle = profileHeader.querySelector("p");
-    if (subtitle && elementText(subtitle) === "Store identity and live order availability.") {
+    if (
+      subtitle &&
+      elementText(subtitle) === "Store identity and live order availability."
+    ) {
       subtitle.textContent = "Store identity and profile details.";
     }
   }
@@ -201,14 +240,19 @@ export default function VendorHoursGate() {
 
   const loadStatus = useCallback(async () => {
     if (!vendorId) return;
-    const res = await fetch(`/api/vendor-hours?vendor_id=${encodeURIComponent(vendorId)}`, {
-      method: "GET",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
+    const res = await fetch(
+      `/api/vendor-hours?vendor_id=${encodeURIComponent(vendorId)}`,
+      {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      }
+    );
     const data = await readJson(res);
     if (!res.ok || data?.ok === false) {
-      throw new Error(clean(data?.message || data?.error || `HTTP ${res.status}`));
+      throw new Error(
+        clean(data?.message || data?.error || `HTTP ${res.status}`)
+      );
     }
     setStatus(data as HoursStatus);
     setOpenTime((current) => current || clean(data?.normal_open_time));
@@ -224,13 +268,18 @@ export default function VendorHoursGate() {
         await loadStatus();
         if (!stopped) setError("");
       } catch (e: any) {
-        if (!stopped) setError(clean(e?.message || e || "Could not load store hours."));
+        if (!stopped) {
+          setError(clean(e?.message || e || "Could not load store hours."));
+        }
       }
     };
 
     void run();
     const poll = window.setInterval(() => void run(), 30000);
-    const tick = window.setInterval(() => setClockTick((value) => value + 1), 15000);
+    const tick = window.setInterval(
+      () => setClockTick((value) => value + 1),
+      15000
+    );
     return () => {
       stopped = true;
       window.clearInterval(poll);
@@ -243,7 +292,12 @@ export default function VendorHoursGate() {
     setOpenTime(clean(status.normal_open_time));
     setCloseTime(clean(status.normal_close_time));
     if (status.daily_opened) setDailyPromptDismissed(false);
-  }, [status?.vendor_id, status?.normal_open_time, status?.normal_close_time, status?.daily_opened]);
+  }, [
+    status?.vendor_id,
+    status?.normal_open_time,
+    status?.normal_close_time,
+    status?.daily_opened,
+  ]);
 
   const postAction = useCallback(
     async (action: string, extra: Record<string, any> = {}) => {
@@ -254,12 +308,17 @@ export default function VendorHoursGate() {
         const res = await fetch("/api/vendor-hours", {
           method: "POST",
           cache: "no-store",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
           body: JSON.stringify({ vendor_id: vendorId, action, ...extra }),
         });
         const data = await readJson(res);
         if (!res.ok || data?.ok === false) {
-          throw new Error(clean(data?.message || data?.error || `HTTP ${res.status}`));
+          throw new Error(
+            clean(data?.message || data?.error || `HTTP ${res.status}`)
+          );
         }
         setStatus(data as HoursStatus);
         setOpenTime(clean(data?.normal_open_time));
@@ -274,15 +333,20 @@ export default function VendorHoursGate() {
           window.setTimeout(() => window.location.reload(), 150);
         }
       } catch (e: any) {
-        setError(clean(e?.message || e || "Store hours could not be updated."));
+        setError(
+          clean(e?.message || e || "Store hours could not be updated.")
+        );
       } finally {
         setBusy(false);
       }
     },
-    [busy, vendorId],
+    [busy, vendorId]
   );
 
-  const needsHours = Boolean(status && (!status.hours_configured || !status.hours_enforced));
+  const suspended = status?.suspended === true;
+  const needsHours = Boolean(
+    status && (!status.hours_configured || !status.hours_enforced)
+  );
   const validDraftHours = sameDayHoursValid(openTime, closeTime);
 
   const extensionScheduled = useMemo(() => {
@@ -292,8 +356,12 @@ export default function VendorHoursGate() {
   }, [clockTick, status?.extended_until]);
 
   const timing = useMemo(() => {
-    const openMs = status?.scheduled_open_at ? new Date(status.scheduled_open_at).getTime() : NaN;
-    const closeMs = status?.scheduled_close_at ? new Date(status.scheduled_close_at).getTime() : NaN;
+    const openMs = status?.scheduled_open_at
+      ? new Date(status.scheduled_open_at).getTime()
+      : NaN;
+    const closeMs = status?.scheduled_close_at
+      ? new Date(status.scheduled_close_at).getTime()
+      : NaN;
     const now = Date.now();
     const untilClose = Number.isFinite(closeMs) ? closeMs - now : NaN;
 
@@ -309,14 +377,23 @@ export default function VendorHoursGate() {
 
   const shouldPromptDailyOpen = Boolean(
     status &&
+      !suspended &&
       !needsHours &&
       !status.daily_opened &&
       !timing.afterClose &&
-      !dailyPromptDismissed,
+      !dailyPromptDismissed
   );
 
   const shouldPromptForClosing = useMemo(() => {
-    if (!status?.daily_opened || !status?.effective_accepting_orders || !status?.scheduled_close_at || extensionScheduled) return false;
+    if (
+      status?.suspended ||
+      !status?.daily_opened ||
+      !status?.effective_accepting_orders ||
+      !status?.scheduled_close_at ||
+      extensionScheduled
+    ) {
+      return false;
+    }
     if (dismissedCloseAt === status.scheduled_close_at) return false;
     const closeMs = new Date(status.scheduled_close_at).getTime();
     if (!Number.isFinite(closeMs)) return false;
@@ -325,10 +402,15 @@ export default function VendorHoursGate() {
   }, [clockTick, dismissedCloseAt, extensionScheduled, status]);
 
   const canShowExtensionControls = Boolean(
-    status?.daily_opened && status?.manual_accepting_orders && (timing.nearClose || extensionScheduled),
+    !suspended &&
+      status?.daily_opened &&
+      status?.manual_accepting_orders &&
+      (timing.nearClose || extensionScheduled)
   );
 
-  const canCloseToday = Boolean(status?.daily_opened && status?.manual_accepting_orders);
+  const canCloseToday = Boolean(
+    !suspended && status?.daily_opened && status?.manual_accepting_orders
+  );
 
   if (pathname !== "/vendor-portal" || !vendorId) return null;
 
@@ -348,13 +430,23 @@ export default function VendorHoursGate() {
           <section className="rounded-2xl border border-amber-400/40 bg-amber-500/10 p-3 sm:p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">Store hours setup required</div>
-                <div className="mt-1 text-base font-black text-white">Set your normal opening and closing time</div>
+                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-amber-300">
+                  Store hours setup required
+                </div>
+                <div className="mt-1 text-base font-black text-white">
+                  Set your normal opening and closing time
+                </div>
                 <p className="mt-1 text-xs leading-5 text-slate-300">
-                  Customer ordering stays closed until business hours are saved and the store is opened for the day. You can still edit your profile, menu, prices, photos, stock, and pickup location while the store is closed.
+                  Customer ordering stays closed until business hours are saved
+                  and the store is opened for the day. You can still edit your
+                  profile, menu, prices, photos, stock, and pickup location while
+                  the store is closed.
                 </p>
               </div>
-              <a href="/vendor-faq" className="shrink-0 text-xs font-bold text-amber-200 underline">
+              <a
+                href="/vendor-faq"
+                className="shrink-0 text-xs font-bold text-amber-200 underline"
+              >
                 Vendor FAQ
               </a>
             </div>
@@ -381,15 +473,26 @@ export default function VendorHoursGate() {
             </div>
 
             {!validDraftHours ? (
-              <div className="mt-2 text-[11px] font-semibold text-rose-200">Closing must be later than opening on the same day.</div>
+              <div className="mt-2 text-[11px] font-semibold text-rose-200">
+                Closing must be later than opening on the same day.
+              </div>
             ) : null}
 
-            {error ? <div className="mt-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">{error}</div> : null}
+            {error ? (
+              <div className="mt-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">
+                {error}
+              </div>
+            ) : null}
 
             <button
               type="button"
               disabled={busy || !validDraftHours}
-              onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
+              onClick={() =>
+                void postAction("save_hours", {
+                  normal_open_time: openTime,
+                  normal_close_time: closeTime,
+                })
+              }
               className="mt-3 w-full rounded-xl bg-amber-300 px-4 py-2.5 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? "Saving..." : "Save business hours"}
@@ -409,14 +512,27 @@ export default function VendorHoursGate() {
                         : "border-rose-400/50 bg-rose-500/15 text-rose-100"
                     }`}
                   >
-                    {status.effective_accepting_orders ? "OPEN" : "CLOSED"}
+                    {suspended
+                      ? "SUSPENDED"
+                      : status.effective_accepting_orders
+                        ? "OPEN"
+                        : "CLOSED"}
                   </span>
-                  <span className="text-sm font-black text-white">Store status</span>
+                  <span className="text-sm font-black text-white">
+                    Store status
+                  </span>
                 </div>
-                <div className="mt-1 text-xs text-slate-300">{statusText(status)}</div>
+                <div className="mt-1 text-xs text-slate-300">
+                  {statusText(status)}
+                </div>
                 <div className="mt-1 text-[11px] text-slate-400">
-                  Normal hours: {formatClock(status.normal_open_time)} - {formatClock(status.normal_close_time)}
-                  {extensionScheduled ? ` | Extended until ${formatManilaDateTime(status.extended_until)}` : ""}
+                  Normal hours: {formatClock(status.normal_open_time)} -{" "}
+                  {formatClock(status.normal_close_time)}
+                  {extensionScheduled
+                    ? ` | Extended until ${formatManilaDateTime(
+                        status.extended_until
+                      )}`
+                    : ""}
                 </div>
               </div>
 
@@ -426,7 +542,11 @@ export default function VendorHoursGate() {
                     type="button"
                     disabled={busy}
                     onClick={() => {
-                      if (window.confirm("Close this store for new orders today?")) {
+                      if (
+                        window.confirm(
+                          "Close this store for new orders today?"
+                        )
+                      ) {
                         void postAction("close_today");
                       }
                     }}
@@ -447,10 +567,15 @@ export default function VendorHoursGate() {
 
             {shouldPromptDailyOpen ? (
               <div className="mt-3 rounded-xl border border-blue-400/40 bg-blue-500/10 p-3">
-                <div className="text-sm font-black text-blue-100">Your store is offline today.</div>
+                <div className="text-sm font-black text-blue-100">
+                  Your store is offline today.
+                </div>
                 <div className="mt-1 text-xs leading-5 text-slate-300">
-                  Open it only when you are ready to receive Takeout orders. This notice does not block menu or profile editing.
-                  {timing.beforeOpen ? " Customer ordering will begin at your normal opening time." : ""}
+                  Open it only when you are ready to receive Takeout orders. This
+                  notice does not block menu or profile editing.
+                  {timing.beforeOpen
+                    ? " Customer ordering will begin at your normal opening time."
+                    : ""}
                 </div>
                 <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
@@ -475,9 +600,13 @@ export default function VendorHoursGate() {
 
             {shouldPromptForClosing ? (
               <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
-                <div className="font-black text-amber-100">Your normal closing time is approaching.</div>
+                <div className="font-black text-amber-100">
+                  Your normal closing time is approaching.
+                </div>
                 <div className="mt-1 text-xs text-amber-100/90">
-                  Closing time: {formatClock(status.normal_close_time)}. JRide will stop new orders automatically at closing time unless an extension is active.
+                  Closing time: {formatClock(status.normal_close_time)}. JRide
+                  will stop new orders automatically at closing time unless an
+                  extension is active.
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
@@ -498,7 +627,9 @@ export default function VendorHoursGate() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDismissedCloseAt(clean(status.scheduled_close_at))}
+                    onClick={() =>
+                      setDismissedCloseAt(clean(status.scheduled_close_at))
+                    }
                     className="rounded-lg border border-amber-400/50 bg-slate-950 px-3 py-2 text-xs font-black text-amber-100"
                   >
                     Close on schedule
@@ -510,12 +641,23 @@ export default function VendorHoursGate() {
             {panelOpen ? (
               <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/80 p-3">
                 <div className="grid gap-1 text-xs text-slate-300 sm:grid-cols-3">
-                  <div><span className="font-bold text-white">Opened today:</span> {status.daily_opened ? "YES" : "NO"}</div>
-                  <div><span className="font-bold text-white">Customer ordering:</span> {status.effective_accepting_orders ? "OPEN" : "CLOSED"}</div>
-                  <div><span className="font-bold text-white">Reason:</span> {status.reason || "unavailable"}</div>
+                  <div>
+                    <span className="font-bold text-white">Opened today:</span>{" "}
+                    {status.daily_opened ? "YES" : "NO"}
+                  </div>
+                  <div>
+                    <span className="font-bold text-white">
+                      Customer ordering:
+                    </span>{" "}
+                    {status.effective_accepting_orders ? "OPEN" : "CLOSED"}
+                  </div>
+                  <div>
+                    <span className="font-bold text-white">Reason:</span>{" "}
+                    {status.reason || "unavailable"}
+                  </div>
                 </div>
 
-                {!status.daily_opened && !timing.afterClose ? (
+                {!suspended && !status.daily_opened && !timing.afterClose ? (
                   <button
                     type="button"
                     disabled={busy}
@@ -546,12 +688,21 @@ export default function VendorHoursGate() {
                     />
                   </label>
                 </div>
-                {!validDraftHours ? <div className="mt-1 text-[11px] font-semibold text-rose-200">Closing must be later than opening on the same day.</div> : null}
+                {!validDraftHours ? (
+                  <div className="mt-1 text-[11px] font-semibold text-rose-200">
+                    Closing must be later than opening on the same day.
+                  </div>
+                ) : null}
 
                 <button
                   type="button"
                   disabled={busy || !validDraftHours}
-                  onClick={() => void postAction("save_hours", { normal_open_time: openTime, normal_close_time: closeTime })}
+                  onClick={() =>
+                    void postAction("save_hours", {
+                      normal_open_time: openTime,
+                      normal_close_time: closeTime,
+                    })
+                  }
                   className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
                 >
                   {busy ? "Saving..." : "Save normal hours"}
@@ -589,9 +740,16 @@ export default function VendorHoursGate() {
                   </button>
                 ) : null}
 
-                {error ? <div className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">{error}</div> : null}
+                {error ? (
+                  <div className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 p-2 text-xs text-rose-100">
+                    {error}
+                  </div>
+                ) : null}
 
-                <a href="/vendor-faq" className="mt-3 block text-center text-xs font-black text-blue-200 underline">
+                <a
+                  href="/vendor-faq"
+                  className="mt-3 block text-center text-xs font-black text-blue-200 underline"
+                >
                   Vendor FAQ
                 </a>
               </div>
