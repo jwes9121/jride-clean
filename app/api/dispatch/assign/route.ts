@@ -4,6 +4,7 @@ import {
   getDrivingRoadMetricsToTarget,
   getDrivingRoadRoute,
 } from "@/lib/routing/mapboxRoad";
+import { hasUsableLocationCoordinates } from "@/lib/location/coordinateValidity";
 import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
 
 function text(v: unknown): string {
@@ -138,7 +139,8 @@ function evaluateDriverLocationEligibility(row: any) {
   const effectiveStatus = isStale ? "offline" : rawStatus;
   const assignFresh = ageSeconds == null ? false : ageSeconds <= ASSIGN_CUTOFF_SECONDS;
   const assignOnlineEligible = ONLINE_LIKE_STATUSES.has(rawStatus);
-  const assignEligible = assignFresh && assignOnlineEligible;
+  const usableLocation = hasUsableLocationCoordinates(row?.lat, row?.lng);
+  const assignEligible = assignFresh && assignOnlineEligible && usableLocation;
 
   return {
     updatedAt: updatedAt || null,
@@ -148,6 +150,7 @@ function evaluateDriverLocationEligibility(row: any) {
     effectiveStatus,
     assignFresh,
     assignOnlineEligible,
+    usableLocation,
     assignEligible,
   };
 }
@@ -388,6 +391,7 @@ export async function POST(req: NextRequest) {
     const bookingId = text(body?.bookingId || body?.booking_id || body?.id);
     const explicitDriverId = text(body?.driverId || body?.driver_id);
     const excludedDriverId = text(body?.excludeDriverId || body?.exclude_driver_id);
+    const requireReassignmentPending = body?.requireReassignmentPending === true;
     const emergencyMode = body?.emergency_mode === true;
 
     if (!bookingCode && !bookingId) {
@@ -400,6 +404,17 @@ export async function POST(req: NextRequest) {
 
     if (excludedDriverId && !isUuid(excludedDriverId)) {
       return NextResponse.json({ ok: false, error: "invalid_excluded_driver_id" }, { status: 400 });
+    }
+
+    if (
+      explicitDriverId &&
+      excludedDriverId &&
+      explicitDriverId === excludedDriverId
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "conflicting_driver_selection" },
+        { status: 400 }
+      );
     }
 
     let bookingQuery = supabase
@@ -427,6 +442,10 @@ export async function POST(req: NextRequest) {
     const bookingDbId = text((booking as any).id);
     const currentStatus = cleanStatus((booking as any).status);
     const currentDriverId = text((booking as any).assigned_driver_id || (booking as any).driver_id);
+    const currentExpiredDriverId = text((booking as any).last_expired_driver_id);
+    const currentReassignmentQueuedAt = text(
+      (booking as any).ride_reassignment_queued_at
+    );
     const bookingServiceType = cleanStatus(
       (booking as any).service_type || (booking as any).booking_type
     );
@@ -439,6 +458,31 @@ export async function POST(req: NextRequest) {
         { ok: false, error: "booking_not_assignable", status: currentStatus },
         { status: 409 }
       );
+    }
+
+    if (requireReassignmentPending) {
+      const expectedReassignmentQueuedAt = text(
+        body?.expectedReassignmentQueuedAt ||
+          body?.expected_reassignment_queued_at
+      );
+      if (
+        currentStatus !== "searching" ||
+        (booking as any).ride_reassignment_pending !== true ||
+        !currentExpiredDriverId ||
+        excludedDriverId !== currentExpiredDriverId ||
+        !currentReassignmentQueuedAt ||
+        expectedReassignmentQueuedAt !== currentReassignmentQueuedAt
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "expiry_reassignment_no_longer_pending",
+            booking_id: bookingDbId,
+            booking_code: text((booking as any).booking_code),
+          },
+          { status: 409 }
+        );
+      }
     }
 
     if (
@@ -743,6 +787,14 @@ export async function POST(req: NextRequest) {
       const pickupLat = finiteNum((booking as any).pickup_lat);
       const pickupLng = finiteNum((booking as any).pickup_lng);
       const latestDriverRows = keepLatestDriverLocationRows(drivers || []);
+      const routingCandidateRows = latestDriverRows.filter((row: any) => {
+        const candidateDriverId = text(row?.driver_id);
+        if (!candidateDriverId) return false;
+        if (excludedDriverId && candidateDriverId === excludedDriverId) {
+          return false;
+        }
+        return evaluateDriverLocationEligibility(row).assignEligible;
+      });
 
       if (!isTakeoutBooking && (pickupLat == null || pickupLng == null)) {
         return NextResponse.json(
@@ -760,7 +812,7 @@ export async function POST(req: NextRequest) {
         !isTakeoutBooking && pickupLat != null && pickupLng != null
           ? await getDrivingRoadMetricsToTarget(
               { lat: pickupLat, lng: pickupLng },
-              latestDriverRows
+              routingCandidateRows
                 .map((row: any) => ({
                   id: text(row?.driver_id),
                   lat: finiteNum(row?.lat),
@@ -849,6 +901,13 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
+        if (!row?.eligibility?.assignEligible) {
+          diag.rejected_at = "location_eligibility";
+          diag.rejected_reason = "assignEligible_false";
+          assignDiagnostics.push(diag);
+          continue;
+        }
+
         if (!isTakeoutBooking) {
           const roadMetric = row?.roadMetric ?? null;
           diag.road_distance_km = roadMetric
@@ -871,13 +930,6 @@ export async function POST(req: NextRequest) {
             assignDiagnostics.push(diag);
             continue;
           }
-        }
-
-        if (!row?.eligibility?.assignEligible) {
-          diag.rejected_at = "location_eligibility";
-          diag.rejected_reason = "assignEligible_false";
-          assignDiagnostics.push(diag);
-          continue;
         }
 
         const activeTrip = await findActiveTripForDriver(supabase, candidateDriverId, bookingDbId);
@@ -954,7 +1006,7 @@ export async function POST(req: NextRequest) {
 
         if (
           !isTakeoutBooking &&
-          latestDriverRows.length > 0 &&
+          routingCandidateRows.length > 0 &&
           roadMetrics.size === 0
         ) {
           return NextResponse.json(
@@ -997,6 +1049,9 @@ export async function POST(req: NextRequest) {
       status: "assigned",
       assigned_at: nowIso,
       driver_accept_expires_at: isTakeoutBooking ? takeoutDriverAcceptExpiresIso : rideDriverAcceptExpiresIso,
+      ride_reassignment_pending: false,
+      ride_reassignment_queued_at: null,
+      ride_reassignment_next_attempt_at: null,
       updated_at: nowIso,
     };
 
@@ -1025,11 +1080,24 @@ export async function POST(req: NextRequest) {
       updatePayload.is_emergency = body.emergency_mode;
     }
 
-    const { data: updatedRows, error: assignError } = await supabase
+    let assignmentQuery = supabase
       .from("bookings")
       .update(updatePayload)
       .eq("id", bookingDbId)
-      .in("status", Array.from(ASSIGNABLE_STATUSES))
+      .eq("status", currentStatus);
+
+    assignmentQuery = currentDriverId
+      ? assignmentQuery.eq("assigned_driver_id", currentDriverId)
+      : assignmentQuery.is("assigned_driver_id", null);
+
+    if (requireReassignmentPending) {
+      assignmentQuery = assignmentQuery
+        .eq("ride_reassignment_pending", true)
+        .eq("last_expired_driver_id", currentExpiredDriverId)
+        .eq("ride_reassignment_queued_at", currentReassignmentQueuedAt);
+    }
+
+    const { data: updatedRows, error: assignError } = await assignmentQuery
       .select("id, booking_code, status, driver_id, assigned_driver_id, assigned_at")
       .limit(1);
 
@@ -1138,4 +1206,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerSupabase } from "@/utils/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -143,7 +143,9 @@ export async function POST(req: NextRequest) {
 
     let bookingQuery = serviceSupabase
       .from("bookings")
-      .select("id, booking_code, status, created_by_user_id, driver_id, assigned_driver_id")
+      .select(
+        "id, booking_code, status, created_by_user_id, driver_id, assigned_driver_id, passenger_fare_response, driver_fee_proposal_expires_at"
+      )
       .limit(1);
 
     bookingQuery = bookingCode
@@ -189,6 +191,26 @@ export async function POST(req: NextRequest) {
     const rejectedDriverId = text(
       (booking as any).assigned_driver_id || (booking as any).driver_id
     );
+    const expectedExpiresAt = text(
+      (booking as any).driver_fee_proposal_expires_at
+    );
+    const expiresAtMs = Date.parse(expectedExpiresAt);
+
+    if (
+      text((booking as any).passenger_fare_response) ||
+      !expectedExpiresAt ||
+      !Number.isFinite(expiresAtMs) ||
+      expiresAtMs <= Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_EXPIRED_OR_CHANGED",
+          message: "The fare response window has closed or was already handled.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
 
     const nowIso = new Date().toISOString();
     const updatePayload =
@@ -196,40 +218,66 @@ export async function POST(req: NextRequest) {
         ? {
             passenger_fare_response: "accepted",
             status: "ready",
+            driver_fee_proposal_expires_at: null,
             updated_at: nowIso,
           }
         : {
-  passenger_fare_response: "rejected",
-  status: "searching",
-  driver_id: null,
-  assigned_driver_id: null,
-  assigned_at: null,
-  last_expired_driver_id: rejectedDriverId,
-  driver_fee_proposal_expires_at: null,
-  proposed_fare: null,
-  verified_fare: null,
-  driver_to_pickup_km: null,
-  pickup_distance_fee: null,
-  updated_at: nowIso,
-}
+            passenger_fare_response: "rejected",
+            status: "searching",
+            driver_id: null,
+            assigned_driver_id: null,
+            assigned_at: null,
+            last_expired_driver_id: rejectedDriverId,
+            driver_fee_proposal_expires_at: null,
+            proposed_fare: null,
+            verified_fare: null,
+            driver_to_pickup_km: null,
+            pickup_distance_fee: null,
+            updated_at: nowIso,
+          };
 
-    const { data: updatedRows, error: updateError } = await serviceSupabase
+    let updateQuery = serviceSupabase
       .from("bookings")
       .update(updatePayload)
       .eq("id", (booking as any).id)
+      .eq("created_by_user_id", user.id)
+      .eq("status", "fare_proposed")
+      .is("passenger_fare_response", null)
+      .eq("driver_fee_proposal_expires_at", expectedExpiresAt)
+      .gt("driver_fee_proposal_expires_at", nowIso);
+
+    updateQuery = rejectedDriverId
+      ? updateQuery.eq("assigned_driver_id", rejectedDriverId)
+      : updateQuery.is("assigned_driver_id", null);
+
+    const { data: updatedRows, error: updateError } = await updateQuery
       .select("id, booking_code, status, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
       .limit(1);
 
     if (updateError) {
       return NextResponse.json(
         { ok: false, error: "UPDATE_FAILED", message: updateError.message },
-        { status: 500, headers: noStoreHeaders() }
+        {
+          status: updateError.message.includes("WINDOW_EXPIRED") ? 409 : 500,
+          headers: noStoreHeaders(),
+        }
       );
     }
 
-        const updated = updatedRows?.[0] ?? null;
-const reassignResult = action === "rejected"
-      ? await retryAutoAssign(req, rejectedDriverId, String(updated?.id || (booking as any).id))
+    const updated = updatedRows?.[0] ?? null;
+    if (!updated) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_EXPIRED_OR_CHANGED",
+          message: "The fare response window has closed or was already handled.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    const reassignResult = action === "rejected"
+      ? await retryAutoAssign(req, rejectedDriverId, String(updated.id))
       : null;
 
     return NextResponse.json(
@@ -254,7 +302,5 @@ const reassignResult = action === "rejected"
     );
   }
 }
-
-
 
 

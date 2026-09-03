@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
 import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
+import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
 
 type DriverRow = {
   driver_id: string;
@@ -33,6 +34,8 @@ type BookingRow = {
   driver_id?: string | null;
   assigned_driver_id?: string | null;
   last_expired_driver_id?: string | null;
+  ride_reassignment_pending?: boolean | null;
+  ride_reassignment_queued_at?: string | null;
   is_emergency?: boolean | null;
   service_type?: string | null;
   vendor_status?: string | null;
@@ -148,16 +151,24 @@ function assignmentTargetCoords(booking: BookingRow): {
   basis: "pickup_vendor" | "dropoff_customer_cash_first";
 } {
   if (isTakeoutCashFirst(booking)) {
+    const dropoff = parseUsableCoordinatePair(
+      booking?.dropoff_lat,
+      booking?.dropoff_lng
+    );
     return {
-      lat: num(booking?.dropoff_lat),
-      lng: num(booking?.dropoff_lng),
+      lat: dropoff?.lat ?? null,
+      lng: dropoff?.lng ?? null,
       basis: "dropoff_customer_cash_first",
     };
   }
 
+  const pickup = parseUsableCoordinatePair(
+    booking?.pickup_lat,
+    booking?.pickup_lng
+  );
   return {
-    lat: num(booking?.pickup_lat),
-    lng: num(booking?.pickup_lng),
+    lat: pickup?.lat ?? null,
+    lng: pickup?.lng ?? null,
     basis: "pickup_vendor",
   };
 }
@@ -208,6 +219,7 @@ type MatchDebug = {
   rejected_missing_updated_at_count: number;
   rejected_invalid_updated_at_count: number;
   rejected_stale_count: number;
+  rejected_unusable_location_count: number;
   rejected_excluded_count: number;
   rejected_wrong_town_count: number;
   rejected_wrong_vehicle_count: number;
@@ -329,6 +341,7 @@ async function matchSingle(
     rejected_missing_updated_at_count: 0,
     rejected_invalid_updated_at_count: 0,
     rejected_stale_count: 0,
+    rejected_unusable_location_count: 0,
     rejected_excluded_count: 0,
     rejected_wrong_town_count: 0,
     rejected_wrong_vehicle_count: 0,
@@ -462,6 +475,12 @@ async function matchSingle(
       continue;
     }
 
+    const usableLocation = parseUsableCoordinatePair(d.lat, d.lng);
+    if (!usableLocation) {
+      debug.rejected_unusable_location_count++;
+      continue;
+    }
+
     // JRIDE_RIDE_RESCUE_DISPATCH_TOWN_V1
     // Normal/Rescue Ride eligibility uses the server GPS-derived town helper.
     // Emergency Booking keeps its existing neighboring-town rule, and
@@ -587,7 +606,11 @@ async function matchSingle(
       continue;
     }
 
-    eligible.push(d);
+    eligible.push({
+      ...d,
+      lat: usableLocation.lat,
+      lng: usableLocation.lng,
+    });
   }
 
   if (!isTakeoutBooking && (pickupLat == null || pickupLng == null)) {
@@ -747,6 +770,9 @@ async function matchSingle(
     status: "assigned",
     assigned_at: nowIso,
     driver_accept_expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    ride_reassignment_pending: false,
+    ride_reassignment_queued_at: null,
+    ride_reassignment_next_attempt_at: null,
     updated_at: nowIso,
   };
 
@@ -762,21 +788,39 @@ async function matchSingle(
     updatePayload.takeout_cash_collection_required = cashFirst;
   }
 
-  const guardedStatuses = norm(booking.service_type) === "takeout"
-    ? ["requested", "searching"]
-    : ["searching"];
-
-  const { error: updateError } = await supabase
+  let updateQuery = supabase
     .from("bookings")
     .update(updatePayload)
     .eq("id", booking.id)
-    .in("status", guardedStatuses)
-    .is("driver_id", null);
+    .eq("status", norm(booking.status))
+    .is("driver_id", null)
+    .is("assigned_driver_id", null);
 
-  if (updateError) {
+  if (booking.ride_reassignment_pending === true) {
+    const expiredDriverId = text(booking.last_expired_driver_id);
+    const queuedAt = text(booking.ride_reassignment_queued_at);
+    if (!expiredDriverId || !queuedAt) {
+      return {
+        assigned: false,
+        reason: "INVALID_REASSIGNMENT_QUEUE_MARKER",
+        decision: "blocked",
+        debug,
+      };
+    }
+    updateQuery = updateQuery
+      .eq("ride_reassignment_pending", true)
+      .eq("last_expired_driver_id", expiredDriverId)
+      .eq("ride_reassignment_queued_at", queuedAt);
+  }
+
+  const { data: updatedRows, error: updateError } = await updateQuery
+    .select("id")
+    .limit(1);
+
+  if (updateError || !updatedRows?.[0]) {
     return {
       assigned: false,
-      reason: "BOOKING_UPDATE_FAILED",
+      reason: updateError ? "BOOKING_UPDATE_FAILED" : "BOOKING_UPDATE_LOST_RACE",
       decision: "blocked",
       debug,
     };
@@ -812,7 +856,7 @@ export async function POST(req: Request) {
 
      const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
+        .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
         .or("status.eq.searching,and(service_type.eq.takeout,status.eq.requested,vendor_status.eq.vendor_accepted)")
         .is("driver_id", null)
         .order("created_at", { ascending: true })
@@ -861,14 +905,14 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-// JRIDE_TAKEOUT_EXPIRED_DRIVER_REUSE_SCOPE_V2
-// Preserve the existing ride fallback behavior.
-// Only Takeout keeps the previously expired driver excluded.
+// Keep the expired driver excluded for Takeout and for durable regular Ride
+// expiry retries. Other legacy regular Ride searches retain their fallback.
 if (
   !result.assigned &&
   result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
   expiredDriverId &&
-  norm((booking as any).service_type) !== "takeout"
+  norm((booking as any).service_type) !== "takeout" &&
+  (booking as any).ride_reassignment_pending !== true
 ) {
   console.log("[AUTO_ASSIGN_FALLBACK] Retrying previously expired ride driver allowed", {
     booking_code: (booking as any).booking_code,
@@ -882,8 +926,7 @@ if (
   );
 }
 
-// For Takeout, no retry with the expired driver is allowed here.
-// If no other eligible same-town driver exists, the booking stays searching.
+// A durable expiry retry also stays searching when no replacement is eligible.
 
         if (result.decision === "assigned") assigned_count++;
         else if (result.decision === "skipped") skipped_count++;
@@ -956,7 +999,7 @@ if (
 
         const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
+      .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
       .eq("id", bookingId)
       .single();
 
@@ -1000,14 +1043,14 @@ let result = await matchSingle(
   bookingExclusions
 );
 
-// JRIDE_TAKEOUT_EXPIRED_DRIVER_REUSE_SCOPE_V2
-// Preserve the existing ride fallback behavior.
-// Only Takeout keeps the previously expired driver excluded.
+// Keep the expired driver excluded for Takeout and for durable regular Ride
+// expiry retries. Other legacy regular Ride searches retain their fallback.
 if (
   !result.assigned &&
   result.reason === "NO_ELIGIBLE_LOCAL_DRIVERS" &&
   expiredDriverId &&
-  norm((booking as any).service_type) !== "takeout"
+  norm((booking as any).service_type) !== "takeout" &&
+  (booking as any).ride_reassignment_pending !== true
 ) {
   console.log("[AUTO_ASSIGN_FALLBACK] Retrying previously expired ride driver allowed", {
     booking_code: (booking as any).booking_code,
@@ -1021,8 +1064,7 @@ if (
   );
 }
 
-// For Takeout, no retry with the expired driver is allowed here.
-// If no other eligible same-town driver exists, the booking stays searching.
+// A durable expiry retry also stays searching when no replacement is eligible.
 
     console.log("[DISPATCH_TRACE] auto_assign:single_result", {
       booking_id: booking.id,
@@ -1058,11 +1100,6 @@ if (
     );
   }
 }
-
-
-
-
-
 
 
 

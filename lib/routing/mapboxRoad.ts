@@ -3,6 +3,8 @@
 // Shared Mapbox road-routing helpers for JRide backend decisions.
 // Billing and assignment helpers never fall back to straight-line/Haversine distance.
 
+import { hasUsableLocationCoordinates } from "../location/coordinateValidity";
+
 export type RoadPoint = {
   lat: number;
   lng: number;
@@ -38,10 +40,38 @@ function validCoordinate(value: number, min: number, max: number): boolean {
 }
 
 function validPoint(point: RoadPoint): boolean {
-  return (
-    validCoordinate(point.lat, -90, 90) &&
-    validCoordinate(point.lng, -180, 180)
-  );
+  return hasUsableLocationCoordinates(point.lat, point.lng);
+}
+
+function mergeMetrics(
+  target: Map<string, RoadMetric>,
+  source: Map<string, RoadMetric>
+): void {
+  for (const [id, metric] of source.entries()) {
+    target.set(id, metric);
+  }
+}
+
+async function isolateRoadMatrixFailure(
+  target: RoadPoint,
+  origins: RoadOrigin[]
+): Promise<Map<string, RoadMetric>> {
+  const output = new Map<string, RoadMetric>();
+  if (origins.length === 0) return output;
+
+  if (origins.length === 1) {
+    return getRoadMatrixBatch(target, origins);
+  }
+
+  const midpoint = Math.ceil(origins.length / 2);
+  const [left, right] = await Promise.all([
+    getRoadMatrixBatch(target, origins.slice(0, midpoint)),
+    getRoadMatrixBatch(target, origins.slice(midpoint)),
+  ]);
+
+  mergeMetrics(output, left);
+  mergeMetrics(output, right);
+  return output;
 }
 
 function mapboxToken(): string {
@@ -216,11 +246,21 @@ async function getRoadMatrixBatch(
   try {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) {
+      const responseBody = await response.text();
       console.error(
         "[MAPBOX_ROAD_MATRIX_ERROR]",
         response.status,
-        await response.text()
+        responseBody
       );
+
+      if (response.status === 422 && cleanOrigins.length > 1) {
+        console.warn("[MAPBOX_ROAD_MATRIX_ISOLATION]", {
+          batch_size: cleanOrigins.length,
+          status: response.status,
+        });
+        return isolateRoadMatrixFailure(target, cleanOrigins);
+      }
+
       return output;
     }
 
@@ -286,9 +326,7 @@ export async function getDrivingRoadMetricsToTarget(
     );
     const batchResult = await getRoadMatrixBatch(target, batch);
 
-    for (const [id, metric] of batchResult.entries()) {
-      output.set(id, metric);
-    }
+    mergeMetrics(output, batchResult);
   }
 
   return output;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cancelPendingDutyChecksForOfflineDriver } from "@/lib/driver-duty-check/onlineGuard";
+import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,18 +33,6 @@ const ONLINE_OBSERVATION_STATUSES = new Set([
   "waiting",
 ]);
 const LOCATION_OBSERVATION_DEADLINE_MS = 1500;
-
-function isUsableGpsFix(lat: number, lng: number): boolean {
-  return (
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    lat >= -90 &&
-    lat <= 90 &&
-    lng >= -180 &&
-    lng <= 180 &&
-    !(lat === 0 && lng === 0)
-  );
-}
 
 function clientReportedAccuracyMeters(body: any): number | null {
   const raw =
@@ -877,7 +866,7 @@ async function syncDriverLocationObservation(opts: {
 
   if (
     !opts.hasFreshGps ||
-    !isUsableGpsFix(opts.lat, opts.lng) ||
+    !parseUsableCoordinatePair(opts.lat, opts.lng) ||
     !ONLINE_OBSERVATION_STATUSES.has(status)
   ) {
     return {
@@ -1031,14 +1020,15 @@ export async function POST(req: NextRequest) {
     const bodyDriverId = text(body?.driver_id ?? body?.driverId);
     if (!bodyDriverId) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
 
-    const incomingLat = Number(body?.lat);
-    const incomingLng = Number(body?.lng);
+    const incomingCoords = parseUsableCoordinatePair(body?.lat, body?.lng);
+    const incomingLat = incomingCoords?.lat ?? Number.NaN;
+    const incomingLng = incomingCoords?.lng ?? Number.NaN;
     const incomingAccuracyMeters = clientReportedAccuracyMeters(body);
     const incomingClientMockLocation = clientReportedMockLocation(body);
     // JRIDE_PING_ZERO_COORDS_GPS_PENDING_V1
     // Treat missing, invalid, or 0/0 coordinates as no usable GPS fix.
     // 0/0 is only a placeholder for non-assignable gps_pending rows.
-    const hasIncomingCoords = isUsableGpsFix(incomingLat, incomingLng);
+    const hasIncomingCoords = incomingCoords !== null;
 
     const status = norm(body?.status ?? "online") || "online";
     const town = text(body?.town);
@@ -1190,13 +1180,14 @@ export async function POST(req: NextRequest) {
       finalLat = incomingLat;
       finalLng = incomingLng;
     } else {
-      const prevLat = Number((prevLoc as any)?.lat);
-      const prevLng = Number((prevLoc as any)?.lng);
-      const hasPrevCoords = Number.isFinite(prevLat) && Number.isFinite(prevLng);
+      const previousCoords = parseUsableCoordinatePair(
+        (prevLoc as any)?.lat,
+        (prevLoc as any)?.lng
+      );
 
-      if (hasPrevCoords) {
-        finalLat = prevLat;
-        finalLng = prevLng;
+      if (previousCoords) {
+        finalLat = previousCoords.lat;
+        finalLng = previousCoords.lng;
         coordsSource = "previous_row";
       }
     }
@@ -1261,13 +1252,21 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const preservePreviousLocationTimestamp =
+      !hasIncomingCoords &&
+      coordsSource === "previous_row" &&
+      ONLINE_OBSERVATION_STATUSES.has(status) &&
+      !!previousUpdatedAt;
+
     const upsertPayload: any = {
       driver_id: driverId,
       lat: finalLat,
       lng: finalLng,
       status,
       town: town || null,
-      updated_at: nowIso,
+      updated_at: preservePreviousLocationTimestamp
+        ? previousUpdatedAt
+        : nowIso,
       vehicle_type: vehicleType,
     };
 
@@ -1357,13 +1356,8 @@ export async function POST(req: NextRequest) {
     });
 
     const becameOnline = previousStatus !== "online" && status === "online";
-    const onlineFreshPing =
-      status === "online" &&
-      Number.isFinite(finalLat as any) &&
-      Number.isFinite(finalLng as any) &&
-      finalLat !== 0 &&
-      finalLng !== 0;
-    const shouldRetry = becameOnline || recoveredFromStaleOnline || onlineFreshPing;
+    const onlineFreshPing = status === "online" && hasIncomingCoords;
+    const shouldRetry = onlineFreshPing;
 
     let retryResult: any = {
       attempted: false,

@@ -3,6 +3,10 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolvePassengerBookingIdentity } from "@/lib/passenger/bookingIdentity";
+import {
+  hasUsableLocationCoordinates,
+  parseUsableCoordinatePair,
+} from "@/lib/location/coordinateValidity";
 
 type BookBody = {
   town?: string;
@@ -250,6 +254,8 @@ async function getAvailabilitySummary(bookingTown: string, requestedVehicleType:
 
     const rawStatus = norm(row.status);
     if (!DRIVER_ONLINE_LIKE.has(rawStatus)) continue;
+
+    if (!hasUsableLocationCoordinates(row.lat, row.lng)) continue;
 
     const driverTown = text(row.town).toLowerCase();
     if (!driverTown) continue;
@@ -578,10 +584,18 @@ const boundaryOverrideRequested =
     const dropoffLabel = text(body.to_label || body.dropoff_label);
     const vehicleType = normalizeVehicleType(body.service_type || body.vehicle_type || "tricycle") || "tricycle";
 
-    const pickupLat = num(body.pickup_lat);
-    const pickupLng = num(body.pickup_lng);
-    const dropoffLat = num(body.dropoff_lat);
-    const dropoffLng = num(body.dropoff_lng);
+    const pickupCoords = parseUsableCoordinatePair(
+      body.pickup_lat,
+      body.pickup_lng
+    );
+    const dropoffCoords = parseUsableCoordinatePair(
+      body.dropoff_lat,
+      body.dropoff_lng
+    );
+    const pickupLat = pickupCoords?.lat ?? null;
+    const pickupLng = pickupCoords?.lng ?? null;
+    const dropoffLat = dropoffCoords?.lat ?? null;
+    const dropoffLng = dropoffCoords?.lng ?? null;
 
     const passengerCount = Math.max(1, Math.floor(num(body.passenger_count) ?? 1));
     const feesAcknowledged = !!body.fees_acknowledged;
@@ -1136,7 +1150,6 @@ const boundaryOverrideRequested =
     );
   }
 }
-
 
 
 

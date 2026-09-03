@@ -114,164 +114,6 @@ const ACTIVE_RIDE_STATUSES = new Set([
   "on_trip",
 ]);
 
-async function resetExpiredRideAndReassign(req: NextRequest, admin: any, row: any, reason: string, debug: any[] = []) {
-  const bookingCode = text(row?.booking_code);
-  const bookingId = text(row?.id);
-  const oldDriverId = text(row?.assigned_driver_id || row?.driver_id);
-
-  if ((!bookingCode && !bookingId) || !oldDriverId) {
-    debug.push({ step: "missing_required", booking_code: bookingCode, booking_id: bookingId, old_driver_id: oldDriverId, reason });
-    return false;
-  }
-
-  debug.push({
-    step: "reset_candidate",
-    booking_code: bookingCode,
-    booking_id: bookingId,
-    old_driver_id: oldDriverId,
-    status: row?.status,
-    driver_accept_expires_at: row?.driver_accept_expires_at,
-    updated_at: row?.updated_at,
-    reason,
-  });
-
-  const nowIso = new Date().toISOString();
-
-  // Canonical reason for the ledger — strips the "_dispatch_sweep" suffix
-  // so this event is indistinguishable, for diagnostic/query purposes,
-  // from the same event written by driver/active-trip. The suffix is
-  // still visible via sweep_triggered in meta and in the debug log below.
-  const canonicalReason = reason.replace(/_dispatch_sweep$/, "");
-
-  let resetQuery = admin
-    .from("bookings")
-    .update({
-      status: "searching",
-      driver_id: null,
-      assigned_driver_id: null,
-      assigned_at: null,
-      driver_accept_expires_at: null,
-      driver_fee_proposal_expires_at: null,
-      proposed_fare: null,
-      verified_fare: null,
-      pickup_distance_fee: null,
-      driver_to_pickup_km: null,
-      passenger_fare_response: null,
-      last_expired_driver_id: oldDriverId,
-      updated_at: nowIso,
-    })
-    .in("status", ["assigned", "accepted"]);
-
-  resetQuery = bookingCode
-    ? resetQuery.eq("booking_code", bookingCode)
-    : resetQuery.eq("id", bookingId);
-
-  const resetRes = await resetQuery.select("id,booking_code,status,driver_id,assigned_driver_id").limit(1);
-
-  if (resetRes.error || !Array.isArray(resetRes.data) || resetRes.data.length === 0) {
-    debug.push({
-      step: "reset_failed",
-      booking_code: bookingCode,
-      booking_id: bookingId,
-      error: resetRes.error?.message || null,
-      data_count: Array.isArray(resetRes.data) ? resetRes.data.length : null,
-    });
-    return false;
-  }
-
-  const resetBookingCode = text((resetRes.data[0] as any)?.booking_code || bookingCode);
-
-  debug.push({
-    step: "reset_ok",
-    booking_code: resetBookingCode,
-    reset_count: resetRes.data.length,
-    reset_row: resetRes.data[0],
-  });
-
-  if (!resetBookingCode) return false;
-
-  const lifecycleRes = await admin.rpc("record_booking_lifecycle_event", {
-    p_booking_id: text((resetRes.data[0] as any)?.id || bookingId) || null,
-    p_booking_code: resetBookingCode,
-    p_passenger_id: text(row?.created_by_user_id) || null,
-    p_driver_id: oldDriverId,
-    p_previous_driver_id: oldDriverId,
-    p_event_type: "assignment_expired",
-    p_status_before: text(row?.status) || null,
-    p_status_after: "searching",
-    p_town: text(row?.town) || null,
-    p_source: "system",
-    p_actor_type: "system",
-    p_actor_id: null,
-    p_meta: {
-      reason: canonicalReason,
-      expiry_type:
-        canonicalReason === "ride_fare_proposal_expired"
-          ? "fare_proposal_window"
-          : "driver_accept_window",
-      sweep_triggered: true,
-    },
-  });
-
-  if (lifecycleRes.error) {
-    debug.push({
-      step: "lifecycle_event_insert_failed",
-      booking_code: resetBookingCode,
-      error: lifecycleRes.error.message,
-    });
-    console.error(
-      "[JRIDE_ADMIN_SWEEP_LIFECYCLE_EVENT_INSERT_FAILED]",
-      JSON.stringify({ bookingCode: resetBookingCode, reason: canonicalReason, error: lifecycleRes.error.message })
-    );
-  }
-
-  try {
-    const assignRes = await fetch(new URL("/api/dispatch/assign", req.nextUrl.origin), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        bookingCode: resetBookingCode,
-        excludeDriverId: oldDriverId,
-        autoReassignReason: reason,
-      }),
-      cache: "no-store",
-    });
-
-    const assignPayload = await assignRes.json().catch(() => null);
-
-    debug.push({
-      step: "assign_called",
-      booking_code: resetBookingCode,
-      excluded_driver_id: oldDriverId,
-      status: assignRes.status,
-      ok: assignRes.ok,
-      result: assignPayload,
-    });
-  } catch (e: any) {
-    debug.push({
-      step: "assign_call_failed",
-      booking_code: resetBookingCode,
-      error: String(e?.message || e || "unknown"),
-    });
-  }
-
-  return true;
-}
-function isExpiredAssignedRide(row: any) {
-  const status = normStatus(row?.status);
-  if (status !== "assigned") return false;
-  return isExpiredIso(row?.driver_accept_expires_at);
-}
-
-function isExpiredAcceptedRide(row: any) {
-  const status = normStatus(row?.status);
-  if (status !== "accepted") return false;
-  // Was: minutesSince(updated_at) >= 5 — a generic heuristic that ignored
-  // the actual driver_fee_proposal_expires_at timer set on the booking,
-  // and disagreed with driver/active-trip's rule for the same window.
-  return isExpiredIso(row?.driver_fee_proposal_expires_at);
-}
-
 export async function POST(req: NextRequest) {
   const gate = await requireStaff();
   if (!gate.ok) {
@@ -400,36 +242,7 @@ export async function GET(req: NextRequest) {
     return json(500, { ok: false, error: "BOOKINGS_READ_FAILED", message: bookingsRes.error.message });
   }
 
-  const initialBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
-
-  let sweptExpired = 0;
-  const sweepDebug: any[] = [];
-  for (const row of initialBookings as any[]) {
-    if (isExpiredAssignedRide(row)) {
-      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_driver_accept_expired_dispatch_sweep", sweepDebug);
-      if (didSweep) sweptExpired += 1;
-      continue;
-    }
-
-    if (isExpiredAcceptedRide(row)) {
-      const didSweep = await resetExpiredRideAndReassign(req, admin, row, "ride_fare_proposal_expired_dispatch_sweep", sweepDebug);
-      if (didSweep) sweptExpired += 1;
-    }
-  }
-
-  let rawBookings = initialBookings;
-  if (sweptExpired > 0) {
-    const reread = await admin
-      .from("bookings")
-      .select("*")
-      .or("service_type.is.null,service_type.neq.takeout")
-      .order("created_at", { ascending: false })
-      .limit(500);
-
-    if (!reread.error && Array.isArray(reread.data)) {
-      rawBookings = reread.data;
-    }
-  }
+  const rawBookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
   const assignedDriverIds = Array.from(
     new Set(rawBookings.map((r: any) => text(r?.assigned_driver_id || r?.driver_id)).filter(Boolean))
   );
@@ -578,8 +391,7 @@ export async function GET(req: NextRequest) {
   return json(200, {
     ok: true,
     source: "app/api/admin/ride-dispatch/route.ts",
-    swept_expired: sweptExpired,
-    sweep_debug: sweepDebug,
+    expiry_authority: "server_cron",
     filter,
     counts,
     rides: filtered,

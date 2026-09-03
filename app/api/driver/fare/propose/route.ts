@@ -6,6 +6,7 @@ import {
   isNormalRidePickupDistance,
   RIDE_PICKUP_NORMAL_MAX_KM,
 } from "@/lib/pricing/pickupFee";
+import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
 
 type ProposeBody = {
   booking_code?: string;
@@ -274,24 +275,53 @@ export async function POST(req: Request) {
       );
     }
 
-    const pickupLat = Number((booking as any).pickup_lat ?? NaN);
-    const pickupLng = Number((booking as any).pickup_lng ?? NaN);
-    const dropoffLat = Number((booking as any).dropoff_lat ?? NaN);
-    const dropoffLng = Number((booking as any).dropoff_lng ?? NaN);
+    const expiryColumn =
+      currentStatus === "assigned"
+        ? "driver_accept_expires_at"
+        : "driver_fee_proposal_expires_at";
+    const expectedExpiresAt = text((booking as any)[expiryColumn]);
+    const expectedExpiresAtMs = Date.parse(expectedExpiresAt);
 
-    if (!Number.isFinite(pickupLat) || !Number.isFinite(pickupLng)) {
+    if (
+      !expectedExpiresAt ||
+      !Number.isFinite(expectedExpiresAtMs) ||
+      expectedExpiresAtMs <= Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_WINDOW_EXPIRED_OR_CHANGED",
+          message: "The driver fare-proposal window has closed.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
+    const pickupCoords = parseUsableCoordinatePair(
+      (booking as any).pickup_lat,
+      (booking as any).pickup_lng
+    );
+    const dropoffCoords = parseUsableCoordinatePair(
+      (booking as any).dropoff_lat,
+      (booking as any).dropoff_lng
+    );
+
+    if (!pickupCoords) {
       return NextResponse.json(
         { ok: false, error: "MISSING_PICKUP_COORDS" },
         { status: 400, headers: noStoreHeaders() }
       );
     }
 
-    if (!Number.isFinite(dropoffLat) || !Number.isFinite(dropoffLng)) {
+    if (!dropoffCoords) {
       return NextResponse.json(
         { ok: false, error: "MISSING_DROPOFF_COORDS" },
         { status: 400, headers: noStoreHeaders() }
       );
     }
+
+    const { lat: pickupLat, lng: pickupLng } = pickupCoords;
+    const { lat: dropoffLat, lng: dropoffLng } = dropoffCoords;
 
     let driverLat: number | null = null;
     let driverLng: number | null = null;
@@ -303,11 +333,13 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (driverLoc) {
-      const lat = Number((driverLoc as any).lat ?? NaN);
-      const lng = Number((driverLoc as any).lng ?? NaN);
-      if (Number.isFinite(lat) && Number.isFinite(lng)) {
-        driverLat = lat;
-        driverLng = lng;
+      const driverCoords = parseUsableCoordinatePair(
+        (driverLoc as any).lat,
+        (driverLoc as any).lng
+      );
+      if (driverCoords) {
+        driverLat = driverCoords.lat;
+        driverLng = driverCoords.lng;
       }
     }
 
@@ -394,6 +426,7 @@ export async function POST(req: Request) {
       night_rate_mode: nightRate.mode,
       verified_fare: null,
       passenger_fare_response: null,
+      driver_accept_expires_at: null,
       driver_fee_proposal_expires_at: feeProposalExpiresAt,
       driver_to_pickup_km: driverToPickupKm,
       pickup_distance_fee: pickupFee,
@@ -404,10 +437,23 @@ export async function POST(req: Request) {
       updated_at: nowIso,
     };
 
-    const { error: updateErr } = await supabase
+    const updateStartedAt = new Date().toISOString();
+    let updateQuery = supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", (booking as any).id);
+      .eq("id", (booking as any).id)
+      .eq("status", currentStatus)
+      .eq(expiryColumn, expectedExpiresAt)
+      .gt(expiryColumn, updateStartedAt)
+      .is("passenger_fare_response", null);
+
+    updateQuery = assignedDriverId
+      ? updateQuery.eq("assigned_driver_id", assignedDriverId)
+      : updateQuery.eq("driver_id", bookingDriverId);
+
+    const { data: updatedRows, error: updateErr } = await updateQuery
+      .select("id,status")
+      .limit(1);
 
     if (updateErr) {
       console.error("[FARE_PROPOSE_UPDATE_FAILED]", {
@@ -438,7 +484,21 @@ export async function POST(req: Request) {
           target_status: "fare_proposed",
           update_payload: updatePayload,
         },
-        { status: 500, headers: noStoreHeaders() }
+        {
+          status: updateErr.message.includes("WINDOW_EXPIRED") ? 409 : 500,
+          headers: noStoreHeaders(),
+        }
+      );
+    }
+
+    if (!updatedRows?.[0]) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_WINDOW_EXPIRED_OR_CHANGED",
+          message: "The driver fare-proposal window has closed or changed.",
+        },
+        { status: 409, headers: noStoreHeaders() }
       );
     }
 

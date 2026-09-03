@@ -90,6 +90,30 @@ export async function POST(req: Request) {
       );
     }
 
+    const assignedDriverId = text(
+      (booking as any).assigned_driver_id || (booking as any).driver_id
+    );
+    const expectedExpiresAt = text(
+      (booking as any).driver_fee_proposal_expires_at
+    );
+    const expiresAtMs = Date.parse(expectedExpiresAt);
+
+    if (
+      text((booking as any).passenger_fare_response) ||
+      !expectedExpiresAt ||
+      !Number.isFinite(expiresAtMs) ||
+      expiresAtMs <= Date.now()
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_EXPIRED_OR_CHANGED",
+          message: "The fare response window has closed or was already handled.",
+        },
+        { status: 409, headers: noStoreHeaders() }
+      );
+    }
+
     const proposedFareRaw = Number((booking as any).proposed_fare ?? NaN);
     if (!Number.isFinite(proposedFareRaw) || proposedFareRaw <= 0) {
       return NextResponse.json(
@@ -138,12 +162,28 @@ export async function POST(req: Request) {
       promo_status: promoStatus,
       promo_program_code: promoProgramCode,
       promo_credit_id: promoCreditId,
+      driver_fee_proposal_expires_at: null,
+      updated_at: new Date().toISOString(),
     };
 
-    const { error: updateErr } = await supabase
+    const updateStartedAt = new Date().toISOString();
+    let updateQuery = supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", (booking as any).id);
+      .eq("id", (booking as any).id)
+      .eq("created_by_user_id", userId)
+      .eq("status", "fare_proposed")
+      .is("passenger_fare_response", null)
+      .eq("driver_fee_proposal_expires_at", expectedExpiresAt)
+      .gt("driver_fee_proposal_expires_at", updateStartedAt);
+
+    updateQuery = assignedDriverId
+      ? updateQuery.eq("assigned_driver_id", assignedDriverId)
+      : updateQuery.is("assigned_driver_id", null);
+
+    const { data: updatedRows, error: updateErr } = await updateQuery
+      .select("id,status")
+      .limit(1);
 
     if (updateErr) {
       return NextResponse.json(
@@ -152,7 +192,21 @@ export async function POST(req: Request) {
           error: "ACCEPT_UPDATE_FAILED",
           message: updateErr.message,
         },
-        { status: 500, headers: noStoreHeaders() }
+        {
+          status: updateErr.message.includes("WINDOW_EXPIRED") ? 409 : 500,
+          headers: noStoreHeaders(),
+        }
+      );
+    }
+
+    if (!updatedRows?.[0]) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "FARE_PROPOSAL_EXPIRED_OR_CHANGED",
+          message: "The fare response window has closed or was already handled.",
+        },
+        { status: 409, headers: noStoreHeaders() }
       );
     }
 

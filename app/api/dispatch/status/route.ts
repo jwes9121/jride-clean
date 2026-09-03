@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
     let query = supabase
       .from("bookings")
       .select(
-        "id, booking_code, status, service_type, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code"
+        "id, booking_code, status, service_type, driver_id, assigned_driver_id, proposed_fare, verified_fare, pickup_distance_fee, promo_applied_amount, promo_status, promo_program_code, passenger_fare_response, driver_accept_expires_at, driver_fee_proposal_expires_at"
       )
       .limit(1);
 
@@ -149,6 +149,20 @@ export async function POST(req: NextRequest) {
     if (!allowed.includes(nextStatus)) {
       return NextResponse.json(
         { ok: false, error: "invalid_transition", from: current, to: nextStatus },
+        { status: 409 }
+      );
+    }
+
+    if (nextStatus === "fare_proposed" || current === "fare_proposed") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "canonical_fare_route_required",
+          message:
+            nextStatus === "fare_proposed"
+              ? "Use the driver fare-proposal route."
+              : "Use the passenger fare-response route.",
+        },
         { status: 409 }
       );
     }
@@ -196,19 +210,63 @@ export async function POST(req: NextRequest) {
     };
 
     if (nextStatus === "accepted") {
+      const expectedAcceptExpiry = clean(booking.driver_accept_expires_at);
+      const expectedAcceptExpiryMs = Date.parse(expectedAcceptExpiry);
+      if (
+        !expectedAcceptExpiry ||
+        !Number.isFinite(expectedAcceptExpiryMs) ||
+        expectedAcceptExpiryMs <= Date.now()
+      ) {
+        return NextResponse.json(
+          { ok: false, error: "driver_accept_window_expired_or_changed" },
+          { status: 409 }
+        );
+      }
+
       updatePayload.driver_fee_proposal_expires_at = new Date(
         Date.now() + 5 * 60 * 1000
       ).toISOString();
       updatePayload.driver_accept_expires_at = null;
     }
 
-    const { error: updateError } = await supabase
+    let updateQuery = supabase
       .from("bookings")
       .update(updatePayload)
-      .eq("id", booking.id);
+      .eq("id", booking.id)
+      .eq("status", current);
+
+    const assignedDriverId = clean(
+      booking.assigned_driver_id || booking.driver_id
+    );
+    updateQuery = assignedDriverId
+      ? updateQuery.eq("assigned_driver_id", assignedDriverId)
+      : updateQuery.is("assigned_driver_id", null);
+
+    if (nextStatus === "accepted") {
+      const expectedAcceptExpiry = clean(booking.driver_accept_expires_at);
+      updateQuery = updateQuery
+        .eq("driver_accept_expires_at", expectedAcceptExpiry)
+        .gt("driver_accept_expires_at", updatePayload.updated_at);
+    }
+
+    const { data: updatedRows, error: updateError } = await updateQuery
+      .select("id,status")
+      .limit(1);
 
     if (updateError) {
-      return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: updateError.message },
+        {
+          status: updateError.message.includes("WINDOW_EXPIRED") ? 409 : 500,
+        }
+      );
+    }
+
+    if (!updatedRows?.[0]) {
+      return NextResponse.json(
+        { ok: false, error: "status_transition_lost_race" },
+        { status: 409 }
+      );
     }
 
     return NextResponse.json({ ok: true });
