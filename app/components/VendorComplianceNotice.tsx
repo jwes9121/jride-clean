@@ -3,6 +3,9 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
+const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
+
 function clean(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -34,6 +37,88 @@ function violationLabel(value: unknown): string {
     .join(" ");
 }
 
+function readPortalVendorId(): string {
+  if (typeof window === "undefined") return "";
+
+  let queryVendorId = "";
+  try {
+    const params = new URLSearchParams(window.location.search);
+    queryVendorId = clean(
+      params.get("vendor_id") || params.get("vendorId") || ""
+    );
+  } catch {
+    queryVendorId = "";
+  }
+
+  try {
+    return clean(
+      window.sessionStorage.getItem(LS_VENDOR_ID) ||
+        window.localStorage.getItem(LS_VENDOR_ID) ||
+        window.sessionStorage.getItem(LEGACY_LS_VENDOR_ID) ||
+        window.localStorage.getItem(LEGACY_LS_VENDOR_ID) ||
+        queryVendorId
+    );
+  } catch {
+    return queryVendorId;
+  }
+}
+
+async function loadLegacyPortalStatus(): Promise<any | null> {
+  const vendorId = readPortalVendorId();
+  if (!vendorId) return null;
+
+  const response = await fetch(
+    `/api/vendor-hours?vendor_id=${encodeURIComponent(vendorId)}`,
+    {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    }
+  );
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok || result?.ok !== true) {
+    throw new Error(
+      result?.message || result?.error || "Vendor status could not be loaded."
+    );
+  }
+
+  const suspended = result?.suspended === true;
+  const warningActive = result?.public_response_warning_active === true;
+  if (!suspended && !warningActive) return null;
+
+  return {
+    ok: true,
+    vendor_id: clean(result?.vendor_id || vendorId),
+    vendor_name: clean(result?.display_name),
+    suspended,
+    legacy_session: true,
+    suspension: suspended
+      ? {
+          sanction_id: null,
+          violation_code: "COMPLIANCE_SUSPENSION",
+          message:
+            clean(result?.suspension_reason) ||
+            "JRide temporarily suspended new Takeout orders after an admin compliance review.",
+          starts_at: null,
+          ends_at: result?.suspended_until || null,
+          scope: "new_orders_only",
+          acknowledged_at: null,
+          acknowledgement_required: false,
+          reference: "SIGN-IN-REQUIRED",
+        }
+      : null,
+    public_response_warning_active: warningActive,
+    public_response_warning: warningActive
+      ? {
+          message:
+            clean(result?.public_response_warning_reason) ||
+            "Repeated expired Takeout orders",
+          ends_at: result?.public_response_warning_until || null,
+        }
+      : null,
+  };
+}
+
 export default function VendorComplianceNotice() {
   const pathname = usePathname();
   const isVendorPortal = pathname.startsWith("/vendor-portal");
@@ -52,8 +137,10 @@ export default function VendorComplianceNotice() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok !== true) {
         if (response.status === 401) {
-          setStatus(null);
+          const legacyStatus = await loadLegacyPortalStatus();
+          setStatus(legacyStatus);
           setLoadError("");
+          setDetailsOpen(legacyStatus?.suspended === true);
           return;
         }
         throw new Error(
@@ -64,6 +151,8 @@ export default function VendorComplianceNotice() {
       setLoadError("");
       if (result?.suspension?.acknowledgement_required === true) {
         setDetailsOpen(true);
+      } else if (result?.suspended !== true) {
+        setDetailsOpen(false);
       }
     } catch (error: any) {
       setLoadError(String(error?.message || error));
@@ -115,6 +204,11 @@ export default function VendorComplianceNotice() {
     }
   }
 
+  function reauthenticate() {
+    if (typeof window === "undefined") return;
+    window.location.assign("/vendor-login?reason=suspension-notice");
+  }
+
   if (!isVendorPortal) return null;
 
   if (loadError && !status) {
@@ -136,9 +230,11 @@ export default function VendorComplianceNotice() {
 
   const suspension = status?.suspension || null;
   const suspended = status?.suspended === true && Boolean(suspension);
+  const legacySession = status?.legacy_session === true;
   const acknowledgementRequired =
     suspension?.acknowledgement_required === true;
-  const showDetails = suspended && (acknowledgementRequired || detailsOpen);
+  const showDetails =
+    suspended && (legacySession || acknowledgementRequired || detailsOpen);
 
   return (
     <>
@@ -222,7 +318,9 @@ export default function VendorComplianceNotice() {
               <div className="grid grid-cols-1 gap-2 border-t border-rose-200 pt-3 text-xs sm:grid-cols-2">
                 <div>
                   <span className="font-black">Starts:</span>{" "}
-                  {fmt(suspension.starts_at)}
+                  {clean(suspension.starts_at)
+                    ? fmt(suspension.starts_at)
+                    : "Active now"}
                 </div>
                 <div>
                   <span className="font-black">Ends:</span>{" "}
@@ -230,7 +328,9 @@ export default function VendorComplianceNotice() {
                 </div>
                 <div>
                   <span className="font-black">Reference:</span>{" "}
-                  {clean(suspension.reference) || "-"}
+                  {legacySession
+                    ? "Available after sign-in"
+                    : clean(suspension.reference) || "-"}
                 </div>
                 <div>
                   <span className="font-black">Scope:</span> New orders only
@@ -245,6 +345,14 @@ export default function VendorComplianceNotice() {
               manually open it again.
             </div>
 
+            {legacySession ? (
+              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs leading-5 text-amber-950">
+                This device is using an older vendor session. Sign in again to
+                verify the vendor identity, view the suspension reference, and
+                record acknowledgment of this notice.
+              </div>
+            ) : null}
+
             {loadError ? (
               <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
                 {loadError}
@@ -256,7 +364,15 @@ export default function VendorComplianceNotice() {
                 To question or correct this action, contact JRide administration
                 and provide the suspension reference shown above.
               </p>
-              {acknowledgementRequired ? (
+              {legacySession ? (
+                <button
+                  type="button"
+                  onClick={reauthenticate}
+                  className="rounded-xl bg-rose-700 px-5 py-3 text-sm font-black text-white"
+                >
+                  Sign in again to acknowledge
+                </button>
+              ) : acknowledgementRequired ? (
                 <button
                   type="button"
                   disabled={acknowledging || !clean(suspension.sanction_id)}
