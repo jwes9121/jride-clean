@@ -28,7 +28,13 @@ function fmt(value: unknown): string {
 }
 
 function violationLabel(value: unknown): string {
-  const code = clean(value);
+  const code = clean(value).toUpperCase();
+  if (code === "REPEATED_ORDER_TIMEOUTS") {
+    return "3 accumulated unanswered or expired Takeout orders";
+  }
+  if (code === "REPEATED_UNEXCUSED_OFFLINE_DAYS") {
+    return "3 consecutive operating days without manually opening the store";
+  }
   if (!code) return "Vendor compliance violation";
   return code
     .toLowerCase()
@@ -72,7 +78,7 @@ function supportHref(status: any, suspension: any): string {
   const body = [
     "Hello JRide,",
     "",
-    "I have a question or would like to request a review of this vendor suspension.",
+    "I would like to submit a question or valid dispute about this vendor suspension.",
     "",
     `Vendor: ${vendorName}`,
     `Vendor ID: ${vendorId}`,
@@ -80,13 +86,28 @@ function supportHref(status: any, suspension: any): string {
     `Suspension ends: ${fmt(suspension?.ends_at)}`,
     `Reason shown: ${clean(suspension?.message) || "Not available"}`,
     "",
-    "Question or dispute:",
+    "Recorded activity I believe is incorrect:",
+    "",
+    "Order code, date, approved closure, or supporting evidence:",
     "",
   ].join("\n");
 
   return `mailto:${JRIDE_SUPPORT_EMAIL}?subject=${encodeURIComponent(
     subject
   )}&body=${encodeURIComponent(body)}`;
+}
+
+function isAutomaticSuspension(suspension: any): boolean {
+  const type = clean(suspension?.sanction_type);
+  const code = clean(suspension?.violation_code).toUpperCase();
+  return (
+    suspension?.automated === true ||
+    suspension?.enforcement_source === "system_automatic" ||
+    type === "automatic_7_days" ||
+    type === "automatic_30_days" ||
+    code === "REPEATED_ORDER_TIMEOUTS" ||
+    code === "REPEATED_UNEXCUSED_OFFLINE_DAYS"
+  );
 }
 
 export default function VendorComplianceNotice() {
@@ -211,6 +232,8 @@ export default function VendorComplianceNotice() {
 
   const suspension = status?.suspension || null;
   const suspended = status?.suspended === true && Boolean(suspension);
+  const automated = isAutomaticSuspension(suspension);
+  const repeatOffense = suspension?.repeat_offense === true;
   const acknowledgementRequired =
     suspension?.acknowledgement_required === true;
   const showDetails = suspended && (acknowledgementRequired || detailsOpen);
@@ -223,7 +246,9 @@ export default function VendorComplianceNotice() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.16em] text-rose-100">
-                Store suspended by JRide
+                {automated
+                  ? "Store automatically suspended by JRide"
+                  : "Store suspended by JRide"}
               </div>
               <div className="mt-1 text-sm font-bold">
                 New Takeout orders are disabled until {fmt(suspension.ends_at)}.
@@ -268,7 +293,9 @@ export default function VendorComplianceNotice() {
         >
           <section className="max-h-[92vh] w-full max-w-2xl overflow-auto rounded-3xl border border-rose-300 bg-white p-5 text-slate-950 shadow-2xl sm:p-6">
             <div className="text-xs font-black uppercase tracking-[0.18em] text-rose-700">
-              JRide vendor suspension notice
+              {automated
+                ? "JRide automated compliance suspension"
+                : "JRide vendor suspension notice"}
             </div>
             <h2
               id="vendor-suspension-title"
@@ -276,12 +303,23 @@ export default function VendorComplianceNotice() {
             >
               New Takeout orders are temporarily disabled
             </h2>
-            <p className="mt-3 text-sm leading-6 text-slate-700">
-              JRide administration reviewed and applied this suspension. You can
-              still access the vendor portal, order history, and existing
-              records, but you cannot reopen the store or receive new Takeout
-              orders while the suspension is active.
-            </p>
+
+            {automated ? (
+              <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-950">
+                JRide&apos;s vendor compliance system automatically applied this
+                suspension after recorded activity reached the rule shown
+                below. The action comes from the system&apos;s recorded activity
+                and fixed compliance rules, not from an employee or individual.
+                Manual review is opened only after a valid dispute is submitted.
+              </div>
+            ) : (
+              <p className="mt-3 text-sm leading-6 text-slate-700">
+                JRide applied this suspension after a compliance review. You can
+                still access the vendor portal, order history, and existing
+                records, but you cannot reopen the store or receive new Takeout
+                orders while the suspension is active.
+              </p>
+            )}
 
             <div className="mt-4 space-y-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm">
               <div>
@@ -316,21 +354,103 @@ export default function VendorComplianceNotice() {
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border bg-slate-50 p-4 text-xs leading-5 text-slate-600">
+            <details className="mt-4 rounded-2xl border bg-slate-50 p-4 text-sm text-slate-700">
+              <summary className="cursor-pointer font-black text-slate-950">
+                Automatic suspension rules
+              </summary>
+              <div className="mt-3 space-y-4 text-xs leading-5">
+                <div>
+                  <div className="font-black text-slate-900">
+                    3 accumulated unanswered or expired Takeout orders
+                  </div>
+                  <p className="mt-1">
+                    The system counts every Takeout order that expires because
+                    the vendor did not accept or decline it within the required
+                    response time. The count is accumulated. Answering a later
+                    order does not remove earlier unanswered orders.
+                  </p>
+                </div>
+                <div>
+                  <div className="font-black text-slate-900">
+                    3 consecutive operating days without manually opening the
+                    store
+                  </div>
+                  <p className="mt-1">
+                    Opening the JRide app or browser does not open the store.
+                    The vendor must select Open for Orders Today in the Vendor
+                    Portal each operating day. Until this is done, the store
+                    remains closed and does not receive new orders. An approved
+                    closure or valid system exception breaks the unexcused-day
+                    count.
+                  </p>
+                </div>
+                <div>
+                  <div className="font-black text-slate-900">
+                    First and repeat suspension
+                  </div>
+                  <p className="mt-1">
+                    The first reached threshold automatically suspends new-order
+                    access for 7 days. Reaching the same offense threshold again
+                    after a prior valid automatic suspension automatically
+                    suspends new-order access for 30 days.
+                  </p>
+                </div>
+              </div>
+            </details>
+
+            <div className="mt-3 rounded-2xl border bg-slate-50 p-4 text-xs leading-5 text-slate-600">
               Pending orders that were not yet accepted are cancelled. Orders
-              accepted before the suspension may still be completed. When the
-              suspension ends or is revoked, the store remains closed until you
-              manually open it again.
+              accepted before the suspension can still be completed. When the
+              suspension ends or is revoked, the store remains closed until the
+              vendor manually opens it again.
             </div>
 
+            {repeatOffense ? (
+              <div className="mt-3 rounded-2xl border border-rose-300 bg-rose-50 p-4 text-xs leading-5 text-rose-950">
+                <div className="font-black">30-day repeat suspension</div>
+                <div className="mt-1">
+                  The system found that the same offense threshold was reached
+                  again after a prior valid automatic suspension.
+                </div>
+              </div>
+            ) : automated ? (
+              <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-xs leading-5 text-amber-950">
+                <div className="font-black">Repeat-offense consequence</div>
+                <div className="mt-1">
+                  Reaching the same offense threshold again after this valid
+                  automatic suspension will automatically suspend new-order
+                  access for 30 days.
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs leading-5 text-blue-950">
-              <div className="font-black">Questions or disputes</div>
+              <div className="font-black">Questions or valid disputes</div>
               <div className="mt-1">
-                Contact JRide at {JRIDE_SUPPORT_EMAIL} and include the suspension
-                reference above. Requesting a review does not automatically
-                pause or remove the suspension.
+                Manual review is opened only when the vendor submits a valid
+                dispute through JRide and identifies the recorded activity that
+                is incorrect. Include the order code, date, approved closure, or
+                supporting evidence. Filing a dispute does not pause or remove
+                the suspension unless JRide confirms that the system record or
+                sanction is incorrect.
               </div>
             </div>
+
+            {acknowledgementRequired ? (
+              <div className="mt-3 rounded-2xl border border-slate-300 bg-white p-4 text-xs leading-5 text-slate-700">
+                <div className="font-black text-slate-950">
+                  Acknowledgment
+                </div>
+                <div className="mt-1">
+                  Selecting I acknowledge this notice only confirms that the
+                  notice was received and read. It does not mean the vendor
+                  agrees with the finding or gives up the right to dispute it.
+                  The suspension remains active whether or not it is
+                  acknowledged. Until acknowledgment is recorded, this full
+                  notice appears whenever the Vendor Portal is opened.
+                </div>
+              </div>
+            ) : null}
 
             {loadError ? (
               <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs font-semibold text-rose-800">
