@@ -18,7 +18,8 @@ function authorized(req: NextRequest): boolean {
 }
 
 function adminClient() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const url =
+    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
   if (!url || !key) return null;
   return createClient(url, key, {
@@ -27,12 +28,16 @@ function adminClient() {
 }
 
 export async function GET(req: NextRequest) {
-  if (!authorized(req)) return json(401, { ok: false, error: "UNAUTHORIZED" });
+  if (!authorized(req)) {
+    return json(401, { ok: false, error: "UNAUTHORIZED" });
+  }
 
   const admin = adminClient();
-  if (!admin) return json(500, { ok: false, error: "SERVER_MISCONFIG" });
+  if (!admin) {
+    return json(500, { ok: false, error: "SERVER_MISCONFIG" });
+  }
 
-  const result = await admin.rpc("evaluate_vendor_offline_review_v1");
+  const result = await admin.rpc("evaluate_vendor_automatic_compliance_v1");
   if (result.error) {
     return json(500, {
       ok: false,
@@ -44,7 +49,8 @@ export async function GET(req: NextRequest) {
   return json(200, {
     ok: true,
     generated_at: new Date().toISOString(),
-    review: result.data,
-    note: "This sweep creates admin review cases only. It does not automatically suspend a vendor.",
+    enforcement: result.data,
+    note:
+      "The system automatically enforces both accumulated unanswered-order and missed daily-opening thresholds. The first same-offense threshold is 7 days; later same-offense thresholds are 30 days.",
   });
 }

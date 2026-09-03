@@ -8,6 +8,13 @@ import { requireVendorSession } from "@/lib/vendorSession";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const SUSPENSION_TYPES = [
+  "suspension_7_days",
+  "manual",
+  "automatic_7_days",
+  "automatic_30_days",
+];
+
 function json(status: number, payload: Record<string, any>) {
   return NextResponse.json(payload, {
     status,
@@ -96,11 +103,11 @@ export async function GET(req: NextRequest) {
     admin
       .from("vendor_sanctions")
       .select(
-        "id,vendor_id,sanction_type,status,starts_at,ends_at,reason,violation_code,vendor_message,suspension_scope,acknowledged_at"
+        "id,vendor_id,sanction_type,status,starts_at,ends_at,reason,violation_code,vendor_message,suspension_scope,acknowledged_at,enforcement_source,rule_version,threshold_count,repeat_offense"
       )
       .eq("vendor_id", vendorId)
       .eq("status", "active")
-      .in("sanction_type", ["suspension_7_days", "manual"])
+      .in("sanction_type", SUSPENSION_TYPES)
       .gt("ends_at", nowIso)
       .order("starts_at", { ascending: false })
       .limit(1)
@@ -142,16 +149,33 @@ export async function GET(req: NextRequest) {
     legacySession && acknowledgementRequired
       ? signLegacyComplianceAcknowledgementToken(vendorId, sanction?.id)
       : null;
+  const violationCode =
+    clean(sanction?.violation_code) || "COMPLIANCE_SUSPENSION";
+  const automated =
+    clean(sanction?.enforcement_source) === "system_automatic" ||
+    ["automatic_7_days", "automatic_30_days"].includes(
+      clean(sanction?.sanction_type)
+    ) ||
+    [
+      "REPEATED_ORDER_TIMEOUTS",
+      "REPEATED_UNEXCUSED_OFFLINE_DAYS",
+    ].includes(violationCode);
 
   const suspension = suspended
     ? {
         sanction_id: clean(sanction?.id) || null,
-        violation_code:
-          clean(sanction?.violation_code) || "COMPLIANCE_SUSPENSION",
+        sanction_type: clean(sanction?.sanction_type) || null,
+        enforcement_source:
+          clean(sanction?.enforcement_source) || null,
+        automated,
+        rule_version: clean(sanction?.rule_version) || null,
+        threshold_count: Number(sanction?.threshold_count || 0) || null,
+        repeat_offense: sanction?.repeat_offense === true,
+        violation_code: violationCode,
         message:
           clean(sanction?.vendor_message || sanction?.reason) ||
           clean(vendor.suspension_reason) ||
-          "JRide temporarily suspended new orders after an admin compliance review.",
+          "JRide temporarily suspended new orders under the vendor compliance rules.",
         starts_at: sanction?.starts_at || null,
         ends_at: sanction?.ends_at || vendor.suspended_until || null,
         scope: clean(sanction?.suspension_scope) || "new_orders_only",
@@ -173,6 +197,14 @@ export async function GET(req: NextRequest) {
     legacy_session: legacySession,
     suspended,
     suspension,
+    policy: {
+      automatic_enforcement: true,
+      accumulated_unanswered_orders_threshold: 3,
+      consecutive_manual_open_miss_threshold: 3,
+      first_suspension_days: 7,
+      repeat_same_offense_suspension_days: 30,
+      manual_review: "valid_disputes_only",
+    },
     public_response_warning_active: warningActive,
     public_response_warning: warningActive
       ? {
