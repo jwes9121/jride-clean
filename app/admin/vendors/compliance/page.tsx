@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import ActiveSanctionsPanel from "./ActiveSanctionsPanel";
 import ComplianceExemptionsPanel from "./ComplianceExemptionsPanel";
-import ComplianceReviewsPanel from "./ComplianceReviewsPanel";
 import ManualVendorSuspensionPanel from "./ManualVendorSuspensionPanel";
 import {
   clean,
   isActiveSanction,
   isSuspension,
-  newRequestId,
 } from "./shared";
 import type { ManualSuspendPayload } from "./shared";
 
@@ -19,7 +17,6 @@ export default function VendorCompliancePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
-  const [showAllReviews, setShowAllReviews] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -31,7 +28,9 @@ export default function VendorCompliancePage() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.ok !== true) {
         throw new Error(
-          result?.message || result?.error || "Failed to load vendor compliance."
+          result?.message ||
+            result?.error ||
+            "Failed to load vendor compliance."
         );
       }
       setData(result);
@@ -76,13 +75,6 @@ export default function VendorCompliancePage() {
     }
   }
 
-  const reviews = useMemo(() => {
-    const all = Array.isArray(data?.reviews) ? data.reviews : [];
-    return showAllReviews
-      ? all
-      : all.filter((row: any) => clean(row?.status) === "pending");
-  }, [data, showAllReviews]);
-
   const activeSanctions = useMemo(
     () =>
       (Array.isArray(data?.sanctions) ? data.sanctions : []).filter(
@@ -112,23 +104,6 @@ export default function VendorCompliancePage() {
   );
   const canManage = data?.can_manage === true;
 
-  async function suspendFromReview(review: any) {
-    const name = clean(review?.vendor_name || review?.vendor_id || "vendor");
-    const confirmed = window.confirm(
-      `Suspend ${name} for 7 days based on this reviewed compliance case?`
-    );
-    if (!confirmed) return;
-    await act(
-      "suspend_7_days",
-      {
-        review_id: review.id,
-        internal_note: clean(review.reason),
-        request_id: newRequestId(),
-      },
-      `${name} was suspended for 7 days and will receive an on-screen notice.`
-    );
-  }
-
   return (
     <main className="min-h-screen bg-slate-100 p-3 sm:p-6">
       <div className="mx-auto max-w-[1500px] space-y-4">
@@ -142,12 +117,16 @@ export default function VendorCompliancePage() {
                 Vendor compliance and suspension control
               </h1>
               <p className="mt-1 max-w-4xl text-sm text-slate-600">
-                Detection only creates a review. A warning, suspension, or
-                revocation requires an authenticated JRide admin action.
+                System-verifiable thresholds are enforced automatically.
+                Administrators review automatic sanctions only after a valid
+                vendor dispute. Manual suspension remains available for other
+                confirmed violations that cannot be decided from platform
+                records alone.
               </p>
               {data ? (
                 <p className="mt-2 text-xs font-semibold text-slate-500">
-                  Signed in as {data.viewer_email || data.viewer_role} ({data.viewer_role})
+                  Signed in as {data.viewer_email || data.viewer_role} (
+                  {data.viewer_role})
                 </p>
               ) : null}
             </div>
@@ -160,15 +139,25 @@ export default function VendorCompliancePage() {
             </button>
           </div>
 
-          {data?.policy ? (
-            <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
-              <PolicyCard label="Offline review" value="3 consecutive non-exempt days" />
-              <PolicyCard label="Response warning review" value="2 consecutive expired orders" />
-              <PolicyCard label="Suspension review" value="3 consecutive expired orders" />
-              <PolicyCard label="Public warning" value="7 days after approval" />
-              <PolicyCard label="Suspension" value="Admin initiated only" />
-            </div>
-          ) : null}
+          <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
+            <PolicyCard
+              label="Unanswered orders"
+              value="3 accumulated orders"
+            />
+            <PolicyCard
+              label="Daily opening"
+              value="3 consecutive missed days"
+            />
+            <PolicyCard label="First threshold" value="Automatic 7 days" />
+            <PolicyCard
+              label="Same offense again"
+              value="Automatic 30 days"
+            />
+            <PolicyCard
+              label="Manual review"
+              value="Valid disputes only"
+            />
+          </div>
         </section>
 
         {error ? (
@@ -182,7 +171,9 @@ export default function VendorCompliancePage() {
           </div>
         ) : null}
         {loading ? (
-          <div className="rounded-xl border bg-white p-5 text-sm">Loading...</div>
+          <div className="rounded-xl border bg-white p-5 text-sm">
+            Loading...
+          </div>
         ) : null}
 
         {!loading ? (
@@ -196,27 +187,9 @@ export default function VendorCompliancePage() {
                 act(
                   "suspend_manual",
                   payload,
-                  `${label} was suspended. The vendor will see the violation notice in the portal.`
+                  `${label} was suspended for the confirmed non-automatic violation.`
                 )
               }
-            />
-            <ComplianceReviewsPanel
-              reviews={reviews}
-              showAllReviews={showAllReviews}
-              setShowAllReviews={setShowAllReviews}
-              canManage={canManage}
-              busy={busy}
-              onApproveWarning={async (review) => {
-                await act(
-                  "approve_warning",
-                  { review_id: review.id, request_id: newRequestId() },
-                  "The 7-day response warning was published."
-                );
-              }}
-              onSuspend={suspendFromReview}
-              onDismiss={async (review) => {
-                await act("dismiss_review", { review_id: review.id });
-              }}
             />
             <ComplianceExemptionsPanel
               exemptions={exemptions}
@@ -224,7 +197,11 @@ export default function VendorCompliancePage() {
               canManage={canManage}
               busy={busy}
               onAdd={(payload) =>
-                act("add_exemption", payload, "The closure exemption was added.")
+                act(
+                  "add_exemption",
+                  payload,
+                  "The approved closure or exception was added."
+                )
               }
               onRemove={(id) =>
                 act(
@@ -243,7 +220,7 @@ export default function VendorCompliancePage() {
                 act(
                   "revoke_sanction",
                   { sanction_id: row.id, note: reason },
-                  "The sanction was revoked. The vendor store remains closed until manually reopened."
+                  "The sanction was revoked after review. The vendor store remains closed until manually reopened."
                 )
               }
             />
