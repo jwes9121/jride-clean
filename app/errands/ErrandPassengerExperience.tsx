@@ -17,7 +17,7 @@ const TEXT_REPLACEMENTS = new Map<string, string>([
   ],
   [
     "Pickup-distance surcharge is based on the driver's routed road distance to this pin.",
-    "A pickup fee may apply based on the road distance from the driver to this meeting point.",
+    "Your approach charge is based on the driver's road distance to this meeting point. The PHP 40 minimum is not added again when the pickup-distance charge is higher.",
   ],
   [
     "JRide will keep the Errand in matching; it will not silently pull a driver from another town.",
@@ -40,7 +40,7 @@ const TEXT_REPLACEMENTS = new Map<string, string>([
     "16-25 kg is a heavy load. Motorcycle use still depends on safe fit and securing.",
   ],
   ["Working field-test pricing", "How your fare is calculated"],
-  ["Base: PHP 40 candidate", "Base fare: PHP 40"],
+  ["Base: PHP 40 candidate", "Minimum approach charge: PHP 40"],
   [
     "Confirmed Errand route: PHP 15/km candidate",
     "Route distance: PHP 15 per kilometer",
@@ -55,7 +55,7 @@ const TEXT_REPLACEMENTS = new Map<string, string>([
   ],
   [
     "Pickup distance uses the existing JRide pickup surcharge separately",
-    "A pickup fee may apply based on the driver's road distance to your meeting point",
+    "Approach charge: PHP 40 minimum, or the driver's pickup-distance charge when that amount is higher. They are not added together.",
   ],
   [
     "The in-person task review determines the exact starting fare. Field-test rates can still be adjusted before public rollout.",
