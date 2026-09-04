@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import ErrandReferenceBanner from "./ErrandReferenceBanner";
 import ErrandRecoveryBanner from "./ErrandRecoveryBanner";
 import ErrandPassengerExperience from "./ErrandPassengerExperience";
+import ErrandStickyFare from "./ErrandStickyFare";
 
 export default function ErrandsLayout({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export default function ErrandsLayout({ children }: { children: ReactNode }) {
       <ErrandReferenceBanner />
       <ErrandRecoveryBanner />
       {children}
+      <ErrandStickyFare />
     </>
   );
 }
