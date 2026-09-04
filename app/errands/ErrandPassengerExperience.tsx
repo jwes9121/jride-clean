@@ -9,6 +9,7 @@ const TEXT_REPLACEMENTS = new Map<string, string>([
     "Please try again later or contact JRide support.",
   ],
   ["New Errand", "Request an Errand"],
+  ["final_recipient_met", "Recipient met - completing handoff"],
   ["Add task stop", "+ Add stop"],
   [
     "Task Stop 1 is included. Each confirmed task stop after Task Stop 1 currently adds PHP 40.",
