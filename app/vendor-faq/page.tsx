@@ -487,10 +487,9 @@ function Section({
         {section.title[language]}
       </h2>
       <div className="mt-4 space-y-3">
-        {section.items.map((item, index) => (
+        {section.items.map((item) => (
           <details
             key={item.question.en}
-            defaultOpen={section.featured === true && index === 0}
             className="group rounded-2xl border border-slate-200 bg-slate-50 p-4"
           >
             <summary className="cursor-pointer list-none pr-6 text-sm font-bold text-slate-900">
