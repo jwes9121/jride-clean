@@ -66,7 +66,7 @@ export async function GET(req: Request) {
     const admin = supabaseAdmin();
     const { data: owned, error: ownedError } = await admin
       .from("bookings")
-      .select("id,status,service_type,created_by_user_id")
+      .select("id,booking_code,status,service_type,created_by_user_id,completed_at")
       .eq("id", bookingId)
       .maybeSingle();
 
@@ -121,9 +121,9 @@ export async function GET(req: Request) {
       {
         ok: true,
         receipt: {
-          booking_id: (bundle.booking as any).id,
-          booking_code: (bundle.booking as any).booking_code,
-          completed_at: (bundle.booking as any).completed_at || null,
+          booking_id: owned.id,
+          booking_code: owned.booking_code,
+          completed_at: owned.completed_at || null,
           starting_fare: (bundle.job as any).starting_fare_at_confirmation ?? null,
           final_fare: fare.total_errand_fare,
           base_fare: fare.base_fare,
