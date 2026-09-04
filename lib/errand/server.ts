@@ -212,8 +212,9 @@ export function errandFareBreakdown(
   job?: any,
   settings?: any
 ) {
-  const baseFare = num(booking?.base_fee);
+  const configuredBaseFare = num(booking?.base_fee);
   const pickupDistanceFee = num(booking?.pickup_distance_fee);
+  const approachFee = Math.max(configuredBaseFare, pickupDistanceFee);
   const distanceFare = num(booking?.distance_fare);
   const extraStopFee = num(booking?.extra_stop_fee);
   const storedWaitingFee = num(booking?.waiting_fee);
@@ -269,8 +270,7 @@ export function errandFareBreakdown(
 
   const currentTotal = Number(
     (
-      baseFare +
-      pickupDistanceFee +
+      approachFee +
       distanceFare +
       extraStopFee +
       liveWaitingFee +
@@ -288,8 +288,12 @@ export function errandFareBreakdown(
     : 0;
 
   return {
-    base_fare: baseFare,
+    pricing_model: "base_absorbed_into_pickup_v2",
+    approach_fee: approachFee,
+    configured_base_fare: configuredBaseFare,
+    base_fare: configuredBaseFare,
     pickup_distance_fee: pickupDistanceFee,
+    base_absorbed_into_pickup: pickupDistanceFee > configuredBaseFare,
     distance_fare: distanceFare,
     extra_stop_fee: extraStopFee,
     waiting_fee: liveWaitingFee,
