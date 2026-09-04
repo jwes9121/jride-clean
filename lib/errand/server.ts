@@ -1,6 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const ERRAND_RECEIPT_BUCKET = "errand-receipts";
+const ERRAND_APPROACH_PRICING_EFFECTIVE_AT_MS = Date.parse(
+  "2026-09-04T22:33:38Z"
+);
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
@@ -214,7 +217,13 @@ export function errandFareBreakdown(
 ) {
   const configuredBaseFare = num(booking?.base_fee);
   const pickupDistanceFee = num(booking?.pickup_distance_fee);
-  const approachFee = Math.max(configuredBaseFare, pickupDistanceFee);
+  const createdAtMs = Date.parse(text(booking?.created_at));
+  const usesAbsorbedApproachPricing =
+    !Number.isFinite(createdAtMs) ||
+    createdAtMs >= ERRAND_APPROACH_PRICING_EFFECTIVE_AT_MS;
+  const approachFee = usesAbsorbedApproachPricing
+    ? Math.max(configuredBaseFare, pickupDistanceFee)
+    : configuredBaseFare + pickupDistanceFee;
   const distanceFare = num(booking?.distance_fare);
   const extraStopFee = num(booking?.extra_stop_fee);
   const storedWaitingFee = num(booking?.waiting_fee);
@@ -288,12 +297,15 @@ export function errandFareBreakdown(
     : 0;
 
   return {
-    pricing_model: "base_absorbed_into_pickup_v2",
+    pricing_model: usesAbsorbedApproachPricing
+      ? "base_absorbed_into_pickup_v2"
+      : "legacy_stacked_base_pickup_v1",
     approach_fee: approachFee,
     configured_base_fare: configuredBaseFare,
     base_fare: configuredBaseFare,
     pickup_distance_fee: pickupDistanceFee,
-    base_absorbed_into_pickup: pickupDistanceFee > configuredBaseFare,
+    base_absorbed_into_pickup:
+      usesAbsorbedApproachPricing && pickupDistanceFee > configuredBaseFare,
     distance_fare: distanceFare,
     extra_stop_fee: extraStopFee,
     waiting_fee: liveWaitingFee,
