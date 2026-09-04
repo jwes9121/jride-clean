@@ -1,0 +1,25 @@
+revoke execute on function public.errand_capture_driver_location_ping_v1() from public, anon, authenticated;
+revoke execute on function public.errand_capture_stage_location_v1() from public, anon, authenticated;
+revoke execute on function public.errand_cleanup_terminal_booking_state_v1() from public, anon, authenticated;
+revoke execute on function public.errand_dispatch_start_unreachable_return_v1(uuid,text,text,text,numeric,numeric,integer,numeric,integer,jsonb,text) from public, anon, authenticated;
+revoke execute on function public.errand_driver_arrive_unreachable_return_v1(uuid,uuid) from public, anon, authenticated;
+revoke execute on function public.errand_driver_complete_pabili_purchase_v1(uuid,uuid,integer,numeric) from public, anon, authenticated;
+revoke execute on function public.errand_driver_complete_unreachable_return_v1(uuid,uuid) from public, anon, authenticated;
+revoke execute on function public.errand_driver_decline_v1(uuid,uuid,text) from public, anon, authenticated;
+revoke execute on function public.errand_driver_expire_offer_v1(uuid,uuid) from public, anon, authenticated;
+revoke execute on function public.errand_driver_release_before_customer_v1(uuid,uuid,text) from public, anon, authenticated;
+revoke execute on function public.errand_driver_vehicle_not_suitable_v1(uuid,uuid,numeric,text) from public, anon, authenticated;
+revoke execute on function public.errand_log_pabili_funds_v1() from public, anon, authenticated;
+
+grant execute on function public.errand_capture_driver_location_ping_v1() to service_role;
+grant execute on function public.errand_capture_stage_location_v1() to service_role;
+grant execute on function public.errand_cleanup_terminal_booking_state_v1() to service_role;
+grant execute on function public.errand_dispatch_start_unreachable_return_v1(uuid,text,text,text,numeric,numeric,integer,numeric,integer,jsonb,text) to service_role;
+grant execute on function public.errand_driver_arrive_unreachable_return_v1(uuid,uuid) to service_role;
+grant execute on function public.errand_driver_complete_pabili_purchase_v1(uuid,uuid,integer,numeric) to service_role;
+grant execute on function public.errand_driver_complete_unreachable_return_v1(uuid,uuid) to service_role;
+grant execute on function public.errand_driver_decline_v1(uuid,uuid,text) to service_role;
+grant execute on function public.errand_driver_expire_offer_v1(uuid,uuid) to service_role;
+grant execute on function public.errand_driver_release_before_customer_v1(uuid,uuid,text) to service_role;
+grant execute on function public.errand_driver_vehicle_not_suitable_v1(uuid,uuid,numeric,text) to service_role;
+grant execute on function public.errand_log_pabili_funds_v1() to service_role;
