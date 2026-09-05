@@ -115,7 +115,7 @@ function hideUnavailableAccompaniedErrand(): void {
   );
 
   const card = heading?.parentElement;
-  if (!card) return;
+  if (!card || card.getAttribute("data-jride-hidden-unavailable-feature") === "accompanied-errand") return;
 
   const cardText = normalizedText(card.textContent);
   if (!cardText.includes("Not enabled in this test slice yet")) return;
@@ -127,6 +127,7 @@ function hideUnavailableAccompaniedErrand(): void {
 
 function hideExactMapDebugElements(): void {
   for (const element of Array.from(document.querySelectorAll("div"))) {
+    if (element.getAttribute("data-jride-hidden-map-debug")) continue;
     const content = normalizedText(element.textContent);
     if (/^GPS points:\s*\d+$/i.test(content) && element.children.length === 0) {
       (element as HTMLElement).style.display = "none";
@@ -136,6 +137,7 @@ function hideExactMapDebugElements(): void {
   }
 
   for (const grid of Array.from(document.querySelectorAll("div"))) {
+    if (grid.getAttribute("data-jride-hidden-map-debug")) continue;
     if (grid.children.length !== 4) continue;
     const childTexts = Array.from(grid.children).map((child) =>
       normalizedText(child.textContent)
@@ -156,6 +158,7 @@ function removeExitOnlyFetchError(): void {
   const candidates = Array.from(document.querySelectorAll("div"));
   for (const element of candidates) {
     if (normalizedText(element.textContent) !== "Failed to fetch") continue;
+    if (element.hidden) continue;
     element.hidden = true;
     element.setAttribute("aria-hidden", "true");
   }
@@ -306,12 +309,15 @@ export default function ErrandPassengerExperience() {
 
       if (confirmButton instanceof HTMLButtonElement && isVisible(confirmButton)) {
         confirmButtonRef.current = confirmButton;
-        setConfirmLabel(normalizedText(confirmButton.textContent));
-        setConfirmDisabled(confirmButton.disabled);
+        const nextLabel = normalizedText(confirmButton.textContent);
+        setConfirmLabel((current) => (current === nextLabel ? current : nextLabel));
+        setConfirmDisabled((current) =>
+          current === confirmButton.disabled ? current : confirmButton.disabled
+        );
       } else {
         confirmButtonRef.current = null;
-        setConfirmLabel("");
-        setConfirmDisabled(false);
+        setConfirmLabel((current) => (current ? "" : current));
+        setConfirmDisabled((current) => (current ? false : current));
       }
 
       const step = currentRequestStep();
@@ -321,13 +327,22 @@ export default function ErrandPassengerExperience() {
         const label = normalizedText(button.textContent);
         if (label !== "Continue" && label !== "Request Errand") continue;
 
-        if (button.disabled || missing.length > 0) {
-          button.disabled = false;
-          button.setAttribute("data-jride-explain-disabled", "1");
-          button.setAttribute("aria-disabled", "true");
+        const shouldExplain = button.disabled || missing.length > 0;
+        if (shouldExplain) {
+          if (button.disabled) button.disabled = false;
+          if (button.getAttribute("data-jride-explain-disabled") !== "1") {
+            button.setAttribute("data-jride-explain-disabled", "1");
+          }
+          if (button.getAttribute("aria-disabled") !== "true") {
+            button.setAttribute("aria-disabled", "true");
+          }
         } else {
-          button.removeAttribute("data-jride-explain-disabled");
-          button.removeAttribute("aria-disabled");
+          if (button.hasAttribute("data-jride-explain-disabled")) {
+            button.removeAttribute("data-jride-explain-disabled");
+          }
+          if (button.hasAttribute("aria-disabled")) {
+            button.removeAttribute("aria-disabled");
+          }
         }
       }
     };
@@ -366,18 +381,12 @@ export default function ErrandPassengerExperience() {
         dismissKeyboard();
         const step = currentRequestStep();
         const missing = missingForCurrentStep(step);
-        const wasOriginallyDisabled =
-          control.getAttribute("data-jride-explain-disabled") === "1";
 
-        if (missing.length || wasOriginallyDisabled) {
+        if (missing.length) {
           event.preventDefault();
           event.stopPropagation();
           event.stopImmediatePropagation();
-          showValidation(
-            missing.length
-              ? missing
-              : ["Complete the required information in this step before continuing"]
-          );
+          showValidation(missing);
         }
       }
     };
@@ -394,7 +403,7 @@ export default function ErrandPassengerExperience() {
       subtree: true,
       characterData: true,
       attributes: true,
-      attributeFilter: ["disabled", "hidden", "style"],
+      attributeFilter: ["disabled", "hidden"],
     });
 
     return () => {
