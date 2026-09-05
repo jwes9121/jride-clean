@@ -8,8 +8,21 @@ import ErrandLocationField, {
 } from "./ErrandLocationField";
 
 const TOKEN_KEY = "jride_access_token";
+const PASSENGER_TOKEN_KEY = "jride_passenger_token";
 const ERRAND_ID_KEY = "jride_active_errand_booking_id";
 const ERRAND_CODE_KEY = "jride_active_errand_booking_code";
+const DISMISSED_RECEIPT_KEY = "jride_errand_receipt_dismissed_id";
+
+const REQUEST_STEPS = ["Meeting", "Task", "Stops", "Cargo", "Review"] as const;
+
+const ACTIVE_STEPS = [
+  "Matching",
+  "Meet driver",
+  "Review & fare",
+  "Task confirmed",
+  "Task stops",
+  "Final handoff",
+] as const;
 
 type Eligibility = {
   ok?: boolean;
@@ -18,7 +31,6 @@ type Eligibility = {
   verified?: boolean;
   verification_status?: string | null;
   profile_name?: string | null;
-  profile_name_source?: string | null;
   error?: string | null;
   message?: string | null;
 };
@@ -41,6 +53,23 @@ type ErrandBundle = {
   map_note?: string;
 };
 
+type Receipt = {
+  booking_id?: string;
+  booking_code?: string;
+  completed_at?: string | null;
+  starting_fare?: number | null;
+  final_fare?: number | null;
+  approach_fee?: number | null;
+  base_fare?: number | null;
+  pickup_distance_fee?: number | null;
+  distance_fare?: number | null;
+  extra_stop_fee?: number | null;
+  waiting_minutes?: number | null;
+  waiting_fee?: number | null;
+  elevation_surcharge?: number | null;
+  heavy_load_fee?: number | null;
+};
+
 type MapPoint = {
   label: string;
   lat: number;
@@ -49,11 +78,10 @@ type MapPoint = {
   sequence?: number | null;
 };
 
-function text(value: unknown): string {
-  const clean = String(value ?? "").replace(/\s+/g, " ").trim();
-  return clean.toLowerCase() === "null" || clean.toLowerCase() === "undefined"
-    ? ""
-    : clean;
+function clean(value: unknown): string {
+  const result = String(value ?? "").replace(/\s+/g, " ").trim();
+  const lower = result.toLowerCase();
+  return lower === "null" || lower === "undefined" ? "" : result;
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -62,9 +90,15 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function numberOrZero(value: unknown): number {
+  return numberOrNull(value) ?? 0;
+}
+
 function money(value: unknown): string {
   const parsed = numberOrNull(value);
-  return parsed == null ? "--" : `PHP ${parsed.toFixed(0)}`;
+  return parsed == null
+    ? "--"
+    : `PHP ${Math.round(parsed).toLocaleString("en-PH")}`;
 }
 
 function km(value: unknown): string {
@@ -75,9 +109,9 @@ function km(value: unknown): string {
 function getToken(): string {
   if (typeof window === "undefined") return "";
   try {
-    return text(
+    return clean(
       localStorage.getItem(TOKEN_KEY) ||
-        localStorage.getItem("jride_passenger_token") ||
+        localStorage.getItem(PASSENGER_TOKEN_KEY) ||
         ""
     );
   } catch {
@@ -114,20 +148,11 @@ async function postAuthJson(url: string, body: unknown) {
   return { response, json };
 }
 
-function loadStoredErrand() {
-  if (typeof window === "undefined") return { id: "", code: "" };
-  try {
-    return {
-      id: text(localStorage.getItem(ERRAND_ID_KEY)),
-      code: text(localStorage.getItem(ERRAND_CODE_KEY)),
-    };
-  } catch {
-    return { id: "", code: "" };
-  }
+function nextStopId(): string {
+  return `stop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
-function storeErrand(id: string, code: string) {
-  if (typeof window === "undefined") return;
+function storeActiveErrand(id: string, code: string) {
   try {
     if (id) localStorage.setItem(ERRAND_ID_KEY, id);
     else localStorage.removeItem(ERRAND_ID_KEY);
@@ -136,74 +161,142 @@ function storeErrand(id: string, code: string) {
   } catch {}
 }
 
-function prettyStage(stageRaw: unknown, statusRaw: unknown): string {
-  const stage = text(stageRaw).toLowerCase();
-  const status = text(statusRaw).toLowerCase();
-  const labels: Record<string, string> = {
-    draft: "Preparing request",
-    matching: "Looking for a driver",
-    driver_assigned: "Driver assigned",
-    going_to_customer: "Driver going to your meeting point",
-    stage0_review: "Confirming the task with you",
-    awaiting_customer_confirmation: "Waiting for your confirmation",
-    task_confirmed: "Task confirmed",
-    going_to_stop: "Going to a task stop",
-    waiting_at_stop: "Driver waiting at a task stop",
-    resolving_stop_issue: "Resolving a task-stop issue",
-    going_to_customer_for_cash: "Returning to you for additional Pabili funds",
-    waiting_for_cash_topup: "Waiting for additional Pabili funds",
-    returning_to_stop_after_cash: "Returning to the task stop",
-    going_to_final: "Going to the Errand destination",
-    waiting_at_final_handoff: "Waiting at the Errand destination",
-    unreachable_escalated: "Destination handoff escalated",
-    handoff_complete: "Errand handoff complete",
-    completed: "Errand completed",
-    cancelled: "Errand cancelled",
-    expired: "Errand expired",
-  };
-  if (labels[stage]) return labels[stage];
-  if (["requested", "pending", "searching"].includes(status)) {
-    return "Looking for a driver";
-  }
-  if (status === "assigned") return "Driver assigned";
-  return stage || status || "Updating Errand";
+function activeStepIndex(stageRaw: unknown, statusRaw: unknown): number {
+  const stage = clean(stageRaw).toLowerCase();
+  const status = clean(statusRaw).toLowerCase();
+  if (["requested", "pending", "searching"].includes(status) || stage === "matching") return 0;
+  if (["driver_assigned", "going_to_customer"].includes(stage) || status === "assigned") return 1;
+  if (["stage0_review", "awaiting_customer_confirmation"].includes(stage) || status === "fare_proposed") return 2;
+  if (stage === "task_confirmed") return 3;
+  if ([
+    "going_to_stop",
+    "waiting_at_stop",
+    "resolving_stop_issue",
+    "going_to_customer_for_cash",
+    "waiting_for_cash_topup",
+    "returning_to_stop_after_cash",
+  ].includes(stage)) return 4;
+  return 5;
 }
 
-function stageDescription(stageRaw: unknown, statusRaw: unknown): string {
-  const stage = text(stageRaw).toLowerCase();
-  const status = text(statusRaw).toLowerCase();
-  if (["requested", "pending", "searching"].includes(status)) {
-    return "JRide is searching for an eligible driver from your meeting-point town.";
+function stageMeta(stageRaw: unknown, statusRaw: unknown) {
+  const stage = clean(stageRaw).toLowerCase();
+  const status = clean(statusRaw).toLowerCase();
+
+  if (["requested", "pending", "searching"].includes(status) || stage === "matching") {
+    return {
+      label: "Finding your driver",
+      detail: "JRide is matching an eligible driver from your meeting-point town.",
+      tone: "sky",
+    };
   }
-  if (stage === "driver_assigned") {
-    return "A same-town driver has been assigned. Wait for the driver to accept.";
-  }
-  if (stage === "going_to_customer") {
-    return "Your driver accepted the Errand and is travelling to your customer meeting point.";
+  if (["driver_assigned", "going_to_customer"].includes(stage) || status === "assigned") {
+    return {
+      label: "Driver coming to you",
+      detail: "Meet the driver at your pinned customer meeting point.",
+      tone: "blue",
+    };
   }
   if (stage === "stage0_review") {
-    return "Review the task together. The driver checks cargo suitability before any Pabili cash changes hands.";
+    return {
+      label: "Review the task together",
+      detail: "The driver is checking the task, cargo and route with you.",
+      tone: "amber",
+    };
   }
-  if (stage === "awaiting_customer_confirmation") {
-    return "The driver finished reviewing the task with you. Check the task stops, cargo and starting fare before confirming.";
+  if (stage === "awaiting_customer_confirmation" || status === "fare_proposed") {
+    return {
+      label: "Your confirmation is needed",
+      detail: "Check the confirmed task and starting fare before the Errand starts.",
+      tone: "amber",
+    };
   }
   if (stage === "task_confirmed") {
-    return "The task is locked and the driver can start the confirmed Errand route.";
+    return {
+      label: "Task confirmed",
+      detail: "The driver can start the confirmed Errand route.",
+      tone: "emerald",
+    };
   }
   if (stage === "waiting_at_stop") {
-    return "Waiting is cumulative for the whole Errand. The first 15 total minutes are free.";
+    return {
+      label: "Driver is at a task stop",
+      detail: "Waiting is cumulative. The first 15 total waiting minutes are free.",
+      tone: "violet",
+    };
   }
-  if (stage === "unreachable_escalated") {
-    return "The 30-minute destination handoff limit was reached. JRide support or dispatch must resolve the handoff.";
+  if ([
+    "going_to_stop",
+    "resolving_stop_issue",
+    "going_to_customer_for_cash",
+    "waiting_for_cash_topup",
+    "returning_to_stop_after_cash",
+  ].includes(stage)) {
+    return {
+      label: "Errand in progress",
+      detail: "Follow the current task stop and driver progress below.",
+      tone: "violet",
+    };
+  }
+  if (stage === "going_to_final") {
+    return {
+      label: "Heading to final destination",
+      detail: "The driver is on the final confirmed leg of the Errand.",
+      tone: "orange",
+    };
   }
   if (stage === "waiting_at_final_handoff") {
-    return "The driver is at the Errand destination. The local handoff waiting limit is 30 minutes.";
+    return {
+      label: "Driver is at the destination",
+      detail: "The driver is waiting for the final recipient or customer handoff.",
+      tone: "orange",
+    };
   }
-  return "Follow the current Errand stage below.";
+  if (stage === "final_recipient_met") {
+    return {
+      label: "Recipient met",
+      detail: "Billable waiting has stopped. The final handoff is being completed.",
+      tone: "emerald",
+    };
+  }
+  if (stage === "unreachable_escalated") {
+    return {
+      label: "Handoff escalated",
+      detail: "JRide support or dispatch must resolve the destination handoff.",
+      tone: "red",
+    };
+  }
+
+  return {
+    label: "Errand active",
+    detail: "JRide is updating the trip status.",
+    tone: "emerald",
+  };
 }
 
-function nextStopId(): string {
-  return `stop_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+function toneClasses(tone: string) {
+  if (tone === "sky") return "border-sky-400/30 bg-sky-400/10 text-sky-100";
+  if (tone === "blue") return "border-blue-400/30 bg-blue-400/10 text-blue-100";
+  if (tone === "amber") return "border-amber-400/30 bg-amber-400/10 text-amber-100";
+  if (tone === "violet") return "border-violet-400/30 bg-violet-400/10 text-violet-100";
+  if (tone === "orange") return "border-orange-400/30 bg-orange-400/10 text-orange-100";
+  if (tone === "red") return "border-red-400/30 bg-red-400/10 text-red-100";
+  return "border-emerald-400/30 bg-emerald-400/10 text-emerald-100";
+}
+
+function vehicleLabel(raw: unknown): string {
+  const value = clean(raw).toLowerCase();
+  if (value === "motorcycle") return "Motorcycle";
+  if (value === "tricycle") return "Tricycle";
+  return "Motorcycle or Tricycle";
+}
+
+function stopStatusClasses(statusRaw: unknown): string {
+  const status = clean(statusRaw).toLowerCase();
+  if (["completed", "done"].includes(status)) return "bg-emerald-100 text-emerald-800";
+  if (["arrived", "waiting", "waiting_at_stop"].includes(status)) return "bg-violet-100 text-violet-800";
+  if (["skipped", "cancelled", "blocked"].includes(status)) return "bg-red-100 text-red-800";
+  return "bg-slate-100 text-slate-600";
 }
 
 export default function ErrandPage() {
@@ -214,8 +307,10 @@ export default function ErrandPage() {
   const [current, setCurrent] = React.useState<ErrandBundle | null>(null);
   const [currentLoading, setCurrentLoading] = React.useState(false);
   const [currentError, setCurrentError] = React.useState("");
-  const [stored, setStored] = React.useState(() => loadStoredErrand());
+  const [notice, setNotice] = React.useState("");
+  const [receipt, setReceipt] = React.useState<Receipt | null>(null);
 
+  const [requestStep, setRequestStep] = React.useState(0);
   const [stage0, setStage0] = React.useState<ErrandLocationValue | null>(null);
   const [taskDescription, setTaskDescription] = React.useState("");
   const [stops, setStops] = React.useState<StopDraft[]>([
@@ -233,13 +328,14 @@ export default function ErrandPage() {
   >("either");
   const [bookingBusy, setBookingBusy] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
-  const [notice, setNotice] = React.useState("");
+
   const pollRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastActiveIdRef = React.useRef("");
 
   const enabled = eligibility?.enabled === true;
   const authed = eligibility?.authed === true;
   const verified = eligibility?.verified === true;
-  const profileName = text(eligibility?.profile_name);
+  const profileName = clean(eligibility?.profile_name);
 
   const cargoKg = numberOrNull(cargoWeight);
   const cargoTooHeavy = cargoKg != null && cargoKg > 100;
@@ -250,139 +346,149 @@ export default function ErrandPage() {
     }
   }, [cargoKg, vehicleRequirement]);
 
-  async function refreshEligibility() {
+  const fetchReceipt = React.useCallback(async (bookingId: string) => {
+    const id = clean(bookingId);
+    if (!id || !getToken()) return;
+
+    let dismissed = "";
+    try {
+      dismissed = clean(localStorage.getItem(DISMISSED_RECEIPT_KEY));
+    } catch {}
+    if (dismissed === id) return;
+
+    try {
+      const { response, json } = await getAuthJson(
+        `/api/passenger/errand/completed?booking_id=${encodeURIComponent(id)}`
+      );
+      if (response.ok && json?.ok === true && json?.receipt?.booking_id) {
+        setReceipt(json.receipt as Receipt);
+      }
+    } catch {}
+  }, []);
+
+  const refreshEligibility = React.useCallback(async () => {
     setEligibilityLoading(true);
     try {
       const { response, json } = await getAuthJson(
         "/api/passenger/errand/eligibility"
       );
+
+      if (response.status === 401 || json?.authed === false) {
+        setEligibility({ enabled: false, authed: false, verified: false });
+        return;
+      }
+
       if (!response.ok || json?.ok === false) {
         setEligibility({
-          ok: false,
           enabled: false,
           authed: false,
           verified: false,
-          error: text(json?.error),
-          message: text(json?.message) || `HTTP ${response.status}`,
+          error: clean(json?.error),
+          message: clean(json?.message) || `HTTP ${response.status}`,
         });
         return;
       }
+
       setEligibility(json as Eligibility);
     } catch (error: any) {
       setEligibility({
-        ok: false,
         enabled: false,
         authed: false,
         verified: false,
         error: "ERRAND_ELIGIBILITY_READ_FAILED",
-        message: text(error?.message) || "Could not check Errand availability.",
+        message: clean(error?.message) || "Could not check Errand availability.",
       });
     } finally {
       setEligibilityLoading(false);
     }
-  }
-
-  async function refreshCurrent(silent = false) {
-    if (!getToken()) {
-      setCurrent(null);
-      return;
-    }
-    if (!silent) setCurrentLoading(true);
-    try {
-      const { response, json } = await getAuthJson(
-        "/api/passenger/errand/current"
-      );
-      if (response.status === 503) {
-        setCurrent(null);
-        return;
-      }
-      if (response.status === 401) {
-        setCurrent(null);
-        setCurrentError("Passenger session expired. Please sign in again.");
-        return;
-      }
-      if (!response.ok || json?.ok === false) {
-        setCurrentError(
-          text(json?.message || json?.error) || `HTTP ${response.status}`
-        );
-        return;
-      }
-      setCurrentError("");
-      const next = json?.errand || null;
-      setCurrent(next);
-      if (next?.booking?.id) {
-        const nextStored = {
-          id: text(next.booking.id),
-          code: text(next.booking.booking_code),
-        };
-        storeErrand(nextStored.id, nextStored.code);
-        setStored(nextStored);
-      }
-    } catch (error: any) {
-      setCurrentError(text(error?.message) || "Could not refresh Errand status.");
-    } finally {
-      if (!silent) setCurrentLoading(false);
-    }
-  }
-
-  React.useEffect(() => {
-    refreshEligibility();
   }, []);
 
-  React.useEffect(() => {
-    if (!enabled || !authed) {
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = null;
-      return;
-    }
+  const refreshCurrent = React.useCallback(
+    async (silent = false) => {
+      if (!getToken()) {
+        setCurrent(null);
+        return;
+      }
 
-    refreshCurrent(false);
+      if (!silent) setCurrentLoading(true);
+
+      try {
+        const { response, json } = await getAuthJson(
+          "/api/passenger/errand/current"
+        );
+
+        if (response.status === 401) {
+          setCurrent(null);
+          window.location.replace(
+            "/passenger-login?callbackUrl=" + encodeURIComponent("/errands")
+          );
+          return;
+        }
+
+        if (response.status === 503) {
+          setCurrent(null);
+          return;
+        }
+
+        if (!response.ok || json?.ok === false) {
+          setCurrentError(
+            clean(json?.message || json?.error) || `HTTP ${response.status}`
+          );
+          return;
+        }
+
+        setCurrentError("");
+        const next = json?.errand || null;
+
+        if (next?.booking?.id) {
+          const id = clean(next.booking.id);
+          const code = clean(next.booking.booking_code);
+          lastActiveIdRef.current = id;
+          storeActiveErrand(id, code);
+          setReceipt(null);
+          setNotice("");
+          setCurrent(next as ErrandBundle);
+          return;
+        }
+
+        setCurrent(null);
+
+        let completedCandidate = lastActiveIdRef.current;
+        if (!completedCandidate) {
+          try {
+            completedCandidate = clean(localStorage.getItem(ERRAND_ID_KEY));
+          } catch {}
+        }
+        if (completedCandidate) {
+          await fetchReceipt(completedCandidate);
+        }
+      } catch (error: any) {
+        if (!silent) {
+          setCurrentError(clean(error?.message) || "Could not refresh Errand status.");
+        }
+      } finally {
+        if (!silent) setCurrentLoading(false);
+      }
+    },
+    [fetchReceipt]
+  );
+
+  React.useEffect(() => {
+    void refreshEligibility();
+  }, [refreshEligibility]);
+
+  React.useEffect(() => {
+    if (!enabled || !authed) return;
+
+    void refreshCurrent(false);
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => refreshCurrent(true), 3000);
+    pollRef.current = setInterval(() => void refreshCurrent(true), 3000);
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [enabled, authed]);
-
-  const validStops = stops.every((stop) => !!stop.location);
-  const finalReady =
-    finalMode === "return_to_customer" ? !!stage0 : !!finalLocation;
-  const formReady =
-    !!stage0 &&
-    text(taskDescription).length >= 3 &&
-    stops.length >= 1 &&
-    validStops &&
-    finalReady &&
-    !cargoTooHeavy &&
-    (!isPabili || numberOrNull(estimatedPurchase) != null);
-  const firstMissingStopIndex = stops.findIndex((stop) => !stop.location);
-  const missingRequirement = !stage0
-    ? "Customer meeting point"
-    : text(taskDescription).length < 3
-      ? "Task description"
-      : firstMissingStopIndex >= 0
-        ? `Task Stop ${firstMissingStopIndex + 1} location`
-        : !finalReady
-          ? "Errand destination"
-          : cargoTooHeavy
-            ? "Cargo must not exceed 100 kg"
-            : isPabili && numberOrNull(estimatedPurchase) == null
-              ? "Estimated Pabili purchase amount"
-              : "";
-
-  function updateStopLocation(id: string, location: ErrandLocationValue) {
-    setStops((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, location } : row))
-    );
-  }
-
-  function updateStopInstructions(id: string, instructions: string) {
-    setStops((rows) =>
-      rows.map((row) => (row.id === id ? { ...row, instructions } : row))
-    );
-  }
+  }, [enabled, authed, refreshCurrent]);
 
   function addStop() {
     setStops((rows) => [
@@ -397,50 +503,81 @@ export default function ErrandPage() {
     );
   }
 
-  async function submitErrand() {
+  function updateStopLocation(id: string, location: ErrandLocationValue) {
+    setStops((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, location } : row))
+    );
+  }
+
+  function updateStopInstructions(id: string, instructions: string) {
+    setStops((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, instructions } : row))
+    );
+  }
+
+  function resetDraft() {
+    setRequestStep(0);
+    setStage0(null);
+    setTaskDescription("");
+    setStops([{ id: nextStopId(), location: null, instructions: "" }]);
+    setFinalMode("return_to_customer");
+    setFinalLocation(null);
+    setIsPabili(false);
+    setEstimatedPurchase("");
+    setCargoWeight("");
+    setVehicleRequirement("either");
     setNotice("");
-    if (!enabled) {
-      setNotice("Errand booking is not enabled yet.");
-      return;
-    }
-    if (!authed || !getToken()) {
-      router.push("/passenger-login?next=/errands");
-      return;
-    }
-    if (!verified) {
-      setNotice("Errand requires a fully verified passenger account.");
-      return;
-    }
-    if (!profileName) {
-      setNotice("Update your JRide passenger profile name before booking an Errand.");
-      return;
-    }
-    if (!formReady || !stage0) {
-      setNotice(
-        missingRequirement
-          ? `Missing: ${missingRequirement}.`
-          : "Complete the meeting point, task stops, destination and cargo details before booking."
-      );
-      return;
-    }
+  }
+
+  const validStops = stops.every((stop) => !!stop.location);
+  const finalReady =
+    finalMode === "return_to_customer" ? !!stage0 : !!finalLocation;
+
+  const stepReady = [
+    !!stage0,
+    clean(taskDescription).length >= 3,
+    stops.length >= 1 && validStops && finalReady,
+    !cargoTooHeavy && (!isPabili || numberOrNull(estimatedPurchase) != null),
+    true,
+  ];
+
+  const formReady = stepReady.slice(0, 4).every(Boolean);
+
+  function goNext() {
+    if (!stepReady[requestStep]) return;
+    setNotice("");
+    setRequestStep((value) => Math.min(value + 1, REQUEST_STEPS.length - 1));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goBack() {
+    setNotice("");
+    setRequestStep((value) => Math.max(value - 1, 0));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function submitErrand() {
+    if (!formReady || !stage0 || bookingBusy) return;
 
     const final =
       finalMode === "return_to_customer" ? stage0 : finalLocation;
     if (!final) return;
 
     setBookingBusy(true);
+    setNotice("");
+
     try {
       const body = {
         stage0_label: stage0.label,
         stage0_lat: stage0.lat,
         stage0_lng: stage0.lng,
-        task_description: text(taskDescription),
+        task_description: clean(taskDescription),
         stops: stops.map((stop) => ({
           place_name: stop.location?.label || null,
           location_label: stop.location?.label || "",
           lat: stop.location?.lat ?? null,
           lng: stop.location?.lng ?? null,
-          instructions: text(stop.instructions) || null,
+          instructions: clean(stop.instructions) || null,
         })),
         final_destination_mode: finalMode,
         final_label: final.label,
@@ -459,93 +596,651 @@ export default function ErrandPage() {
         "/api/passenger/errand/book",
         body
       );
+
       if (!response.ok || json?.ok === false) {
-        const code = text(json?.code || json?.error || "ERRAND_BOOKING_FAILED");
+        const code = clean(json?.code || json?.error || "ERRAND_BOOKING_FAILED");
         if (code === "ERRAND_REQUIRES_VERIFIED_PASSENGER") {
           await refreshEligibility();
         }
         throw new Error(
-          [code, text(json?.message)].filter(Boolean).join(" - ")
+          [code, clean(json?.message)].filter(Boolean).join(" - ")
         );
       }
 
-      const nextStored = {
-        id: text(json?.booking_id),
-        code: text(json?.booking_code),
-      };
-      storeErrand(nextStored.id, nextStored.code);
-      setStored(nextStored);
-      setNotice(
-        json?.assignment?.assigned === true
-          ? "Errand submitted. A driver has been assigned."
-          : "Errand submitted. JRide is looking for an eligible same-town driver."
-      );
+      const id = clean(json?.booking_id);
+      const code = clean(json?.booking_code);
+      lastActiveIdRef.current = id;
+      storeActiveErrand(id, code);
       await refreshCurrent(false);
     } catch (error: any) {
-      setNotice(text(error?.message) || "Errand booking failed.");
+      setNotice(clean(error?.message) || "Errand booking failed.");
     } finally {
       setBookingBusy(false);
     }
   }
 
   async function confirmTask() {
-    const bookingId = text(current?.booking?.id || stored.id);
-    if (!bookingId) return;
+    const bookingId = clean(current?.booking?.id);
+    if (!bookingId || confirmBusy) return;
+
     setConfirmBusy(true);
     setNotice("");
+
     try {
       const { response, json } = await postAuthJson(
         "/api/passenger/errand/confirm",
         { booking_id: bookingId }
       );
+
       if (!response.ok || json?.ok === false) {
         throw new Error(
-          text(json?.message || json?.error) || `HTTP ${response.status}`
+          clean(json?.message || json?.error) || `HTTP ${response.status}`
         );
       }
-      setNotice("Task confirmed. The driver can now start the Errand.");
+
       await refreshCurrent(false);
     } catch (error: any) {
-      setNotice(text(error?.message) || "Task confirmation failed.");
+      setNotice(clean(error?.message) || "Task confirmation failed.");
     } finally {
       setConfirmBusy(false);
     }
   }
 
-  function resetDraft() {
-    setStage0(null);
-    setTaskDescription("");
-    setStops([{ id: nextStopId(), location: null, instructions: "" }]);
-    setFinalMode("return_to_customer");
-    setFinalLocation(null);
-    setIsPabili(false);
-    setEstimatedPurchase("");
-    setCargoWeight("");
-    setVehicleRequirement("either");
-    setNotice("");
+  function dismissReceipt() {
+    const id = clean(receipt?.booking_id);
+    if (id) {
+      try {
+        localStorage.setItem(DISMISSED_RECEIPT_KEY, id);
+      } catch {}
+    }
+    storeActiveErrand("", "");
+    lastActiveIdRef.current = "";
+    setReceipt(null);
+    resetDraft();
   }
 
-  const booking = current?.booking || {};
-  const job = current?.job || {};
-  const currentStops = Array.isArray(current?.stops) ? current?.stops || [] : [];
-  const fare = current?.fare || {};
-  const pabili = current?.pabili || {};
-  const driver = current?.driver || {};
-  const driverLocation = current?.driver_location || {};
-  const stage = text(job?.errand_stage).toLowerCase();
-  const status = text(booking?.status).toLowerCase();
-  const returnsToCustomer =
-    text(job?.final_destination_mode).toLowerCase() === "return_to_customer";
+  if (eligibilityLoading) {
+    return <LoadingScreen label="Checking your JRide Errand access..." />;
+  }
+
+  if (!enabled) {
+    return (
+      <GateScreen
+        title="Errand is temporarily unavailable"
+        message="Please try again later or contact JRide support."
+        action="Back to Passenger"
+        onAction={() => router.push("/passenger")}
+      />
+    );
+  }
+
+  if (!authed) {
+    return (
+      <GateScreen
+        title="Sign in to use Errand"
+        message="Your session is no longer active. Sign in before starting or continuing a transaction."
+        action="Passenger Sign In"
+        onAction={() =>
+          router.push(
+            "/passenger-login?callbackUrl=" + encodeURIComponent("/errands")
+          )
+        }
+      />
+    );
+  }
+
+  if (!verified) {
+    return (
+      <GateScreen
+        title="Verification required"
+        message={`Errand is available after your passenger account is approved. Current status: ${clean(eligibility?.verification_status) || "not approved"}.`}
+        action="Open Verification"
+        onAction={() => router.push("/verification")}
+      />
+    );
+  }
+
+  if (!profileName) {
+    return (
+      <GateScreen
+        title="Complete your passenger profile"
+        message="Add your full name before booking an Errand."
+        action="Back to Passenger"
+        onAction={() => router.push("/passenger")}
+      />
+    );
+  }
+
+  if (receipt?.booking_id) {
+    return <CompletedReceipt receipt={receipt} onDone={dismissReceipt} />;
+  }
+
+  if (current) {
+    return (
+      <ActiveErrandScreen
+        current={current}
+        loading={currentLoading}
+        error={currentError}
+        notice={notice}
+        confirmBusy={confirmBusy}
+        onConfirm={confirmTask}
+        onBack={() => router.push("/passenger")}
+      />
+    );
+  }
+
+  return (
+    <NewErrandFlow
+      profileName={profileName}
+      requestStep={requestStep}
+      stage0={stage0}
+      setStage0={setStage0}
+      taskDescription={taskDescription}
+      setTaskDescription={setTaskDescription}
+      stops={stops}
+      addStop={addStop}
+      removeStop={removeStop}
+      updateStopLocation={updateStopLocation}
+      updateStopInstructions={updateStopInstructions}
+      finalMode={finalMode}
+      setFinalMode={setFinalMode}
+      finalLocation={finalLocation}
+      setFinalLocation={setFinalLocation}
+      isPabili={isPabili}
+      setIsPabili={setIsPabili}
+      estimatedPurchase={estimatedPurchase}
+      setEstimatedPurchase={setEstimatedPurchase}
+      cargoWeight={cargoWeight}
+      setCargoWeight={setCargoWeight}
+      cargoKg={cargoKg}
+      cargoTooHeavy={cargoTooHeavy}
+      vehicleRequirement={vehicleRequirement}
+      setVehicleRequirement={setVehicleRequirement}
+      stepReady={stepReady}
+      formReady={formReady}
+      notice={notice}
+      bookingBusy={bookingBusy}
+      onBackToPassenger={() => router.push("/passenger")}
+      onPrevious={goBack}
+      onNext={goNext}
+      onSubmit={submitErrand}
+      onReset={resetDraft}
+    />
+  );
+}
+
+function NewErrandFlow(props: {
+  profileName: string;
+  requestStep: number;
+  stage0: ErrandLocationValue | null;
+  setStage0: (value: ErrandLocationValue | null) => void;
+  taskDescription: string;
+  setTaskDescription: (value: string) => void;
+  stops: StopDraft[];
+  addStop: () => void;
+  removeStop: (id: string) => void;
+  updateStopLocation: (id: string, location: ErrandLocationValue) => void;
+  updateStopInstructions: (id: string, instructions: string) => void;
+  finalMode: "return_to_customer" | "different_address";
+  setFinalMode: (value: "return_to_customer" | "different_address") => void;
+  finalLocation: ErrandLocationValue | null;
+  setFinalLocation: (value: ErrandLocationValue | null) => void;
+  isPabili: boolean;
+  setIsPabili: (value: boolean) => void;
+  estimatedPurchase: string;
+  setEstimatedPurchase: (value: string) => void;
+  cargoWeight: string;
+  setCargoWeight: (value: string) => void;
+  cargoKg: number | null;
+  cargoTooHeavy: boolean;
+  vehicleRequirement: "either" | "motorcycle" | "tricycle";
+  setVehicleRequirement: (value: "either" | "motorcycle" | "tricycle") => void;
+  stepReady: boolean[];
+  formReady: boolean;
+  notice: string;
+  bookingBusy: boolean;
+  onBackToPassenger: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onSubmit: () => void;
+  onReset: () => void;
+}) {
+  const {
+    profileName,
+    requestStep,
+    stage0,
+    setStage0,
+    taskDescription,
+    setTaskDescription,
+    stops,
+    addStop,
+    removeStop,
+    updateStopLocation,
+    updateStopInstructions,
+    finalMode,
+    setFinalMode,
+    finalLocation,
+    setFinalLocation,
+    isPabili,
+    setIsPabili,
+    estimatedPurchase,
+    setEstimatedPurchase,
+    cargoWeight,
+    setCargoWeight,
+    cargoKg,
+    cargoTooHeavy,
+    vehicleRequirement,
+    setVehicleRequirement,
+    stepReady,
+    formReady,
+    notice,
+    bookingBusy,
+    onBackToPassenger,
+    onPrevious,
+    onNext,
+    onSubmit,
+    onReset,
+  } = props;
+
+  const finalLabel =
+    finalMode === "return_to_customer"
+      ? stage0?.label || "Same as meeting point"
+      : finalLocation?.label || "Not set";
+
+  return (
+    <main className="min-h-screen bg-slate-100 pb-28 text-slate-900">
+      <div className="mx-auto min-h-screen max-w-xl bg-white shadow-xl shadow-slate-300/20">
+        <header className="bg-slate-950 px-5 pb-5 pt-4 text-white">
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onBackToPassenger}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl ring-1 ring-white/10"
+              aria-label="Back to Passenger"
+            >
+              <span aria-hidden="true">&#8249;</span>
+            </button>
+            <div className="text-center">
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">JRide Passenger</div>
+              <div className="text-lg font-black">Errand</div>
+            </div>
+            <button
+              type="button"
+              onClick={onReset}
+              className="rounded-xl px-2 py-2 text-xs font-bold text-slate-300"
+            >
+              Reset
+            </button>
+          </div>
+
+          <div className="mt-5 grid grid-cols-5 gap-1.5">
+            {REQUEST_STEPS.map((label, index) => (
+              <div key={label} className="min-w-0 text-center">
+                <div
+                  className={
+                    "mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-black ring-1 " +
+                    (index < requestStep
+                      ? "bg-emerald-400 text-slate-950 ring-emerald-300"
+                      : index === requestStep
+                        ? "bg-white text-slate-950 ring-white"
+                        : "bg-white/5 text-slate-500 ring-white/10")
+                  }
+                >
+                  {index + 1}
+                </div>
+                <div className={"mt-1 truncate text-[9px] font-bold " + (index === requestStep ? "text-white" : "text-slate-500")}>
+                  {label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </header>
+
+        <div className="px-4 py-5">
+          <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-200">
+            Passenger: <span className="font-bold text-slate-900">{profileName}</span>
+          </div>
+
+          {notice ? (
+            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+              {notice}
+            </div>
+          ) : null}
+
+          {requestStep === 0 ? (
+            <StepCard
+              eyebrow="Step 1"
+              title="Where should the driver meet you?"
+              subtitle="This is the only pickup point used to match your driver and calculate the approach charge."
+            >
+              <ErrandLocationField
+                title="Customer meeting point"
+                value={stage0}
+                onChange={setStage0}
+                allowCurrentLocation
+                placeholder="Search or pin your meeting point"
+                helpText="The PHP 40 minimum approach charge is replaced by a higher routed pickup-distance charge when applicable."
+              />
+            </StepCard>
+          ) : null}
+
+          {requestStep === 1 ? (
+            <StepCard
+              eyebrow="Step 2"
+              title="What should the driver do?"
+              subtitle="Keep it short and specific. You will review this together before the Errand starts."
+            >
+              <textarea
+                value={taskDescription}
+                onChange={(event) => setTaskDescription(event.target.value)}
+                placeholder="Example: Pick up one sack of rice and two cases of drinks, then return them to me."
+                className="min-h-[150px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-base leading-6 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+              />
+              <div className="mt-2 text-right text-xs text-slate-400">
+                {clean(taskDescription).length < 3 ? "Add a short task description" : "Ready"}
+              </div>
+            </StepCard>
+          ) : null}
+
+          {requestStep === 2 ? (
+            <div className="space-y-4">
+              <StepCard
+                eyebrow="Step 3"
+                title="Task stops"
+                subtitle="Task Stop 1 is included. Each additional confirmed stop adds PHP 40."
+              >
+                <div className="space-y-3">
+                  {stops.map((stop, index) => (
+                    <div key={stop.id} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div className="font-bold text-slate-900">Task Stop {index + 1}</div>
+                        {stops.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => removeStop(stop.id)}
+                            className="text-xs font-bold text-red-600"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                      <ErrandLocationField
+                        title={`Task Stop ${index + 1} location`}
+                        value={stop.location}
+                        onChange={(location) => updateStopLocation(stop.id, location)}
+                        proximity={stage0 ? { lat: stage0.lat, lng: stage0.lng } : null}
+                        placeholder="Search store, office, house or destination"
+                      />
+                      <input
+                        value={stop.instructions}
+                        onChange={(event) => updateStopInstructions(stop.id, event.target.value)}
+                        placeholder="Optional instructions"
+                        className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addStop}
+                  className="mt-3 w-full rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 py-3 text-sm font-black text-emerald-800"
+                >
+                  + Add another task stop
+                </button>
+              </StepCard>
+
+              <StepCard
+                eyebrow="Final handoff"
+                title="Where should the Errand end?"
+                subtitle="Choose whether the driver returns to you or hands off somewhere else."
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <ChoiceCard
+                    selected={finalMode === "return_to_customer"}
+                    title="Return to me"
+                    detail="Back to meeting point"
+                    onClick={() => setFinalMode("return_to_customer")}
+                  />
+                  <ChoiceCard
+                    selected={finalMode === "different_address"}
+                    title="Different place"
+                    detail="Another handoff pin"
+                    onClick={() => setFinalMode("different_address")}
+                  />
+                </div>
+
+                {finalMode === "different_address" ? (
+                  <div className="mt-4">
+                    <ErrandLocationField
+                      title="Final destination"
+                      value={finalLocation}
+                      onChange={setFinalLocation}
+                      proximity={stage0 ? { lat: stage0.lat, lng: stage0.lng } : null}
+                      placeholder="Search final destination"
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-2xl bg-emerald-50 px-3 py-3 text-xs font-semibold text-emerald-900">
+                    {stage0?.label || "Set the meeting point first"}
+                  </div>
+                )}
+              </StepCard>
+            </div>
+          ) : null}
+
+          {requestStep === 3 ? (
+            <div className="space-y-4">
+              <StepCard
+                eyebrow="Step 4"
+                title="Errand type"
+                subtitle="Select Pabili only when the driver needs to buy something using money you provide."
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <ChoiceCard
+                    selected={!isPabili}
+                    title="Regular Errand"
+                    detail="Pickup, deliver or do a task"
+                    onClick={() => setIsPabili(false)}
+                  />
+                  <ChoiceCard
+                    selected={isPabili}
+                    title="Pabili"
+                    detail="Driver buys for you"
+                    onClick={() => setIsPabili(true)}
+                  />
+                </div>
+
+                {isPabili ? (
+                  <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
+                    <label className="text-xs font-black uppercase tracking-wide text-amber-900">Estimated purchase amount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={estimatedPurchase}
+                      onChange={(event) => setEstimatedPurchase(event.target.value)}
+                      placeholder="PHP 0"
+                      className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-base font-bold outline-none focus:border-amber-400"
+                    />
+                    <div className="mt-2 text-xs leading-5 text-amber-800">
+                      Customer-funded only. Hand cash to the driver only after the in-person task review.
+                    </div>
+                  </div>
+                ) : null}
+              </StepCard>
+
+              <StepCard
+                eyebrow="Cargo"
+                title="Weight and vehicle"
+                subtitle="This helps JRide send a vehicle that can safely handle the load."
+              >
+                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Estimated cargo weight</label>
+                <div className="relative mt-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={cargoWeight}
+                    onChange={(event) => setCargoWeight(event.target.value)}
+                    placeholder="0"
+                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-base font-bold outline-none focus:border-emerald-400 focus:bg-white"
+                  />
+                  <span className="absolute right-4 top-3.5 text-sm font-bold text-slate-400">kg</span>
+                </div>
+
+                {cargoTooHeavy ? (
+                  <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">More than 100 kg is not eligible for a normal JRide Errand.</div>
+                ) : cargoKg != null && cargoKg > 50 ? (
+                  <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">51-100 kg requires a tricycle and driver acceptance.</div>
+                ) : cargoKg != null && cargoKg > 25 ? (
+                  <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Above 25 kg requires a tricycle.</div>
+                ) : null}
+
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  {([
+                    ["either", "Either"],
+                    ["motorcycle", "Motorcycle"],
+                    ["tricycle", "Tricycle"],
+                  ] as const).map(([value, label]) => {
+                    const disabled = cargoKg != null && cargoKg > 25 && value !== "tricycle";
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setVehicleRequirement(value)}
+                        className={
+                          "rounded-2xl border px-2 py-3 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-30 " +
+                          (vehicleRequirement === value
+                            ? "border-emerald-400 bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+                            : "border-slate-200 bg-white text-slate-700")
+                        }
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </StepCard>
+            </div>
+          ) : null}
+
+          {requestStep === 4 ? (
+            <div className="space-y-4">
+              <StepCard
+                eyebrow="Step 5"
+                title="Review your Errand"
+                subtitle="The driver will still review the actual task and cargo with you before the starting fare is confirmed."
+              >
+                <ReviewRow label="Meet driver" value={stage0?.label || "Not set"} />
+                <ReviewRow label="Task" value={clean(taskDescription) || "Not set"} />
+                <ReviewRow label="Task stops" value={`${stops.length} stop${stops.length === 1 ? "" : "s"}`} />
+                <ReviewRow label="Final handoff" value={finalLabel} />
+                <ReviewRow label="Errand type" value={isPabili ? "Pabili" : "Regular Errand"} />
+                {isPabili ? <ReviewRow label="Estimated purchase" value={money(estimatedPurchase)} /> : null}
+                <ReviewRow label="Cargo" value={`${cargoKg ?? 0} kg`} />
+                <ReviewRow label="Vehicle" value={vehicleLabel(vehicleRequirement)} />
+              </StepCard>
+
+              <details className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
+                <summary className="cursor-pointer font-black text-slate-800">How the fare is calculated</summary>
+                <div className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
+                  <div><span className="font-bold text-slate-900">Approach:</span> PHP 40 minimum, or the routed pickup-distance charge when higher. They are never added together.</div>
+                  <div><span className="font-bold text-slate-900">Confirmed route:</span> PHP 15 per kilometer.</div>
+                  <div><span className="font-bold text-slate-900">Extra stops:</span> Task Stop 1 included; PHP 40 for each additional confirmed stop.</div>
+                  <div><span className="font-bold text-slate-900">Waiting:</span> First 15 total minutes free, then PHP 20 per started 15-minute block.</div>
+                </div>
+              </details>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3">
+          <div className="mx-auto max-w-xl rounded-[24px] border border-slate-200 bg-white/95 p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)] backdrop-blur">
+            <div className="flex gap-2">
+              {requestStep > 0 ? (
+                <button
+                  type="button"
+                  onClick={onPrevious}
+                  className="w-28 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-black text-slate-700"
+                >
+                  Back
+                </button>
+              ) : null}
+
+              {requestStep < REQUEST_STEPS.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={onNext}
+                  disabled={!stepReady[requestStep]}
+                  className="flex-1 rounded-2xl bg-emerald-500 py-3 text-sm font-black text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                >
+                  Continue
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSubmit}
+                  disabled={!formReady || bookingBusy}
+                  className="flex-1 rounded-2xl bg-emerald-500 py-3 text-sm font-black text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                >
+                  {bookingBusy ? "Requesting Errand..." : "Request Errand"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function ActiveErrandScreen(props: {
+  current: ErrandBundle;
+  loading: boolean;
+  error: string;
+  notice: string;
+  confirmBusy: boolean;
+  onConfirm: () => void;
+  onBack: () => void;
+}) {
+  const { current, loading, error, notice, confirmBusy, onConfirm, onBack } = props;
+  const booking = current.booking || {};
+  const job = current.job || {};
+  const fare = current.fare || {};
+  const pabili = current.pabili || {};
+  const driver = current.driver || {};
+  const driverLocation = current.driver_location || {};
+  const currentStops = Array.isArray(current.stops) ? current.stops || [] : [];
+
+  const stage = clean(job?.errand_stage).toLowerCase();
+  const status = clean(booking?.status).toLowerCase();
+  const currentStep = activeStepIndex(stage, status);
+  const meta = stageMeta(stage, status);
   const awaitingConfirmation =
     stage === "awaiting_customer_confirmation" || status === "fare_proposed";
-  const taskLocked = job?.task_locked === true;
+
+  const base = numberOrZero(fare?.base_fare ?? booking?.base_fee);
+  const pickup = numberOrZero(fare?.pickup_distance_fee ?? booking?.pickup_distance_fee);
+  const approach = numberOrZero(fare?.approach_fee) || Math.max(base, pickup);
+  const routeFare = numberOrZero(fare?.distance_fare);
+  const extraStops = numberOrZero(fare?.extra_stop_fee);
+  const waitingFee = numberOrZero(fare?.waiting_fee);
+  const elevation = numberOrZero(fare?.elevation_surcharge);
+  const heavy = numberOrZero(fare?.heavy_load_fee);
+  const totalFare = numberOrZero(fare?.total_errand_fare);
+  const waiting = fare?.waiting || {};
+
+  const returnsToCustomer =
+    clean(job?.final_destination_mode).toLowerCase() === "return_to_customer";
 
   const stage0Lat = numberOrNull(booking?.pickup_lat);
   const stage0Lng = numberOrNull(booking?.pickup_lng);
   const stage0MapPoint: MapPoint | null =
     stage0Lat != null && stage0Lng != null
       ? {
-          label: text(booking?.from_label) || "Customer meeting point",
+          label: clean(booking?.from_label) || "Customer meeting point",
           lat: stage0Lat,
           lng: stage0Lng,
           kind: "stage0",
@@ -557,9 +1252,7 @@ export default function ErrandPage() {
     const lng = numberOrNull(stop?.lng);
     if (lat == null || lng == null) return points;
     points.push({
-      label:
-        text(stop?.location_label) ||
-        `Task Stop ${Number(stop?.sequence || points.length + 1)}`,
+      label: clean(stop?.location_label) || `Task Stop ${stop?.sequence || points.length + 1}`,
       lat,
       lng,
       kind: "stop",
@@ -573,593 +1266,413 @@ export default function ErrandPage() {
   const finalMapPoint: MapPoint | null =
     finalLat != null && finalLng != null
       ? {
-          label:
-            text(job?.final_label) ||
-            text(booking?.to_label) ||
-            (returnsToCustomer ? "Return to you" : "Final destination"),
+          label: clean(job?.final_label) || clean(booking?.to_label) || "Final destination",
           lat: finalLat,
           lng: finalLng,
           kind: "final",
         }
       : null;
 
+  const matching = currentStep === 0;
+  const fareTitle = matching
+    ? "Minimum approach"
+    : awaitingConfirmation
+      ? "Starting fare"
+      : "Current fare";
+  const fareValue = matching ? money(Math.max(base, 40)) : money(totalFare);
+
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f7faf9_0%,#f1f7f4_52%,#edf5f1_100%)] text-slate-900">
-      <div className="mx-auto max-w-5xl space-y-5 px-4 py-6">
-        <header className="rounded-[28px] border border-white/80 bg-white/95 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">
-                JRide Passenger
-              </div>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight">Errand</h1>
-              <p className="mt-1 max-w-2xl text-sm text-slate-500">
-                The driver meets you first, reviews the task with you, then you confirm it before the Errand starts. Select Pabili only when the driver needs to buy something.
-              </p>
-            </div>
+    <main className="min-h-screen bg-slate-100 pb-6 text-slate-900">
+      <div className="mx-auto min-h-screen max-w-xl bg-white shadow-xl shadow-slate-300/20">
+        <header className="bg-slate-950 px-4 pb-5 pt-4 text-white">
+          <div className="flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => router.push("/passenger")}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={onBack}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-xl ring-1 ring-white/10"
+              aria-label="Back to Passenger"
             >
-              Back to Passenger
+              <span aria-hidden="true">&#8249;</span>
             </button>
+            <div className="text-center">
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">JRide Errand</div>
+              <div className="text-sm font-black">{clean(booking?.booking_code) || "Active trip"}</div>
+            </div>
+            <div className="w-10" />
+          </div>
+
+          <div className={`mt-5 rounded-[24px] border p-4 ${toneClasses(meta.tone)}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Step {currentStep + 1} of 6</div>
+                <div className="mt-1 text-xl font-black leading-tight">{meta.label}</div>
+                <div className="mt-1 text-xs leading-5 opacity-80">{meta.detail}</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[10px] font-bold uppercase tracking-wide opacity-60">{fareTitle}</div>
+                <div className="mt-1 text-2xl font-black">{fareValue}</div>
+              </div>
+            </div>
+            {matching ? (
+              <div className="mt-3 rounded-xl bg-black/15 px-3 py-2 text-[11px] font-semibold">
+                Final approach charge is set after a driver is assigned. The PHP 40 minimum is not added again when the routed pickup charge is higher.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid grid-cols-6 gap-1.5">
+            {ACTIVE_STEPS.map((label, index) => (
+              <div key={label} className="min-w-0 text-center">
+                <div className={"h-1.5 rounded-full " + (index <= currentStep ? "bg-emerald-400" : "bg-white/10")} />
+                <div className={"mt-1 truncate text-[8px] font-bold " + (index === currentStep ? "text-white" : "text-slate-600")}>
+                  {label}
+                </div>
+              </div>
+            ))}
           </div>
         </header>
 
-        {eligibilityLoading ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-            Checking Errand availability...
-          </div>
-        ) : !enabled ? (
-          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm">
-            <div className="font-semibold">Errand pilot is not enabled yet</div>
-            <div className="mt-1 text-sm opacity-80">
-              The booking backend remains safely gated. This page will become active when the Errand pilot flag is enabled.
-            </div>
-          </div>
-        ) : !authed ? (
-          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <div className="font-semibold text-amber-950">Sign in required</div>
-            <div className="mt-1 text-sm text-amber-900">
-              Errand requires a signed-in and fully verified JRide passenger account.
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/passenger-login?next=/errands")}
-              className="mt-3 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400"
-            >
-              Sign in
-            </button>
-          </div>
-        ) : !verified ? (
-          <div className="rounded-[24px] border border-red-200 bg-red-50 p-5 shadow-sm">
-            <div className="font-semibold text-red-950">Full verification required</div>
-            <div className="mt-1 text-sm text-red-900">
-              Current verification status: {text(eligibility?.verification_status) || "not approved"}. Errand and Pabili Errand are available only after admin approval.
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push("/verification")}
-              className="mt-3 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400"
-            >
-              Open verification
-            </button>
-          </div>
-        ) : !profileName ? (
-          <div className="rounded-[24px] border border-red-200 bg-red-50 p-5 text-sm text-red-900 shadow-sm">
-            Your JRide passenger profile needs a valid full name before Errand booking can continue.
-          </div>
-        ) : null}
+        <div className="space-y-4 px-4 py-4">
+          {error ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</div>
+          ) : null}
+          {notice ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{notice}</div>
+          ) : null}
+          {loading ? <div className="text-center text-xs font-semibold text-slate-400">Refreshing trip...</div> : null}
 
-        {notice ? (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 shadow-sm">
-            {notice}
-          </div>
-        ) : null}
-
-        {currentError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            {currentError}
-          </div>
-        ) : null}
-
-        {enabled && authed && verified && current ? (
-          <section className="space-y-4">
-            <div className="rounded-[28px] border border-white/80 bg-white p-5 shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Current Errand</div>
-                  <div className="mt-1 text-xl font-semibold text-slate-950">
-                    {prettyStage(stage, status)}
-                  </div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    {stageDescription(stage, status)}
-                  </div>
-                </div>
-                <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-                  {text(booking?.booking_code) || stored.code || "Active"}
-                </div>
-              </div>
-
-              {currentLoading ? (
-                <div className="mt-3 text-xs text-slate-500">Refreshing status...</div>
-              ) : null}
-            </div>
-
-            {text(driver?.driver_id) ? (
-              <div className="rounded-[24px] border border-white/80 bg-white p-4 shadow-sm">
-                <div className="flex items-center gap-4">
-                  {text(driver?.photo_url) ? (
-                    <img
-                      src={text(driver.photo_url)}
-                      alt="Assigned driver"
-                      className="h-16 w-16 rounded-full border border-slate-200 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-500">
-                      Driver
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Assigned driver</div>
-                    <div className="text-lg font-semibold text-slate-950">
-                      {text(driver?.full_name) || "JRide Driver"}
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      {[text(driver?.vehicle_type), text(driver?.plate_number)]
-                        .filter(Boolean)
-                        .join(" | ") || "Vehicle details pending"}
-                    </div>
-                    {text(driver?.phone) ? (
-                      <div className="mt-1 text-sm text-slate-600">{text(driver.phone)}</div>
-                    ) : null}
-                  </div>
-                  {driverLocation?.updated_at ? (
-                    <div className="hidden text-right text-[11px] text-slate-500 sm:block">
-                      Location updated
-                      <br />
-                      {new Date(driverLocation.updated_at).toLocaleTimeString("en-PH", {
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-[24px] border border-white/80 bg-white p-4 text-sm text-slate-600 shadow-sm">
-                No driver is assigned yet. JRide will keep the Errand in matching; it will not silently pull a driver from another town.
-              </div>
-            )}
-
-            {text(booking?.id) ? (
-              <ErrandLiveMap
-                bookingId={text(booking.id)}
-                stage0={stage0MapPoint}
-                stops={stopMapPoints}
-                finalPoint={finalMapPoint}
-                errandStage={stage}
-                currentStopSequence={numberOrNull(job?.current_stop_sequence)}
-              />
-            ) : null}
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                <div className="text-sm font-semibold text-slate-950">Confirmed task details</div>
-                <div className="mt-3 space-y-3 text-sm">
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Task</div>
-                    <div className="mt-1 text-slate-800">{text(job?.task_description) || "--"}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Customer meeting point</div>
-                    <div className="mt-1 text-slate-800">{text(booking?.from_label) || "--"}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">Task stops</div>
-                    <div className="mt-2 space-y-2">
-                      {currentStops.map((stop: any) => (
-                        <div
-                          key={String(stop?.id || stop?.sequence)}
-                          className={
-                            "rounded-2xl border p-3 " +
-                            (Number(job?.current_stop_sequence) === Number(stop?.sequence)
-                              ? "border-emerald-300 bg-emerald-50"
-                              : "border-slate-100 bg-slate-50")
-                          }
-                        >
-                          <div className="font-semibold text-slate-800">
-                            Task Stop {String(stop?.sequence || "-")}: {text(stop?.location_label) || "--"}
-                          </div>
-                          {text(stop?.instructions) ? (
-                            <div className="mt-1 text-xs text-slate-600">{text(stop.instructions)}</div>
-                          ) : null}
-                          <div className="mt-1 text-[11px] text-slate-500">
-                            Status: {text(stop?.status) || "pending"}
-                            {stop?.is_substitute ? " | confirmed substitute" : ""}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-400">
-                      {returnsToCustomer ? "Return to you" : "Final destination"}
-                    </div>
-                    <div className="mt-1 text-slate-800">{text(job?.final_label) || text(booking?.to_label) || "--"}</div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      Cargo: {numberOrNull(job?.confirmed_cargo_weight_kg ?? job?.estimated_cargo_weight_kg) ?? 0} kg
-                    </div>
-                    <div className="rounded-xl bg-slate-50 p-3">
-                      Vehicle: {text(job?.vehicle_requirement) || "either"}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className={
-                  "rounded-[24px] border p-5 shadow-sm " +
-                  (awaitingConfirmation
-                    ? "border-amber-300 bg-amber-50"
-                    : "border-white/80 bg-white")
-                }
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-slate-950">
-                    {awaitingConfirmation ? "Review starting fare" : "Running Errand fare"}
-                  </div>
-                  {taskLocked ? (
-                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
-                      Task locked
-                    </span>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 space-y-2 text-sm text-slate-700">
-                  <FareRow label="Base fare" value={fare?.base_fare} />
-                  <FareRow label="Pickup distance" value={fare?.pickup_distance_fee} />
-                  <FareRow label={`Confirmed route (${km(job?.confirmed_route_distance_km)})`} value={fare?.distance_fare} />
-                  <FareRow label="Additional task stops" value={fare?.extra_stop_fee} />
-                  <FareRow label="Waiting" value={fare?.waiting_fee} />
-                  <FareRow label="Elevation" value={fare?.elevation_surcharge} />
-                  <FareRow label="Heavy load" value={fare?.heavy_load_fee} />
-                  <div className="border-t border-slate-200 pt-3">
-                    <div className="flex items-center justify-between gap-3 text-base font-bold text-slate-950">
-                      <span>Current service fare</span>
-                      <span>{money(fare?.total_errand_fare)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {fare?.waiting ? (
-                  <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-                    Waiting: {Math.floor(Number(fare.waiting.current_total_seconds || 0) / 60)} min total | First {fare.waiting.free_minutes ?? 15} min free | Current waiting fee {money(fare.waiting.current_fee)}
-                  </div>
-                ) : null}
-
-                {awaitingConfirmation ? (
-                  <div className="mt-4 rounded-2xl border border-amber-200 bg-white/70 p-4">
-                    <div className="text-sm font-semibold text-amber-950">Your confirmation locks the task.</div>
-                    <div className="mt-1 text-xs text-amber-900">
-                      Check the task stops, cargo and starting fare above. After confirmation there is no normal edit flow; exceptions require explicit handling.
-                    </div>
-                    <button
-                      type="button"
-                      onClick={confirmTask}
-                      disabled={confirmBusy}
-                      className="mt-3 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-400 disabled:opacity-50"
-                    >
-                      {confirmBusy ? "Confirming..." : "Confirm Task"}
-                    </button>
-                  </div>
-                ) : null}
-
-                <div className="mt-3 text-[11px] text-slate-500">
-                  {current?.map_note || "Fare is based on the confirmed route, not the driver's live path."}
-                </div>
-              </div>
-            </div>
-
-            {job?.is_pabili ? (
-              <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                <div className="text-sm font-semibold text-slate-950">Pabili money</div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                  <Metric label="Customer funds" value={money(pabili?.customer_funds_received)} />
-                  <Metric label="Purchase total" value={money(pabili?.purchase_total)} />
-                  <Metric label="Change due" value={money(pabili?.change_due)} />
-                  <Metric label="Change returned" value={money(pabili?.change_returned)} />
-                </div>
-                <div className="mt-3 text-xs text-slate-500">
-                  Purchase money is separate from the JRide service fare. The driver is never required to advance personal money.
-                </div>
-              </div>
-            ) : null}
-          </section>
-        ) : enabled && authed && verified && profileName ? (
-          <section className="space-y-4">
-            <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-sm font-semibold text-slate-950">New Errand</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    Passenger: {profileName}. The customer meeting point is where the driver meets you and confirms the task.
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={resetDraft}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Clear form
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="space-y-4 lg:col-span-2">
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">1. Set the customer meeting point</div>
-                  <div className="mt-3">
-                    <ErrandLocationField
-                      title="Customer meeting point"
-                      value={stage0}
-                      onChange={setStage0}
-                      allowCurrentLocation
-                      placeholder="Search where the driver should meet you"
-                      helpText="Pickup-distance surcharge is based on the driver's routed road distance to this pin."
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">2. Describe the task</div>
-                  <textarea
-                    value={taskDescription}
-                    onChange={(event) => setTaskDescription(event.target.value)}
-                    placeholder="Example: Buy one 25 kg sack of rice and two cases of drinks, then bring them back to me."
-                    className="mt-3 min-h-[110px] w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+          {clean(driver?.driver_id) ? (
+            <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+              <div className="flex items-center gap-3">
+                {clean(driver?.photo_url) ? (
+                  <img
+                    src={clean(driver.photo_url)}
+                    alt="Assigned driver"
+                    className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200"
                   />
-                </div>
-
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold text-slate-950">3. Task stops</div>
-                      <div className="text-xs text-slate-500">Task Stop 1 is included. Each confirmed task stop after Task Stop 1 currently adds PHP 40.</div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={addStop}
-                      className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-400"
-                    >
-                      Add task stop
-                    </button>
-                  </div>
-
-                  <div className="mt-4 space-y-4">
-                    {stops.map((stop, index) => (
-                      <div key={stop.id} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-800">Task Stop {index + 1}</div>
-                          {stops.length > 1 ? (
-                            <button
-                              type="button"
-                              onClick={() => removeStop(stop.id)}
-                              className="text-xs font-semibold text-red-600 hover:text-red-700"
-                            >
-                              Remove
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="mt-3">
-                          <ErrandLocationField
-                            title={`Task Stop ${index + 1} location`}
-                            value={stop.location}
-                            onChange={(location) => updateStopLocation(stop.id, location)}
-                            proximity={stage0 ? { lat: stage0.lat, lng: stage0.lng } : null}
-                            placeholder="Search store, office, house, or destination"
-                          />
-                        </div>
-                        <input
-                          value={stop.instructions}
-                          onChange={(event) => updateStopInstructions(stop.id, event.target.value)}
-                          placeholder="Optional instructions for this task stop"
-                          className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
-                        />
-                      </div>
-                    ))}
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-xs font-bold text-slate-500">Driver</div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Assigned driver</div>
+                  <div className="truncate text-lg font-black text-slate-950">{clean(driver?.full_name) || "JRide Driver"}</div>
+                  <div className="text-xs font-semibold text-slate-500">
+                    {[vehicleLabel(driver?.vehicle_type), clean(driver?.plate_number)].filter(Boolean).join(" | ")}
                   </div>
                 </div>
-
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">4. Where should the Errand end?</div>
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      onClick={() => setFinalMode("return_to_customer")}
-                      className={
-                        "rounded-2xl border p-3 text-left text-sm " +
-                        (finalMode === "return_to_customer"
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-                          : "border-slate-200 bg-white text-slate-700")
-                      }
-                    >
-                      <div className="font-semibold">Return to me</div>
-                      <div className="mt-1 text-xs opacity-70">The driver returns to your customer meeting point.</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFinalMode("different_address")}
-                      className={
-                        "rounded-2xl border p-3 text-left text-sm " +
-                        (finalMode === "different_address"
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-                          : "border-slate-200 bg-white text-slate-700")
-                      }
-                    >
-                      <div className="font-semibold">Different destination</div>
-                      <div className="mt-1 text-xs opacity-70">End the Errand somewhere else.</div>
-                    </button>
+                {driverLocation?.updated_at ? (
+                  <div className="text-right text-[10px] font-semibold text-slate-400">
+                    GPS<br />
+                    {new Date(driverLocation.updated_at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}
                   </div>
-
-                  {finalMode === "different_address" ? (
-                    <div className="mt-4">
-                      <ErrandLocationField
-                        title="Final destination"
-                        value={finalLocation}
-                        onChange={setFinalLocation}
-                        proximity={stage0 ? { lat: stage0.lat, lng: stage0.lng } : null}
-                        placeholder="Search final destination"
-                      />
-                    </div>
-                  ) : stage0 ? (
-                    <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-                      Return to you: {stage0.label}
-                    </div>
-                  ) : null}
-                </div>
+                ) : null}
               </div>
+            </section>
+          ) : (
+            <section className="rounded-[22px] bg-sky-50 p-4 ring-1 ring-sky-200">
+              <div className="font-black text-sky-950">Looking for your driver</div>
+              <div className="mt-1 text-xs leading-5 text-sky-800">JRide will keep matching an eligible driver from your meeting-point town.</div>
+            </section>
+          )}
 
-              <aside className="space-y-4">
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">Pabili option</div>
-                  <label className="mt-3 flex items-start gap-3 rounded-2xl bg-slate-50 p-3 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={isPabili}
-                      onChange={(event) => setIsPabili(event.target.checked)}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="font-semibold text-slate-800">Buy something for me (Pabili)</span>
-                      <span className="mt-1 block text-xs text-slate-500">Customer-funded only. Do not hand over cash until the driver checks the task and cargo with you at the meeting point.</span>
-                    </span>
-                  </label>
+          {clean(booking?.id) ? (
+            <ErrandLiveMap
+              bookingId={clean(booking.id)}
+              stage0={stage0MapPoint}
+              stops={stopMapPoints}
+              finalPoint={finalMapPoint}
+              errandStage={stage}
+              currentStopSequence={numberOrNull(job?.current_stop_sequence)}
+            />
+          ) : null}
 
-                  {isPabili ? (
-                    <div className="mt-3">
-                      <label className="text-xs font-semibold text-slate-700">Estimated purchase amount</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={estimatedPurchase}
-                        onChange={(event) => setEstimatedPurchase(event.target.value)}
-                        placeholder="PHP"
-                        className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-3 text-sm shadow-sm"
-                      />
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">Cargo / vehicle</div>
-                  <label className="mt-3 block text-xs font-semibold text-slate-700">Estimated total cargo weight</label>
-                  <div className="relative mt-1">
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.5"
-                      value={cargoWeight}
-                      onChange={(event) => setCargoWeight(event.target.value)}
-                      placeholder="0"
-                      className="w-full rounded-2xl border border-slate-200 px-3 py-3 pr-10 text-sm shadow-sm"
-                    />
-                    <span className="absolute right-3 top-3 text-sm text-slate-400">kg</span>
+          {awaitingConfirmation ? (
+            <section className="overflow-hidden rounded-[24px] bg-slate-950 text-white shadow-xl shadow-slate-300/30">
+              <div className="bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-950">Fare ready - your action</div>
+              <div className="p-4">
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Starting fare</div>
+                    <div className="mt-1 text-3xl font-black">{money(totalFare)}</div>
                   </div>
-                  {cargoTooHeavy ? (
-                    <div className="mt-2 text-xs text-red-600">More than 100 kg is not a normal JRide Errand.</div>
-                  ) : cargoKg != null && cargoKg > 50 ? (
-                    <div className="mt-2 text-xs text-amber-700">51-100 kg is Extra Heavy, tricycle-only and optional to the driver.</div>
-                  ) : cargoKg != null && cargoKg > 25 ? (
-                    <div className="mt-2 text-xs text-amber-700">Above 25 kg requires a tricycle for the current working policy.</div>
-                  ) : cargoKg != null && cargoKg > 15 ? (
-                    <div className="mt-2 text-xs text-slate-500">16-25 kg is a working Heavy Load tier. Motorcycle still depends on safe fit and securing.</div>
-                  ) : null}
-
-                  <label className="mt-4 block text-xs font-semibold text-slate-700">Vehicle preference</label>
-                  <select
-                    value={vehicleRequirement}
-                    onChange={(event) =>
-                      setVehicleRequirement(
-                        event.target.value as "either" | "motorcycle" | "tricycle"
-                      )
-                    }
-                    disabled={cargoKg != null && cargoKg > 25}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm disabled:bg-slate-100"
-                  >
-                    <option value="either">Motorcycle or Tricycle</option>
-                    <option value="motorcycle">Motorcycle</option>
-                    <option value="tricycle">Tricycle</option>
-                  </select>
-                  <div className="mt-2 text-[11px] text-slate-500">
-                    Safety overrides weight. A driver may reject bulky or unsafe cargo even when it is below the weight ceiling.
+                  <div className="rounded-xl bg-white/5 px-3 py-2 text-right text-[10px] font-semibold text-slate-400 ring-1 ring-white/10">
+                    Route {km(job?.confirmed_route_distance_km)}
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-emerald-950">Working field-test pricing</div>
-                  <div className="mt-2 space-y-1 text-xs text-emerald-900">
-                    <div>Base: PHP 40 candidate</div>
-                    <div>Confirmed Errand route: PHP 15/km candidate</div>
-                    <div>Task Stop 1 included; +PHP 40 each additional task stop</div>
-                    <div>Waiting: first 15 cumulative minutes free; then PHP 20 per started 15 minutes</div>
-                    <div>Pickup distance uses the existing JRide pickup surcharge separately</div>
-                  </div>
-                  <div className="mt-3 text-[11px] text-emerald-800">
-                    The in-person task review determines the exact starting fare. Field-test rates can still be adjusted before public rollout.
-                  </div>
-                </div>
-
-                <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="text-sm font-semibold text-slate-950">Accompanied Errand</div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    Not enabled in this test slice yet. When implemented, passenger-carrying travel will use the applicable LGU/JRide Ride Fare Matrix without double-charging the same kilometers as Errand distance.
-                  </div>
+                <div className="mt-4 space-y-2 border-t border-white/10 pt-3 text-sm">
+                  <DarkFareRow label="Approach" value={approach} />
+                  <DarkFareRow label="Confirmed task route" value={routeFare} />
+                  {extraStops > 0 ? <DarkFareRow label="Additional task stops" value={extraStops} /> : null}
+                  {waitingFee > 0 ? <DarkFareRow label="Waiting" value={waitingFee} /> : null}
+                  {elevation > 0 ? <DarkFareRow label="Elevation" value={elevation} /> : null}
+                  {heavy > 0 ? <DarkFareRow label="Heavy load" value={heavy} /> : null}
                 </div>
 
                 <button
                   type="button"
-                  onClick={submitErrand}
-                  disabled={!formReady || bookingBusy}
-                  className="w-full rounded-2xl bg-emerald-500 py-3.5 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(16,185,129,0.28)] hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={onConfirm}
+                  disabled={confirmBusy}
+                  className="mt-4 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/20 disabled:opacity-50"
                 >
-                  {bookingBusy ? "Submitting Errand..." : "Request Errand"}
+                  {confirmBusy ? "Confirming..." : `Confirm ${money(totalFare)}`}
                 </button>
+                <div className="mt-2 text-center text-[10px] leading-4 text-slate-400">
+                  Waiting can add charges only after the first 15 total waiting minutes.
+                </div>
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Fare</div>
+                  <div className="mt-1 text-2xl font-black text-slate-950">{matching ? money(Math.max(base, 40)) : money(totalFare)}</div>
+                </div>
+                <div className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">
+                  {numberOrZero(waiting?.current_fee) > 0 ? `Waiting ${money(waiting.current_fee)}` : "No waiting fee"}
+                </div>
+              </div>
+              {!matching ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <MiniMetric label="Approach" value={money(approach)} />
+                  <MiniMetric label="Route" value={money(routeFare)} />
+                </div>
+              ) : null}
+              {waiting?.running === true ? (
+                <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                  {numberOrZero(waiting?.free_remaining_seconds) > 0
+                    ? `Free waiting remaining: ${Math.floor(numberOrZero(waiting.free_remaining_seconds) / 60)}m ${Math.floor(numberOrZero(waiting.free_remaining_seconds) % 60)}s`
+                    : `Current waiting fee: ${money(waiting?.current_fee)}`}
+                </div>
+              ) : null}
+            </section>
+          )}
 
-                {!formReady ? (
-                  <div className="text-center text-[11px] font-medium text-amber-700">
-                    Missing: {missingRequirement || "required Errand information"}.
-                  </div>
-                ) : null}
-              </aside>
+          <details className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+            <summary className="cursor-pointer list-none font-black text-slate-950">
+              <div className="flex items-center justify-between gap-3">
+                <span>Task & route details</span>
+                <span className="text-xs font-bold text-emerald-700">View</span>
+              </div>
+            </summary>
+
+            <div className="mt-4 space-y-4 border-t border-slate-100 pt-4 text-sm">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Task</div>
+                <div className="mt-1 font-semibold text-slate-800">{clean(job?.task_description) || "--"}</div>
+              </div>
+
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Meet driver</div>
+                <div className="mt-1 font-semibold text-slate-800">{clean(booking?.from_label) || "--"}</div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-400">Task stops</div>
+                <div className="space-y-2">
+                  {currentStops.map((stop: any) => (
+                    <div key={String(stop?.id || stop?.sequence)} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-900">Stop {stop?.sequence || "-"}: {clean(stop?.location_label) || "--"}</div>
+                          {clean(stop?.instructions) ? <div className="mt-1 text-xs text-slate-500">{clean(stop.instructions)}</div> : null}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${stopStatusClasses(stop?.status)}`}>
+                          {clean(stop?.status) || "pending"}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <ReviewRow
+                label={returnsToCustomer ? "Return to you" : "Final destination"}
+                value={clean(job?.final_label) || clean(booking?.to_label) || "--"}
+              />
+              <ReviewRow
+                label="Cargo"
+                value={`${numberOrNull(job?.confirmed_cargo_weight_kg ?? job?.estimated_cargo_weight_kg) ?? 0} kg`}
+              />
+              <ReviewRow label="Vehicle" value={vehicleLabel(job?.vehicle_requirement)} />
             </div>
-          </section>
-        ) : null}
+          </details>
+
+          {job?.is_pabili ? (
+            <section className="rounded-[22px] bg-amber-50 p-4 ring-1 ring-amber-200">
+              <div className="font-black text-amber-950">Pabili money</div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <MiniMetric label="Customer funds" value={money(pabili?.customer_funds_received)} />
+                <MiniMetric label="Purchase total" value={money(pabili?.purchase_total)} />
+                <MiniMetric label="Change due" value={money(pabili?.change_due)} />
+                <MiniMetric label="Change returned" value={money(pabili?.change_returned)} />
+              </div>
+              <div className="mt-2 text-[10px] leading-4 text-amber-800">Purchase money is separate from the JRide service fare.</div>
+            </section>
+          ) : null}
+        </div>
       </div>
     </main>
   );
 }
 
-function FareRow({ label, value }: { label: string; value: unknown }) {
+function CompletedReceipt(props: { receipt: Receipt; onDone: () => void }) {
+  const { receipt, onDone } = props;
+  const finalFare = numberOrZero(receipt.final_fare);
+  const startingFare = numberOrZero(receipt.starting_fare);
+  const approach = numberOrZero(receipt.approach_fee) || Math.max(numberOrZero(receipt.base_fare), numberOrZero(receipt.pickup_distance_fee));
+
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span>{label}</span>
-      <span className="font-semibold text-slate-900">{money(value)}</span>
+    <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900">
+      <div className="mx-auto max-w-md overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-400/30">
+        <div className="h-1.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400" />
+        <div className="p-5">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Errand completed</div>
+          <div className="mt-1 text-xl font-black">{clean(receipt.booking_code) || "JRide Errand"}</div>
+
+          <div className="mt-5 rounded-[22px] bg-white/5 p-4 ring-1 ring-white/10">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Final fare</div>
+            <div className="mt-1 text-4xl font-black">{money(finalFare)}</div>
+            {startingFare > 0 ? <div className="mt-1 text-xs text-slate-400">Started at {money(startingFare)}</div> : null}
+          </div>
+
+          <div className="mt-4 space-y-2 text-sm">
+            <DarkFareRow label="Approach" value={approach} />
+            <DarkFareRow label="Confirmed route" value={receipt.distance_fare} />
+            {numberOrZero(receipt.extra_stop_fee) > 0 ? <DarkFareRow label="Additional stops" value={receipt.extra_stop_fee} /> : null}
+            <DarkFareRow label="Waiting" value={receipt.waiting_fee} />
+            {numberOrZero(receipt.elevation_surcharge) > 0 ? <DarkFareRow label="Elevation" value={receipt.elevation_surcharge} /> : null}
+            {numberOrZero(receipt.heavy_load_fee) > 0 ? <DarkFareRow label="Heavy load" value={receipt.heavy_load_fee} /> : null}
+          </div>
+
+          <div className="mt-4 text-xs leading-5 text-slate-400">
+            Waiting time: {Math.max(0, Math.round(numberOrZero(receipt.waiting_minutes)))} min total.
+            {receipt.completed_at
+              ? ` Completed ${new Date(receipt.completed_at).toLocaleString("en-PH", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}.`
+              : ""}
+          </div>
+
+          <button
+            type="button"
+            onClick={onDone}
+            className="mt-5 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function StepCard(props: {
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-[24px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{props.eyebrow}</div>
+      <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{props.title}</h2>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{props.subtitle}</p>
+      <div className="mt-4">{props.children}</div>
+    </section>
+  );
+}
+
+function ChoiceCard(props: {
+  selected: boolean;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={
+        "rounded-2xl border p-3 text-left transition " +
+        (props.selected
+          ? "border-emerald-400 bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
+          : "border-slate-200 bg-white text-slate-800")
+      }
+    >
+      <div className="text-sm font-black">{props.title}</div>
+      <div className={"mt-1 text-[11px] leading-4 " + (props.selected ? "text-emerald-50" : "text-slate-500")}>
+        {props.detail}
+      </div>
+    </button>
+  );
+}
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-3 last:border-b-0">
+      <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="max-w-[65%] text-right text-sm font-bold leading-5 text-slate-900">{value}</span>
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function DarkFareRow({ label, value }: { label: string; value: unknown }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-3">
-      <div className="text-[11px] uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 font-semibold text-slate-900">{value}</div>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-slate-300">{label}</span>
+      <span className="font-black text-white">{money(value)}</span>
     </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+      <div className="text-[9px] font-black uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="mt-1 text-sm font-black text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function LoadingScreen({ label }: { label: string }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
+      <div className="text-center">
+        <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-emerald-400" />
+        <div className="mt-4 text-sm font-bold text-slate-300">{label}</div>
+      </div>
+    </main>
+  );
+}
+
+function GateScreen(props: {
+  title: string;
+  message: string;
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-8 text-slate-900">
+      <div className="w-full max-w-md overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-400/30">
+        <div className="h-1.5 bg-emerald-400" />
+        <div className="p-6">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">JRide Passenger</div>
+          <h1 className="mt-2 text-2xl font-black">{props.title}</h1>
+          <p className="mt-2 text-sm leading-6 text-slate-300">{props.message}</p>
+          <button
+            type="button"
+            onClick={props.onAction}
+            className="mt-6 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950"
+          >
+            {props.action}
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
