@@ -127,7 +127,6 @@ function hideTechnicalMapNoise(): void {
     if (/^GPS points:\s*\d+$/i.test(content)) {
       element.hidden = true;
       element.setAttribute("aria-hidden", "true");
-      element.setAttribute("data-jride-hidden-map-debug", "gps-points");
       continue;
     }
 
@@ -138,86 +137,35 @@ function hideTechnicalMapNoise(): void {
     ) {
       element.hidden = true;
       element.setAttribute("aria-hidden", "true");
-      element.setAttribute("data-jride-hidden-map-debug", "technical-legend");
     }
   }
 }
 
-function restoreOriginalConfirmationCard(): void {
-  const source = document.querySelector(
-    '[data-jride-confirm-source="true"]'
-  ) as HTMLElement | null;
-
-  if (source) {
-    source.hidden = false;
-    source.removeAttribute("data-jride-confirm-source");
-  }
-}
-
-function removePriorityConfirmation(): void {
-  document.getElementById("jride-priority-confirmation")?.remove();
-  restoreOriginalConfirmationCard();
-}
-
-function syncPriorityConfirmation(): void {
+function prioritizeRealConfirmationCard(): void {
   const buttons = Array.from(document.querySelectorAll("button"));
-  const originalButton = buttons.find((button) => {
-    if (button.closest("#jride-priority-confirmation")) return false;
+  const confirmButton = buttons.find((button) => {
     const label = normalizedText(button.textContent);
     return /^Confirm PHP\s+/i.test(label) || label === "Confirming...";
   }) as HTMLButtonElement | undefined;
 
-  if (!originalButton) {
-    removePriorityConfirmation();
-    return;
+  if (!confirmButton) return;
+
+  const confirmationCard = confirmButton.closest("section") as HTMLElement | null;
+  const contentColumn = confirmationCard?.parentElement as HTMLElement | null;
+  if (!confirmationCard || !contentColumn) return;
+
+  if (contentColumn.dataset.jrideConfirmationLayout !== "1") {
+    contentColumn.dataset.jrideConfirmationLayout = "1";
+    contentColumn.style.display = "flex";
+    contentColumn.style.flexDirection = "column";
+    contentColumn.style.gap = "1rem";
   }
 
-  const sourceCard = originalButton.closest("section") as HTMLElement | null;
-  if (!sourceCard) return;
-
-  const stageHeading = Array.from(document.querySelectorAll("div")).find(
-    (element) =>
-      normalizedText(element.textContent) === "Your confirmation is needed"
+  confirmationCard.style.order = "-20";
+  confirmationCard.setAttribute(
+    "data-jride-priority-action",
+    "customer-confirmation"
   );
-  const stageCard = stageHeading?.closest("section") as HTMLElement | null;
-  if (!stageCard) return;
-
-  let priority = document.getElementById(
-    "jride-priority-confirmation"
-  ) as HTMLElement | null;
-
-  if (!priority) {
-    const clone = sourceCard.cloneNode(true) as HTMLElement;
-    clone.id = "jride-priority-confirmation";
-    clone.hidden = false;
-    clone.removeAttribute("data-jride-confirm-source");
-    clone.setAttribute("data-jride-priority-action", "customer-confirmation");
-
-    const cloneButton = clone.querySelector("button") as HTMLButtonElement | null;
-    if (cloneButton) {
-      cloneButton.addEventListener("click", () => {
-        if (cloneButton.disabled) return;
-        cloneButton.disabled = true;
-        cloneButton.textContent = "Confirming...";
-        originalButton.click();
-      });
-    }
-
-    stageCard.insertAdjacentElement("afterend", clone);
-    priority = clone;
-  }
-
-  const mirrorButton = priority.querySelector("button") as HTMLButtonElement | null;
-  if (mirrorButton) {
-    const nextText = normalizedText(originalButton.textContent);
-    if (nextText && normalizedText(mirrorButton.textContent) !== nextText) {
-      mirrorButton.textContent = nextText;
-    }
-    mirrorButton.disabled = originalButton.disabled;
-  }
-
-  sourceCard.hidden = true;
-  sourceCard.setAttribute("data-jride-confirm-source", "true");
 }
 
 function removeExitOnlyFetchError(): void {
@@ -233,7 +181,7 @@ function applyPassengerCleanup(): void {
   replaceVisibleText();
   hideUnavailableAccompaniedErrand();
   hideTechnicalMapNoise();
-  syncPriorityConfirmation();
+  prioritizeRealConfirmationCard();
 }
 
 function requestUrl(input: RequestInfo | URL): string {
@@ -302,7 +250,6 @@ export default function ErrandPassengerExperience() {
     return () => {
       leaving = true;
       observer.disconnect();
-      removePriorityConfirmation();
       document.removeEventListener("click", onClickCapture, true);
       window.removeEventListener("pagehide", markLeaving);
       if (window.fetch === wrappedFetch) {
