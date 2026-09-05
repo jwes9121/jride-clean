@@ -15,8 +15,8 @@ function getBearerToken(req: NextRequest): string | null {
 function getDeviceId(req: NextRequest): string {
   return String(
     req.headers.get("x-device-id") ||
-    req.nextUrl.searchParams.get("device_id") ||
-    ""
+      req.nextUrl.searchParams.get("device_id") ||
+      ""
   ).trim();
 }
 
@@ -42,7 +42,16 @@ function createAnonSupabase() {
   });
 }
 
-async function getUserFromCookieOrBearer(req: NextRequest) {
+type ResolvedPassengerAuth = {
+  user: any | null;
+  authMode: "cookie" | "bearer" | "none";
+  accessToken: string | null;
+  expiresAt: number | null;
+};
+
+async function getUserFromCookieOrBearer(
+  req: NextRequest
+): Promise<ResolvedPassengerAuth> {
   const token = getBearerToken(req);
   const deviceId = getDeviceId(req);
 
@@ -50,30 +59,63 @@ async function getUserFromCookieOrBearer(req: NextRequest) {
     const anonSupabase = createAnonSupabase();
     const bearerUserRes = await anonSupabase.auth.getUser(token);
     if (bearerUserRes.data?.user) {
-      return { user: bearerUserRes.data.user, authMode: "bearer" as const };
+      return {
+        user: bearerUserRes.data.user,
+        authMode: "bearer",
+        accessToken: token,
+        expiresAt: null,
+      };
     }
 
     // Android/native requests provide both bearer token and device id. For those
     // requests the bearer identity is authoritative; do not hide an invalid
     // native session behind a browser cookie that happens to exist in WebView.
-    return { user: null, authMode: "none" as const };
+    return {
+      user: null,
+      authMode: "none",
+      accessToken: null,
+      expiresAt: null,
+    };
   }
 
+  // Browser sessions use Supabase SSR cookies. getUser() validates the user and
+  // allows the SSR client to refresh an expired access token using the refresh
+  // token cookie. getSession() then exposes the current token so the browser can
+  // replace any stale legacy localStorage bearer token used by older JRide pages.
   const cookieSupabase = createClient();
   const cookieUserRes = await cookieSupabase.auth.getUser();
   if (cookieUserRes.data?.user) {
-    return { user: cookieUserRes.data.user, authMode: "cookie" as const };
+    const cookieSessionRes = await cookieSupabase.auth.getSession();
+    const session = cookieSessionRes.data?.session ?? null;
+
+    return {
+      user: cookieUserRes.data.user,
+      authMode: "cookie",
+      accessToken: session?.access_token ?? null,
+      expiresAt:
+        typeof session?.expires_at === "number" ? session.expires_at : null,
+    };
   }
 
   if (token) {
     const anonSupabase = createAnonSupabase();
     const bearerUserRes = await anonSupabase.auth.getUser(token);
     if (bearerUserRes.data?.user) {
-      return { user: bearerUserRes.data.user, authMode: "bearer" as const };
+      return {
+        user: bearerUserRes.data.user,
+        authMode: "bearer",
+        accessToken: token,
+        expiresAt: null,
+      };
     }
   }
 
-  return { user: null, authMode: "none" as const };
+  return {
+    user: null,
+    authMode: "none",
+    accessToken: null,
+    expiresAt: null,
+  };
 }
 
 async function computeVerified(supabase: any, user: any): Promise<boolean> {
@@ -146,9 +188,12 @@ async function computeVerified(supabase: any, user: any): Promise<boolean> {
 
 export async function GET(req: NextRequest) {
   try {
-    const { user, authMode } = await getUserFromCookieOrBearer(req);
+    const { user, authMode, accessToken, expiresAt } =
+      await getUserFromCookieOrBearer(req);
 
     const headers = { "Cache-Control": "no-store, max-age=0" };
+    const includeAccessToken =
+      req.nextUrl.searchParams.get("include_access_token") === "1";
 
     if (!user) {
       return NextResponse.json(
@@ -232,6 +277,8 @@ export async function GET(req: NextRequest) {
         },
         device_session: deviceSession?.ok ? deviceSession : null,
         promo: promo?.ok ? promo : null,
+        access_token: includeAccessToken ? accessToken : undefined,
+        expires_at: includeAccessToken ? expiresAt : undefined,
       },
       { status: 200, headers }
     );
