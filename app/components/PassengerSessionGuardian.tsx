@@ -160,24 +160,40 @@ export default function PassengerSessionGuardian() {
         let { response, json } = await probe();
 
         // Native WebView can rotate its access token in the Android layer. Give
-        // that refresh bridge one short chance to update localStorage before
-        // declaring the session dead.
+        // that refresh bridge a bounded chance to update localStorage. If it
+        // does not refresh within this window, leave the final auth decision to
+        // the native activity so a temporary mobile-network failure does not
+        // erase a valid saved login.
+        const nativeDeviceId = currentNativeDeviceId();
         if (
           (response.status === 401 || json?.authed === false) &&
-          currentNativeDeviceId()
+          nativeDeviceId
         ) {
           const tokenBefore = currentBearerToken();
-          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+          const deadline = Date.now() + 5000;
+
+          while (!disposed && Date.now() < deadline) {
+            await new Promise((resolve) => window.setTimeout(resolve, 250));
+            const tokenAfter = currentBearerToken();
+
+            if (tokenAfter && tokenAfter !== tokenBefore) {
+              const retried = await probe();
+              response = retried.response;
+              json = retried.json;
+              break;
+            }
+          }
 
           if (disposed) {
             return { authed: false, token: "", temporaryFailure: true };
           }
 
-          const tokenAfter = currentBearerToken();
-          if (tokenAfter && tokenAfter !== tokenBefore) {
-            const retried = await probe();
-            response = retried.response;
-            json = retried.json;
+          if (response.status === 401 || json?.authed === false) {
+            return {
+              authed: false,
+              token: currentBearerToken(),
+              temporaryFailure: true,
+            };
           }
         }
 
