@@ -190,11 +190,23 @@ function visibleInputByPlaceholder(placeholder: string): HTMLInputElement | null
   return input instanceof HTMLInputElement ? input : null;
 }
 
+function locationFieldHasCommittedPin(input: HTMLInputElement | null): boolean {
+  if (!input) return false;
+  const field = input.closest("div.space-y-2") || input.parentElement?.parentElement;
+  if (!field) return false;
+  return Array.from(field.querySelectorAll("span")).some(
+    (span) => isVisible(span) && normalizedText(span.textContent) === "Pin set"
+  );
+}
+
 function missingForCurrentStep(step: number | null): string[] {
   if (step == null) return [];
 
   if (step === 0) {
-    return ["Customer meeting point"];
+    const meeting = visibleInputByPlaceholder("Search or pin your meeting point");
+    return locationFieldHasCommittedPin(meeting)
+      ? []
+      : ["Customer meeting point (select a search result or set the map pin)"];
   }
 
   if (step === 1) {
@@ -210,12 +222,14 @@ function missingForCurrentStep(step: number | null): string[] {
     ).filter(isVisible) as HTMLInputElement[];
 
     stopInputs.forEach((input, index) => {
-      if (!input.value.trim()) missing.push(`Task Stop ${index + 1} location`);
+      if (!locationFieldHasCommittedPin(input)) {
+        missing.push(`Task Stop ${index + 1} location (select or pin it)`);
+      }
     });
 
     const finalInput = visibleInputByPlaceholder("Search final destination");
-    if (finalInput && !finalInput.value.trim()) {
-      missing.push("Final destination");
+    if (finalInput && !locationFieldHasCommittedPin(finalInput)) {
+      missing.push("Final destination (select or pin it)");
     }
     return missing;
   }
@@ -300,17 +314,21 @@ export default function ErrandPassengerExperience() {
         setConfirmDisabled(false);
       }
 
+      const step = currentRequestStep();
+      const missing = missingForCurrentStep(step);
+
       for (const button of buttons) {
         const label = normalizedText(button.textContent);
         if (label !== "Continue" && label !== "Request Errand") continue;
-        if (!button.disabled) {
+
+        if (button.disabled || missing.length > 0) {
+          button.disabled = false;
+          button.setAttribute("data-jride-explain-disabled", "1");
+          button.setAttribute("aria-disabled", "true");
+        } else {
           button.removeAttribute("data-jride-explain-disabled");
           button.removeAttribute("aria-disabled");
-          continue;
         }
-        button.disabled = false;
-        button.setAttribute("data-jride-explain-disabled", "1");
-        button.setAttribute("aria-disabled", "true");
       }
     };
 
