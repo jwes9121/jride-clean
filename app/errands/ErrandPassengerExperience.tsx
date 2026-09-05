@@ -71,6 +71,13 @@ function normalizedText(value: string | null | undefined): string {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function isVisible(element: Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false;
+  if (element.hidden) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
 function replaceVisibleText(): void {
   const root = document.body;
   if (!root) return;
@@ -118,6 +125,33 @@ function hideUnavailableAccompaniedErrand(): void {
   card.setAttribute("data-jride-hidden-unavailable-feature", "accompanied-errand");
 }
 
+function hideExactMapDebugElements(): void {
+  for (const element of Array.from(document.querySelectorAll("div"))) {
+    const content = normalizedText(element.textContent);
+    if (/^GPS points:\s*\d+$/i.test(content) && element.children.length === 0) {
+      (element as HTMLElement).style.display = "none";
+      element.setAttribute("aria-hidden", "true");
+      element.setAttribute("data-jride-hidden-map-debug", "gps-points");
+    }
+  }
+
+  for (const grid of Array.from(document.querySelectorAll("div"))) {
+    if (grid.children.length !== 4) continue;
+    const childTexts = Array.from(grid.children).map((child) =>
+      normalizedText(child.textContent)
+    );
+    const exactLegend =
+      childTexts[0]?.startsWith("Teal solid:") &&
+      childTexts[1]?.startsWith("Gray dashed:") &&
+      childTexts[2]?.startsWith("Green solid:") &&
+      childTexts[3]?.startsWith("Blue dashed:");
+    if (!exactLegend) continue;
+    (grid as HTMLElement).style.display = "none";
+    grid.setAttribute("aria-hidden", "true");
+    grid.setAttribute("data-jride-hidden-map-debug", "route-legend");
+  }
+}
+
 function removeExitOnlyFetchError(): void {
   const candidates = Array.from(document.querySelectorAll("div"));
   for (const element of candidates) {
@@ -127,9 +161,91 @@ function removeExitOnlyFetchError(): void {
   }
 }
 
-function applyPassengerCleanup(): void {
-  replaceVisibleText();
-  hideUnavailableAccompaniedErrand();
+function dismissKeyboard(): void {
+  const active = document.activeElement;
+  if (
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    active instanceof HTMLSelectElement
+  ) {
+    active.blur();
+  }
+}
+
+function currentRequestStep(): number | null {
+  const body = normalizedText(document.body?.innerText);
+  if (body.includes("Where should the driver meet you?")) return 0;
+  if (body.includes("What should the driver do?")) return 1;
+  if (body.includes("Task stops") && body.includes("Where should the Errand end?")) return 2;
+  if (body.includes("Errand type") && body.includes("Weight and vehicle")) return 3;
+  if (body.includes("Review your Errand")) return 4;
+  return null;
+}
+
+function visibleInputByPlaceholder(placeholder: string): HTMLInputElement | null {
+  const input = Array.from(document.querySelectorAll("input")).find(
+    (candidate) =>
+      candidate.getAttribute("placeholder") === placeholder && isVisible(candidate)
+  );
+  return input instanceof HTMLInputElement ? input : null;
+}
+
+function missingForCurrentStep(step: number | null): string[] {
+  if (step == null) return [];
+
+  if (step === 0) {
+    return ["Customer meeting point"];
+  }
+
+  if (step === 1) {
+    const textarea = Array.from(document.querySelectorAll("textarea")).find(isVisible);
+    const task = textarea instanceof HTMLTextAreaElement ? textarea.value.trim() : "";
+    return task.length >= 3 ? [] : ["Task description (at least 3 characters)"];
+  }
+
+  if (step === 2) {
+    const missing: string[] = [];
+    const stopInputs = Array.from(
+      document.querySelectorAll('input[placeholder="Search store, office, house or destination"]')
+    ).filter(isVisible) as HTMLInputElement[];
+
+    stopInputs.forEach((input, index) => {
+      if (!input.value.trim()) missing.push(`Task Stop ${index + 1} location`);
+    });
+
+    const finalInput = visibleInputByPlaceholder("Search final destination");
+    if (finalInput && !finalInput.value.trim()) {
+      missing.push("Final destination");
+    }
+    return missing;
+  }
+
+  if (step === 3) {
+    const missing: string[] = [];
+    const cargo = visibleInputByPlaceholder("0");
+    const cargoText = cargo?.value.trim() || "";
+    const cargoValue = cargoText === "" ? null : Number(cargoText);
+
+    if (cargoValue == null || !Number.isFinite(cargoValue)) {
+      missing.push("Cargo weight (enter 0 if there is no cargo)");
+    } else if (cargoValue < 0) {
+      missing.push("Cargo weight cannot be negative");
+    } else if (cargoValue > 100) {
+      missing.push("Cargo weight must be 100 kg or less");
+    }
+
+    const pabiliAmount = visibleInputByPlaceholder("PHP 0");
+    if (pabiliAmount) {
+      const amount = Number(pabiliAmount.value);
+      if (!pabiliAmount.value.trim() || !Number.isFinite(amount) || amount <= 0) {
+        missing.push("Estimated Pabili purchase amount (more than PHP 0)");
+      }
+    }
+
+    return missing;
+  }
+
+  return [];
 }
 
 function requestUrl(input: RequestInfo | URL): string {
@@ -146,9 +262,57 @@ function syntheticCurrentErrandResponse(): Response {
 }
 
 export default function ErrandPassengerExperience() {
+  const [validationItems, setValidationItems] = React.useState<string[]>([]);
+  const [confirmLabel, setConfirmLabel] = React.useState("");
+  const [confirmDisabled, setConfirmDisabled] = React.useState(false);
+  const confirmButtonRef = React.useRef<HTMLButtonElement | null>(null);
+  const validationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   React.useEffect(() => {
     let leaving = false;
     const originalFetch = window.fetch.bind(window);
+
+    const showValidation = (items: string[]) => {
+      if (!items.length) return;
+      setValidationItems(items);
+      if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+      validationTimerRef.current = setTimeout(() => setValidationItems([]), 7000);
+    };
+
+    const syncActionState = () => {
+      replaceVisibleText();
+      hideUnavailableAccompaniedErrand();
+      hideExactMapDebugElements();
+
+      const buttons = Array.from(document.querySelectorAll("button"));
+      const confirmButton = buttons.find((button) => {
+        const label = normalizedText(button.textContent);
+        return /^Confirm PHP\s+/i.test(label) || label === "Confirming...";
+      });
+
+      if (confirmButton instanceof HTMLButtonElement && isVisible(confirmButton)) {
+        confirmButtonRef.current = confirmButton;
+        setConfirmLabel(normalizedText(confirmButton.textContent));
+        setConfirmDisabled(confirmButton.disabled);
+      } else {
+        confirmButtonRef.current = null;
+        setConfirmLabel("");
+        setConfirmDisabled(false);
+      }
+
+      for (const button of buttons) {
+        const label = normalizedText(button.textContent);
+        if (label !== "Continue" && label !== "Request Errand") continue;
+        if (!button.disabled) {
+          button.removeAttribute("data-jride-explain-disabled");
+          button.removeAttribute("aria-disabled");
+          continue;
+        }
+        button.disabled = false;
+        button.setAttribute("data-jride-explain-disabled", "1");
+        button.setAttribute("aria-disabled", "true");
+      }
+    };
 
     const markLeaving = () => {
       leaving = true;
@@ -173,9 +337,30 @@ export default function ErrandPassengerExperience() {
 
       const control = target.closest("button, a");
       if (!control) return;
+      const label = normalizedText(control.textContent);
 
-      if (normalizedText(control.textContent) === "Back to Passenger") {
+      if (label === "Back to Passenger") {
         markLeaving();
+        return;
+      }
+
+      if (label === "Continue" || label === "Request Errand") {
+        dismissKeyboard();
+        const step = currentRequestStep();
+        const missing = missingForCurrentStep(step);
+        const wasOriginallyDisabled =
+          control.getAttribute("data-jride-explain-disabled") === "1";
+
+        if (missing.length || wasOriginallyDisabled) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          showValidation(
+            missing.length
+              ? missing
+              : ["Complete the required information in this step before continuing"]
+          );
+        }
       }
     };
 
@@ -183,16 +368,15 @@ export default function ErrandPassengerExperience() {
     document.addEventListener("click", onClickCapture, true);
     window.addEventListener("pagehide", markLeaving);
 
-    const observer = new MutationObserver(() => {
-      applyPassengerCleanup();
-      if (leaving) removeExitOnlyFetchError();
-    });
+    const observer = new MutationObserver(syncActionState);
 
-    applyPassengerCleanup();
+    syncActionState();
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
+      attributes: true,
+      attributeFilter: ["disabled", "hidden", "style"],
     });
 
     return () => {
@@ -200,11 +384,48 @@ export default function ErrandPassengerExperience() {
       observer.disconnect();
       document.removeEventListener("click", onClickCapture, true);
       window.removeEventListener("pagehide", markLeaving);
+      if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
       if (window.fetch === wrappedFetch) {
         window.fetch = originalFetch;
       }
     };
   }, []);
 
-  return null;
+  return (
+    <>
+      {validationItems.length ? (
+        <div className="fixed inset-x-3 bottom-24 z-[95] mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-4 shadow-2xl shadow-slate-950/20">
+          <div className="text-xs font-black uppercase tracking-[0.14em] text-red-700">
+            Please complete the following
+          </div>
+          <div className="mt-2 space-y-1.5 text-sm font-semibold text-slate-800">
+            {validationItems.map((item) => (
+              <div key={item} className="flex items-start gap-2">
+                <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {confirmLabel ? (
+        <div className="fixed inset-x-0 bottom-0 z-[90] px-3 pb-3">
+          <div className="mx-auto max-w-xl rounded-[24px] border border-amber-300 bg-slate-950 p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.28)]">
+            <div className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-amber-300">
+              Your confirmation is needed
+            </div>
+            <button
+              type="button"
+              disabled={confirmDisabled}
+              onClick={() => confirmButtonRef.current?.click()}
+              className="w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950 disabled:opacity-60"
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
 }
