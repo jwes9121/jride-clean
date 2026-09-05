@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { assignErrandStage0 } from "@/lib/errand/assignStage0";
 import {
   errandFeatureEnabled,
   errandFareBreakdown,
@@ -20,6 +21,9 @@ const ACTIVE_STATUSES = [
   "arrived",
   "on_trip",
 ];
+
+const MATCHING_STATUSES = ["requested", "pending", "searching"];
+const MATCHING_RETRY_SECONDS = 10;
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
@@ -93,6 +97,52 @@ export async function GET(req: Request) {
       );
     }
 
+    let dispatchRetry: any = null;
+    const currentStatus = text(data.status).toLowerCase();
+    const currentDriverId = text(data.assigned_driver_id || data.driver_id);
+
+    if (MATCHING_STATUSES.includes(currentStatus) && !currentDriverId) {
+      const now = new Date();
+      const retryCutoff = new Date(
+        now.getTime() - MATCHING_RETRY_SECONDS * 1000
+      ).toISOString();
+
+      const retryClaim = await admin
+        .from("bookings")
+        .update({ updated_at: now.toISOString() })
+        .eq("id", data.id)
+        .is("assigned_driver_id", null)
+        .in("status", MATCHING_STATUSES)
+        .lte("updated_at", retryCutoff)
+        .select("id")
+        .maybeSingle();
+
+      if (!retryClaim.error && retryClaim.data?.id) {
+        dispatchRetry = await assignErrandStage0({
+          bookingId: text(data.id),
+          bookingCode: text(data.booking_code),
+        });
+
+        console.log(
+          "[JRIDE_ERRAND_MATCHING_RETRY]",
+          JSON.stringify({
+            bookingId: text(data.id),
+            bookingCode: text(data.booking_code),
+            result: dispatchRetry,
+          })
+        );
+      } else if (retryClaim.error) {
+        console.error(
+          "[JRIDE_ERRAND_MATCHING_RETRY_CLAIM_FAILED]",
+          JSON.stringify({
+            bookingId: text(data.id),
+            bookingCode: text(data.booking_code),
+            error: retryClaim.error.message,
+          })
+        );
+      }
+    }
+
     const bundle = await loadErrandBundleByBookingId(text(data.id));
     if (!bundle.ok) {
       return NextResponse.json(
@@ -133,6 +183,7 @@ export async function GET(req: Request) {
     return NextResponse.json(
       {
         ok: true,
+        dispatch_retry: dispatchRetry,
         errand: {
           booking: bundle.booking,
           job: bundle.job,
