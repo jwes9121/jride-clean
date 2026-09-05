@@ -118,56 +118,6 @@ function hideUnavailableAccompaniedErrand(): void {
   card.setAttribute("data-jride-hidden-unavailable-feature", "accompanied-errand");
 }
 
-function hideTechnicalMapNoise(): void {
-  const candidates = Array.from(document.querySelectorAll("div"));
-
-  for (const element of candidates) {
-    const content = normalizedText(element.textContent);
-
-    if (/^GPS points:\s*\d+$/i.test(content)) {
-      element.hidden = true;
-      element.setAttribute("aria-hidden", "true");
-      continue;
-    }
-
-    if (
-      content.includes("Teal solid:") &&
-      content.includes("Gray dashed:") &&
-      content.includes("Driver -> You / Meeting Point")
-    ) {
-      element.hidden = true;
-      element.setAttribute("aria-hidden", "true");
-    }
-  }
-}
-
-function prioritizeRealConfirmationCard(): void {
-  const buttons = Array.from(document.querySelectorAll("button"));
-  const confirmButton = buttons.find((button) => {
-    const label = normalizedText(button.textContent);
-    return /^Confirm PHP\s+/i.test(label) || label === "Confirming...";
-  }) as HTMLButtonElement | undefined;
-
-  if (!confirmButton) return;
-
-  const confirmationCard = confirmButton.closest("section") as HTMLElement | null;
-  const contentColumn = confirmationCard?.parentElement as HTMLElement | null;
-  if (!confirmationCard || !contentColumn) return;
-
-  if (contentColumn.dataset.jrideConfirmationLayout !== "1") {
-    contentColumn.dataset.jrideConfirmationLayout = "1";
-    contentColumn.style.display = "flex";
-    contentColumn.style.flexDirection = "column";
-    contentColumn.style.gap = "1rem";
-  }
-
-  confirmationCard.style.order = "-20";
-  confirmationCard.setAttribute(
-    "data-jride-priority-action",
-    "customer-confirmation"
-  );
-}
-
 function removeExitOnlyFetchError(): void {
   const candidates = Array.from(document.querySelectorAll("div"));
   for (const element of candidates) {
@@ -180,8 +130,6 @@ function removeExitOnlyFetchError(): void {
 function applyPassengerCleanup(): void {
   replaceVisibleText();
   hideUnavailableAccompaniedErrand();
-  hideTechnicalMapNoise();
-  prioritizeRealConfirmationCard();
 }
 
 function requestUrl(input: RequestInfo | URL): string {
