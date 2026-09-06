@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ArrowUpRight, BadgePercent, CheckCheck, Clock3, PackageCheck, Sprout, Truck } from "lucide-react";
+import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from "./FarmerWorkspace";
+import styles from "./farmer.module.css";
 
 type OrderItem = {
   product_id: string;
@@ -115,6 +118,8 @@ export default function AgrimarketProducerPage() {
   const [connected, setConnected] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
+  const [setupOnly, setSetupOnly] = useState(false);
+  const [filter, setFilter] = useState("all");
   const [prep, setPrep] = useState<Record<string, number>>({});
   const [weightBasis, setWeightBasis] = useState<Record<string, "exact" | "approximate">>({});
   const [cargoWeight, setCargoWeight] = useState<Record<string, string>>({});
@@ -148,6 +153,7 @@ export default function AgrimarketProducerPage() {
     if (!code.trim() || !accessPin.trim()) return;
     if (!quiet) setLoading(true);
     setError("");
+    try {
     const response = await fetch("/api/agrimarket/producer/orders", { cache: "no-store", headers: farmerHeaders(code, accessPin) });
     const payload = await response.json().catch(() => ({}));
     if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
@@ -161,6 +167,7 @@ export default function AgrimarketProducerPage() {
     } else {
       const rows: ProducerOrder[] = Array.isArray(payload?.orders) ? payload.orders : [];
       setOrders(rows);
+      setSetupOnly(payload.setup_only === true);
       setConnected(true);
       setPrep((current) => {
         const next = { ...current };
@@ -214,13 +221,18 @@ export default function AgrimarketProducerPage() {
       window.sessionStorage.setItem(SESSION_ACCESS_CODE, code.trim().toUpperCase());
       window.sessionStorage.setItem(SESSION_PIN, accessPin.trim());
     }
-    if (!quiet) setLoading(false);
+    } catch {
+      setError("We couldn’t refresh your orders. Check your connection and try again.");
+    } finally {
+      if (!quiet) setLoading(false);
+    }
   }
 
   async function post(path: string, body: any, key: string) {
     setBusy(key);
     setError("");
     setMessage("");
+    try {
     const response = await fetch(path, { method: "POST", headers: farmerHeaders(accessCode, pin, true), body: JSON.stringify(body) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false) setError(payload?.message || payload?.error || "Unable to update this order.");
@@ -228,7 +240,11 @@ export default function AgrimarketProducerPage() {
       setMessage("Order updated.");
       await loadOrders(accessCode, pin, true);
     }
-    setBusy("");
+    } catch {
+      setError("The update was interrupted. Refresh the order to check its latest status before trying again.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function decide(order: ProducerOrder, decision: "accept" | "reject") {
@@ -291,39 +307,51 @@ export default function AgrimarketProducerPage() {
   }
 
   if (disabled) {
-    return <main className="min-h-screen bg-emerald-50 p-8"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8"><h1 className="text-2xl font-bold">Agrimarket farmer console is not enabled yet</h1></div></main>;
+    return <FarmerUnavailable section="orders" />;
   }
 
   if (!connected) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900">
-        <div className="mx-auto max-w-md rounded-3xl border bg-white p-7 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p>
-          <h1 className="mt-2 text-2xl font-bold">Farmer orders</h1>
-          <p className="mt-2 text-sm text-slate-600">Use your Agrimarket Access Code and 6-digit PIN.</p>
-          {error ? <div className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</div> : null}
-          <input value={accessCode} onChange={(e) => setAccessCode(e.target.value.toUpperCase())} className="mt-5 w-full rounded-xl border px-3 py-3" placeholder="AGF-XXXXXXXX" />
-          <input type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} className="mt-3 w-full rounded-xl border px-3 py-3" placeholder="6-digit PIN" />
-          <button onClick={() => loadOrders()} disabled={loading || !accessCode.trim() || pin.length !== 6} className="mt-4 w-full rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:bg-slate-400">{loading ? "Checking..." : "Open farmer orders"}</button>
-        </div>
-      </main>
-    );
+    return <FarmerLogin section="orders" accessCode={accessCode} pin={pin} onCodeChange={setAccessCode} onPinChange={setPin} onSubmit={() => void loadOrders()} loading={loading} error={error} />;
   }
 
-  return (
-    <main className="min-h-screen bg-slate-50 px-3 py-5 text-slate-900 sm:px-5">
-      <div className="mx-auto max-w-5xl">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket Farmer</p><h1 className="text-3xl font-bold">Orders</h1><p className="mt-1 text-sm text-slate-600">You receive 100% of the product subtotal during the free launch period.</p></div><div className="flex gap-2"><Link href="/agrimarket/producer/products" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Products</Link><button onClick={() => loadOrders()} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Refresh</button></div></div>
-        {error ? <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
-        {message ? <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">{message}</div> : null}
+  const needsReply = orders.filter((order) => order.status === "awaiting_producer");
+  const harvest = orders.filter((order) => order.status === "awaiting_harvest");
+  const inProgress = orders.filter((order) => !["awaiting_producer", "awaiting_harvest", "completed", "delivered"].includes(order.status));
+  const visibleOrders = filter === "new" ? needsReply : filter === "harvest" ? harvest : filter === "progress" ? inProgress : orders;
+  const filters = [{ id: "all", label: "All orders", count: orders.length }, { id: "new", label: "Needs reply", count: needsReply.length }, { id: "progress", label: "In progress", count: inProgress.length }, { id: "harvest", label: "Harvest", count: harvest.length }];
 
-        <section className="mt-5 space-y-4">
-          {!orders.length ? <div className="rounded-2xl border bg-white p-8 text-center text-slate-500">No active Agrimarket orders.</div> : null}
-          {orders.map((order) => {
+  return (
+    <FarmerWorkspace section="orders" onRefresh={() => void loadOrders()} loading={loading}>
+      <section className={styles.hero} aria-labelledby="farmer-orders-title">
+        <span className={styles.eyebrow}>A GOOD DAY STARTS AT YOUR FARM</span>
+        <h1 id="farmer-orders-title">{needsReply.length ? "Your next order" : "Ready for your"}{" "}<br />{needsReply.length ? "is waiting." : "next order."}</h1>
+        <p>{needsReply.length ? "Review your new orders and let customers know what you can prepare." : "A simple space to manage orders, prepare your harvest and grow together."}</p>
+        <span className={styles.heroBadge}>{setupOnly ? "Getting ready for launch" : "Your farmer workspace"}</span>
+      </section>
+      <div className={styles.stats} aria-label="Order overview">
+        <div className={styles.stat}><strong>{needsReply.length}</strong><span>Need your reply</span></div>
+        <div className={styles.stat}><strong>{inProgress.length}</strong><span>In progress</span></div>
+        <div className={styles.stat}><strong>{harvest.length}</strong><span>For harvest</span></div>
+      </div>
+      <FarmerFeedback error={error} message={message} />
+      <div className={styles.sectionHeading}><h2>Your orders</h2><span>{loading ? "Refreshing…" : "Refreshes every 10 sec"}</span></div>
+      <div className={styles.filters} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}<span className={styles.filterCount}>{item.count}</span></button>)}</div>
+      <div className={!orders.length ? styles.dashboardGrid : undefined}>
+        <section className={styles.orderList} aria-label="Farmer orders" aria-busy={loading}>
+          {!visibleOrders.length && <div>
+            <div className={styles.emptyCard}>
+              <span className={styles.emptyIcon}><PackageCheck size={43} /></span>
+              <h2>{orders.length ? "You’re all caught up here." : "Room for something good."}</h2>
+              <p>{orders.length ? "There are no orders in this view. Choose another filter to see the rest." : "New orders will appear here. For now, give your products a little care and keep your stock up to date."}</p>
+              {orders.length ? <button className={styles.primaryButton} onClick={() => setFilter("all")}>See all orders <ArrowUpRight size={17} /></button> : <Link href="/agrimarket/producer/products" className={styles.primaryButton}>Manage my products <ArrowUpRight size={17} /></Link>}
+            </div>
+            {setupOnly && <div className={styles.setupNotice}><Clock3 size={18} /><div><strong>Your farm setup is open.</strong>You can manage products now. Customer ordering is not open yet.</div></div>}
+          </div>}
+          {visibleOrders.map((order) => {
             const scheduled = order.fulfillment_mode === "scheduled_harvest";
             const pendingProposal = order.pending_harvest_proposal;
             return (
-              <article key={order.order_code} className="rounded-3xl border bg-white p-5 shadow-sm">
+              <article key={order.order_code} className={styles.orderCard}>
                 <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-xl font-bold">{scheduled ? "Scheduled Harvest" : "Agrimarket Order"}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold">{titleCase(order.status)}</span></div>
                 {scheduled ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>Expected harvest window</strong><br/>{formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}</div> : null}
                 <div className="mt-4 divide-y rounded-xl border">{order.items.map((item) => <div key={item.product_id} className="flex justify-between gap-3 p-3"><div><strong>{item.product_name}</strong><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
@@ -369,7 +397,14 @@ export default function AgrimarketProducerPage() {
             );
           })}
         </section>
+        {!orders.length && <aside className={styles.stepsCard}>
+          <h2>A little guide for your first order</h2>
+          <div className={styles.step}><span className={styles.stepIcon}><CheckCheck size={18} /></span><div><h3>Confirm what you can supply</h3><p>Review the items and let your customer know you’re ready to prepare.</p></div></div>
+          <div className={styles.step}><span className={styles.stepIcon}><Sprout size={18} /></span><div><h3>Prepare your products</h3><p>Confirm the load and pack everything for a smooth pickup.</p></div></div>
+          <div className={styles.step}><span className={styles.stepIcon}><Truck size={18} /></span><div><h3>Hand over to the driver</h3><p>Receive your product payment at pickup. JRide takes care of the delivery.</p></div></div>
+          <div className={styles.benefit}><BadgePercent size={25} /><div><strong>Your hard work. Your full product subtotal.</strong><p>Free listing and 0% farmer deduction during the free launch period.</p></div></div>
+        </aside>}
       </div>
-    </main>
+    </FarmerWorkspace>
   );
 }
