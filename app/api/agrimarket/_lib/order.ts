@@ -1,3 +1,7 @@
+import { coordinate, hasValidPin } from "@/lib/agrimarket/coordinates";
+import { PICKUP_ACCESS_COLUMNS, pickupAccessError } from "@/lib/agrimarket/pickupAccess";
+import { reverseGeocodeIfugaoTown } from "./location";
+
 export type RequestedAgrimarketItem = {
   product_id: string;
   quantity: number;
@@ -139,13 +143,20 @@ export async function loadAgrimarketOrderContext(
     );
   }
 
-  const addressLat = Number((addressRes.data as any).lat);
-  const addressLng = Number((addressRes.data as any).lng);
-  if (!Number.isFinite(addressLat) || !Number.isFinite(addressLng)) {
+  const addressLat = coordinate((addressRes.data as any).lat, 90);
+  const addressLng = coordinate((addressRes.data as any).lng, 180);
+  if (addressLat === null || addressLng === null) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_DELIVERY_PIN_REQUIRED",
       409,
       "The selected delivery address needs a valid map pin."
+    );
+  }
+
+  if (!await reverseGeocodeIfugaoTown(addressLat, addressLng)) {
+    throw new AgrimarketRequestError(
+      "AGRIMARKET_DELIVERY_TOWN_UNRESOLVED", 409,
+      "We could not verify the delivery municipality. Check the saved pin and try again."
     );
   }
 
@@ -303,7 +314,7 @@ export async function loadAgrimarketOrderContext(
   const producerId = Array.from(producerIds)[0];
   const producerRes = await admin
     .from("agrimarket_producers")
-    .select("id,pickup_lat,pickup_lng,status,accepting_orders,marketplace_fee_percent")
+    .select(`id,pickup_lat,pickup_lng,status,accepting_orders,marketplace_fee_percent,${PICKUP_ACCESS_COLUMNS}`)
     .eq("id", producerId)
     .limit(1)
     .maybeSingle();
@@ -323,9 +334,7 @@ export async function loadAgrimarketOrderContext(
     );
   }
 
-  const producerLat = Number((producerRes.data as any).pickup_lat);
-  const producerLng = Number((producerRes.data as any).pickup_lng);
-  if (!Number.isFinite(producerLat) || !Number.isFinite(producerLng)) {
+  if (!hasValidPin((producerRes.data as any).pickup_lat, (producerRes.data as any).pickup_lng)) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_PRODUCER_PIN_REQUIRED",
       409,
@@ -341,6 +350,11 @@ export async function loadAgrimarketOrderContext(
       409,
       "This cart requires a tricycle."
     );
+  }
+
+  const accessError = pickupAccessError(producerRes.data, preferredVehicleType);
+  if (accessError) {
+    throw new AgrimarketRequestError(accessError, 409, "The selected vehicle cannot use this farmer's verified pickup point.");
   }
 
   return {

@@ -79,7 +79,8 @@ async function resolveDriverIdFromAuthUser(authUserId: string): Promise<string |
 
 export async function resolveDriverRequest(
   req: Request,
-  explicitDriverId?: string | null
+  explicitDriverId?: string | null,
+  options: { requireBearer?: boolean } = {}
 ): Promise<DriverRequestIdentity> {
   const token = bearerToken(req);
 
@@ -97,10 +98,13 @@ export async function resolveDriverRequest(
       return { ok: false, error: "DRIVER_NOT_FOUND", status: 404 };
     }
 
+    if (options.requireBearer && text(explicitDriverId) && text(explicitDriverId) !== driverId) {
+      return { ok: false, error: "DRIVER_IDENTITY_MISMATCH", status: 403 };
+    }
     return { ok: true, driverId, authMode: "bearer" };
   }
 
-  if (driverSecretAuthorized(req)) {
+  if (!options.requireBearer && driverSecretAuthorized(req)) {
     const driverId = text(explicitDriverId);
     if (!driverId) {
       return { ok: false, error: "MISSING_DRIVER_ID", status: 400 };

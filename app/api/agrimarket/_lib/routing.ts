@@ -1,12 +1,14 @@
+import { coordinate } from "@/lib/agrimarket/coordinates";
+
 export type AgrimarketRoute = {
   provider: "mapbox_driving";
   distanceKm: number;
   durationSeconds: number;
 };
 
-function finiteCoordinate(value: unknown): number {
-  const n = Number(value);
-  if (!Number.isFinite(n)) throw new Error("AGRIMARKET_INVALID_ROUTE_COORDINATE");
+function finiteCoordinate(value: unknown, limit: 90 | 180): number {
+  const n = coordinate(value, limit);
+  if (n === null) throw new Error("AGRIMARKET_INVALID_ROUTE_COORDINATE");
   return n;
 }
 
@@ -16,10 +18,10 @@ export async function fetchAgrimarketDrivingRoute(
   destinationLat: unknown,
   destinationLng: unknown
 ): Promise<AgrimarketRoute> {
-  const fromLat = finiteCoordinate(originLat);
-  const fromLng = finiteCoordinate(originLng);
-  const toLat = finiteCoordinate(destinationLat);
-  const toLng = finiteCoordinate(destinationLng);
+  const fromLat = finiteCoordinate(originLat, 90);
+  const fromLng = finiteCoordinate(originLng, 180);
+  const toLat = finiteCoordinate(destinationLat, 90);
+  const toLng = finiteCoordinate(destinationLng, 180);
 
   if (fromLat < -90 || fromLat > 90 || toLat < -90 || toLat > 90) {
     throw new Error("AGRIMARKET_INVALID_ROUTE_LATITUDE");

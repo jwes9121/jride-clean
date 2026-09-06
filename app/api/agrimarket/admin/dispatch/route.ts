@@ -52,7 +52,7 @@ export async function GET() {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,producer_id,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at"
+        "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at"
       )
       .in("status", ACTIVE_STATUSES)
       .order("created_at", { ascending: false })
@@ -146,6 +146,7 @@ export async function GET() {
         order_id: row.id,
         order_code: row.order_code,
         status: row.status,
+        pickup_issue: row.pickup_issue || null,
         fulfillment_mode: row.fulfillment_mode,
         harvest_expected_start_at: row.harvest_expected_start_at,
         harvest_expected_end_at: row.harvest_expected_end_at,
@@ -236,6 +237,19 @@ export async function POST(req: NextRequest) {
     const action = text(body?.action || "offer_next").toLowerCase();
     const orderId = uuid(body?.order_id || body?.orderId);
     const orderCode = text(body?.order_code || body?.orderCode);
+
+    if (action === "resolve_pickup_issue") {
+      if (!orderCode) return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ORDER_CODE_REQUIRED" });
+      const result = await createServiceSupabase().rpc("agrimarket_admin_resolve_pickup_issue_v1", {
+        p_order_code: orderCode,
+        p_resolution: text(body?.resolution),
+        p_actor: staff.actor,
+        p_note: text(body?.note),
+        p_now: new Date().toISOString(),
+      });
+      if (result.error) return jsonNoStore(500, { ok: false, error: "AGRIMARKET_ISSUE_RESOLUTION_FAILED", message: result.error.message });
+      return jsonNoStore((result.data as any)?.ok ? 200 : 409, result.data);
+    }
 
     if (action !== "offer_next") {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ADMIN_DISPATCH_ACTION_INVALID" });

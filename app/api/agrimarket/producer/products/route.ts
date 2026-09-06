@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {
-  agrimarketDisabledResponse,
-  agrimarketEnabled,
+  agrimarketFarmerPortalDisabledResponse,
+  agrimarketFarmerPortalEnabled,
   createServiceSupabase,
   jsonNoStore,
   requireAgrimarketProducer,
@@ -101,7 +101,7 @@ async function readOwnProducts(admin: any, producerId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  if (!agrimarketEnabled()) return agrimarketDisabledResponse();
+  if (!agrimarketFarmerPortalEnabled()) return agrimarketFarmerPortalDisabledResponse();
 
   try {
     const producerAuth = await requireAgrimarketProducer(req);
@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!agrimarketEnabled()) return agrimarketDisabledResponse();
+  if (!agrimarketFarmerPortalEnabled()) return agrimarketFarmerPortalDisabledResponse();
 
   try {
     const producerAuth = await requireAgrimarketProducer(req);

@@ -49,6 +49,7 @@ function cargoConfirmation(order: any) {
 }
 
 function nextDriverAction(order: any): string | null {
+  if (order?.pickup_issue?.status === "open") return "resolve_mismatch";
   const status = text(order?.status).toLowerCase();
   if (status === "driver_assigned") {
     if (Boolean(order?.cash_collection_required) && !order?.customer_cash_collected_at) {
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const explicitDriverId = text(url.searchParams.get("driver_id") || url.searchParams.get("driverId"));
-    const identity = await resolveDriverRequest(req, explicitDriverId);
+    const identity = await resolveDriverRequest(req, explicitDriverId, { requireBearer: true });
     if (!identity.ok || !identity.driverId) {
       return NextResponse.json(
         { ok: false, error: identity.error || "NOT_AUTHED" },
@@ -121,7 +122,7 @@ export async function GET(req: Request) {
       const orderRes = await admin
         .from("agrimarket_orders")
         .select(
-          "id,order_code,producer_id,status,product_subtotal,marketplace_fee,producer_product_net,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,product_required_vehicle_type,checkout_preferred_vehicle_type,route_distance_km,route_duration_seconds,delivery_fee,delivery_company_cut,pickup_distance_fee,heavy_load_fee,handling_fee,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,preparation_minutes,ready_at"
+          "id,order_code,producer_id,status,pickup_issue,product_subtotal,marketplace_fee,producer_product_net,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,product_required_vehicle_type,checkout_preferred_vehicle_type,route_distance_km,route_duration_seconds,delivery_fee,delivery_company_cut,pickup_distance_fee,heavy_load_fee,handling_fee,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,preparation_minutes,ready_at"
         )
         .eq("id", offer.order_id)
         .limit(1)
@@ -233,7 +234,7 @@ export async function GET(req: Request) {
     const assignedRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,producer_id,status,product_subtotal,producer_product_net,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,route_plan,assignment_anchor,delivery_label,delivery_lat,delivery_lng,checkout_preferred_vehicle_type,product_required_vehicle_type,preferred_vehicle_type,required_vehicle_type,route_distance_km,route_duration_seconds,pickup_distance_fee,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,driver_delivery_payout,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,total_payable,final_cash_collected_at,final_cash_collected_amount,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,ready_at"
+        "id,order_code,producer_id,status,pickup_issue,product_subtotal,producer_product_net,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,route_plan,assignment_anchor,delivery_label,delivery_lat,delivery_lng,checkout_preferred_vehicle_type,product_required_vehicle_type,preferred_vehicle_type,required_vehicle_type,route_distance_km,route_duration_seconds,pickup_distance_fee,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,driver_delivery_payout,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,total_payable,final_cash_collected_at,final_cash_collected_amount,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,ready_at"
       )
       .eq("assigned_driver_id", identity.driverId)
       .in("status", ["driver_assigned", "picked_up", "delivering", "delivered"])
@@ -259,7 +260,7 @@ export async function GET(req: Request) {
     const [producerRes, itemsRes, checksRes] = await Promise.all([
       admin
         .from("agrimarket_producers")
-        .select("contact_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng")
+        .select("contact_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions")
         .eq("id", order.producer_id)
         .limit(1)
         .maybeSingle(),
@@ -313,6 +314,7 @@ export async function GET(req: Request) {
           order_code: order.order_code,
           status: order.status,
           next_action: nextDriverAction(order),
+          pickup_issue: order.pickup_issue || null,
           route_plan: order.route_plan,
           assignment_anchor: order.assignment_anchor,
           cash_collection_required: Boolean(order.cash_collection_required),
@@ -344,7 +346,11 @@ export async function GET(req: Request) {
             town: producer.town,
             barangay: producer.barangay,
             pickup_label: producer.pickup_label,
-            pickup_notes: producer.pickup_label,
+            pickup_notes: text(producer.pickup_driver_directions) || null,
+            pickup_driver_directions: text(producer.pickup_driver_directions) || null,
+            pickup_motorcycle_accessible: producer.pickup_motorcycle_accessible,
+            pickup_tricycle_accessible: producer.pickup_tricycle_accessible,
+            pickup_roadside_handoff_required: producer.pickup_roadside_handoff_required,
             lat: num(producer.pickup_lat),
             lng: num(producer.pickup_lng),
           },

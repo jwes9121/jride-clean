@@ -12,7 +12,7 @@ export default function AgrimarketFarmerLoginLink() {
     if (pathname !== "/agrimarket") return;
     fetch("/api/agrimarket/status", { cache: "no-store" })
       .then((response) => response.json())
-      .then((payload) => setMarketplaceEnabled(Boolean(payload?.enabled)))
+      .then((payload) => setMarketplaceEnabled(Boolean(payload?.farmer_portal_enabled)))
       .catch(() => setMarketplaceEnabled(false));
   }, [pathname]);
 

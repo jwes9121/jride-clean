@@ -28,6 +28,17 @@ export function agrimarketOnboardingEnabled(): boolean {
   return envEnabled(process.env.AGRIMARKET_ONBOARDING_ENABLED);
 }
 
+export function agrimarketFarmerPortalEnabled(): boolean {
+  return agrimarketEnabled() || envEnabled(process.env.AGRIMARKET_FARMER_PORTAL_ENABLED);
+}
+
+export function agrimarketFarmerPortalDisabledResponse() {
+  return jsonNoStore(503, {
+    ok: false, error: "AGRIMARKET_FARMER_PORTAL_DISABLED",
+    message: "The farmer portal is not enabled yet.",
+  });
+}
+
 export function agrimarketDisabledResponse() {
   return jsonNoStore(503, {
     ok: false,

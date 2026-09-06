@@ -150,7 +150,7 @@ export default function AgrimarketProducerPage() {
     setError("");
     const response = await fetch("/api/agrimarket/producer/orders", { cache: "no-store", headers: farmerHeaders(code, accessPin) });
     const payload = await response.json().catch(() => ({}));
-    if (payload?.error === "AGRIMARKET_DISABLED") {
+    if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
       setDisabled(true);
       setConnected(false);
     } else if (response.status === 401 || response.status === 403) {

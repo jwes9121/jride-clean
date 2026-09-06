@@ -60,6 +60,10 @@ type AssignedItem = OfferItem & {
 };
 
 type AssignedOrder = {
+  pickup_issue?: { status: string; reason: string; confirm_farmer_refund?: unknown; confirm_customer_refund?: unknown } | null;
+  heavy_load_fee: number;
+  special_handling_fee: number;
+  cargo_confirmation?: { weight_basis?: string; exact_weight_kg?: number; weight_band?: string; handling_tier?: string };
   order_code: string;
   status: string;
   next_action?: string | null;
@@ -85,6 +89,9 @@ type AssignedOrder = {
   wallet_settlement_amount: number;
   wallet_settlement_error?: string | null;
   farmer: {
+    contact_number?: string | null;
+    pickup_driver_directions?: string | null;
+    pickup_roadside_handoff_required?: boolean;
     name: string;
     town?: string | null;
     barangay?: string | null;
@@ -112,15 +119,6 @@ type Props = {
   online: boolean;
 };
 
-const HANDLING_AMOUNTS = [0, 10, 20, 30, 40, 50];
-const HANDLING_REASONS = [
-  ["carry_load_sack", "Carry/load sack"],
-  ["multiple_sacks", "Multiple sacks"],
-  ["heavy_crate", "Heavy crate"],
-  ["livestock_loading", "Livestock loading"],
-  ["unloading_assistance", "Unloading assistance"],
-  ["other_approved", "Other approved handling"],
-] as const;
 
 function money(value: unknown): string {
   const amount = Number(value || 0);
@@ -164,8 +162,6 @@ export default function AgrimarketDriverPanel({ online }: Props) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [handlingAmount, setHandlingAmount] = useState(0);
-  const [handlingReason, setHandlingReason] = useState("carry_load_sack");
   const [nowMs, setNowMs] = useState(() => Date.now());
   const previousOfferRef = useRef("");
 
@@ -211,8 +207,6 @@ export default function AgrimarketDriverPanel({ online }: Props) {
       } else if (state === "assigned" && payload?.order) {
         const order = payload.order as AssignedOrder;
         setDriverState({ state: "assigned", order });
-        setHandlingAmount(Number(order.handling_fee || 0));
-        if (order.handling_reason) setHandlingReason(order.handling_reason);
         previousOfferRef.current = "";
       } else {
         setDriverState({ state: "none", offer: null, order: null });
@@ -409,6 +403,9 @@ export default function AgrimarketDriverPanel({ online }: Props) {
               <p className="mt-1 font-bold">{driverState.order.farmer.name}</p>
               <p className="text-slate-300">{driverState.order.farmer.pickup_label}</p>
               <p className="text-slate-500">{driverState.order.farmer.barangay ? `${driverState.order.farmer.barangay}, ` : ""}{driverState.order.farmer.town}</p>
+              <p className="mt-2">{driverState.order.farmer.pickup_driver_directions}</p>
+              {driverState.order.farmer.pickup_roadside_handoff_required ? <p>Use the verified roadside handoff point.</p> : null}
+              {driverState.order.farmer.contact_number ? <a href={`tel:${driverState.order.farmer.contact_number}`} className="mt-2 block text-emerald-300">Call farmer: {driverState.order.farmer.contact_number}</a> : null}
               <a href={mapsHref(driverState.order.farmer.lat, driverState.order.farmer.lng)} target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg bg-emerald-700 px-3 py-2 font-semibold text-white">Directions to farmer</a>
             </div>
             <div className="rounded-xl bg-slate-950 p-3 text-xs">
@@ -418,6 +415,20 @@ export default function AgrimarketDriverPanel({ online }: Props) {
               <a href={mapsHref(driverState.order.customer_delivery.lat, driverState.order.customer_delivery.lng)} target="_blank" rel="noreferrer" className="mt-3 inline-flex rounded-lg bg-blue-700 px-3 py-2 font-semibold text-white">Directions to customer</a>
             </div>
           </div>
+
+          <div className="rounded-xl bg-slate-950 p-4 text-sm">
+            <p>Heavy Load: {money(driverState.order.heavy_load_fee)}</p>
+            <p>Special Handling: {money(driverState.order.special_handling_fee)} ({titleCase(driverState.order.cargo_confirmation?.handling_tier)})</p>
+            <p>Confirmed load: {driverState.order.cargo_confirmation?.weight_basis === "exact" ? driverState.order.cargo_confirmation.exact_weight_kg + " kg" : titleCase(driverState.order.cargo_confirmation?.weight_band)}</p>
+            <p className="mt-2 text-xs text-slate-400">Charges are confirmed by the farmer and approved when required. Drivers cannot add a handling fee.</p>
+          </div>
+          {driverState.order.status === "driver_assigned" && driverState.order.pickup_issue?.status !== "open" ? <button type="button" disabled={Boolean(busy)} onClick={() => { const reason = window.prompt("What differs from the booked load?"); if (reason?.trim()) void runAction("report_load_mismatch", { reason: reason.trim() }); }} className="rounded-xl bg-rose-800 p-3 text-sm font-bold disabled:opacity-50">Load differs from booking</button> : null}
+          {driverState.order.pickup_issue?.status === "open" ? <div className="rounded-xl bg-rose-950 p-4 text-sm">
+            <p className="font-bold">Pickup paused — contact JRide dispatch</p><p>{driverState.order.pickup_issue.reason}</p>
+            <p className="mt-2">Staff must verify the original booked load is restored, or cancel after cash is returned. Do not collect a top-up.</p>
+            {driverState.order.producer_paid_amount > 0 && !driverState.order.pickup_issue.confirm_farmer_refund ? <button type="button" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Confirm you physically received the full farmer refund: " + money(driverState.order.producer_paid_amount))) void runAction("confirm_farmer_refund", { amount: driverState.order.producer_paid_amount }); }} className="mt-3 rounded bg-rose-700 p-3">Confirm farmer refund received</button> : null}
+            {driverState.order.customer_cash_collected_amount > 0 && !driverState.order.pickup_issue.confirm_customer_refund ? <button type="button" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Confirm you physically returned the full customer cash: " + money(driverState.order.customer_cash_collected_amount))) void runAction("confirm_customer_refund", { amount: driverState.order.customer_cash_collected_amount }); }} className="mt-3 rounded bg-rose-700 p-3">Confirm customer cash returned</button> : null}
+          </div> : null}
 
           {driverState.order.next_action === "collect_customer_cash" ? (
             <div className="rounded-xl bg-blue-950/60 p-4">
@@ -436,19 +447,8 @@ export default function AgrimarketDriverPanel({ online }: Props) {
             </div>
           ) : null}
 
-          {driverState.order.status === "driver_assigned" && driverState.order.producer_paid_at ? (
+          {driverState.order.status === "driver_assigned" && driverState.order.producer_paid_at && driverState.order.pickup_issue?.status !== "open" ? (
             <>
-              {!driverState.order.handling_locked && driverState.order.items.some((item) => item.handling_eligible) ? (
-                <div className="rounded-xl bg-slate-950 p-4">
-                  <p className="text-sm font-bold">Handling fee, only if actually required</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <label className="text-xs text-slate-300">Amount<select value={handlingAmount} onChange={(event) => setHandlingAmount(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2">{HANDLING_AMOUNTS.map((amount) => <option key={amount} value={amount}>{money(amount)}</option>)}</select></label>
-                    <label className="text-xs text-slate-300">Reason<select value={handlingReason} onChange={(event) => setHandlingReason(event.target.value)} disabled={handlingAmount === 0} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 disabled:opacity-50">{HANDLING_REASONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                  </div>
-                  <button type="button" disabled={Boolean(busy)} onClick={() => runAction("set_handling_fee", { amount: handlingAmount, reason: handlingAmount > 0 ? handlingReason : null })} className="mt-3 rounded-lg bg-slate-700 px-3 py-2 text-xs font-bold disabled:opacity-50">Save handling fee</button>
-                </div>
-              ) : null}
-
               <div className="rounded-xl bg-slate-950 p-4">
                 <p className="text-sm font-bold">Pickup verification</p>
                 <p className="mt-1 text-[11px] text-slate-400">All required checks must PASS before Confirm Pickup. A mismatch blocks pickup until corrected and rechecked.</p>

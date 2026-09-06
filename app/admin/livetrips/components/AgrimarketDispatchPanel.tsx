@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type AgrimarketDispatchOrder = {
+  pickup_issue?: { status: string; reason: string; confirm_farmer_refund?: unknown; confirm_customer_refund?: unknown } | null;
   order_id: string;
   order_code: string;
   status: string;
@@ -127,6 +128,19 @@ export default function AgrimarketDispatchPanel() {
     const timer = window.setInterval(() => void load(true), 10000);
     return () => window.clearInterval(timer);
   }, [enabled, load]);
+
+  async function resolveIssue(order: AgrimarketDispatchOrder, resolution: string) {
+    const note = window.prompt(resolution === "cancel" ? "Why is this order being cancelled? Required cash returns must be confirmed by the driver." : "Confirm the ORIGINAL booked load, price and vehicle have been restored. Describe the correction. Material changes require cancellation and a new booking.");
+    if (!note?.trim()) return;
+    setBusy(order.order_code); setError("");
+    try {
+      const response = await fetch("/api/agrimarket/admin/dispatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "resolve_pickup_issue", order_code: order.order_code, resolution, note: note.trim() }) });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) setError(payload.message || payload.error || "Unable to resolve pickup issue.");
+      else await load(true);
+    } catch { setError("Unable to resolve pickup issue. Retry after checking the order."); }
+    finally { setBusy(""); }
+  }
 
   const summary = useMemo(() => {
     const offered = orders.filter((order) => order.latest_offer?.status === "offered").length;
@@ -267,6 +281,11 @@ export default function AgrimarketDispatchPanel() {
                   </div>
                 ) : null}
 
+                {order.pickup_issue?.status === "open" ? <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-950">
+                  <p className="font-bold">Pickup paused: {order.pickup_issue.reason}</p>
+                  <p>Farmer refund: {order.pickup_issue.confirm_farmer_refund ? "Confirmed" : "Not recorded"}. Customer refund: {order.pickup_issue.confirm_customer_refund ? "Confirmed" : "Not recorded"}.</p>
+                  <div className="mt-3 flex gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "restored_to_booking")} className="rounded bg-emerald-700 p-2 text-white disabled:opacity-50">Original booked load restored</button><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "cancel")} className="rounded bg-rose-700 p-2 text-white disabled:opacity-50">Cancel after cash returns</button></div>
+                </div> : null}
                 {order.status === "awaiting_harvest" ? (
                   <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                     Harvest reservation confirmed. Expected {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}. No driver dispatch until farmer marks harvest ready.
