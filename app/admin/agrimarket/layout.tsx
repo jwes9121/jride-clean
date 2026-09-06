@@ -12,6 +12,9 @@ export default function AgrimarketAdminLayout({ children }: { children: React.Re
           <Link href="/admin/agrimarket/verified-farmers" className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-800">
             Readiness and verified farmers
           </Link>
+          <Link href="/admin/agrimarket/driver-devices" className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-800">
+            Driver phones
+          </Link>
         </div>
       </nav>
       {children}

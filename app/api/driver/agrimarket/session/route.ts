@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   try {
     const identity = await resolveDriverRequest(req, null, { requireBearer: true });
     if (!identity.ok) return jsonNoStore(identity.status || 401, { ok: false, error: identity.error });
-    return jsonNoStore(200, { ok: true, driver_id: identity.driverId, auth_mode: "bearer" });
+    return jsonNoStore(200, { ok: true, driver_id: identity.driverId, auth_mode: identity.authMode });
   } catch {
     return jsonNoStore(503, { ok: false, error: "DRIVER_AUTH_UNAVAILABLE" });
   }
