@@ -20,6 +20,8 @@ type ChargeBreakdown = {
 };
 
 type OrderStatus = {
+  pickup_paused?: boolean;
+  pickup_message?: string | null;
   order_code: string;
   status: string;
   fulfillment_mode: string;
@@ -139,6 +141,7 @@ function cargoConfirmationLabel(order: OrderStatus): string {
 }
 
 function progressLabel(order: OrderStatus): string {
+  if (order.pickup_paused) return "Pickup paused - JRide is resolving a load issue";
   if (order.completed_at || order.status === "completed") return "Order completed";
   if (order.delivered_at || order.status === "delivered") return "Delivered";
   if (order.delivering_at || order.status === "delivering") return "Driver is delivering your order";

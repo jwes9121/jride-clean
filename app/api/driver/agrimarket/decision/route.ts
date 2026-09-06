@@ -46,7 +46,8 @@ export async function POST(req: Request) {
 
     const identity = await resolveDriverRequest(
       req,
-      text(body?.driver_id || body?.driverId)
+      text(body?.driver_id || body?.driverId),
+      { requireBearer: true }
     );
     if (!identity.ok || !identity.driverId) {
       return NextResponse.json(

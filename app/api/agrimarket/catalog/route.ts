@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
+import { coordinate, hasValidPin } from "@/lib/agrimarket/coordinates";
 import { normalizeIfugaoTown, reverseGeocodeIfugaoTown } from "../_lib/location";
 import { fetchAgrimarketDrivingRoute } from "../_lib/routing";
 import {
@@ -88,9 +89,7 @@ async function loadRoadMetrics(
   customerLng: number
 ): Promise<Map<string, ProducerRoadMetric>> {
   const valid = producers.filter((producer) => {
-    const lat = Number(producer.pickup_lat);
-    const lng = Number(producer.pickup_lng);
-    return Number.isFinite(lat) && Number.isFinite(lng);
+    return hasValidPin(producer.pickup_lat, producer.pickup_lng);
   });
   const metrics = new Map<string, ProducerRoadMetric>();
   let cursor = 0;
@@ -171,9 +170,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const customerLat = Number(address.lat);
-    const customerLng = Number(address.lng);
-    if (!Number.isFinite(customerLat) || !Number.isFinite(customerLng)) {
+    const customerLat = coordinate(address.lat, 90);
+    const customerLng = coordinate(address.lng, 180);
+    if (customerLat === null || customerLng === null) {
       return jsonNoStore(409, {
         ok: false,
         error: "AGRIMARKET_DELIVERY_PIN_REQUIRED",
@@ -221,7 +220,8 @@ export async function GET(req: NextRequest) {
 
     const baseResponse = {
       ok: true,
-      ordering_enabled: true,
+      ordering_enabled: Boolean(deliveryTown),
+      ordering_blocker: deliveryTown ? null : "AGRIMARKET_DELIVERY_TOWN_UNRESOLVED",
       address: {
         id: address.id,
         label: address.label || address.address_text,

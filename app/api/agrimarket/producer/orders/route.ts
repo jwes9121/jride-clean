@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import {
-  agrimarketDisabledResponse,
+  agrimarketFarmerPortalDisabledResponse,
+  agrimarketFarmerPortalEnabled,
   agrimarketEnabled,
   createServiceSupabase,
   jsonNoStore,
@@ -24,11 +25,15 @@ function minimumHandlingTier(items: any[]): HandlingTier {
 }
 
 export async function GET(req: NextRequest) {
-  if (!agrimarketEnabled()) return agrimarketDisabledResponse();
+  if (!agrimarketFarmerPortalEnabled()) return agrimarketFarmerPortalDisabledResponse();
 
   try {
     const producerAuth = await requireAgrimarketProducer(req);
     if (producerAuth.ok === false) return producerAuth.response;
+
+    if (!agrimarketEnabled()) {
+      return jsonNoStore(200, { ok: true, setup_only: true, orders: [], producer: producerAuth.producer });
+    }
 
     const admin = createServiceSupabase();
     const expiryRes = await admin.rpc("agrimarket_expire_pending_orders_v1", {

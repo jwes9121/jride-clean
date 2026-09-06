@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { usePathname } from "next/navigation";
+import { isAgrimarketFarmerPath } from "@/lib/agrimarket/paths";
 
 const ACCESS_TOKEN_KEYS = ["jride_access_token", "jride_passenger_token"];
 const DEVICE_ID_KEY = "jride_native_device_id";
@@ -25,6 +26,9 @@ const AUTH_PREFIXES = [
 
 function isProtectedPassengerPath(pathname: string): boolean {
   if (!pathname) return false;
+  // Farmer pages authenticate with their own access code/PIN; applications use
+  // the onboarding gate. Passenger authentication still protects shopping.
+  if (isAgrimarketFarmerPath(pathname)) return false;
   if (AUTH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return false;
 
   return PROTECTED_PREFIXES.some(

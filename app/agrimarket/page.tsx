@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type AddressRow = {
   id: string;
@@ -102,6 +102,7 @@ function normalized(value: number, min: number, max: number): number {
 }
 
 export default function AgrimarketPage() {
+  const checkoutAttempt = useRef<{ body: string; id: string } | null>(null);
   const [addresses, setAddresses] = useState<AddressRow[]>([]);
   const [addressId, setAddressId] = useState("");
   const [deliveryTown, setDeliveryTown] = useState<string | null>(null);
@@ -427,21 +428,31 @@ export default function AgrimarketPage() {
     if (!quote || !addressId || !cart.length) return;
     setOrdering(true);
     setError("");
-    const requestId = crypto.randomUUID();
+    const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
+    if (checkoutAttempt.current?.body !== requestBody) {
+      checkoutAttempt.current = { body: requestBody, id: crypto.randomUUID() };
+    }
+    const requestId = checkoutAttempt.current.id;
+    try {
     const response = await fetch("/api/agrimarket/orders", {
       method: "POST",
       headers: { ...authHeaders(true), "x-idempotency-key": requestId },
-      body: JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle }),
+      body: requestBody,
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) {
-      setError(payload?.message || payload?.error || "Unable to place the Agrimarket order.");
+    if (!response.ok || payload?.ok === false || !payload?.order?.order_code) {
+      setError(payload?.message || payload?.error || "Unable to confirm the order response. Retry to recover this checkout attempt.");
     } else {
       setPlaced(payload.order);
       setQuote(null);
       setCart([]);
+      checkoutAttempt.current = null;
     }
-    setOrdering(false);
+    } catch {
+      setError("The order response was interrupted. Retry to recover the same checkout attempt.");
+    } finally {
+      setOrdering(false);
+    }
   }
 
   if (disabled) {

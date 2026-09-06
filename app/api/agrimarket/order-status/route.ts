@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
+        "id,order_code,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
     const collectedBeforeFarmer = num(order.customer_cash_collected_amount);
     const finalCashDue = Math.max(0, num(order.total_payable) - collectedBeforeFarmer);
     const status = text(order.status).toLowerCase();
-    const cashDueNow =
+    const cashDueNow = order.pickup_issue?.status === "open" ? 0 :
       Boolean(order.cash_collection_required) && !order.customer_cash_collected_at && status === "driver_assigned"
         ? num(order.cash_collection_amount)
         : ["picked_up", "delivering"].includes(status)
@@ -148,6 +148,8 @@ export async function GET(req: NextRequest) {
       order: {
         order_code: order.order_code,
         status: order.status,
+        pickup_paused: order.pickup_issue?.status === "open",
+        pickup_message: order.pickup_issue?.status === "open" ? "Pickup is paused while JRide resolves a load issue. No extra charge has been added." : null,
         fulfillment_mode: order.fulfillment_mode || "always_available",
         harvest_expected_start_at: order.harvest_expected_start_at,
         harvest_expected_end_at: order.harvest_expected_end_at,

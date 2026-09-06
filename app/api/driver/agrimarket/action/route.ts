@@ -78,7 +78,8 @@ export async function POST(req: Request) {
 
     const identity = await resolveDriverRequest(
       req,
-      text(body?.driver_id || body?.driverId)
+      text(body?.driver_id || body?.driverId),
+      { requireBearer: true }
     );
     if (!identity.ok || !identity.driverId) {
       return NextResponse.json(
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
     }
 
     const admin = supabaseAdmin();
-    const resultRes = await admin.rpc("agrimarket_driver_execute_v1", {
+    const resultRes = await admin.rpc("agrimarket_driver_execute_v2", {
       p_order_code: orderCode,
       p_driver_id: identity.driverId,
       p_action: action,

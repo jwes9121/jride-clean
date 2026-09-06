@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { PICKUP_ACCESS_COLUMNS, pickupAccessError } from "./pickupAccess";
 import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
@@ -258,7 +259,7 @@ export async function offerAgrimarketDriver(input: {
 
   const producerRes = await admin
     .from("agrimarket_producers")
-    .select("id,pickup_lat,pickup_lng,status,accepting_orders")
+    .select(`id,pickup_lat,pickup_lng,status,accepting_orders,${PICKUP_ACCESS_COLUMNS}`)
     .eq("id", order.producer_id)
     .limit(1)
     .maybeSingle();
@@ -291,6 +292,9 @@ export async function offerAgrimarketDriver(input: {
   if (lower(order.required_vehicle_type) === "tricycle" && preferredVehicle !== "tricycle") {
     return { ok: false, error: "AGRIMARKET_TRICYCLE_REQUIRED" };
   }
+
+  const accessError = pickupAccessError(producerRes.data, preferredVehicle);
+  if (accessError) return { ok: false, error: accessError };
 
   const priorOffersRes = await admin
     .from("agrimarket_driver_offers")

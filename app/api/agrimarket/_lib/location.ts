@@ -1,3 +1,5 @@
+import { hasValidPin } from "@/lib/agrimarket/coordinates";
+
 const IFUGAO_TOWNS = [
   "Aguinaldo",
   "Alfonso Lista",
@@ -31,10 +33,11 @@ export function normalizeIfugaoTown(value: unknown): string | null {
 }
 
 export async function reverseGeocodeIfugaoTown(lat: number, lng: number): Promise<string | null> {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!hasValidPin(lat, lng)) return null;
 
   const token = String(
-    process.env.MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || ""
+    process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN ||
+    process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""
   ).trim();
   if (!token) return null;
 

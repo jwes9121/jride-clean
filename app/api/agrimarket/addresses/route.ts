@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { hasValidPin } from "@/lib/agrimarket/coordinates";
 import {
   agrimarketDisabledResponse,
   agrimarketEnabled,
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
       label: row.label || row.address_text,
       address_text: row.address_text,
       landmark: row.landmark || null,
-      has_valid_pin: Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng)),
+      has_valid_pin: hasValidPin(row.lat, row.lng),
       is_primary: Boolean(row.is_primary),
       updated_at: row.updated_at,
     }));
