@@ -192,7 +192,7 @@ async function duplicatePhoneResponse(admin: AdminClient, phone: string) {
       .from("agrimarket_farmer_applications")
       .select("id,application_code,applicant_name,phone_display,phone_normalized,town,status,approved_producer_id,onboarding_source,created_at")
       .eq("phone_normalized", phoneNormalized)
-      .in("status", ["submitted", "under_review", "approved"])
+      .in("status", ["submitted", "under_review", "correction_requested", "approved"])
       .order("created_at", { ascending: false })
       .limit(5),
     admin
@@ -235,7 +235,7 @@ export async function GET(req: NextRequest) {
   const applicationsRes = await admin
     .from("agrimarket_farmer_applications")
     .select("*")
-    .eq("onboarding_source", "staff_verified")
+    .eq("status", "approved")
     .order("reviewed_at", { ascending: false })
     .limit(100);
 
@@ -430,8 +430,8 @@ export async function POST(req: NextRequest) {
       if (pickupLabel.length < 2 || pickupLabel.length > 180 || pickupLat == null || pickupLng == null) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID", message: "Set and verify the corrected private pickup pin on the map." });
       }
-      if (!pickupMotorcycleAccessible && !pickupTricycleAccessible && !pickupRoadsideHandoffRequired) {
-        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_ACCESS_REQUIRED", message: "Record how a driver can reach or meet the farmer at the pickup point." });
+      if (!pickupMotorcycleAccessible && !pickupTricycleAccessible) {
+        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_ACCESS_REQUIRED", message: "Confirm which vehicle can reach the actual handoff pin, including roadside pickups." });
       }
       if (pickupDriverDirections.length < 5 || pickupDriverDirections.length > 1000) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_DIRECTIONS_REQUIRED", message: "Enter private driver directions between 5 and 1000 characters." });
@@ -550,8 +550,8 @@ export async function POST(req: NextRequest) {
     if (pickupLabel.length < 2 || pickupLabel.length > 180 || pickupLat == null || pickupLng == null) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID", message: "Set and verify the private pickup pin on the map, then enter a recognizable pickup description." });
     }
-    if (!pickupMotorcycleAccessible && !pickupTricycleAccessible && !pickupRoadsideHandoffRequired) {
-      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_ACCESS_REQUIRED", message: "Record how a driver can reach or meet the farmer at the pickup point." });
+    if (!pickupMotorcycleAccessible && !pickupTricycleAccessible) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_ACCESS_REQUIRED", message: "Confirm which vehicle can reach the actual handoff pin, including roadside pickups." });
     }
     if (pickupDriverDirections.length < 5 || pickupDriverDirections.length > 1000) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_DIRECTIONS_REQUIRED", message: "Enter private driver directions between 5 and 1000 characters." });

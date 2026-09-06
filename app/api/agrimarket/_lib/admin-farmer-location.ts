@@ -1,4 +1,5 @@
 import { normalizeIfugaoTown } from "./location";
+import { FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
 
 export const AGRIMARKET_LAUNCH_TOWNS = [
   "Lagawe",
@@ -193,13 +194,16 @@ export async function reverseGeocodeFarmerPin(
 }
 
 export async function searchFarmerLocations(
-  query: string
+  query: string,
+  selectedTown?: string
 ): Promise<ResolvedFarmerLocation[]> {
   const cleanQuery = cleanText(query).slice(0, 180);
   if (cleanQuery.length < 2) return [];
 
   const url = new URL("https://api.mapbox.com/search/geocode/v6/forward");
-  url.searchParams.set("q", cleanQuery);
+  const center = selectedTown ? FARMER_TOWN_CENTERS[selectedTown] : undefined;
+  url.searchParams.set("q", center ? `${cleanQuery}, ${selectedTown}, Ifugao` : cleanQuery);
+  if (center) url.searchParams.set("proximity", center.join(","));
   url.searchParams.set("country", "ph");
   url.searchParams.set("language", "en");
   url.searchParams.set("types", "address,street,neighborhood,locality,place");

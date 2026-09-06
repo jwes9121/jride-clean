@@ -16,7 +16,7 @@ create table public.driver_notifications(driver_id uuid,type text,message text);
 `;
 const files=fs.readdirSync('supabase/migrations').filter(x=>x.includes('_agrimarket_') && x.endsWith('.sql')).sort();
 const migrationSQL=files.map(file=>`\n-- ${file}\n`+fs.readFileSync(path.join('supabase/migrations',file),'utf8')).join('\n');
-const checks=fs.existsSync('scripts/agrimarket-db-checks.sql')?fs.readFileSync('scripts/agrimarket-db-checks.sql','utf8'):'';
+const checks=['scripts/agrimarket-db-checks.sql','scripts/agrimarket-registration-db-checks.sql'].map(file=>fs.readFileSync(file,'utf8')).join('\n');
 // Everything, including roles and fixtures, is rolled back. Loopback and fixed port
 // deliberately prevent accidentally targeting production through a connection URL.
 const r=spawnSync(psql,['-X','-qAt','-h','127.0.0.1','-p','55439','-U','agrimarket_test','-d','postgres','-v','ON_ERROR_STOP=1'],{input:'BEGIN;\n'+bootstrap+'\n'+migrationSQL+'\n'+checks+'\nROLLBACK;',encoding:'utf8',maxBuffer:4*1024*1024});
