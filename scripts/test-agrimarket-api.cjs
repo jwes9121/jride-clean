@@ -36,7 +36,7 @@ function registrationHarness({ enabled=true, role=null, resolvedTown='Lagawe' }=
   const server={agrimarketOnboardingEnabled:()=>enabled,agrimarketOnboardingDisabledResponse:()=>jsonNoStore(503,{ok:false}),jsonNoStore,createServiceSupabase:()=>client,
     requireAgrimarketStaff:async()=>role?{ok:true,role,actor:'verified-staff@example.test',user:{id:'staff'}}:{ok:false,response:jsonNoStore(401,{ok:false})}};
   const location={reverseGeocodeFarmerPin:async()=>({town:resolvedTown,barangay:'Test barangay',launch_eligible:true})};
-  return {calls,public:load('app/api/agrimarket/farmer-applications/route.ts',{'../_lib/server':server,'../_lib/admin-farmer-location':location}),admin:load('app/api/agrimarket/admin/farmer-applications/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location})};
+  return {calls,public:load('app/api/agrimarket/farmer-applications/route.ts',{'../_lib/server':server,'../_lib/admin-farmer-location':location}),admin:load('app/api/agrimarket/admin/farmer-applications/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location}),verified:load('app/api/agrimarket/admin/verified-farmers/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location})};
 }
 const validApplication={applicant_name:'Test farmer',phone:'09000000002',town:'Lagawe',pickup_label:'Test roadside',pickup_lat:16.8,pickup_lng:121.1,intended_products:'Rice, eggs',pickup_motorcycle_accessible:true,pickup_tricycle_accessible:false,pickup_driver_directions:'Use the marked test roadside point',farmer_consent:true,pin_confirmed:true,client_request_id:'81000000-0000-4000-8000-000000000001'};
 const request=(body)=>({json:async()=>body,nextUrl:new URL('http://localhost/api/agrimarket/farmer-applications')});
@@ -49,6 +49,13 @@ test('registration rejects missing/coerced pins, consent and municipality mismat
   }
   const h=registrationHarness({resolvedTown:'Banaue'});
   assert.equal((await h.public.POST(request(validApplication))).status,422); assert.equal(h.calls.length,0);
+});
+test('staff setup and public application reject a roadside flag without reachable vehicle access',async()=>{
+  const h=registrationHarness({role:'admin'});
+  const body={...validApplication,farmer_name:'Test farmer',pickup_motorcycle_accessible:false,pickup_tricycle_accessible:false,pickup_roadside_handoff_required:true};
+  const response=await h.verified.POST(request(body));
+  assert.equal(response.status,400); assert.equal((await response.json()).error,'AGRIMARKET_PICKUP_ACCESS_REQUIRED');
+  assert.equal((await h.public.POST(request(body))).status,400); assert.equal(h.calls.length,0);
 });
 test('public registration is gated; assisted submission requires a real staff session and records its identity',async()=>{
   let h=registrationHarness({enabled:false});

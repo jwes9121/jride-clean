@@ -33,6 +33,9 @@ begin
   perform pg_temp.expect_error(format('select agrimarket_admin_set_verified_farmer_readiness_v1(%L,true,%L,%L,%L)',producer,'Test admin','admin','Ready for orders'),'AGRIMARKET_FARMER_NO_ACTIVE_PRODUCT');
   insert into agrimarket_products(producer_id,name,product_group,selling_unit,cargo_class,unit_price,listed_quantity,is_active)
     values(producer,'Test vegetables','produce','kg','standard_produce',50,5,true);
+  update agrimarket_producers set pickup_motorcycle_accessible=false,pickup_tricycle_accessible=false,pickup_roadside_handoff_required=true where id=producer;
+  perform pg_temp.expect_error(format('select agrimarket_admin_set_verified_farmer_readiness_v1(%L,true,%L,%L,%L)',producer,'Test admin','admin','Roadside pickup without a reachable vehicle'),'AGRIMARKET_PICKUP_ACCESS_NOT_VERIFIED');
+  update agrimarket_producers set pickup_motorcycle_accessible=true,pickup_tricycle_accessible=true where id=producer;
   perform agrimarket_admin_set_verified_farmer_readiness_v1(producer,true,'Test admin','admin','Product stock, pickup access and training checked');
   perform pg_temp.check_true((select accepting_orders from agrimarket_producers where id=producer),'separate readiness opens ordering after products');
   perform agrimarket_admin_manage_farmer_access_v1(producer,'suspend_farmer','Test admin','Test suspension');

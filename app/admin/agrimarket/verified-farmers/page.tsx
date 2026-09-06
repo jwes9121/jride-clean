@@ -309,10 +309,9 @@ export default function VerifiedFarmersAdminPage() {
     if (form.private_pickup_label.trim().length < 2) missing.push("recognizable pickup description");
     if (
       !form.pickup_motorcycle_accessible &&
-      !form.pickup_tricycle_accessible &&
-      !form.pickup_roadside_handoff_required
+      !form.pickup_tricycle_accessible
     ) {
-      missing.push("driver-access option");
+      missing.push("vehicle that can reach the handoff pin");
     }
     if (form.pickup_driver_directions.trim().length < 5) missing.push("private driver directions");
     if (!form.intended_products.trim()) missing.push("intended products");
@@ -341,7 +340,7 @@ export default function VerifiedFarmersAdminPage() {
     if (editPin.resolved_town && editForm.town !== editPin.resolved_town) missing.push("municipality matching the map pin");
     if (!editForm.pin_confirmed) missing.push("corrected pickup-pin confirmation");
     if (editForm.private_pickup_label.trim().length < 2) missing.push("pickup description");
-    if (!editForm.pickup_motorcycle_accessible && !editForm.pickup_tricycle_accessible && !editForm.pickup_roadside_handoff_required) missing.push("driver-access option");
+    if (!editForm.pickup_motorcycle_accessible && !editForm.pickup_tricycle_accessible) missing.push("vehicle that can reach the handoff pin");
     if (editForm.pickup_driver_directions.trim().length < 5) missing.push("private driver directions");
     if (editForm.change_reason.trim().length < 5) missing.push("audit reason");
     return missing;
@@ -746,7 +745,7 @@ export default function VerifiedFarmersAdminPage() {
 
             <label className="mt-5 flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
               <input required type="checkbox" checked={form.verification_confirmed} onChange={(event) => update("verification_confirmed", event.target.checked)} className="mt-1 h-4 w-4" />
-              <span>I confirm that JRide verified this farmer, mobile number, identity reference where applicable, exact private pickup pin, and road access before account creation.</span>
+                <span>I confirm that the farmer consents to registration and JRide verified this farmer, mobile number, identity reference where applicable, actual handoff pin, and vehicle access before account creation.</span>
             </label>
 
             {missingRequirements.length ? (

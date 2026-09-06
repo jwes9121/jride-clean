@@ -197,8 +197,7 @@ BEGIN
       RAISE EXCEPTION 'AGRIMARKET_CREDENTIAL_NOT_ACTIVE' USING ERRCODE = 'P0001';
     END IF;
     IF NOT coalesce(v_producer.pickup_motorcycle_accessible, false)
-       AND NOT coalesce(v_producer.pickup_tricycle_accessible, false)
-       AND NOT coalesce(v_producer.pickup_roadside_handoff_required, false) THEN
+       AND NOT coalesce(v_producer.pickup_tricycle_accessible, false) THEN
       RAISE EXCEPTION 'AGRIMARKET_PICKUP_ACCESS_NOT_VERIFIED' USING ERRCODE = 'P0001';
     END IF;
     IF length(trim(coalesce(v_producer.pickup_driver_directions, ''))) < 5 THEN
@@ -386,8 +385,7 @@ BEGIN
     RAISE EXCEPTION 'AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID' USING ERRCODE = 'P0001';
   END IF;
   IF NOT coalesce(p_pickup_motorcycle_accessible, false)
-     AND NOT coalesce(p_pickup_tricycle_accessible, false)
-     AND NOT coalesce(p_pickup_roadside_handoff_required, false) THEN
+     AND NOT coalesce(p_pickup_tricycle_accessible, false) THEN
     RAISE EXCEPTION 'AGRIMARKET_PICKUP_ACCESS_REQUIRED' USING ERRCODE = 'P0001';
   END IF;
   IF length(v_pickup_directions) < 5 OR length(v_pickup_directions) > 1000 THEN
