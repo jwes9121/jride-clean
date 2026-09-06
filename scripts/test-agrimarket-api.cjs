@@ -27,6 +27,57 @@ function load(file, mocks = {}) {
 function db(rows) {
   return { from(table) { const result={data:rows[table]??null,error:null}; const chain=new Proxy({}, {get(_, key) { if (key==='then') return (resolve)=>resolve(result); return ()=>chain; }}); return chain; } };
 }
+
+function registrationHarness({ enabled=true, role=null, resolvedTown='Lagawe' }={}) {
+  const calls=[];
+  const client=db({agrimarket_farmer_applications:{pickup_lat:16.8,pickup_lng:121.1,town:'Lagawe'},agrimarket_producer_credentials:null});
+  client.rpc=async(name,args)=>{calls.push({name,args});return {data:{application_code:args.p_application_code||'TEST',status:'submitted'},error:null};};
+  const jsonNoStore=(status,body)=>new Response(JSON.stringify(body),{status});
+  const server={agrimarketOnboardingEnabled:()=>enabled,agrimarketOnboardingDisabledResponse:()=>jsonNoStore(503,{ok:false}),jsonNoStore,createServiceSupabase:()=>client,
+    requireAgrimarketStaff:async()=>role?{ok:true,role,actor:'verified-staff@example.test',user:{id:'staff'}}:{ok:false,response:jsonNoStore(401,{ok:false})}};
+  const location={reverseGeocodeFarmerPin:async()=>({town:resolvedTown,barangay:'Test barangay',launch_eligible:true})};
+  return {calls,public:load('app/api/agrimarket/farmer-applications/route.ts',{'../_lib/server':server,'../_lib/admin-farmer-location':location}),admin:load('app/api/agrimarket/admin/farmer-applications/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location})};
+}
+const validApplication={applicant_name:'Test farmer',phone:'09000000002',town:'Lagawe',pickup_label:'Test roadside',pickup_lat:16.8,pickup_lng:121.1,intended_products:'Rice, eggs',pickup_motorcycle_accessible:true,pickup_tricycle_accessible:false,pickup_driver_directions:'Use the marked test roadside point',farmer_consent:true,pin_confirmed:true,client_request_id:'81000000-0000-4000-8000-000000000001'};
+const request=(body)=>({json:async()=>body,nextUrl:new URL('http://localhost/api/agrimarket/farmer-applications')});
+
+test('registration rejects missing/coerced pins, consent and municipality mismatch before a write',async()=>{
+  for(const changed of [{pickup_lat:null},{pickup_lat:''},{pickup_lat:true},{pickup_lat:[16.8]},{farmer_consent:false},{pin_confirmed:false},{submitted_by:'family',helper_name:''}]) {
+    const h=registrationHarness();
+    assert.equal((await h.public.POST(request({...validApplication,...changed}))).status,400);
+    assert.equal(h.calls.length,0);
+  }
+  const h=registrationHarness({resolvedTown:'Banaue'});
+  assert.equal((await h.public.POST(request(validApplication))).status,422); assert.equal(h.calls.length,0);
+});
+test('public registration is gated; assisted submission requires a real staff session and records its identity',async()=>{
+  let h=registrationHarness({enabled:false});
+  assert.equal((await h.public.POST(request(validApplication))).status,503);
+  h=registrationHarness();
+  assert.equal((await h.public.POST(request({...validApplication,submitted_by:'staff',actor:'spoof',role:'admin'}))).status,401);
+  h=registrationHarness({enabled:false,role:'dispatcher'});
+  assert.equal((await h.public.POST(request({...validApplication,submitted_by:'staff',actor:'spoof',helper_name:'spoof'}))).status,200);
+  const {args}=h.calls[0];
+  assert.equal(args.p_actor,'verified-staff@example.test'); assert.equal(args.p_actor_role,'dispatcher');
+  assert.equal(args.p_payload.application_details.helper_name,'verified-staff@example.test');
+  assert.equal(args.p_payload.application_details.resolved_town,'Lagawe');
+  assert.match(args.p_application_code,/^AGAPP-\d{6}-[A-F0-9]{32}$/);
+});
+test('dispatcher cannot approve or issue credentials; admin approval checks consent and freshly verifies the pin',async()=>{
+  const body={application_id:'81000000-0000-4000-8000-000000000001',decision:'approve',review_note:'Identity and pickup checked',verification_confirmed:true};
+  let h=registrationHarness({role:'dispatcher'});
+  assert.equal((await h.admin.POST(request(body))).status,403); assert.equal(h.calls.length,0);
+  assert.equal((await h.admin.POST(request({...body,decision:'under_review'}))).status,200);
+  assert.equal(h.calls[0].args.p_actor_role,'dispatcher'); assert.equal(h.calls[0].args.p_pin,null);
+  h=registrationHarness({role:'admin'});
+  assert.equal((await h.admin.POST(request({...body,verification_confirmed:false}))).status,400); assert.equal(h.calls.length,0);
+  h=registrationHarness({role:'admin',resolvedTown:'Banaue'});
+  assert.equal((await h.admin.POST(request(body))).status,422); assert.equal(h.calls.length,0);
+  h=registrationHarness({role:'admin'});
+  assert.equal((await h.admin.POST(request({...body,verified_pin:{town:'Spoof'}}))).status,200);
+  assert.deepEqual(h.calls[0].args.p_verified_pin,{lat:16.8,lng:121.1,town:'Lagawe'});
+  assert.equal(h.calls[0].name,'agrimarket_review_farmer_application_v2');
+});
 const coords=load('lib/agrimarket/coordinates.ts');
 test('farmer login routes are separate from protected passenger shopping',()=>{
   const {isAgrimarketFarmerPath}=load('lib/agrimarket/paths.ts');

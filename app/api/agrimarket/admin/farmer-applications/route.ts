@@ -1,5 +1,6 @@
 import { randomInt } from "crypto";
 import { NextRequest } from "next/server";
+import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
 import {
   createServiceSupabase,
   jsonNoStore,
@@ -11,7 +12,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 const ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const VALID_STATUSES = new Set(["submitted", "under_review", "approved", "rejected", "withdrawn"]);
+const VALID_STATUSES = new Set(["submitted", "under_review", "correction_requested", "approved", "rejected", "withdrawn"]);
 
 function text(value: unknown): string {
   return String(value ?? "").trim();
@@ -53,6 +54,11 @@ function applicationPayload(
     identity_type: row.identity_type,
     identity_reference_last4: row.identity_reference_last4,
     applicant_note: row.applicant_note,
+    application_details: row.application_details,
+    pickup_motorcycle_accessible: row.pickup_motorcycle_accessible,
+    pickup_tricycle_accessible: row.pickup_tricycle_accessible,
+    pickup_roadside_handoff_required: row.pickup_roadside_handoff_required,
+    pickup_driver_directions: row.pickup_driver_directions,
     status: row.status,
     review_note: row.review_note,
     reviewed_by: row.reviewed_by,
@@ -90,7 +96,7 @@ export async function GET(req: NextRequest) {
   const admin = createServiceSupabase();
   let query = admin
     .from("agrimarket_farmer_applications")
-    .select("id,application_code,applicant_name,phone_normalized,phone_display,town,barangay,pickup_label,pickup_lat,pickup_lng,intended_products,identity_type,identity_reference_last4,applicant_note,status,review_note,reviewed_by,reviewed_at,approved_producer_id,created_at,updated_at")
+    .select("id,application_code,applicant_name,phone_normalized,phone_display,town,barangay,pickup_label,pickup_lat,pickup_lng,intended_products,identity_type,identity_reference_last4,applicant_note,status,review_note,reviewed_by,reviewed_at,approved_producer_id,created_at,updated_at,application_details,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions")
     .order("created_at", { ascending: false })
     .limit(300);
 
@@ -162,7 +168,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const staff = await requireAgrimarketStaff(true);
+  const staff = await requireAgrimarketStaff(false);
   if (staff.ok === false) return staff.response;
 
   try {
@@ -174,22 +180,31 @@ export async function POST(req: NextRequest) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(applicationId)) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_APPLICATION_ID_INVALID" });
     }
-    if (!new Set(["under_review", "approve", "reject"]).has(decision)) {
+    if (!new Set(["under_review", "request_correction", "approve", "reject"]).has(decision)) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_REVIEW_DECISION_INVALID" });
     }
-    if (decision === "reject" && !reviewNote) {
+    if (decision !== "under_review" && staff.role !== "admin") return jsonNoStore(403, { ok: false, error: "AGRIMARKET_ADMIN_REQUIRED" });
+    if (decision !== "under_review" && (!reviewNote || reviewNote.length < 5)) {
       return jsonNoStore(400, {
         ok: false,
         error: "AGRIMARKET_REJECTION_REASON_REQUIRED",
-        message: "Enter a reason before rejecting a farmer application.",
+        message: "Add a review note of at least five characters.",
       });
     }
 
     const admin = createServiceSupabase();
     let generatedAccessCode: string | null = null;
     let generatedPin: string | null = null;
+    let verifiedPin: { lat: number; lng: number; town: string } | null = null;
 
     if (decision === "approve") {
+      if (body.verification_confirmed !== true) return jsonNoStore(400, { ok: false, message: "Confirm that the farmer's identity, consent and pickup access have been checked." });
+      const application = await admin.from("agrimarket_farmer_applications").select("pickup_lat,pickup_lng,town").eq("id", applicationId).maybeSingle();
+      if (application.error || !application.data) return jsonNoStore(404, { ok: false, message: "Application not found." });
+      const { pickup_lat: lat, pickup_lng: lng, town } = application.data;
+      const resolved = await reverseGeocodeFarmerPin(Number(lat), Number(lng));
+      if (!resolved?.launch_eligible || resolved.town !== town) return jsonNoStore(422, { ok: false, message: "The pickup pin does not match the municipality. Request a correction." });
+      verifiedPin = { lat: Number(lat), lng: Number(lng), town: resolved.town };
       for (let attempt = 0; attempt < 5; attempt += 1) {
         const candidate = accessCode();
         const existsRes = await admin
@@ -198,6 +213,7 @@ export async function POST(req: NextRequest) {
           .eq("access_code", candidate)
           .limit(1)
           .maybeSingle();
+        if (existsRes.error) return jsonNoStore(503, { ok: false, message: "Farmer access is temporarily unavailable." });
         if (!existsRes.data) {
           generatedAccessCode = candidate;
           break;
@@ -209,13 +225,16 @@ export async function POST(req: NextRequest) {
       generatedPin = temporaryPin();
     }
 
-    const reviewRes = await admin.rpc("agrimarket_review_farmer_application_v1", {
+    const reviewRes = await admin.rpc("agrimarket_review_farmer_application_v2", {
       p_application_id: applicationId,
       p_decision: decision,
-      p_reviewed_by: staff.actor,
+      p_actor: staff.actor,
+      p_actor_role: staff.role,
       p_review_note: reviewNote,
       p_access_code: generatedAccessCode,
       p_pin: generatedPin,
+      p_verified_pin: verifiedPin,
+      p_verification_confirmed: body.verification_confirmed === true,
       p_now: new Date().toISOString(),
     });
 

@@ -10,7 +10,7 @@ export default function AgrimarketAdminLayout({ children }: { children: React.Re
             Applications and access
           </Link>
           <Link href="/admin/agrimarket/verified-farmers" className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-800">
-            Add verified farmer
+            Readiness and verified farmers
           </Link>
         </div>
       </nav>

@@ -11,6 +11,11 @@ type AccessEvent = {
 };
 
 type Application = {
+  application_details?: { version?: number; submitted_by?: string; helper_name?: string; submitted_actor?: string; submitted_actor_role?: string; farmer_consent?: boolean };
+  pickup_motorcycle_accessible?: boolean;
+  pickup_tricycle_accessible?: boolean;
+  pickup_roadside_handoff_required?: boolean;
+  pickup_driver_directions?: string;
   id: string;
   application_code: string;
   applicant_name: string;
@@ -68,12 +73,14 @@ export default function AgrimarketFarmerAdminPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [verified, setVerified] = useState<Record<string, boolean>>({});
   const [accessReasons, setAccessReasons] = useState<Record<string, string>>({});
   const [credential, setCredential] = useState<Record<string, OneTimeCredential>>({});
 
   async function loadApplications() {
     setLoading(true);
     setError("");
+    try {
     const response = await fetch("/api/agrimarket/admin/farmer-applications", { cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false) {
@@ -82,26 +89,28 @@ export default function AgrimarketFarmerAdminPage() {
       setApplications(Array.isArray(payload?.applications) ? payload.applications : []);
       setStaffRole(String(payload?.staff_role || ""));
     }
-    setLoading(false);
+    } catch { setError("Applications are unavailable. Please refresh to try again."); }
+    finally { setLoading(false); }
   }
 
   useEffect(() => { void loadApplications(); }, []);
 
   const visible = useMemo(() => {
     if (filter === "all") return applications;
-    if (filter === "open") return applications.filter((row) => ["submitted", "under_review"].includes(row.status));
+    if (filter === "open") return applications.filter((row) => ["submitted", "under_review", "correction_requested"].includes(row.status));
     return applications.filter((row) => row.status === filter);
   }, [applications, filter]);
 
-  async function review(app: Application, decision: "under_review" | "approve" | "reject") {
-    if (staffRole !== "admin") return;
+  async function review(app: Application, decision: "under_review" | "request_correction" | "approve" | "reject") {
+    if (staffRole !== "admin" && !(staffRole === "dispatcher" && decision === "under_review")) return;
     setBusy(`review:${app.id}`);
     setError("");
     setMessage("");
+    try {
     const response = await fetch("/api/agrimarket/admin/farmer-applications", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ application_id: app.id, decision, review_note: notes[app.id] || null }),
+      body: JSON.stringify({ application_id: app.id, decision, review_note: notes[app.id] || null, verification_confirmed: verified[app.id] === true }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false) {
@@ -116,10 +125,11 @@ export default function AgrimarketFarmerAdminPage() {
           },
         }));
       }
-      setMessage(decision === "approve" ? "Farmer approved. Copy the one-time PIN before leaving this page." : "Farmer application updated.");
+      setMessage(decision === "approve" ? "Farmer approved for setup. Copy the one-time PIN. Open Readiness after products and pickup have been checked." : "Farmer application updated.");
       await loadApplications();
     }
-    setBusy("");
+    } catch { setError("Connection interrupted. Refresh the application status before repeating this action."); }
+    finally { setBusy(""); }
   }
 
   async function manageAccess(app: Application, action: AccessAction) {
@@ -192,6 +202,8 @@ export default function AgrimarketFarmerAdminPage() {
             <p className="mt-2 text-sm text-slate-600">Review applications, protect private pickup information, and manage approved farmer access.</p>
           </div>
           <div className="flex gap-2">
+            <Link href="/agrimarket/join?assist=staff" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Help a farmer apply</Link>
+            {staffRole === "admin" && <Link href="/admin/agrimarket/verified-farmers" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Readiness</Link>}
             <Link href="/admin/control-center" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Control Center</Link>
             <button onClick={() => loadApplications()} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Refresh</button>
           </div>
@@ -199,7 +211,7 @@ export default function AgrimarketFarmerAdminPage() {
 
         <div className="mt-5 rounded-2xl border bg-white p-4">
           <div className="flex flex-wrap items-center gap-2">
-            {["open", "submitted", "under_review", "approved", "rejected", "all"].map((value) => (
+            {["open", "submitted", "under_review", "correction_requested", "approved", "rejected", "all"].map((value) => (
               <button key={value} onClick={() => setFilter(value)} className={`rounded-full px-4 py-2 text-sm font-semibold ${filter === value ? "bg-slate-900 text-white" : "bg-slate-100"}`}>{titleCase(value)}</button>
             ))}
             <span className="ml-auto text-xs text-slate-500">Signed in as: {staffRole || "checking"}</span>
@@ -246,6 +258,10 @@ export default function AgrimarketFarmerAdminPage() {
                     <p className="mt-1 text-xs text-blue-900">{app.private_pickup_lat.toFixed(6)}, {app.private_pickup_lng.toFixed(6)}</p>
                     <button onClick={() => openMap(app)} className="mt-3 rounded-xl bg-blue-800 px-4 py-2 text-sm font-semibold text-white">Open map</button>
                     <p className="mt-3 text-xs text-blue-900">Never expose this exact location to customers.</p>
+                    <p className="mt-2 text-xs">Motorcycle access: {app.pickup_motorcycle_accessible ? "Yes" : "Not confirmed"}. Tricycle access: {app.pickup_tricycle_accessible ? "Yes" : "Not confirmed"}. Roadside handoff: {app.pickup_roadside_handoff_required ? "Yes" : "No"}.</p>
+                    <p className="mt-2 text-sm">{app.pickup_driver_directions || "Pickup directions need to be supplied."}</p>
+                    <p className="mt-2 text-xs">Consent recorded: {app.application_details?.farmer_consent ? "Yes" : "No — request updated application"}. Submitted by: {app.application_details?.submitted_by || "Legacy application"}{app.application_details?.helper_name ? ` (${app.application_details.helper_name})` : ""}.</p>
+                    {app.application_details?.submitted_actor_role && <p className="mt-1 text-xs">Recorded actor: {app.application_details.submitted_actor} ({app.application_details.submitted_actor_role})</p>}
                   </div>
                 </div>
 
@@ -309,13 +325,17 @@ export default function AgrimarketFarmerAdminPage() {
                   </div>
                 ) : null}
 
-                {!final && staffRole === "admin" ? (
+                {!final && (staffRole === "admin" || staffRole === "dispatcher") ? (
                   <div className="mt-4 rounded-2xl border p-4">
-                    <label className="text-sm font-semibold">Review note<textarea value={notes[app.id] || ""} onChange={(e) => setNotes((current) => ({ ...current, [app.id]: e.target.value }))} className="mt-2 min-h-20 w-full rounded-xl border px-3 py-3" placeholder="Required for rejection; optional for approval." /></label>
+                    <label className="text-sm font-semibold">Review note<textarea value={notes[app.id] || ""} onChange={(e) => setNotes((current) => ({ ...current, [app.id]: e.target.value }))} className="mt-2 min-h-20 w-full rounded-xl border px-3 py-3" placeholder="Explain the verification, needed corrections, or rejection (at least 5 characters)." /></label>
+                    {staffRole === "admin" && <label className="mt-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={verified[app.id] === true} onChange={(event) => setVerified((current) => ({ ...current, [app.id]: event.target.checked }))} />I have verified the farmer's identity, consent, contact and pickup access. Approval opens setup only.</label>}
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button disabled={busy === `review:${app.id}`} onClick={() => review(app, "under_review")} className="rounded-xl border px-4 py-2 font-semibold">Mark under review</button>
-                      <button disabled={busy === `review:${app.id}`} onClick={() => review(app, "approve")} className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white">Approve farmer</button>
-                      <button disabled={busy === `review:${app.id}`} onClick={() => review(app, "reject")} className="rounded-xl bg-red-700 px-4 py-2 font-semibold text-white">Reject</button>
+                      {staffRole === "admin" && <>
+                        <button disabled={busy === `review:${app.id}`} onClick={() => review(app, "request_correction")} className="rounded-xl border px-4 py-2 font-semibold">Request correction</button>
+                        <button disabled={busy === `review:${app.id}` || !verified[app.id] || app.status === "correction_requested" || app.application_details?.version !== 2} onClick={() => review(app, "approve")} className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:bg-slate-400">Approve for setup</button>
+                        <button disabled={busy === `review:${app.id}`} onClick={() => review(app, "reject")} className="rounded-xl bg-red-700 px-4 py-2 font-semibold text-white">Reject</button>
+                      </>}
                     </div>
                   </div>
                 ) : null}

@@ -780,7 +780,7 @@ export default function VerifiedFarmersAdminPage() {
         <section className="mt-6 rounded-3xl border bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-xl font-bold">Staff-verified farmers</h2>
+              <h2 className="text-xl font-bold">Approved farmers and readiness</h2>
               <p className="mt-1 text-sm text-slate-600">New farmers stay in setup mode until they have an active product and an administrator approves order readiness.</p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{farmers.length} record(s)</span>
