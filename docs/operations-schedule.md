@@ -110,3 +110,12 @@ Conflicts block finalization; new overlapping duty/rest choices are rejected.
 Arrange replacement coverage, stagger attendance or cancel/recreate the event
 with different participants/time. Cancellation needs an Admin reason and is
 audited. Event changes return affected finalized months to Planning.
+
+## Team exclusions
+
+The confirmed driver identities for Marcus (Macuswilis B. Pugong) and Kong
+(Agerico L. Ligeralde) are excluded by stable ID from team membership; their
+coordinator accounts remain unchanged. The existing two JRide tester IDs and
+explicit test-driver names are excluded. Inactive, deactivated, terminated and
+pending records cannot enter a new distribution. Rebalancing replaces the
+mapping using only the filtered roster, so old excluded assignments are removed.

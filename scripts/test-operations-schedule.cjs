@@ -114,4 +114,12 @@ test('team roster excludes removed records, deduplicates LiveTrips and uses regi
  const result=rosterModule.exports.operationsDriverRoster(locations,ids,[{driver_id:'good',municipality:'lagawe'}]);
  assert.deepEqual(result,[{id:'good',name:'Unnamed driver',town:'Lagawe'}]);
 });
+test('coordinators and tester identities never enter repeated team distributions',()=>{
+ const excluded=['d41bf199-96c6-4022-8a3d-09ab9dbd270f','5b9c3a17-7c5e-45fd-93ab-1f8f2a6d3c72','00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'];
+ const ids=[...excluded.map(id=>({id,driver_name:'Renamed',roster_status:'active'})),{id:'new-tester',driver_name:'TESTER DRIVER NEW'},{id:'profile-tester',driver_name:'Other'},{id:'disabled',driver_status:'online',roster_status:'inactive'},{id:'real',driver_name:'Real Driver'}];
+ const roster=rosterModule.exports.operationsDriverRoster(ids.map(d=>({driver_id:d.id,home_town:'Lamut'})),ids,[{driver_id:'profile-tester',full_name:'Test Driver'}]);
+ assert.deepEqual(roster.map(d=>d.id),['real']);
+ let s=JSON.parse(JSON.stringify(base));s.teams=Object.fromEntries(ids.map(d=>[d.id,'coordinator-1']));
+ for(let i=0;i<2;i++){s=apply(s,admin,'balance_teams',{note:'Clean roster'},now,roster);assert.deepEqual(Object.keys(s.teams),['real']);}
+});
 console.log(`${count} Operations Schedule tests passed.`);
