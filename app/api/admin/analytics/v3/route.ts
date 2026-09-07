@@ -646,8 +646,7 @@ export async function GET(req: NextRequest) {
     const incPresence = incentivePresenceById[did] || {};
 
     drivers[did].driver_name = driverDisplayName(did, drivers[did].driver_name);
-    drivers[did].town =
-      s(identity.municipality) || drivers[did].town || null;
+    drivers[did].town = s(identity.municipality) || drivers[did].town || null;
     drivers[did].is_placeholder_driver = false;
     drivers[did].is_production_driver = true;
     drivers[did].duty_check_response_rate_pct = rel?.duty_check_response_rate_pct ?? null;
@@ -656,16 +655,13 @@ export async function GET(req: NextRequest) {
     drivers[did].unique_assigned_bookings = rel?.unique_assigned_bookings ?? null;
     drivers[did].repeated_assignment_pairs = rel?.repeated_assignment_pairs ?? null;
     drivers[did].has_repeat_assignments = rel?.has_repeat_assignments ?? null;
-    drivers[did].incentive_period_name =
-      inc?.incentive_period_name || activePeriod?.name || null;
+    drivers[did].incentive_period_name = inc?.incentive_period_name || activePeriod?.name || null;
     drivers[did].incentive_raw_online_hours = incPresence.raw_online_hours ?? 0;
     drivers[did].incentive_eligible_online_hours = incPresence.online_hours ?? 0;
-    drivers[did].incentive_security_excluded_hours =
-      incPresence.security_excluded_hours ?? 0;
+    drivers[did].incentive_security_excluded_hours = incPresence.security_excluded_hours ?? 0;
     drivers[did].incentive_unique_assigned_bookings = inc?.unique_assigned_bookings ?? null;
     drivers[did].incentive_completed_assignments = inc?.completed_assignments ?? null;
-    drivers[did].incentive_assignment_progression_pct =
-      inc?.assignment_progression_pct ?? null;
+    drivers[did].incentive_assignment_progression_pct = inc?.assignment_progression_pct ?? null;
     drivers[did].incentive_completion_pct = inc?.completion_pct ?? null;
     drivers[did].incentive_qualification = incentiveQualificationById[did] || {};
   }
@@ -824,9 +820,7 @@ export async function GET(req: NextRequest) {
     }));
 
     const driverBookings = bookings
-      .filter(
-        (row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter
-      )
+      .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
       .slice(0, 100);
 
     const driverKpis = {
@@ -848,8 +842,7 @@ export async function GET(req: NextRequest) {
         .reduce((sum: number, row: any) => sum + n(row?.company_cut), 0),
     };
 
-    const driverKpiDenominator =
-      driverKpis.completed_bookings + driverKpis.cancelled_bookings;
+    const driverKpiDenominator = driverKpis.completed_bookings + driverKpis.cancelled_bookings;
     const driverPerformance = {
       ...driverKpis,
       completion_rate:
@@ -867,18 +860,15 @@ export async function GET(req: NextRequest) {
     const takeoutRatingCount = takeoutRatings.length;
     const rideRatingAverage =
       rideRatingCount > 0
-        ? rideRatings.reduce((sum: number, row: any) => sum + n(row?.rating), 0) /
-          rideRatingCount
+        ? rideRatings.reduce((sum: number, row: any) => sum + n(row?.rating), 0) / rideRatingCount
         : null;
     const takeoutRatingAverage =
       takeoutRatingCount > 0
-        ? takeoutRatings.reduce(
-            (sum: number, row: any) => sum + n(row?.driver_rating),
-            0
-          ) / takeoutRatingCount
+        ? takeoutRatings.reduce((sum: number, row: any) => sum + n(row?.driver_rating), 0) /
+          takeoutRatingCount
         : null;
 
-    const overallPresence = {
+    const overallPresence: any = {
       raw_online_seconds: 0,
       net_online_seconds: 0,
       security_excluded_seconds: 0,
@@ -933,8 +923,7 @@ export async function GET(req: NextRequest) {
         wallet_balance: identity.wallet_balance ?? null,
         min_wallet_required: identity.min_wallet_required ?? null,
         wallet_locked: identity.wallet_locked ?? null,
-        is_toda_member:
-          identity.is_toda_member ?? identity.profile_is_toda_member ?? null,
+        is_toda_member: identity.is_toda_member ?? identity.profile_is_toda_member ?? null,
         toda_name: s(identity.toda_name || identity.toda_org) || null,
       },
       current_booking: currentActiveBooking,
@@ -989,19 +978,11 @@ export async function GET(req: NextRequest) {
     generated_at: new Date().toISOString(),
     summary,
     periods: {
-      daily: Object.values(daily).sort((a: any, b: any) =>
-        String(b.key).localeCompare(String(a.key))
-      ),
-      weekly: Object.values(weekly).sort((a: any, b: any) =>
-        String(b.key).localeCompare(String(a.key))
-      ),
-      monthly: Object.values(monthly).sort((a: any, b: any) =>
-        String(b.key).localeCompare(String(a.key))
-      ),
+      daily: Object.values(daily).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
+      weekly: Object.values(weekly).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
+      monthly: Object.values(monthly).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
     },
-    towns: Object.values(towns).sort((a: any, b: any) =>
-      String(a.key).localeCompare(String(b.key))
-    ),
+    towns: Object.values(towns).sort((a: any, b: any) => String(a.key).localeCompare(String(b.key))),
     drivers: Object.values(drivers).sort(
       (a: any, b: any) => Number(b.completed_trips || 0) - Number(a.completed_trips || 0)
     ),
