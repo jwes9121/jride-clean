@@ -1,7 +1,7 @@
 export const AREAS = ["Lagawe + Hingyon", "Banaue", "Lamut"] as const;
 export const LAUNCH_DATE = "2026-09-08";
 export const COORDINATOR_NAMES = ["Marcus", "Kong", "Bembol"];
-export const DUTIES = ["primary", "backup", "evening"] as const;
+export const DUTIES = ["primary", "evening"] as const;
 export type Duty = typeof DUTIES[number];
 export type Employee = { id: string; name: string; email: string; area: string };
 export type Slot = { owner: string | null; coverage: boolean };
@@ -198,7 +198,6 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
           if (action === "accept") check(slot.coverage && slot.owner && slot.owner !== target, "This coverage request is no longer available to you.");
           check(s.rests[day] !== target, "You cannot take a duty on your rest day.");
           check(!eventsOn(s, day).some(e => e.participants.includes(target) && eventBlocksDuty(e, duty)), "This duty overlaps your event assignment. Arrange coverage or ask Admin to adjust event participation.");
-          check(duty === "evening" || getSlot(s, day, duty === "primary" ? "backup" : "primary").owner !== target, "Core Primary and Backup must be different people. Admin can reassign the other slot first.");
           s.slots[key] = { owner: target, coverage: false };
         } else {
           check(slot.owner === me, "Only the duty owner can release or request coverage.");
