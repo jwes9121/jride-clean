@@ -21,7 +21,7 @@ function envEnabled(value: string | undefined): boolean {
 }
 
 export function agrimarketEnabled(): boolean {
-  return envEnabled(process.env.AGRIMARKET_ENABLED);
+  return true;
 }
 
 export function agrimarketOnboardingEnabled(): boolean {
