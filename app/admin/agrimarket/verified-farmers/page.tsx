@@ -9,6 +9,7 @@ type VerifiedFarmer = {
   application_code: string;
   onboarding_source: string;
   farmer_name: string;
+  vendor_name?: string | null;
   phone: string;
   phone_normalized: string;
   town: string;
@@ -795,6 +796,7 @@ export default function VerifiedFarmersAdminPage() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{farmer.application_code}</p>
                     <h3 className="mt-1 text-lg font-bold">{farmer.farmer_name}</h3>
+                    {farmer.vendor_name && <p className="mt-1 text-sm font-semibold">Vendor: {farmer.vendor_name}</p>}
                     <p className="text-sm text-slate-600">{farmer.phone} - {farmer.barangay ? `${farmer.barangay}, ` : ""}{farmer.town}</p>
                   </div>
                   <div className={`rounded-full px-3 py-1 text-xs font-bold ${farmer.accepting_orders ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>

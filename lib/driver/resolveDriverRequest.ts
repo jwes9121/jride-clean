@@ -1,10 +1,11 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createHash } from "crypto";
 
 export type DriverRequestIdentity = {
   ok: boolean;
   driverId?: string;
-  authMode?: "bearer" | "driver_secret";
+  authMode?: "bearer" | "driver_secret" | "device";
   error?: string;
   status?: number;
 };
@@ -83,6 +84,24 @@ export async function resolveDriverRequest(
   options: { requireBearer?: boolean } = {}
 ): Promise<DriverRequestIdentity> {
   const token = bearerToken(req);
+
+  if (token?.startsWith("agdev.")) {
+    // Device credentials are scoped to AgriMarket's requireBearer routes.
+    if (!options.requireBearer || !new URL(req.url).pathname.startsWith("/api/driver/agrimarket/")) return { ok: false, error: "NOT_AUTHED", status: 401 };
+    const parts = token.match(/^agdev\.([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\.([0-9a-f]{64})$/);
+    const deviceId = text(req.headers.get("x-jride-device-id"));
+    if (!parts || !/^[0-9a-f]{16}$/.test(deviceId)) return { ok: false, error: "NOT_AUTHED", status: 401 };
+    const hash = createHash("sha256").update(parts[2], "utf8").digest("hex");
+    const result = await supabaseAdmin().from("agrimarket_driver_devices")
+      .select("driver_id,device_id,status,created_at").eq("id", parts[1]).eq("token_sha256", hash).eq("device_id", deviceId).maybeSingle();
+    if (result.error) return { ok: false, error: "DRIVER_AUTH_UNAVAILABLE", status: 503 };
+    const row = result.data;
+    if (!row || row.device_id !== deviceId) return { ok: false, error: "NOT_AUTHED", status: 401 };
+    if (text(explicitDriverId) && text(explicitDriverId) !== row.driver_id) return { ok: false, error: "DRIVER_IDENTITY_MISMATCH", status: 403 };
+    if (row.status === "pending") return { ok: false, error: Date.parse(row.created_at) < Date.now() - 86400000 ? "DRIVER_DEVICE_EXPIRED" : "DRIVER_DEVICE_PENDING", status: 403 };
+    if (row.status !== "approved") return { ok: false, error: "DRIVER_DEVICE_REVOKED", status: 403 };
+    return { ok: true, driverId: row.driver_id, authMode: "device" };
+  }
 
   if (token) {
     const auth = anonClient();
