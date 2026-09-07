@@ -1,3 +1,4 @@
+import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import { NextRequest } from "next/server";
 import {
   agrimarketDisabledResponse,
@@ -151,6 +152,7 @@ export async function GET(req: NextRequest) {
         pickup_paused: order.pickup_issue?.status === "open",
         pickup_message: order.pickup_issue?.status === "open" ? "Pickup is paused while JRide resolves a load issue. No extra charge has been added." : null,
         fulfillment_mode: order.fulfillment_mode || "always_available",
+        scheduled_activity: order.fulfillment_mode === "scheduled_harvest" ? scheduledActivity(Array.isArray(itemsRes.data) ? itemsRes.data : []) : null,
         harvest_expected_start_at: order.harvest_expected_start_at,
         harvest_expected_end_at: order.harvest_expected_end_at,
         harvest_ready_at: order.harvest_ready_at,

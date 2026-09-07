@@ -14,6 +14,9 @@ export type AgrimarketOrderContext = {
   itemSnapshots: Array<{
     product_id: string;
     name: string;
+    product_group?: string;
+    species?: string | null;
+    meat_cut?: string | null;
     selling_unit: string;
     unit_price: number;
     quantity: number;
@@ -164,7 +167,7 @@ export async function loadAgrimarketOrderContext(
   const productsRes = await admin
     .from("agrimarket_products")
     .select(
-      "id,producer_id,name,selling_unit,unit_weight_kg,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
+      "id,producer_id,name,product_group,species,meat_cut,selling_unit,unit_weight_kg,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
     )
     .in("id", productIds);
 
@@ -266,6 +269,9 @@ export async function loadAgrimarketOrderContext(
     itemSnapshots.push({
       product_id: requested.product_id,
       name: String(product.name || ""),
+      product_group: product.product_group,
+      species: product.species || null,
+      meat_cut: product.meat_cut || null,
       selling_unit: String(product.selling_unit || ""),
       unit_price: unitPrice,
       quantity: requested.quantity,

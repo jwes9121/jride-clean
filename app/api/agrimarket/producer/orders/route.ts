@@ -1,3 +1,4 @@
+import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import { NextRequest } from "next/server";
 import {
   agrimarketFarmerPortalDisabledResponse,
@@ -177,6 +178,7 @@ export async function GET(req: NextRequest) {
         order_code: row.order_code,
         status: row.status,
         fulfillment_mode: row.fulfillment_mode || "always_available",
+        scheduled_activity: row.fulfillment_mode === "scheduled_harvest" ? scheduledActivity(orderItems) : null,
         harvest_expected_start_at: row.harvest_expected_start_at,
         harvest_expected_end_at: row.harvest_expected_end_at,
         harvest_ready_at: row.harvest_ready_at,

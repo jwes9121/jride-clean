@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
 
 type CargoConfirmation = {
   weight_basis: string;
@@ -96,6 +97,7 @@ type OrderStatus = {
   items: Array<{
     product_id?: string;
     product_name: string;
+    product_group?: string;
     selling_unit: string;
     unit_price: number;
     quantity: number;
@@ -149,9 +151,9 @@ function progressLabel(order: OrderStatus): string {
   if (order.status === "driver_assigned") return order.cash_collection_required && !order.customer_cash_collected_at ? "Driver assigned - prepare product cash" : "Driver assigned";
   if (order.status === "awaiting_customer_reapproval") return "Review revised delivery charges";
   if (["dispatching", "ready_for_dispatch"].includes(order.status)) return "Finding an eligible driver";
-  if (order.status === "awaiting_harvest") return order.pending_harvest_proposal ? "Farmer needs your decision" : "Harvest reservation confirmed";
+  if (order.status === "awaiting_harvest") return order.pending_harvest_proposal ? "Farmer needs your decision" : `${scheduledTitle(order.items)} reservation confirmed`;
   if (["producer_accepted", "preparing"].includes(order.status)) return "Farmer is preparing your order";
-  if (order.status === "awaiting_producer") return order.fulfillment_mode === "scheduled_harvest" ? "Waiting for farmer to confirm harvest reservation" : "Waiting for farmer confirmation";
+  if (order.status === "awaiting_producer") return order.fulfillment_mode === "scheduled_harvest" ? "Waiting for farmer to confirm your reservation" : "Waiting for farmer confirmation";
   return titleCase(order.status);
 }
 
@@ -195,7 +197,7 @@ export default function AgrimarketOrderTrackingPage() {
     setError("");
     const response = await fetch("/api/agrimarket/order-harvest-response", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ order_code: order.order_code, response: responseValue }) });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) setError(payload?.message || payload?.error || "Unable to respond to the harvest change.");
+    if (!response.ok || payload?.ok === false) setError(payload?.message || payload?.error || "Unable to respond to the schedule change.");
     else await loadOrder(order.order_code, true);
     setResponding(false);
   }
@@ -237,9 +239,9 @@ export default function AgrimarketOrderTrackingPage() {
         {order ? <section className="mt-5 rounded-3xl border bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-2xl font-bold">{progressLabel(order)}</h2><p className="mt-1 text-sm text-slate-500">Status: {titleCase(order.status)}</p>
 
-          {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>Scheduled Harvest reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}<br/>{order.harvest_ready_at ? `Farmer marked harvest ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer marks the harvest ready."}</div> : null}
+          {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}<br/>{order.harvest_ready_at ? `Farmer marked products ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer confirms the products are ready."}</div> : null}
 
-          {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New expected harvest: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}
+          {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New {scheduledActivity(order.items)} date: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}
 
           <div className="mt-4 rounded-2xl border bg-slate-50 p-4 text-sm">
             <h3 className="font-bold">Cargo weight and handling</h3>
