@@ -23,6 +23,13 @@ const ADMIN_LINK_GROUPS: AdminLinkGroup[] = [
     description: "Daily trip monitoring, assignment, service queues, and incident response.",
     links: [
       {
+        title: "Operations Schedule",
+        href: "/admin/operations-schedule",
+        description: "Plan coordinator duties, rest days, coverage and mixed-town driver teams.",
+        badge: "Staff",
+        keywords: "employee coordinator schedule rest day coverage bawi",
+      },
+      {
         title: "LiveTrips",
         href: "/admin/livetrips",
         description: "Live map, driver locator, active trips, and trip actions.",

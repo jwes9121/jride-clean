@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { signIn } from "next-auth/react";
@@ -11,9 +11,10 @@ export default function StaffLoginPage() {
     try {
       setBusy(true);
       setErrorText("");
-      await signIn("google", {
-        callbackUrl: "/admin/livetrips",
-      });
+      const requested = new URLSearchParams(window.location.search).get("callbackUrl");
+      const callbackUrl = requested?.startsWith("/admin/") && !requested.includes("\\")
+        ? requested : "/admin/livetrips";
+      await signIn("google", { callbackUrl });
     } catch (error) {
       console.error("[staff/login] Google sign-in failed", error);
       setErrorText("Google sign-in failed. Please try again.");
