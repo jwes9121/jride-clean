@@ -6,6 +6,8 @@ import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from 
 import styles from "../farmer.module.css";
 import { ProductPhoto } from "../../ProductPhoto";
 import { PhotoPicker } from "./PhotoPicker";
+import { ButcheringForm } from "./ButcheringForm";
+import { scheduledTitle } from "@/lib/agrimarket/schedule";
 
 type Product = {
   id: string;
@@ -100,6 +102,7 @@ export default function AgrimarketProducerProductsPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [showButchering, setShowButchering] = useState(false);
   const [newPhoto, setNewPhoto] = useState<File | null>(null);
   const [newPhotoPreview, setNewPhotoPreview] = useState("");
   const [preparingPhoto, setPreparingPhoto] = useState(false);
@@ -253,13 +256,15 @@ export default function AgrimarketProducerProductsPage() {
     <FarmerWorkspace section="products" onRefresh={() => void loadProducts()} loading={loading || Boolean(busy)}>
         <div className={styles.productHeading}>
           <div><span className={styles.eyebrow}>YOUR PRIVATE VENDOR SPACE</span><h1 className="break-words">{vendorName || "Your farm shelf."}</h1><p>Your products, photos and stock, together in one place.</p></div>
-          <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => setShowCreate(!showCreate)}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
+          <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
         </div>
         <form className="mb-6 rounded-2xl border border-[#dfe5d7] bg-white p-5" onSubmit={event => { event.preventDefault(); void productAction({ action: "set_vendor_name", vendor_name: vendorNameDraft }, "vendor-name"); }}>
           <label htmlFor="vendor-name" className="text-sm font-semibold">Vendor name</label>
           <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving…" : "Save vendor name"}</button></div>
           <p className="mt-2 text-xs text-slate-600">Hidden from passengers. Visible to you, Admin and the driver assigned to your order.</p>
         </form>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#edf1e3] p-5"><div><h2 className="font-semibold">Planning to butcher livestock?</h2><p className="mt-1 text-sm text-slate-600">Add a date, meat cuts and a price per kilo for each part.</p></div><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
+        {showButchering && <ButcheringForm accessCode={accessCode} headers={farmerHeaders(accessCode, pin, true)} onClose={() => setShowButchering(false)} onSaved={async count => { setShowButchering(false); setMessage(`Butchering schedule saved with ${count} meat ${count === 1 ? "cut" : "cuts"}.`); await loadProducts(); }} />}
         <div className={styles.stats} aria-label="Product overview"><div className={styles.stat}><strong>{products.length}</strong><span>Total products</span></div><div className={styles.stat}><strong>{activeCount}</strong><span>Active listings</span></div><div className={styles.stat}><strong>{products.length - activeCount}</strong><span>Paused listings</span></div></div>
         <FarmerFeedback error={showCreate ? undefined : error} message={message} />
 
@@ -281,12 +286,13 @@ export default function AgrimarketProducerProductsPage() {
             <label className="text-sm font-semibold">Category<select value={form.product_group} onChange={(e) => setForm({ ...form, product_group: e.target.value })} className="mt-1 w-full rounded-xl border bg-white px-3 py-3"><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Fresh Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other Agri</option></select></label>
             <label className="text-sm font-semibold">How is this product priced?<input required value={form.selling_unit} onChange={(e) => setForm({ ...form, selling_unit: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" placeholder="kg / head (standing price) / sack / tray / bundle" /><span className="mt-1 block text-xs font-normal text-slate-500">For livestock, use "head" when selling the whole animal at a standing price. Use "kg" only when pricing by measured weight.</span></label>
             <label className="text-sm font-semibold">Price per unit<input required type="number" min="0" step="0.01" value={form.unit_price} onChange={(e) => setForm({ ...form, unit_price: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
-            <label className="text-sm font-semibold">{form.availability_mode === "scheduled_harvest" ? "Expected reservable harvest quantity" : "Available quantity"}<input required type="number" min="0" step="0.01" value={form.available_quantity} onChange={(e) => setForm({ ...form, available_quantity: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
+            <label className="text-sm font-semibold">{form.availability_mode === "scheduled_harvest" ? "Expected reservable quantity" : "Available quantity"}<input required type="number" min="0" step="0.01" value={form.available_quantity} onChange={(e) => setForm({ ...form, available_quantity: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className={styles.fullWidth}>Description<textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Tell customers a little about your product." /></label>
             <label className="text-sm font-semibold">Species / type<input value={form.species} onChange={(e) => setForm({ ...form, species: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Breed<input value={form.breed} onChange={(e) => setForm({ ...form, breed: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
             <label className="text-sm font-semibold">Meat cut<input value={form.meat_cut} onChange={(e) => setForm({ ...form, meat_cut: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
           </div></fieldset>
+          {form.product_group === "livestock" && <p className="mb-5 rounded-xl bg-emerald-50 p-4 text-sm">Selling the meat by part? <button type="button" className="font-semibold underline" onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering and add cuts</button></p>}
           <fieldset className={styles.formSection}><legend><span>02</span> Pickup & delivery</legend><div className={styles.formGrid}>
             <label>Weight per selling unit (kg)<input type="number" min="0.001" step="0.001" value={form.unit_weight_kg} onChange={(e) => setForm({ ...form, unit_weight_kg: e.target.value })} placeholder="Optional" /><span className={styles.fieldHint}>Leave blank if unknown. Products sold by kg can use 1 kg per unit.</span></label>
             <label>Preparation time (minutes)<input type="number" min="0" max="1440" value={form.default_prep_minutes} onChange={(e) => setForm({ ...form, default_prep_minutes: e.target.value })} /></label>
@@ -296,12 +302,12 @@ export default function AgrimarketProducerProductsPage() {
             <label className={styles.checkLabel}><input type="checkbox" checked={form.handling_eligible} onChange={(e) => setForm({ ...form, handling_eligible: e.target.checked })} /> Driver loading help may be needed</label>
           </div></fieldset>
           <fieldset className={styles.formSection}><legend><span>03</span> Availability</legend><div className={styles.formGrid}>
-            <label className="text-sm font-semibold">Availability<select value={form.availability_mode} onChange={(e) => setForm({ ...form, availability_mode: e.target.value })} className="mt-1 w-full rounded-xl border bg-white px-3 py-3"><option value="always_available">Always Available</option><option value="scheduled_harvest">Scheduled Harvest</option></select></label>
+            <label className="text-sm font-semibold">Availability<select value={form.availability_mode} onChange={(e) => setForm({ ...form, availability_mode: e.target.value })} className="mt-1 w-full rounded-xl border bg-white px-3 py-3"><option value="always_available">Always Available</option><option value="scheduled_harvest">{scheduledTitle([form])}</option></select></label>
             {form.availability_mode === "scheduled_harvest" ? <>
               <label className="text-sm font-semibold">Reservation cutoff<input required type="datetime-local" value={form.harvest_order_cutoff_at} onChange={(e) => setForm({ ...form, harvest_order_cutoff_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
-              <label className="text-sm font-semibold">Expected harvest start<input required type="datetime-local" value={form.harvest_start_at} onChange={(e) => setForm({ ...form, harvest_start_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
-              <label className="text-sm font-semibold">Expected harvest end<input type="datetime-local" value={form.harvest_end_at} onChange={(e) => setForm({ ...form, harvest_end_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
-              <p className={`${styles.scheduleNote} ${styles.fullWidth}`}>Scheduled Harvest is an expected window, not a guarantee. No driver is assigned until you later mark the harvest ready. Shortfall or delay requires customer approval.</p>
+              <label className="text-sm font-semibold">Expected {form.product_group === "meat" ? "butchering" : "harvest"} start<input required type="datetime-local" value={form.harvest_start_at} onChange={(e) => setForm({ ...form, harvest_start_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
+              <label className="text-sm font-semibold">Expected {form.product_group === "meat" ? "butchering" : "harvest"} end<input type="datetime-local" value={form.harvest_end_at} onChange={(e) => setForm({ ...form, harvest_end_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
+              <p className={`${styles.scheduleNote} ${styles.fullWidth}`}>The date is an estimate. No driver is assigned until you confirm the products are ready. Shortfall or delay requires customer approval.</p>
             </> : null}
           </div></fieldset>
             <div className={styles.formActions}><button type="button" disabled={!!busy || preparingPhoto} className={styles.quietButton} onClick={() => { setShowCreate(false); setNewPhoto(null); }}>Cancel</button><button disabled={!!busy || preparingPhoto} className={styles.primaryButton}>{busy === "create" ? "Saving…" : "Add product"}<ArrowUpRight size={17} /></button></div>
@@ -327,7 +333,7 @@ export default function AgrimarketProducerProductsPage() {
                 <div className={styles.productTop}><span className={styles.productGlyph} data-group={product.product_group}><ProductIcon size={29} strokeWidth={1.4} /></span><div className={styles.productName}><h2>{product.name}</h2><p>{groupNames[product.product_group] || "Farm products"} · {product.unit_weight_kg == null ? "Weight not set" : `${product.unit_weight_kg} kg / ${product.selling_unit}`}</p></div></div>
                 <div className={styles.productPriceRow}><strong>{money(product.unit_price)}<small>/ {product.selling_unit}</small></strong><span className={`${styles.badge} ${product.is_active ? styles.activeBadge : ""}`}>{!product.is_active && <Pause size={10} />}{product.is_active ? "Active" : "Paused"}</span></div>
                 <div className={styles.stockStats}><div><strong>{product.remaining_quantity}</strong><span>Available to reserve</span></div><div><strong>{product.reserved_quantity}</strong><span>Reserved</span></div><div><strong>{product.sold_quantity}</strong><span>Sold</span></div></div>
-                {product.availability_mode === "scheduled_harvest" && <div className={styles.scheduleNote}><strong>Scheduled harvest</strong><br />Order cutoff: {formatDate(product.harvest_order_cutoff_at)}<br />Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}</div>}
+                {product.availability_mode === "scheduled_harvest" && <div className={styles.scheduleNote}><strong>{scheduledTitle([product])}</strong><br />Order cutoff: {formatDate(product.harvest_order_cutoff_at)}<br />Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}</div>}
               </div>
               <details className={styles.editDetails}>
                 <summary>Edit stock & weight<span className="sr-only"> for {product.name}</span></summary>

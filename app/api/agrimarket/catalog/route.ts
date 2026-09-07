@@ -1,3 +1,4 @@
+import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
 import { coordinate, hasValidPin } from "@/lib/agrimarket/coordinates";
@@ -339,6 +340,7 @@ export async function GET(req: NextRequest) {
           unit_price: numberValue(row.unit_price),
           remaining_quantity: numberValue(row.remaining_quantity),
           availability_mode: row.availability_mode,
+          scheduled_activity: scheduledHarvest ? scheduledActivity([row]) : null,
           harvest_start_at: row.harvest_start_at,
           harvest_end_at: row.harvest_end_at,
           harvest_order_cutoff_at: row.harvest_order_cutoff_at,
@@ -347,7 +349,7 @@ export async function GET(req: NextRequest) {
           handling_eligible: row.handling_eligible,
           photo_urls: Array.isArray(row.photo_urls) ? row.photo_urls : [],
           can_order_now: reservationOpen,
-          order_action: scheduledHarvest ? "Reserve harvest" : "Add to cart",
+          order_action: scheduledHarvest ? "Reserve" : "Add to cart",
           order_blocker: reservationOpen ? null : "AGRIMARKET_HARVEST_ORDER_CUTOFF_PASSED",
         };
       })

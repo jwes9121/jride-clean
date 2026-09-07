@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductPhoto } from "./ProductPhoto";
+import { scheduledTitle } from "@/lib/agrimarket/schedule";
 
 type AddressRow = {
   id: string;
@@ -303,7 +304,7 @@ export default function AgrimarketPage() {
     setQuote(null);
     setPlaced(null);
     if (!product.can_order_now) {
-      setCartMessage("This harvest is no longer accepting reservations.");
+      setCartMessage("Reservations for this schedule are closed.");
       return;
     }
     if (cart.length) {
@@ -313,11 +314,11 @@ export default function AgrimarketPage() {
         return;
       }
       if (first.availability_mode !== product.availability_mode) {
-        setCartMessage("Always Available and Scheduled Harvest products cannot be combined in one order.");
+        setCartMessage("Always available products and scheduled reservations cannot be combined in one order.");
         return;
       }
       if (product.availability_mode === "scheduled_harvest" && first.harvest_window_key !== product.harvest_window_key) {
-        setCartMessage("Scheduled Harvest products can share one cart only when they have the same harvest window.");
+        setCartMessage("Scheduled products can share one cart only when they have the same preparation window.");
         return;
       }
     }
@@ -471,7 +472,7 @@ export default function AgrimarketPage() {
 
         {error ? <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
         {cartMessage ? <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{cartMessage}</div> : null}
-        {placed ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-emerald-950"><p className="font-bold">Order placed: {placed.order_code}</p><p className="mt-1 text-sm">{placed.fulfillment_mode === "scheduled_harvest" ? "Waiting for the farmer to confirm your harvest reservation." : "Waiting for farmer confirmation."}</p><Link href={`/agrimarket/order?code=${encodeURIComponent(placed.order_code)}`} className="mt-3 inline-flex rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white">Track this order</Link></div> : null}
+        {placed ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-emerald-950"><p className="font-bold">Order placed: {placed.order_code}</p><p className="mt-1 text-sm">{placed.fulfillment_mode === "scheduled_harvest" ? "Waiting for the farmer to confirm your reservation." : "Waiting for farmer confirmation."}</p><Link href={`/agrimarket/order?code=${encodeURIComponent(placed.order_code)}`} className="mt-3 inline-flex rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white">Track this order</Link></div> : null}
 
         {crossTownPending ? (
           <section className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5 text-amber-950">
@@ -536,7 +537,7 @@ export default function AgrimarketPage() {
                   <div><p className="text-xs uppercase text-slate-500">Cargo</p><p className="font-bold">{titleCase(selectedProduct.cargo_class)}</p></div>
                 </div>
                 {selectedProduct.is_cross_town ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">Cross-town listing. JRide will deliver to your selected pin; customer pickup or farmer meet-up is not available.</p> : null}
-                {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Scheduled Harvest</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)}{selectedProduct.harvest_end_at ? ` to ${formatDate(selectedProduct.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
+                {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([selectedProduct])}</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)}{selectedProduct.harvest_end_at ? ` to ${formatDate(selectedProduct.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
                 {selectedProduct.vehicle_requirement === "tricycle" ? <p className="mt-3 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
                 <button disabled={!selectedProduct.can_order_now} onClick={() => addToCart(selectedProduct)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:bg-slate-300">{selectedProduct.can_order_now ? (selectedProduct.availability_mode === "scheduled_harvest" ? "Reserve in cart" : "Add to cart") : "Reservation closed"}</button>
 
@@ -576,7 +577,7 @@ export default function AgrimarketPage() {
                   <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} reservable</span></div>
                   {comparisonHint(product) ? <p className="mt-2 text-xs font-semibold text-emerald-700">{comparisonHint(product)}</p> : null}
                   {product.is_cross_town ? <p className="mt-2 text-xs font-semibold text-amber-800">Cross-town option</p> : null}
-                  {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Scheduled Harvest</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
+                  {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([product])}</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
                   {product.vehicle_requirement === "tricycle" ? <p className="mt-2 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => openProduct(product)} className="rounded-xl border border-emerald-700 bg-white px-3 py-3 font-bold text-emerald-800">View product</button>
@@ -590,9 +591,9 @@ export default function AgrimarketPage() {
           <aside className="h-fit rounded-3xl border bg-white p-5 shadow-sm xl:sticky xl:top-4">
             <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Cart</h2>{cart.length ? <button onClick={clearCart} className="text-sm font-semibold text-red-700">Clear</button> : null}</div>
             {!cart.length ? <p className="mt-4 text-sm text-slate-500">Add products from one farmer. Multiple products from that same farmer share one delivery charge.</p> : <>
-              <p className="mt-2 text-xs text-slate-500">{cartMode === "scheduled_harvest" ? "Scheduled Harvest cart" : "Always Available cart"} - one farmer only</p>
+              <p className="mt-2 text-xs text-slate-500">{cartMode === "scheduled_harvest" ? `${scheduledTitle(cart.map(item => item.product))} cart` : "Always Available cart"} - one farmer only</p>
               {cartCrossTownProduct ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Cross-town order</strong><br/>{cartCrossTownProduct.producer_town} to {deliveryTown}: {exactRoadDistance(cartCrossTownProduct.road_distance_km)} by road.<br/>JRide delivery to this selected pin only; no customer pickup or farmer meet-up.</div> : null}
-              {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">Expected harvest: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
+              {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
               <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{line.product.producer_alias} - {line.product.producer_town}</p></div><strong>{money(line.product.unit_price * line.quantity)}</strong></div><div className="mt-2 flex items-center gap-2"><input type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
               <div className="mt-4 flex justify-between border-t pt-3"><span>Products</span><strong>{money(cartSubtotal)}</strong></div>
               <label className="mt-4 block text-sm font-semibold">Preferred eligible vehicle<select value={requiresTricycle ? "tricycle" : preferredVehicle} disabled={requiresTricycle} onChange={(e) => { setPreferredVehicle(e.target.value as "motorcycle" | "tricycle"); setQuote(null); }} className="mt-2 w-full rounded-xl border bg-white px-3 py-3"><option value="motorcycle">Motorcycle</option><option value="tricycle">Tricycle</option></select></label>
@@ -622,9 +623,9 @@ export default function AgrimarketPage() {
                 {quote.special_handling_fee?.tiers ? <p className="mt-2 text-xs text-slate-600">Special Handling tiers: {Object.entries(quote.special_handling_fee.tiers).map(([tier, fee]) => `${titleCase(tier)} = ${money(fee)}`).join(" / ")}.</p> : null}
                 <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">If the farmer confirmation increases your total or changes the required vehicle to Tricycle, JRide pauses the order and asks you to accept the revised charges before dispatch.</p>
                 <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Driver Approach Fee: first {quote.driver_approach_fee?.first_km_free ?? 2} km free, then {money(quote.driver_approach_fee?.fee_per_started_km ?? 0)} per started km, capped at {money(quote.driver_approach_fee?.normal_max_fee ?? 0)}. Only drivers within {quote.driver_approach_fee?.normal_assignment_max_km ?? 10} km on the applicable approach route are eligible for normal assignment.</p>
-                {quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves expected harvest quantity. No driver is assigned until the farmer marks the harvest ready. Delay or shortfall needs your approval.</p> : null}
+                {quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves the expected quantity. No driver is assigned until the farmer confirms the products are ready. Any delay or shortfall needs your approval.</p> : null}
                 {quote.cash_collection?.required ? <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Product subtotal is above PHP 500. The assigned driver will collect {money(quote.cash_collection.amount)} product cash from you before going to the farmer.</p> : null}
-                <button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve harvest order" : "Place order"}</button>
+                <button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve scheduled order" : "Place order"}</button>
               </div>
             ) : null}
           </aside>

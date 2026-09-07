@@ -1,3 +1,4 @@
+import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import { NextRequest } from "next/server";
 import {
   AgrimarketRequestError,
@@ -150,6 +151,7 @@ export async function POST(req: NextRequest) {
       items: context.itemSnapshots,
       fulfillment: {
         mode: context.fulfillmentMode,
+        scheduled_activity: context.fulfillmentMode === "scheduled_harvest" ? scheduledActivity(context.itemSnapshots) : null,
         is_scheduled_harvest: context.fulfillmentMode === "scheduled_harvest",
         expected_harvest_start_at: context.harvestExpectedStartAt,
         expected_harvest_end_at: context.harvestExpectedEndAt,
