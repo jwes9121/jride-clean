@@ -17,7 +17,7 @@ function guide(error: string, code: string, status = 422) { return json({ error,
 function approved() { return (process.env.JRIDE_DISPATCHER_EMAILS || process.env.DISPATCHER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean); }
 const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
 const DUTY_ACTIONS = new Set(["claim", "accept"]);
-const DUTIES = new Set<Duty>(["primary", "backup", "evening"]);
+const DUTIES = new Set<Duty>(["primary", "evening"]);
 function validReason(value: unknown) { return typeof value === "string" && value.trim().length >= 8; }
 function ownerName(state: Schedule, owner: string | null) {
   if (!owner) return "another employee";
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       if (DUTY_ACTIONS.has(action)) {
         const day = String(input.day || "");
         const duty = String(input.duty || "") as Duty;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid duty slot.", "INVALID_SLOT", 400);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid Primary or Evening duty slot.", "INVALID_SLOT", 400);
         const slot = getSlot(state, day, duty);
         if (action === "claim" && slot.owner) {
           return guide(`${DUTY_LABELS[duty]} on ${day} is already taken by ${ownerName(state, slot.owner)}. Choose a slot still marked Available.`, "SLOT_TAKEN", 409);
@@ -96,15 +96,11 @@ export async function POST(request: NextRequest) {
         const week = weekStart(day);
         const count = weeklyDutyCount(state, employee.id, week, duty);
         const target = weeklyDutyTarget(state, employee.id, week, duty);
-        const hasReason = validReason(input.note);
-        if (count >= target + 1) {
-          return guide(`You are already above your normal ${DUTY_LABELS[duty]} target for this week. Another extra ${DUTY_LABELS[duty]} needs Admin review instead of another self-claim.`, "DUTY_HARD_LIMIT");
+        if (count >= target) {
+          return guide(`You already completed your ${DUTY_LABELS[duty]} target for this week (${count}/${target}). Choose the other duty type or your remaining rest day instead.`, "DUTY_TARGET_REACHED");
         }
-        if (count >= target && !hasReason) {
-          return guide(`You already reached your ${DUTY_LABELS[duty]} target for this week (${count}/${target}). Choose another duty type. If this extra duty is needed because of a swap or coverage arrangement, enter the reason first and retry.`, "DUTY_TARGET_REACHED");
-        }
-        if (createsPrimaryEveningWholeDay(state, employee.id, day, duty) && !hasReason) {
-          return guide("This would give you both Core Primary 10 AM-3 PM and Evening 3 PM-7 PM on the same day. That is not a normal part-time schedule. If this is required because of a swap or other valid exception, enter the reason first and retry.", "WHOLE_DAY_REASON_REQUIRED");
+        if (createsPrimaryEveningWholeDay(state, employee.id, day, duty) && !validReason(input.note)) {
+          return guide("This would give you both Core Primary 10 AM-3 PM and Evening 3 PM-7 PM on the same day. If this is required because of a swap or other valid exception, enter the reason first and retry.", "WHOLE_DAY_REASON_REQUIRED");
         }
       }
     }
