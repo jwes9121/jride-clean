@@ -62,9 +62,10 @@ reason; previous completion details remain in the audit trail.
 
 ## Driver teams
 
-The source is `drivers` joined to `zones`. This follows the existing dispatch
-eligibility rule: active or legacy blank `roster_status`; inactive and terminated
-drivers are excluded. Admin randomizes within towns, then balances each town and
+The source is the latest 500 location rows, deduplicated by driver ID, matching
+LiveTrips `/api/admin/driver_locations`. Master hidden statuses and explicit
+inactive/terminated roster statuses are excluded. Home town comes from
+`driver_profiles.municipality`, then `driver_locations.home_town`. Admin randomizes within towns, then balances each town and
 total team sizes. Assignments are saved, not reshuffled on every visit. Rebalance
 requires a reason and keeps previous mappings in history. Geographic physical
 and vendor responsibility stays unchanged.
@@ -97,3 +98,15 @@ service-only. The service role has no update/delete permission on audit events.
 - Browser checks: staff login redirect, schedule views, Admin task form,
   employee completion and note, mobile layout, no browser errors.
 - All changed source files are ASCII-only.
+
+## Events
+
+Admin can plan JRide events, training and information drives with audience,
+location, date, same-day time, participating coordinators and instructions.
+Reserve travel and preparation time too. Events appear in the shared calendar
+and Events tab. They do not count as rest days or automatic attendance.
+Existing duty/rest assignments remain owned when an event creates a conflict.
+Conflicts block finalization; new overlapping duty/rest choices are rejected.
+Arrange replacement coverage, stagger attendance or cancel/recreate the event
+with different participants/time. Cancellation needs an Admin reason and is
+audited. Event changes return affected finalized months to Planning.
