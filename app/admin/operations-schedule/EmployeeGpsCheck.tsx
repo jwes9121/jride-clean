@@ -23,6 +23,47 @@ function currentPosition(options: PositionOptions) {
   });
 }
 
+function watchForPosition(options: PositionOptions, waitMs: number) {
+  return new Promise<GeolocationPosition>((resolve, reject) => {
+    let settled = false;
+    let watchId = -1;
+    const timer = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      if (watchId >= 0) navigator.geolocation.clearWatch(watchId);
+      reject(new Error("LOCATION_WATCH_TIMEOUT"));
+    }, waitMs);
+
+    watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        navigator.geolocation.clearWatch(watchId);
+        resolve(position);
+      },
+      (error) => {
+        if (settled || error.code !== 1) return;
+        settled = true;
+        window.clearTimeout(timer);
+        navigator.geolocation.clearWatch(watchId);
+        reject(error);
+      },
+      options
+    );
+  });
+}
+
+async function geolocationPermission() {
+  try {
+    if (!("permissions" in navigator)) return "unknown";
+    const status = await navigator.permissions.query({ name: "geolocation" });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
 export default function EmployeeGpsCheck({ children }: { children: ReactNode }) {
   const [self, setSelf] = useState<SelfStatus | null>(null);
   const [state, setState] = useState<CaptureState>("checking");
@@ -42,7 +83,7 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
       if (body.captureAllowed) {
         setState((current) => current === "checking" ? "ready" : current);
         setDetail((current) => current === "Checking location requirement..."
-          ? "Allow a current GPS reading to continue to the Operations Schedule."
+          ? "Allow a current phone location to continue to the Operations Schedule."
           : current);
       } else {
         setState("ready");
@@ -65,7 +106,7 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
       }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "GPS reading could not be saved.");
+    if (!response.ok) throw new Error(result.error || "Location reading could not be saved.");
     setState("saved");
     setDetail(`Location check complete. Reported accuracy: +/- ${Math.round(position.coords.accuracy)} meters.`);
   }, []);
@@ -74,41 +115,54 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
     if (!self?.captureAllowed) return;
     if (!("geolocation" in navigator)) {
       setState("error");
-      setDetail("GPS is not available in this browser or device.");
+      setDetail("Location is not available in this browser or device.");
       return;
     }
 
     setState("capturing");
-    setDetail("Getting a high-accuracy GPS reading...");
 
+    const permission = await geolocationPermission();
+    if (permission === "denied") {
+      setState("error");
+      setDetail("Location access is blocked for this site. Allow location access in the browser, then retry.");
+      return;
+    }
+
+    setDetail("Getting the phone's latest location...");
     try {
-      const position = await currentPosition({ enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
-      await savePosition(position);
+      const recent = await currentPosition({
+        enableHighAccuracy: false,
+        timeout: 10000,
+        maximumAge: 5 * 60 * 1000,
+      });
+      await savePosition(recent);
       return;
     } catch (firstError) {
       const geoError = firstError as GeolocationPositionError;
       if (geoError?.code === 1) {
         setState("error");
-        setDetail("Location permission was not granted. Enable location access for this site and retry.");
+        setDetail("Location permission was not granted. Allow location access for this site and retry.");
         return;
       }
     }
 
-    setDetail("High-accuracy GPS is taking longer. Trying a standard phone location...");
+    setDetail("No recent location was available. Waiting for a fresh GPS/network location...");
     try {
-      const fallback = await currentPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: 0 });
-      await savePosition(fallback);
+      const fresh = await watchForPosition(
+        { enableHighAccuracy: true, maximumAge: 0 },
+        45000
+      );
+      await savePosition(fresh);
+      return;
     } catch (secondError) {
       const geoError = secondError as GeolocationPositionError;
       setState("error");
       if (geoError?.code === 1) {
-        setDetail("Location permission was not granted. Enable location access for this site and retry.");
+        setDetail("Location permission was not granted. Allow location access for this site and retry.");
       } else if (isInAppBrowser()) {
-        setDetail("Messenger could not get a reliable phone location. Open this JRide page in your phone browser, then allow GPS there.");
-      } else if (geoError?.code === 2) {
-        setDetail("The phone could not determine its location. Turn on Location/GPS and retry.");
+        setDetail("Messenger could not obtain the phone location. Open this JRide page in your phone browser, then allow location there.");
       } else {
-        setDetail("The GPS request timed out. Keep Location/GPS on and retry.");
+        setDetail("Chrome has not received a location from Android yet. Keep phone Location on, make sure Google Location Accuracy is enabled, then retry.");
       }
     }
   }, [savePosition, self]);
@@ -144,14 +198,14 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">JRide Staff Operations</div>
           <h1 className="mt-3 text-2xl font-bold">Location check required</h1>
           <p className="mt-4 text-sm leading-6 text-slate-300">
-            JRide may request GPS readings at any time while you are logged in to Staff Operations to confirm operational availability for driver and vendor assistance.
+            JRide may request location readings at any time while you are logged in to Staff Operations to confirm operational availability for driver and vendor assistance.
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-300">
-            A current GPS reading is required before you can open or grab schedules. Keep Location/GPS on, then continue below.
+            A current or recent phone location is required before you can open or grab schedules. The system records the phone-reported accuracy and timestamp for review.
           </p>
           {self?.employee && <p className="mt-4 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200"><strong>{self.employee.name}</strong><br />{self.employee.area}</p>}
           {inAppBrowser && <div className="mt-4 rounded-lg border border-amber-700 bg-amber-950 p-3 text-sm leading-5 text-amber-100">
-            This link is open inside Messenger. Messenger can block or delay GPS. You can try the GPS check below, or open JRide in your phone browser for a more reliable reading.
+            This link is open inside Messenger. Messenger can block or delay location access. You can try the location check below, or open JRide in your phone browser for a more reliable reading.
           </div>}
           <p className={`mt-4 rounded-lg p-3 text-sm ${state === "error" ? "bg-red-950 text-red-200" : "bg-slate-800 text-slate-200"}`} aria-live="polite">{detail}</p>
           <button
@@ -160,7 +214,7 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
             disabled={state === "capturing"}
             className="mt-5 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
           >
-            {retryStatus ? "Retry location check" : state === "capturing" ? "Getting GPS..." : "Allow GPS and continue"}
+            {retryStatus ? "Retry location check" : state === "capturing" ? "Getting location..." : "Allow location and continue"}
           </button>
           {inAppBrowser && <button
             type="button"
