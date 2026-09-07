@@ -738,7 +738,8 @@ function mergeDriverRows(prev: DriverRow[], incoming: DriverRow): DriverRow[] {
   if (idx >= 0) {
     next[idx] = { ...next[idx], ...incoming };
   } else {
-    next.unshift(incoming);
+    // Only the server-filtered roster can admit drivers. GPS carries no roster status.
+    return prev;
   }
 
   next.sort((a, b) => {
@@ -846,7 +847,7 @@ export default function LiveTripsClient() {
 
         const arr = parseDriversFromPayload(j);
 
-        if (Array.isArray(arr) && arr.length) {
+        if (arr.length > 0 || Array.isArray(j?.drivers)) {
           setDrivers(arr);
           setDriversDebug("loaded from " + url.split("?")[0] + " (" + arr.length + ")");
           return;
