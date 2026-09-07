@@ -5,7 +5,6 @@ export const WEEKLY_REST_TARGET = 2;
 
 export const DUTY_LABELS: Record<Duty, string> = {
   primary: "Core Primary",
-  backup: "Core Backup",
   evening: "Evening Monitor",
 };
 
@@ -51,9 +50,9 @@ export function weeklyRestCount(state: Schedule, employeeId: string, week: strin
 }
 
 export function createsPrimaryEveningWholeDay(state: Schedule, employeeId: string, day: string, duty: Duty) {
-  if (duty === "primary") return getSlot(state, day, "evening").owner === employeeId;
-  if (duty === "evening") return getSlot(state, day, "primary").owner === employeeId;
-  return false;
+  return duty === "primary"
+    ? getSlot(state, day, "evening").owner === employeeId
+    : getSlot(state, day, "primary").owner === employeeId;
 }
 
 export function weeklyDutySummary(state: Schedule, employeeId: string, week: string) {
