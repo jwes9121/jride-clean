@@ -1,0 +1,9 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),ts=require('typescript'),Module=require('node:module');
+const locations=[{driver_id:'live',updated_at:new Date().toISOString(),status:'online'},{driver_id:'removed',updated_at:new Date().toISOString(),status:'online'},{driver_id:'offline',status:'offline'}];
+let fail=false;
+const identities=[{id:'live',driver_status:'online',roster_status:'active'},{id:'removed',driver_status:'online',roster_status:'inactive'},{id:'offline',driver_status:'offline',roster_status:'active'}];
+const helper=new Module('helper',module);helper._compile(ts.transpileModule(fs.readFileSync('lib/live-driver-roster.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,'helper');
+const db={from(table){const result={data:table==='driver_locations'?locations:table==='drivers'?identities:[],error:fail&&table==='drivers'?{message:'test failure'}:null};const q={select(){return q},order(){return q},limit(){return q},in(){return q},then(resolve,reject){return Promise.resolve(result).then(resolve,reject)}};return q}};
+const m=new Module('route',module);m.require=(id)=>id==='@/lib/supabaseAdmin'?{supabaseAdmin:()=>db}:id==='@/lib/auth/requireStaff'?{requireStaff:async()=>({ok:true})}:id==='@/lib/live-driver-roster'?helper.exports:require(id);
+m._compile(ts.transpileModule(fs.readFileSync('app/api/admin/driver_locations/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,'route');
+(async()=>{let r=await m.exports.GET();assert.equal(r.status,200);let body=await r.json();assert.deepEqual(body.drivers.map(d=>d.driver_id).sort(),['live','offline']);fail=true;r=await m.exports.GET();assert.equal(r.status,503);console.log('PASS actual driver list handler filters inactive roster even with online status; preserves offline active driver; rejects failed eligibility lookup');})().catch(e=>{console.error(e);process.exitCode=1});

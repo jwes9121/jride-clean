@@ -1,3 +1,4 @@
+import { isRemovedDriver } from "@/lib/live-driver-roster";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
@@ -188,7 +189,7 @@ export async function GET(req: NextRequest) {
 
     const driverWalletsRes = await supabase
       .from("drivers")
-      .select("id, driver_name, driver_status, wallet_balance, min_wallet_required, wallet_locked");
+      .select("id, driver_name, driver_status, roster_status, wallet_balance, min_wallet_required, wallet_locked");
 
     if (driverProfilesRes.error) {
       return NextResponse.json(
@@ -295,9 +296,8 @@ const driverRows = dedupeLatestDriverRows(rawDriverRows);
     for (const row of walletRows) {
       const driverId = text(row?.id);
       if (!driverId) continue;
-      const driverStatus = text(row?.driver_status).toLowerCase();
       const walletLocked = Boolean(row?.wallet_locked);
-      if (driverStatus === "deactivated" || walletLocked) {
+      if (isRemovedDriver(row) || walletLocked) {
         deactivatedDriverIds.add(driverId);
         continue;
       }

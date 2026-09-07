@@ -1,3 +1,4 @@
+import { isRemovedDriver } from "@/lib/live-driver-roster";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireStaff } from "@/lib/auth/requireStaff";
@@ -191,7 +192,7 @@ export async function GET() {
       const [driversResult, profilesResult, gpsTownResult] = await Promise.all([
         supabase
           .from("drivers")
-          .select("id,driver_name,driver_status,zone_id,toda_name")
+          .select("id,driver_name,driver_status,roster_status,zone_id,toda_name")
           .in("id", driverIds),
         supabase
           .from("driver_profiles")
@@ -209,6 +210,7 @@ export async function GET() {
 
       if (driversError) {
         console.error("ADMIN_DRIVER_LOCATIONS_DRIVERS_JOIN_ERROR", driversError);
+        return NextResponse.json({ ok: false, error: "Driver eligibility could not be verified." }, { status: 503 });
       } else {
         const identities = Array.isArray(driversData) ? (driversData as DriverIdentityRowDb[]) : [];
         identityById = Object.fromEntries(
@@ -256,9 +258,7 @@ export async function GET() {
       const identity = driverId ? identityById[driverId] : null;
       const profile = driverId ? profileByDriverId[driverId] : null;
       const gpsTown = driverId ? gpsTownByDriverId[driverId] : null;
-      const masterStatus = String(identity?.driver_status ?? "").trim().toLowerCase();
-      const hiddenStatuses = new Set(["deactivated", "deleted", "removed", "removed_from_pilot", "inactive"]);
-      if (hiddenStatuses.has(masterStatus)) return null;
+      if (isRemovedDriver(identity)) return null;
 
       const liveLat = finiteNumber(row.lat);
       const liveLng = finiteNumber(row.lng);
