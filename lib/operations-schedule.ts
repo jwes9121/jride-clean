@@ -7,6 +7,7 @@ export type Employee = { id: string; name: string; email: string; area: string }
 export type Slot = { owner: string | null; coverage: boolean };
 export type Driver = { id: string; name: string; town: string };
 export type StaffTask = { id: string; title: string; instructions: string; employee: string; due: string; createdAt: string; createdBy: string; status: "open" | "done"; completedAt?: string; completedBy?: string; completionNote?: string };
+export type OperationsEvent = { id: string; title: string; category: string; audience: string; location: string; day: string; start: string; end: string; participants: string[]; status: "planned" | "cancelled"; createdBy: string; createdAt: string; note: string };
 export type Schedule = {
   employees: Employee[];
   slots: Record<string, Slot>;
@@ -14,6 +15,7 @@ export type Schedule = {
   months: Record<string, boolean>;
   teams: Record<string, string>;
   tasks?: Record<string, StaffTask>;
+  plannedEvents?: Record<string, OperationsEvent>;
 };
 export type Actor = { email: string; role: string; name: string };
 export const emptySchedule = (): Schedule => ({ employees: [], slots: {}, rests: {}, months: {}, teams: {} });
@@ -40,6 +42,19 @@ export function nextMonth(now: Date) { const d = new Date(localDate(now) + "T00:
 export function slotKey(day: string, duty: Duty) { return day + "/" + duty; }
 export function getSlot(s: Schedule, day: string, duty: Duty): Slot { return s.slots[slotKey(day, duty)] || { owner: null, coverage: false }; }
 export function restCount(s: Schedule, employee: string, week: string) { return Array.from({ length: 7 }, (_, i) => s.rests[addDays(week, i)] === employee).filter(Boolean).length; }
+export function eventsOn(s: Schedule, day: string) { return Object.values(s.plannedEvents || {}).filter(e => e.day === day && e.status === "planned"); }
+export function eventBlocksDuty(e: OperationsEvent, duty: Duty) { return e.start < (duty === "evening" ? "19:00" : "15:00") && e.end > (duty === "evening" ? "15:00" : "10:00"); }
+export function eventConflicts(s: Schedule, e: OperationsEvent) {
+  if (e.status !== "planned") return [];
+  const result: string[] = [];
+  for (const id of e.participants) {
+    const name = s.employees.find(p => p.id === id)?.name || id;
+    if (s.rests[e.day] === id) result.push(`${name}: move the rest day or change event participation.`);
+    for (const duty of DUTIES) if (eventBlocksDuty(e, duty) && getSlot(s, e.day, duty).owner === id) result.push(`${name}: arrange replacement for ${duty}; current owner remains responsible.`);
+    if (eventsOn(s, e.day).some(other => other.id !== e.id && other.participants.includes(id) && e.start < other.end && e.end > other.start)) result.push(`${name}: another event overlaps.`);
+  }
+  return result;
+}
 export function issues(s: Schedule, month: string) {
   const days = monthDays(month), result: string[] = [];
   if (s.employees.length !== 3) result.push("Set up all three coordinators.");
@@ -55,6 +70,7 @@ export function issues(s: Schedule, month: string) {
     if (!slot.owner) result.push(`${d}: ${k} is open.`);
     else if (slot.coverage) result.push(`${d}: ${k} needs coverage.`);
   }));
+  Object.values(s.plannedEvents || {}).filter(e => days.includes(e.day)).forEach(e => eventConflicts(s, e).forEach(c => result.push(`${e.day} / ${e.title}: ${c}`)));
   return result;
 }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -87,6 +103,29 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
       check(month >= localDate(now).slice(0, 7) && month <= nextMonth(new Date(now.getTime() + 335 * 86400000)), "Choose this month or a month in the next year.");
       if (action === "publish") check(issues(s, month).length === 0, "Complete all duties and exactly two weekly rest days before finalizing.");
       s.months[month] = action === "publish";
+    } else if (action === "create_event" || action === "cancel_event") {
+      check(admin, "Only Admin can plan or cancel events.");
+      s.plannedEvents = s.plannedEvents || {};
+      let day: string;
+      if (action === "create_event") {
+        day = text(input.day);
+        const start = text(input.start), end = text(input.end), title = text(input.title), location = text(input.location), category = text(input.category), audience = text(input.audience);
+        check(validDay(day) && day >= LAUNCH_DATE && Object.keys(s.months).some(m => monthDays(m).includes(day)), "Choose a date from an open planning month, starting September 8.");
+        check(/^([01]\d|2[0-3]):[0-5]\d$/.test(start) && /^([01]\d|2[0-3]):[0-5]\d$/.test(end) && start < end, "Enter a valid same-day start and end time.");
+        check(new Date(`${day}T${start}:00+08:00`).getTime() > now.getTime(), "Plan an event before its start time.");
+        check(title.length > 0 && title.length <= 120 && location.length > 0 && location.length <= 200 && /^[\x20-\x7e]+$/.test(title + location), "Enter an ASCII event title and location.");
+        check(["JRide event", "Training / learning", "Information drive"].includes(category) && ["Drivers", "Passengers", "Vendors", "Staff", "Mixed audience"].includes(audience), "Choose the event type and audience.");
+        check(Array.isArray(input.participants) && input.participants.length > 0 && input.participants.length <= 3 && new Set(input.participants).size === input.participants.length && input.participants.every(id => s.employees.some(e => e.id === id)), "Choose the participating coordinators.");
+        const id = now.getTime().toString(36) + "-" + random().toString(36).slice(2);
+        check(!s.plannedEvents[id], "Please retry saving the event.");
+        s.plannedEvents[id] = { id, day, start, end, title, location, category, audience, participants: input.participants as string[], status: "planned", createdBy: actor.email, createdAt: now.toISOString(), note };
+      } else {
+        const e = s.plannedEvents[text(input.eventId)];
+        check(e && e.status === "planned" && note, "Choose a planned event and give a cancellation reason.");
+        check(new Date(`${e.day}T${e.end}:00+08:00`).getTime() > now.getTime(), "Past events remain in history.");
+        day = e.day; s.plannedEvents[e.id] = { ...e, status: "cancelled" };
+      }
+      Object.keys(s.months).forEach(m => { if (monthDays(m).includes(day)) s.months[m] = false; });
     } else if (["create_task", "complete_task", "reopen_task"].includes(action)) {
       s.tasks = s.tasks || {};
       if (action === "create_task") {
@@ -144,6 +183,7 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
         check(day > localDate(now) || override, "Plan rest days in advance; ask Admin about today.");
         if (action === "unrest") { check(s.rests[day] === target, "This is not your rest day."); delete s.rests[day]; }
         else {
+          check(!eventsOn(s, day).some(e => e.participants.includes(target)), "You are assigned to an event that day. Ask Admin to adjust participation before choosing a rest day.");
           check(!s.rests[day] || s.rests[day] === target, "Another coordinator has this rest day.");
           check(s.rests[day] === target || restCount(s, target, weekStart(day)) < 2, "You already have two rest days that week.");
           check(!DUTIES.some(d => getSlot(s, day, d).owner === target), "Transfer or release your duties before choosing this rest day.");
@@ -157,6 +197,7 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
           if (action === "claim") check(!slot.owner, "Someone already owns this duty. Refresh the schedule.");
           if (action === "accept") check(slot.coverage && slot.owner && slot.owner !== target, "This coverage request is no longer available to you.");
           check(s.rests[day] !== target, "You cannot take a duty on your rest day.");
+          check(!eventsOn(s, day).some(e => e.participants.includes(target) && eventBlocksDuty(e, duty)), "This duty overlaps your event assignment. Arrange coverage or ask Admin to adjust event participation.");
           check(duty === "evening" || getSlot(s, day, duty === "primary" ? "backup" : "primary").owner !== target, "Core Primary and Backup must be different people. Admin can reassign the other slot first.");
           s.slots[key] = { owner: target, coverage: false };
         } else {

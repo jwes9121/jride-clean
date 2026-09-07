@@ -72,4 +72,46 @@ test('September can finalize with seven rest days each and no pre-launch assignm
   assert.deepEqual(issues(s,'2026-09'),[]);
   assert.equal(apply(s,admin,'publish',{month:'2026-09'}).months['2026-09'],true);
 });
+const eventDraft = { title: 'Vendor information drive', category: 'Information drive', audience: 'Vendors', location: 'Lagawe', day: '2026-10-01', start: '10:00', end: '12:00', participants: ['coordinator-1'], note: 'Include travel' };
+test('events are Admin-only and validate dates, times and participants', () => {
+  assert.throws(() => apply(base,actors[0],'create_event',eventDraft),/Only Admin/);
+  for (const patch of [{day:'2026-09-07'},{end:'09:00'},{participants:[]},{participants:['coordinator-1','coordinator-1']},{title:'Bad\u00e9'},{audience:'Other'}]) assert.throws(() => apply(base,admin,'create_event',{...eventDraft,...patch}));
+});
+test('event conflicts preserve owners and reset finalized planning', () => {
+  const before=JSON.parse(JSON.stringify(claimed));before.months['2026-10']=true;
+  const s=apply(before,admin,'create_event',eventDraft);
+  assert.deepEqual(s.slots,before.slots);assert.equal(s.months['2026-10'],false);
+  assert(issues(s,'2026-10').some(c=>c.includes('current owner remains responsible')));
+});
+test('event blocks new duties and rest but permits non-overlapping shifts', () => {
+  const s=apply(base,admin,'create_event',eventDraft);
+  assert.throws(()=>apply(s,actors[0],'claim',{day:eventDraft.day,duty:'primary'}),/overlaps/);
+  assert.throws(()=>apply(s,actors[0],'rest',{day:eventDraft.day}),/event/);
+  assert(apply(s,actors[0],'claim',{day:eventDraft.day,duty:'evening'}).slots['2026-10-01/evening'].owner);
+  const e=Object.values(s.plannedEvents)[0];
+  assert.equal(mod.exports.eventBlocksDuty({...e,start:'09:00',end:'10:00'},'primary'),false);
+  assert.equal(mod.exports.eventBlocksDuty({...e,start:'15:00',end:'16:00'},'primary'),false);
+});
+test('overlapping events and existing rest are visible conflicts; cancellation unblocks',()=>{
+  let s=apply(base,actors[0],'rest',{day:eventDraft.day});s=apply(s,admin,'create_event',eventDraft);
+  assert(issues(s,'2026-10').some(c=>c.includes('move the rest day')));
+  s=apply(s,admin,'create_event',{...eventDraft,title:'Training'},new Date(now.getTime()+1));
+  assert(issues(s,'2026-10').some(c=>c.includes('another event overlaps')));
+  for(const eventId of Object.keys(s.plannedEvents)) {
+    assert.throws(()=>apply(s,actors[0],'cancel_event',{eventId,note:'Reason'}),/Only Admin/);
+    assert.throws(()=>apply(s,admin,'cancel_event',{eventId}),/reason/);
+    s=apply(s,admin,'cancel_event',{eventId,note:'Reschedule'});
+  }
+  assert.equal(mod.exports.eventsOn(s,eventDraft.day).length,0);
+  assert.equal(Object.keys(s.plannedEvents).length,2);
+});
+const rosterFile=require('node:path').resolve('lib/operations-driver-roster.ts');
+const rosterModule=new Module(rosterFile,module);
+rosterModule._compile(ts.transpileModule(fs.readFileSync(rosterFile,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText,rosterFile);
+test('team roster excludes removed records, deduplicates LiveTrips and uses registered towns',()=>{
+ const locations=['good','terminated','inactive','removed','good'].map(driver_id=>({driver_id,home_town:'Lamut'}));
+ const ids=[{id:'good',driver_status:'offline'}, {id:'terminated',driver_status:'offline',roster_status:'terminated'}, {id:'inactive',roster_status:'inactive'}, {id:'removed',driver_status:'removed_from_pilot'}, {id:'not-in-livetrips',roster_status:'active'}];
+ const result=rosterModule.exports.operationsDriverRoster(locations,ids,[{driver_id:'good',municipality:'lagawe'}]);
+ assert.deepEqual(result,[{id:'good',name:'Unnamed driver',town:'Lagawe'}]);
+});
 console.log(`${count} Operations Schedule tests passed.`);
