@@ -4,21 +4,32 @@ Route: `/admin/operations-schedule`. Available from the Control Center directory
 
 ## First use
 
-Admin signs in with the existing approved Google account. In Coordinator setup,
-link the existing dispatcher accounts to these prefilled names and areas:
+Employees sign in with their existing approved Google accounts. On their first
+visit, each chooses their name from the remaining unclaimed names:
 
 - Marcus: Lagawe + Hingyon
 - Kong: Banaue
 - Bembol: Lamut
 
-The account picker reads the existing `JRIDE_DISPATCHER_EMAILS` / `DISPATCHER_EMAILS`
-configuration. This feature does not create new logins or change global staff
-authorization. Saved account identities cannot be silently replaced; Admin can
-correct display names with an audited reason.
+The existing `JRIDE_DISPATCHER_EMAILS` / `DISPATCHER_EMAILS` configuration remains
+the authorization source. Each name can be linked to only one account, and each
+account can select only once. The selector disappears after saving. Both API
+and UI block subsequent identity changes, including the retired Admin setup
+action. Admin retains the existing Admin identity and does not choose a name.
 
-Open next month's planning, then share the page URL. All three coordinators can
+September planning is open from September 8, 2026. Dates before launch are
+excluded from display, claims and finalization. September has 69 duty slots and
+requires seven rest days per employee. The first partial week (September 8-13)
+still receives two rest days each. The September 28-October 4 week shares its
+records across months. October through December can be opened in advance.
+
+Share the page URL. All three coordinators can
 see the same schedule and claim duties under their own identity. Admin can claim
 coverage personally or override a duty owner with a reason.
+
+Admin's Coordinator choices overview lists each saved login, selected rest
+dates, monthly duty counts, individual duty dates, coverage requests, and open
+task counts. Choices refresh with the shared schedule every 15 seconds.
 
 ## Schedule rules
 
@@ -75,7 +86,8 @@ service-only. The service role has no update/delete permission on audit events.
 
 ## Validation
 
-- `node scripts/test-operations-schedule.cjs`: 22 domain tests.
+- `node scripts/test-operations-schedule.cjs`: 25 domain tests, including launch
+  month finalization and permanent first-login identity selection.
 - TypeScript check and production build.
 - Real local API with isolated database double: auth/role denial, racing claims,
   retained coverage owner, handoff, rest conflict, Admin checks, audit and Origin.

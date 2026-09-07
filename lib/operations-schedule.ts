@@ -1,4 +1,6 @@
 export const AREAS = ["Lagawe + Hingyon", "Banaue", "Lamut"] as const;
+export const LAUNCH_DATE = "2026-09-08";
+export const COORDINATOR_NAMES = ["Marcus", "Kong", "Bembol"];
 export const DUTIES = ["primary", "backup", "evening"] as const;
 export type Duty = typeof DUTIES[number];
 export type Employee = { id: string; name: string; email: string; area: string };
@@ -15,6 +17,12 @@ export type Schedule = {
 };
 export type Actor = { email: string; role: string; name: string };
 export const emptySchedule = (): Schedule => ({ employees: [], slots: {}, rests: {}, months: {}, teams: {} });
+export function effectiveSchedule(s: Schedule): Schedule {
+  return { ...s, employees: AREAS.map((area, i) => {
+    const id = `coordinator-${i + 1}`;
+    return { id, area, name: COORDINATOR_NAMES[i], email: s.employees.find(e => e.id === id)?.email || "" };
+  }), months: { "2026-09": false, ...s.months } };
+}
 export function dateKey(d: Date) { return d.toISOString().slice(0, 10); }
 export function localDate(now: Date) { return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(now); }
 export function addDays(day: string, count: number) { const d = new Date(day + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + count); return dateKey(d); }
@@ -26,7 +34,7 @@ export function monthDays(month: string) {
   const end = addDays(weekStart(addDays(dateKey(next), -1)), 6);
   const days: string[] = [];
   for (let d = weekStart(first); d <= end; d = addDays(d, 1)) days.push(d);
-  return days;
+  return days.filter(d => d >= LAUNCH_DATE);
 }
 export function nextMonth(now: Date) { const d = new Date(localDate(now) + "T00:00:00Z"); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1); return dateKey(d).slice(0, 7); }
 export function slotKey(day: string, duty: Duty) { return day + "/" + duty; }
@@ -35,9 +43,13 @@ export function restCount(s: Schedule, employee: string, week: string) { return 
 export function issues(s: Schedule, month: string) {
   const days = monthDays(month), result: string[] = [];
   if (s.employees.length !== 3) result.push("Set up all three coordinators.");
-  days.filter(d => d === weekStart(d)).forEach(w => s.employees.forEach(e => {
+  Array.from(new Set(days.map(weekStart))).forEach(w => s.employees.forEach(e => {
     const n = restCount(s, e.id, w); if (n !== 2) result.push(`${e.name}: ${n}/2 rest days for week of ${w}.`);
   }));
+  if (month === "2026-09") s.employees.forEach(e => {
+    const count = Object.entries(s.rests).filter(([d, id]) => d >= LAUNCH_DATE && d <= "2026-09-30" && id === e.id).length;
+    if (count !== 7) result.push(`${e.name}: ${count}/7 September launch rest days.`);
+  });
   days.filter(d => d.startsWith(month)).forEach(d => DUTIES.forEach(k => {
     const slot = getSlot(s, d, k);
     if (!slot.owner) result.push(`${d}: ${k} is open.`);
@@ -53,24 +65,20 @@ function endTime(day: string, duty: Duty) { return new Date(`${day}T${duty === "
 
 // Pure rules run on the server; storage commits use a version check in one DB transaction.
 export function changeSchedule(current: Schedule, actor: Actor, input: Record<string, unknown>, now: Date, approved: string[], drivers: Driver[] = [], random = Math.random) {
-  const s: Schedule = JSON.parse(JSON.stringify(current));
+  const s: Schedule = effectiveSchedule(JSON.parse(JSON.stringify(current)));
   const action = text(input.action), admin = actor.role === "admin";
   const me = s.employees.find(e => e.email === actor.email)?.id || (admin ? "admin:" + actor.email : "");
   const note = text(input.note);
   check(note.length <= 500 && /^[\x20-\x7e\r\n]*$/.test(note), "Use ASCII text, up to 500 characters.");
-  if (action === "setup") {
-    check(admin, "Only Admin can set up coordinators.");
-    check(Array.isArray(input.employees) && input.employees.length === 3, "Provide three coordinators.");
-    const employees = input.employees.map((raw: any, i: number) => ({ id: `coordinator-${i + 1}`, name: text(raw.name), email: text(raw.email).toLowerCase(), area: AREAS[i] }));
-    check(new Set(employees.map(e => e.email)).size === 3, "Each coordinator needs a different account.");
-    employees.forEach(e => {
-      check(e.name.length > 0 && e.name.length <= 60 && /^[\x20-\x7e]+$/.test(e.name), "Enter an ASCII coordinator name, up to 60 characters.");
-      check(approved.includes(e.email), "Choose an existing approved dispatcher account.");
-    });
-    check(!s.employees.length || note, "Explain the coordinator setup change.");
-    // Preserve historic identities and ownership; roster replacement needs a separate migration.
-    check(!s.employees.length || employees.every((e, i) => e.email === s.employees[i].email), "Existing coordinator accounts cannot be replaced while history is retained.");
-    s.employees = employees;
+  if (action === "identify") {
+    check(actor.role === "dispatcher" && actor.email && approved.includes(actor.email), "Use your approved employee Google account.");
+    check(!s.employees.some(e => e.email === actor.email), "Your name is already saved and cannot be changed.");
+    const employee = s.employees.find(e => e.id === text(input.employee));
+    check(employee, "Choose Marcus, Kong or Bembol.");
+    check(!employee.email, "That name is already linked to another account. Contact Admin if this is incorrect.");
+    employee.email = actor.email;
+  } else if (action === "setup") {
+    throw new Error("Employees now choose their own name once at first login. Saved identities cannot be edited.");
   } else {
     check(me, "Admin must link your account to a coordinator first.");
     if (action === "open_month" || action === "publish") {
@@ -124,6 +132,7 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
     } else {
       const day = text(input.day), duty = text(input.duty) as Duty;
       check(validDay(day), "Choose a valid date.");
+      check(day >= LAUNCH_DATE, "Operations begin September 8, 2026.");
       check(Object.keys(s.months).some(m => monthDays(m).includes(day)), "Admin must open this planning month first.");
       check(day >= localDate(now), "Past schedules cannot be changed.");
       const target = admin && text(input.employee) ? text(input.employee) : me;

@@ -13,12 +13,12 @@ const now = new Date('2026-09-07T00:00:00Z');
 const apply = (s, actor, action, extras = {}, at = now, drivers = []) => changeSchedule(s, actor, { action, ...extras }, at, approved, drivers).state;
 let count = 0;
 function test(name, fn) { fn(); count++; console.log('PASS ' + name); }
-let base = apply(emptySchedule(), admin, 'setup', { employees: approved.map((email, i) => ({ email, name: `Coordinator ${i + 1}` })) });
+let base = mod.exports.effectiveSchedule(emptySchedule()); base.employees.forEach((e,i) => e.email=approved[i]);
 base = apply(base, admin, 'open_month', { month: '2026-10' });
 test('next month uses Philippine date at month boundary', () => assert.equal(nextMonth(new Date('2026-09-30T17:00:00Z')), '2026-11'));
 test('October includes complete boundary weeks', () => { assert.equal(monthDays('2026-10')[0], '2026-09-28'); assert.equal(monthDays('2026-10').at(-1), '2026-11-01'); });
 test('leap year and year rollover', () => { assert(monthDays('2028-02').includes('2028-02-29')); assert.equal(nextMonth(new Date('2026-12-15Z')), '2027-01'); });
-test('unauthorized coordinator cannot set up roster', () => assert.throws(() => apply(base, actors[0], 'setup', { employees: [] }), /Only Admin/));
+test('unauthorized coordinator cannot set up roster', () => assert.throws(() => apply(base, actors[0], 'setup', { employees: [] }), /cannot be edited/));
 test('unmapped account cannot claim', () => assert.throws(() => apply(base, { ...actors[0], email: 'other@example.test' }, 'claim', { day: '2026-10-01', duty: 'primary' }), /link your account/));
 test('employee cannot impersonate another coordinator', () => { const s = apply(base, actors[0], 'claim', { day: '2026-10-01', duty: 'primary', employee: 'coordinator-2' }); assert.equal(s.slots['2026-10-01/primary'].owner, 'coordinator-1'); });
 let claimed = apply(base, actors[0], 'claim', { day: '2026-10-01', duty: 'primary' });
@@ -38,4 +38,38 @@ test('audit records original and new ownership without mutating input', () => { 
 test('invalid dates and non-ASCII notes are rejected', () => { assert.throws(() => apply(base, actors[0], 'claim', { day: '2026-02-30', duty: 'primary' }), /valid date/); assert.throws(() => apply(base, actors[0], 'claim', { day: '2026-10-01', duty: 'primary', note: '\u00e9' }), /ASCII/); });
 test('Admin assigns tasks; only the assignee confirms completion with details', () => { const s = apply(base, admin, 'create_task', { title: 'Visit vendor', instructions: 'Meet the owner and finish the profile.', employee: 'coordinator-1', due: '2026-09-07' }); const taskId = Object.keys(s.tasks)[0]; assert.throws(() => apply(s, actors[1], 'complete_task', { taskId, note: 'Done' }), /assigned employee/); assert.throws(() => apply(s, actors[0], 'complete_task', { taskId }), /completion note/); const done = apply(s, actors[0], 'complete_task', { taskId, note: 'Met the owner; profile and opening hours completed.' }); assert.equal(done.tasks[taskId].status, 'done'); assert.equal(done.tasks[taskId].completedBy, actors[0].email); assert.throws(() => apply(done, actors[0], 'reopen_task', { taskId, note: 'More work' }), /Only Admin/); assert.equal(apply(done, admin, 'reopen_task', { taskId, note: 'Please verify menu photos.' }).tasks[taskId].status, 'open'); });
 test('Employees cannot assign tasks and past task deadlines are rejected', () => { const fields = { title: 'Profile', instructions: 'Finish profile', employee: 'coordinator-1', due: '2026-09-07' }; assert.throws(() => apply(base, actors[0], 'create_task', fields), /Only Admin/); assert.throws(() => apply(base, admin, 'create_task', { ...fields, due: '2026-09-06' }), /today or a future/); });
+
+test('one-time identity is permanent, unique, and tied to the staff account', () => {
+ let s=apply(emptySchedule(),actors[0],'identify',{employee:'coordinator-1'});
+ assert.equal(s.employees[0].name,'Marcus'); assert.equal(s.employees[0].email,actors[0].email);
+ assert.throws(()=>apply(s,actors[0],'identify',{employee:'coordinator-2'}),/already saved/);
+ assert.throws(()=>apply(s,actors[1],'identify',{employee:'coordinator-1'}),/already linked/);
+ assert.throws(()=>apply(s,admin,'setup',{}),/cannot be edited/);
+ assert.throws(()=>apply(s,{email:'fake@example.test',role:'dispatcher',name:'Fake'},'identify',{employee:'coordinator-2'}),/approved employee/);
+});
+test('September starts on the eighth and has 69 duty slots',()=>{
+ assert.equal(monthDays('2026-09')[0],'2026-09-08');
+ assert.equal(monthDays('2026-09').filter(d=>d.startsWith('2026-09')).length*3,69);
+ const s=mod.exports.effectiveSchedule(emptySchedule());
+ const problems=issues(s,'2026-09');
+ assert(problems.some(p=>p.includes('2026-09-07')));
+ assert(!problems.some(p=>p.includes('2026-08-31')));
+ assert.throws(()=>apply(s,admin,'rest',{day:'2026-09-07',employee:'coordinator-1'}),/September 8/);
+});
+
+test('September can finalize with seven rest days each and no pre-launch assignments', () => {
+  let s = mod.exports.effectiveSchedule(emptySchedule()); s.employees.forEach((e,i) => e.email=approved[i]);
+  const days=monthDays('2026-09');
+  for(const day of days) {
+    const w=weekStart(day), offset=Math.round((new Date(day)-new Date(w))/86400000);
+    const id=w==='2026-09-07' ? Math.floor((offset-1)/2)+1 : w==='2026-09-28' ? offset%3+1 : Math.floor(offset/2)+1;
+    if((w==='2026-09-07' || offset<6) && id<=3) s.rests[day]='coordinator-'+id;
+    if(day.startsWith('2026-09')) {
+      const available=s.employees.filter(e=>e.id!==s.rests[day]);
+      for(const [duty, i] of [['primary',0],['backup',1],['evening',0]]) s.slots[day+'/'+duty]={owner:available[i].id,coverage:false};
+    }
+  }
+  assert.deepEqual(issues(s,'2026-09'),[]);
+  assert.equal(apply(s,admin,'publish',{month:'2026-09'}).months['2026-09'],true);
+});
 console.log(`${count} Operations Schedule tests passed.`);

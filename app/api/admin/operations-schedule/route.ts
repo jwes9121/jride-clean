@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { changeSchedule, type Driver, type Schedule } from "@/lib/operations-schedule";
+import { changeSchedule, effectiveSchedule, emptySchedule, type Driver, type Schedule } from "@/lib/operations-schedule";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -22,14 +22,14 @@ export async function GET(request: NextRequest) {
     const db = supabaseAdmin();
     const { data, error } = await db.from("operations_schedule_state").select("version,state").eq("id", 1).single();
     if (error || !data) return json({ error: "Operations Schedule storage is not ready. Contact Admin." }, 503);
-    const state = data.state as Schedule;
-    if (access.staff.role !== "admin" && !state.employees.some(e => e.email === access.staff.email)) return json({ error: "Admin must link your approved account to a coordinator before you can view the schedule." }, 403);
+    const state = effectiveSchedule(data.state as Schedule);
+    if (access.staff.role !== "admin" && !state.employees.some(e => e.email === access.staff.email)) return json({ version: data.version, onboarding: true, state: { ...emptySchedule(), employees: state.employees.filter(e => !e.email) }, actor: access.staff, approved: [], drivers: [], events: [], serverTime: new Date().toISOString() });
     const before = request.nextUrl.searchParams.get("before");
     let history = db.from("operations_schedule_events").select("id,version,actor,action,note,day,duty,created_at,changes").order("id", { ascending: false }).limit(40);
     if (before && /^\d+$/.test(before)) history = history.lt("id", before);
     const [events, drivers] = await Promise.all([history, roster(db)]);
     if (events.error) throw new Error("History could not be loaded.");
-    return json({ ...data, actor: access.staff, approved: access.staff.role === "admin" ? approved() : [], drivers, events: events.data, serverTime: new Date().toISOString() });
+    return json({ ...data, state, actor: access.staff, approved: access.staff.role === "admin" ? approved() : [], drivers, events: events.data, serverTime: new Date().toISOString() });
   } catch { return json({ error: "Unable to load the shared schedule. Please retry." }, 503); }
 }
 export async function POST(request: NextRequest) {
