@@ -6,7 +6,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
  * - SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL)
  * - SUPABASE_SERVICE_ROLE_KEY (NEVER expose to client)
  */
-export function supabaseAdmin(): SupabaseClient {
+export function supabaseAdmin(options: { noStore?: boolean } = {}): SupabaseClient {
   const url =
     process.env.SUPABASE_URL ||
     process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,6 +18,11 @@ export function supabaseAdmin(): SupabaseClient {
 
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { "X-Client-Info": "jride-admin-api" } },
+    global: {
+      headers: { "X-Client-Info": "jride-admin-api" },
+      ...(options.noStore ? {
+        fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+      } : {}),
+    },
   });
 }

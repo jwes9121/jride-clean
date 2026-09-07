@@ -92,7 +92,9 @@ export async function resolveDriverRequest(
     const deviceId = text(req.headers.get("x-jride-device-id"));
     if (!parts || !/^[0-9a-f]{16}$/.test(deviceId)) return { ok: false, error: "NOT_AUTHED", status: 401 };
     const hash = createHash("sha256").update(parts[2], "utf8").digest("hex");
-    const result = await supabaseAdmin().from("agrimarket_driver_devices")
+    // Approval and revocation must be read from the database on every request.
+    // A dynamic route alone did not prevent this SDK lookup being cached.
+    const result = await supabaseAdmin({ noStore: true }).from("agrimarket_driver_devices")
       .select("driver_id,device_id,status,created_at").eq("id", parts[1]).eq("token_sha256", hash).eq("device_id", deviceId).maybeSingle();
     if (result.error) return { ok: false, error: "DRIVER_AUTH_UNAVAILABLE", status: 503 };
     const row = result.data;
