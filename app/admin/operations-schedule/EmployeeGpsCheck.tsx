@@ -98,6 +98,8 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
     return <>{children}</>;
   }
 
+  const retryStatus = !self;
+
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-10 text-white sm:px-6">
       <div className="mx-auto flex min-h-[75vh] max-w-lg items-center justify-center">
@@ -114,11 +116,11 @@ export default function EmployeeGpsCheck({ children }: { children: ReactNode }) 
           <p className={`mt-4 rounded-lg p-3 text-sm ${state === "error" ? "bg-red-950 text-red-200" : "bg-slate-800 text-slate-200"}`} aria-live="polite">{detail}</p>
           <button
             type="button"
-            onClick={state === "checking" ? loadStatus : capture}
+            onClick={retryStatus ? loadStatus : capture}
             disabled={state === "capturing"}
             className="mt-5 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
           >
-            {state === "checking" ? "Check requirement" : state === "capturing" ? "Getting GPS..." : "Allow GPS and continue"}
+            {retryStatus ? "Retry location check" : state === "capturing" ? "Getting GPS..." : "Allow GPS and continue"}
           </button>
         </section>
       </div>
