@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 function json(body: unknown, status = 200) { return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } }); }
 function approved() { return (process.env.JRIDE_DISPATCHER_EMAILS || process.env.DISPATCHER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean); }
+const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
 async function roster(db: ReturnType<typeof supabaseAdmin>): Promise<Driver[]> {
   const locations = await db.from("driver_locations").select("driver_id,home_town,updated_at").order("updated_at", { ascending: false }).limit(500);
   if (locations.error) throw new Error("Driver roster could not be loaded.");
@@ -54,6 +55,24 @@ export async function POST(request: NextRequest) {
     const { data, error } = await db.from("operations_schedule_state").select("version,state").eq("id", 1).single();
     if (error || !data) return json({ error: "Schedule storage is unavailable." }, 503);
     if (data.version !== input.version) return json({ error: "The schedule changed. Refresh and try again." }, 409);
+
+    const action = String(input.action || "");
+    if (access.staff.role !== "admin" && EMPLOYEE_SCHEDULE_ACTIONS.has(action)) {
+      const state = effectiveSchedule(data.state as Schedule);
+      const employee = state.employees.find((item) => item.email === access.staff.email);
+      if (!employee) return json({ error: "Choose your coordinator name before scheduling." }, 403);
+      const latest = await db
+        .from("operations_employee_locations")
+        .select("id")
+        .eq("employee_id", employee.id)
+        .eq("staff_email", access.staff.email)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latest.error) return json({ error: "GPS verification is temporarily unavailable. Retry the location check." }, 503);
+      if (!latest.data) return json({ error: "Allow the GPS location check before choosing or changing schedules." }, 428);
+    }
+
     const result = changeSchedule(data.state as Schedule, access.staff, input, new Date(), approved(), input.action === "balance_teams" ? await roster(db) : []);
     const commit = await db.rpc("operations_schedule_commit_v1", { p_version: data.version, p_state: result.state, p_event: result.event });
     if (commit.error) return json({ error: "The change could not be saved. Refresh before trying again." }, 503);
