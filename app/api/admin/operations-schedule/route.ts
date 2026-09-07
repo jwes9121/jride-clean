@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { changeSchedule, effectiveSchedule, emptySchedule, type Driver, type Schedule } from "@/lib/operations-schedule";
-
+import { changeSchedule, effectiveSchedule, emptySchedule, getSlot, weekStart, type Driver, type Duty, type Schedule } from "@/lib/operations-schedule";
+import {
+  DUTY_LABELS,
+  createsPrimaryEveningWholeDay,
+  weeklyDutyCount,
+  weeklyDutyTarget,
+} from "@/lib/operations-schedule-guidance";
 import { operationsDriverRoster } from "@/lib/operations-driver-roster";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 function json(body: unknown, status = 200) { return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } }); }
+function guide(error: string, code: string, status = 422) { return json({ error, code, guide: true }, status); }
 function approved() { return (process.env.JRIDE_DISPATCHER_EMAILS || process.env.DISPATCHER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean); }
 const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
+const DUTY_ACTIONS = new Set(["claim", "accept"]);
+const DUTIES = new Set<Duty>(["primary", "backup", "evening"]);
+function validReason(value: unknown) { return typeof value === "string" && value.trim().length >= 8; }
+function ownerName(state: Schedule, owner: string | null) {
+  if (!owner) return "another employee";
+  return state.employees.find((employee) => employee.id === owner)?.name || "another employee";
+}
 async function roster(db: ReturnType<typeof supabaseAdmin>): Promise<Driver[]> {
   const locations = await db.from("driver_locations").select("driver_id,home_town,updated_at").order("updated_at", { ascending: false }).limit(500);
   if (locations.error) throw new Error("Driver roster could not be loaded.");
@@ -40,7 +53,6 @@ export async function GET(request: NextRequest) {
   } catch { return json({ error: "Unable to load the shared schedule. Please retry." }, 503); }
 }
 export async function POST(request: NextRequest) {
-  // Same-origin JSON only. Identity and authority always come from the staff session.
   const origin = request.headers.get("origin");
   if (!origin || origin !== request.nextUrl.origin) return json({ error: "Invalid request origin." }, 403);
   if (!request.headers.get("content-type")?.startsWith("application/json")) return json({ error: "JSON is required." }, 415);
@@ -54,11 +66,11 @@ export async function POST(request: NextRequest) {
     const db = supabaseAdmin();
     const { data, error } = await db.from("operations_schedule_state").select("version,state").eq("id", 1).single();
     if (error || !data) return json({ error: "Schedule storage is unavailable." }, 503);
-    if (data.version !== input.version) return json({ error: "The schedule changed. Refresh and try again." }, 409);
+    if (data.version !== input.version) return guide("Another employee updated the schedule first. The page will refresh so you can see which slots are still available.", "SCHEDULE_CHANGED", 409);
 
     const action = String(input.action || "");
+    const state = effectiveSchedule(data.state as Schedule);
     if (access.staff.role !== "admin" && EMPLOYEE_SCHEDULE_ACTIONS.has(action)) {
-      const state = effectiveSchedule(data.state as Schedule);
       const employee = state.employees.find((item) => item.email === access.staff.email);
       if (!employee) return json({ error: "Choose your coordinator name before scheduling." }, 403);
       const latest = await db
@@ -71,12 +83,36 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (latest.error) return json({ error: "GPS verification is temporarily unavailable. Retry the location check." }, 503);
       if (!latest.data) return json({ error: "Allow the GPS location check before choosing or changing schedules." }, 428);
+
+      if (DUTY_ACTIONS.has(action)) {
+        const day = String(input.day || "");
+        const duty = String(input.duty || "") as Duty;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid duty slot.", "INVALID_SLOT", 400);
+        const slot = getSlot(state, day, duty);
+        if (action === "claim" && slot.owner) {
+          return guide(`${DUTY_LABELS[duty]} on ${day} is already taken by ${ownerName(state, slot.owner)}. Choose a slot still marked Available.`, "SLOT_TAKEN", 409);
+        }
+
+        const week = weekStart(day);
+        const count = weeklyDutyCount(state, employee.id, week, duty);
+        const target = weeklyDutyTarget(state, employee.id, week, duty);
+        const hasReason = validReason(input.note);
+        if (count >= target + 1) {
+          return guide(`You are already above your normal ${DUTY_LABELS[duty]} target for this week. Another extra ${DUTY_LABELS[duty]} needs Admin review instead of another self-claim.`, "DUTY_HARD_LIMIT");
+        }
+        if (count >= target && !hasReason) {
+          return guide(`You already reached your ${DUTY_LABELS[duty]} target for this week (${count}/${target}). Choose another duty type. If this extra duty is needed because of a swap or coverage arrangement, enter the reason first and retry.`, "DUTY_TARGET_REACHED");
+        }
+        if (createsPrimaryEveningWholeDay(state, employee.id, day, duty) && !hasReason) {
+          return guide("This would give you both Core Primary 10 AM-3 PM and Evening 3 PM-7 PM on the same day. That is not a normal part-time schedule. If this is required because of a swap or other valid exception, enter the reason first and retry.", "WHOLE_DAY_REASON_REQUIRED");
+        }
+      }
     }
 
     const result = changeSchedule(data.state as Schedule, access.staff, input, new Date(), approved(), input.action === "balance_teams" ? await roster(db) : []);
     const commit = await db.rpc("operations_schedule_commit_v1", { p_version: data.version, p_state: result.state, p_event: result.event });
     if (commit.error) return json({ error: "The change could not be saved. Refresh before trying again." }, 503);
-    if (!commit.data) return json({ error: "Another person changed the schedule first. Refresh and try again." }, 409);
+    if (!commit.data) return guide("Another employee changed the schedule first. Refresh to see the latest available slots.", "SCHEDULE_CHANGED", 409);
     return json({ ok: true, version: data.version + 1 });
   } catch (error) { return json({ error: error instanceof Error ? error.message : "Invalid schedule request." }, 400); }
 }
