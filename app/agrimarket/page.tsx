@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ProductPhoto } from "./ProductPhoto";
 
 type AddressRow = {
   id: string;
@@ -18,6 +19,7 @@ type SortMode = "closest_recommended" | "lowest_price" | "availability" | "price
 type ProductRow = {
   id: string;
   name: string;
+  photo_urls?: string[];
   producer_alias: string;
   producer_town?: string | null;
   proximity_rank: number;
@@ -517,6 +519,7 @@ export default function AgrimarketPage() {
           <div className="min-w-0">
             {selectedProduct ? (
               <section id="agrimarket-product-detail" className="mb-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
+                <ProductPhoto url={selectedProduct.photo_urls?.[0]} name={selectedProduct.name} className="mb-4 max-w-lg" />
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{selectedProduct.producer_alias}</p>
@@ -546,6 +549,7 @@ export default function AgrimarketPage() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {moreFromSelectedFarmer.map((product) => (
                         <article key={product.id} className="rounded-2xl border bg-slate-50 p-4">
+                          <ProductPhoto url={product.photo_urls?.[0]} name={product.name} className="mb-3" />
                           <p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p>
                           <h4 className="mt-1 font-bold">{product.name}</h4>
                           <p className="mt-2 text-sm text-slate-600">{money(product.unit_price)} / {product.selling_unit}</p>
@@ -566,6 +570,7 @@ export default function AgrimarketPage() {
               {!loading && !visibleProducts.length ? <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">No products match this search area.</div> : null}
               {!loading && visibleProducts.map((product) => (
                 <article key={product.id} className="rounded-2xl border bg-white p-4 shadow-sm">
+                  <ProductPhoto url={product.photo_urls?.[0]} name={product.name} className="mb-4" />
                   <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p><h2 className="mt-1 text-xl font-bold">{product.name}</h2><p className="mt-1 text-xs text-slate-500">{product.producer_town || "Town unavailable"}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{exactRoadDistance(product.road_distance_km)}</span></div>
                   <p className="mt-2 text-sm text-slate-600">{product.description || `${titleCase(product.condition)} - ${titleCase(product.cargo_class)}`}</p>
                   <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} reservable</span></div>

@@ -260,7 +260,7 @@ export async function GET(req: Request) {
     const [producerRes, itemsRes, checksRes] = await Promise.all([
       admin
         .from("agrimarket_producers")
-        .select("contact_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions")
+        .select("contact_name,vendor_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions")
         .eq("id", order.producer_id)
         .limit(1)
         .maybeSingle(),
@@ -341,7 +341,9 @@ export async function GET(req: Request) {
           wallet_settlement_amount: num(order.wallet_settlement_amount),
           wallet_settlement_error: order.wallet_settlement_error,
           farmer: {
-            name: producer.contact_name,
+            name: text(producer.vendor_name) || producer.contact_name,
+            vendor_name: text(producer.vendor_name) || null,
+            contact_name: producer.contact_name,
             contact_number: text(producer.contact_phone) || null,
             town: producer.town,
             barangay: producer.barangay,

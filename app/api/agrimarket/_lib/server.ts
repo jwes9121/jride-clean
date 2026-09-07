@@ -259,7 +259,7 @@ export async function requireAgrimarketProducer(req: NextRequest): Promise<Produ
 
   const producerRes = await admin
     .from("agrimarket_producers")
-    .select("id,status,accepting_orders,contact_name,town,barangay")
+    .select("id,status,accepting_orders,contact_name,vendor_name,town,barangay")
     .eq("id", verified.producer_id)
     .limit(1)
     .maybeSingle();

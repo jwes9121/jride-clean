@@ -27,3 +27,7 @@ begin
   perform pg_temp.check_true(not exists(select 1 from agrimarket_driver_device_events where note like '%'||repeat('a',64)||'%'),'device review audit contains no credential hash');
 end;
 $tests$;
+-- Vendor names are private, including for clients with an authenticated role.
+select pg_temp.check_true(not has_column_privilege('anon','public.agrimarket_producers','vendor_name','select'), 'anon cannot read private vendor names');
+select pg_temp.check_true(not has_column_privilege('authenticated','public.agrimarket_producers','vendor_name','select'), 'authenticated clients cannot read private vendor names directly');
+select pg_temp.expect_error($q$update public.agrimarket_producers set vendor_name = repeat('x',61)$q$, 'agrimarket_vendor_name_valid');

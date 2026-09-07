@@ -6,6 +6,8 @@ const psql = process.env.PSQL_BIN || 'C:/Program Files/PostgreSQL/16/bin/psql.ex
 const bootstrap = `
 create role anon; create role authenticated; create role service_role bypassrls;
 create schema extensions; create extension pgcrypto schema extensions;
+create schema storage;
+create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
 create table public.vendor_accounts(id uuid primary key);
 create table public.passenger_addresses(id uuid primary key,created_by_user_id uuid,is_active boolean default true,lat double precision,lng double precision,address_text text,label text);
 create table public.drivers(id uuid primary key,wallet_balance numeric default 1000,min_wallet_required numeric default 200,wallet_locked boolean default false,roster_status text default 'active',updated_at timestamptz);

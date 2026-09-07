@@ -121,6 +121,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       farmer_fee_policy: "free_launch_v1",
       farmer_wallet_enabled: false,
+      vendor_name: producerAuth.producer.vendor_name || null,
       products: (Array.isArray(productsRes.data) ? productsRes.data : []).map(productPayload),
     });
   } catch (error: any) {
@@ -141,8 +142,16 @@ export async function POST(req: NextRequest) {
     const admin = createServiceSupabase();
     const body = await req.json().catch(() => ({}));
     const action = lower(body?.action || "create");
+    let createdProductId: string | null = null;
+    let vendorName: string | null = producerAuth.producer.vendor_name || null;
 
-    if (action === "set_active") {
+    if (action === "set_vendor_name") {
+      const value = typeof body.vendor_name === "string" ? body.vendor_name.trim().replace(/\s+/g, " ") : "";
+      if (value.length < 2 || value.length > 60 || /[\u0000-\u001f\u007f]/.test(value)) return jsonNoStore(400, { ok: false, message: "Enter a vendor name between 2 and 60 characters." });
+      const saved = await admin.from("agrimarket_producers").update({ vendor_name: value, updated_at: new Date().toISOString() }).eq("id", producerAuth.producer.id).select("id,vendor_name").maybeSingle();
+      if (saved.error || !saved.data) return jsonNoStore(409, { ok: false, message: "The vendor name could not be saved. Refresh and try again." });
+      vendorName = saved.data.vendor_name;
+    } else if (action === "set_active") {
       const productId = uuid(body?.product_id || body?.productId);
       if (!productId || typeof body?.is_active !== "boolean") {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PRODUCT_ACTIVE_INPUT_INVALID" });
@@ -235,9 +244,9 @@ export async function POST(req: NextRequest) {
       const prepMinutes = finiteNumber(body?.default_prep_minutes ?? body?.preparation_minutes ?? 15);
       let vehicleRequirement = lower(body?.vehicle_requirement || body?.vehicleRequirement || "either");
       const handlingEligible = body?.handling_eligible === true;
-      const photoUrls = Array.isArray(body?.photo_urls)
-        ? body.photo_urls.map((value: unknown) => text(value)).filter(Boolean).slice(0, 6)
-        : [];
+      if (body?.photo_urls != null && (!Array.isArray(body.photo_urls) || body.photo_urls.length > 0)) {
+        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PHOTO_UPLOAD_REQUIRED", message: "Save the product, then use its photo upload control." });
+      }
 
       if (name.length < 2 || !PRODUCT_GROUPS.has(productGroup) || !CONDITIONS.has(condition) ||
           !CARGO_CLASSES.has(cargoClass) || !sellingUnit || (unitWeightKg != null && unitWeightKg <= 0) ||
@@ -303,7 +312,7 @@ export async function POST(req: NextRequest) {
           default_prep_minutes: prepMinutes,
           vehicle_requirement: vehicleRequirement,
           handling_eligible: handlingEligible,
-          photo_urls: photoUrls,
+          photo_urls: [],
           is_active: true,
         })
         .select("id")
@@ -316,6 +325,7 @@ export async function POST(req: NextRequest) {
           message: insertRes.error.message,
         });
       }
+      createdProductId = insertRes.data.id;
     } else {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PRODUCT_ACTION_INVALID" });
     }
@@ -331,6 +341,8 @@ export async function POST(req: NextRequest) {
 
     return jsonNoStore(200, {
       ok: true,
+      created_product_id: createdProductId,
+      vendor_name: vendorName,
       farmer_fee_policy: "free_launch_v1",
       farmer_wallet_enabled: false,
       products: (Array.isArray(productsRes.data) ? productsRes.data : []).map(productPayload),

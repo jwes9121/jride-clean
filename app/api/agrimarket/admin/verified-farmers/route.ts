@@ -304,6 +304,7 @@ export async function GET(req: NextRequest) {
         application_code: application.application_code,
         onboarding_source: application.onboarding_source,
         farmer_name: application.applicant_name,
+        vendor_name: staff.role === "admin" ? producer?.vendor_name || null : null,
         phone: application.phone_display || application.phone_normalized,
         phone_normalized: application.phone_normalized,
         town: application.town,
