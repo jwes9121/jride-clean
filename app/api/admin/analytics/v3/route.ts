@@ -4,6 +4,10 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const MANILA_TZ = "Asia/Manila";
+const DRIVER_LOCATION_STALE_AFTER_SECONDS = 120;
+const ONLINE_LIKE_DRIVER_STATUSES = new Set(["online", "available", "idle", "waiting"]);
+
 function json(status: number, payload: any) {
   return NextResponse.json(payload, { status });
 }
@@ -26,30 +30,6 @@ function n(v: any) {
   return Number.isFinite(x) ? x : 0;
 }
 
-function isoDaysAgo(days: number) {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-}
-
-function dateKey(value: any) {
-  const d = new Date(String(value || ""));
-  if (!Number.isFinite(d.getTime())) return "unknown";
-  return d.toISOString().slice(0, 10);
-}
-
-function weekKey(value: any) {
-  const d = new Date(String(value || ""));
-  if (!Number.isFinite(d.getTime())) return "unknown";
-  const day = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() - day + 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function monthKey(value: any) {
-  const d = new Date(String(value || ""));
-  if (!Number.isFinite(d.getTime())) return "unknown";
-  return d.toISOString().slice(0, 7);
-}
-
 function normStatus(value: any) {
   const x = s(value).toLowerCase();
   if (!x || x === "pending") return "requested";
@@ -57,8 +37,11 @@ function normStatus(value: any) {
   return x;
 }
 
-function serviceType(row: any) {
-  return s(row?.service_type).toLowerCase() === "takeout" ? "takeout" : "ride";
+function serviceType(row: any): "ride" | "takeout" | "errand" {
+  const raw = s(row?.service_type).toLowerCase();
+  if (raw === "takeout") return "takeout";
+  if (raw === "errand") return "errand";
+  return "ride";
 }
 
 function isCompleted(row: any) {
@@ -74,19 +57,109 @@ function isActive(row: any) {
   return st !== "completed" && st !== "cancelled";
 }
 
+function grossValue(row: any) {
+  return (
+    n(row?.verified_fare) ||
+    n(row?.takeout_total_payable) ||
+    n(row?.total_errand_fare) ||
+    n(row?.proposed_fare)
+  );
+}
+
+function manilaDateKey(value: any) {
+  const d = new Date(String(value || ""));
+  if (!Number.isFinite(d.getTime())) return "unknown";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MANILA_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  return year && month && day ? `${year}-${month}-${day}` : "unknown";
+}
+
+function shiftDateKey(dateKey: string, deltaDays: number) {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function weekKeyFromDateKey(dateKey: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "unknown";
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() - day + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function monthKeyFromDateKey(dateKey: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey.slice(0, 7) : "unknown";
+}
+
+function manilaWindow(days: number) {
+  const today = manilaDateKey(new Date().toISOString());
+  const startDate = shiftDateKey(today, -(days - 1));
+  const startAt = new Date(`${startDate}T00:00:00+08:00`).toISOString();
+  return { today, startDate, startAt };
+}
+
+function effectiveLocationState(location: any) {
+  const rawStatus = s(location?.status).toLowerCase();
+  const updatedAt = s(location?.updated_at);
+  const updatedMs = updatedAt ? Date.parse(updatedAt) : Number.NaN;
+  const ageSeconds = Number.isFinite(updatedMs)
+    ? Math.max(0, Math.floor((Date.now() - updatedMs) / 1000))
+    : null;
+  const isFresh = ageSeconds !== null && ageSeconds <= DRIVER_LOCATION_STALE_AFTER_SECONDS;
+  const isOnline = isFresh && ONLINE_LIKE_DRIVER_STATUSES.has(rawStatus);
+  return {
+    raw_status: rawStatus || null,
+    effective_status: isOnline ? "online" : isFresh ? rawStatus || "offline" : "offline",
+    is_online: isOnline,
+    is_fresh: isFresh,
+    age_seconds: ageSeconds,
+  };
+}
+
+async function fetchPaged(makeQuery: () => any, pageSize = 1000) {
+  const rows: any[] = [];
+  for (let from = 0; ; from += pageSize) {
+    const res = await makeQuery().range(from, from + pageSize - 1);
+    if (res.error) return { data: rows, error: res.error };
+    const page = Array.isArray(res.data) ? res.data : [];
+    rows.push(...page);
+    if (page.length < pageSize) return { data: rows, error: null };
+  }
+}
+
 function addBucket(map: Record<string, any>, key: string) {
   if (!map[key]) {
     map[key] = {
       key,
       total: 0,
+      total_bookings: 0,
       ride_total: 0,
       takeout_total: 0,
+      errand_total: 0,
       completed: 0,
       cancelled: 0,
       active: 0,
+      active_uncompleted: 0,
+      ride_completed: 0,
+      ride_active: 0,
+      takeout_completed: 0,
+      takeout_active: 0,
+      errand_completed: 0,
+      errand_active: 0,
+      completed_gross: 0,
       revenue: 0,
       driver_payout: 0,
       company_cut: 0,
+      settled_company_cut: 0,
     };
   }
   return map[key];
@@ -95,23 +168,71 @@ function addBucket(map: Record<string, any>, key: string) {
 function addBookingStats(bucket: any, row: any) {
   const svc = serviceType(row);
   bucket.total += 1;
-  if (svc === "takeout") bucket.takeout_total += 1;
-  else bucket.ride_total += 1;
+  bucket.total_bookings += 1;
+  bucket[`${svc}_total`] += 1;
 
-  if (isCompleted(row)) bucket.completed += 1;
-  else if (isCancelled(row)) bucket.cancelled += 1;
-  else bucket.active += 1;
-
-  bucket.revenue += n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare);
-  bucket.driver_payout += n(row?.driver_payout);
-  bucket.company_cut += n(row?.company_cut);
+  if (isCompleted(row)) {
+    bucket.completed += 1;
+    bucket[`${svc}_completed`] += 1;
+    const gross = grossValue(row);
+    bucket.completed_gross += gross;
+    bucket.revenue += gross;
+    bucket.driver_payout += n(row?.driver_payout);
+    bucket.company_cut += n(row?.company_cut);
+    if (s(row?.wallet_settlement_status).toLowerCase() === "settled") {
+      bucket.settled_company_cut += n(row?.company_cut);
+    }
+  } else if (isCancelled(row)) {
+    bucket.cancelled += 1;
+  } else {
+    bucket.active += 1;
+    bucket.active_uncompleted += 1;
+    bucket[`${svc}_active`] += 1;
+  }
 }
 
-function sessionMinutes(row: any) {
-  const start = new Date(String(row?.login_at || row?.created_at || "")).getTime();
-  const end = new Date(String(row?.logout_at || row?.last_seen_at || row?.updated_at || "")).getTime();
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
-  return Math.round((end - start) / 60000);
+function emptyDriver(driverId: string) {
+  return {
+    driver_id: driverId,
+    driver_name: null,
+    town: null,
+    completed_trips: 0,
+    active_trips: 0,
+    cancelled_trips: 0,
+    ride_completed: 0,
+    takeout_completed: 0,
+    errand_completed: 0,
+    gross_revenue: 0,
+    driver_payout: 0,
+    company_cut: 0,
+    login_sessions: 0,
+    login_minutes: 0,
+    raw_online_hours: 0,
+    security_excluded_hours: 0,
+    online_hours: 0,
+    current_status: "offline",
+    raw_location_status: null,
+    location_is_fresh: false,
+    location_age_seconds: null,
+    last_seen_at: null,
+  };
+}
+
+function addPresence(target: any, row: any) {
+  target.raw_online_seconds = n(target.raw_online_seconds) + n(row?.raw_online_seconds);
+  target.net_online_seconds = n(target.net_online_seconds) + n(row?.net_online_seconds);
+  target.security_excluded_seconds =
+    n(target.security_excluded_seconds) + n(row?.security_excluded_seconds);
+}
+
+function finalizePresence(target: any) {
+  const rawSeconds = n(target.raw_online_seconds);
+  const netSeconds = n(target.net_online_seconds);
+  const excludedSeconds = n(target.security_excluded_seconds);
+  target.raw_online_hours = rawSeconds / 3600;
+  target.security_excluded_hours = excludedSeconds / 3600;
+  target.online_hours = netSeconds / 3600;
+  target.login_minutes = Math.round(netSeconds / 60);
 }
 
 export async function GET(req: NextRequest) {
@@ -120,53 +241,123 @@ export async function GET(req: NextRequest) {
 
   const days = Math.max(1, Math.min(365, Number(req.nextUrl.searchParams.get("days") || 90)));
   const driverIdFilter = s(req.nextUrl.searchParams.get("driver_id"));
-  const since = isoDaysAgo(days);
+  const window = manilaWindow(days);
 
-  const bookingsRes = await admin
-    .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,takeout_pricing_status,town,created_at,updated_at,completed_at,assigned_driver_id,driver_id,passenger_name,from_label,to_label,verified_fare,proposed_fare,takeout_total_payable,takeout_delivery_fee,company_cut,driver_payout")
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(5000);
+  const testIdentityRes = await admin
+    .from("analytics_test_identities")
+    .select("entity_type,entity_id")
+    .eq("active", true);
 
-  if (bookingsRes.error) {
-    return json(500, { ok: false, error: "BOOKINGS_READ_FAILED", message: bookingsRes.error.message });
+  if (testIdentityRes.error) {
+    return json(500, {
+      ok: false,
+      error: "TEST_IDENTITY_READ_FAILED",
+      message: testIdentityRes.error.message,
+    });
   }
 
-  const sessionsRes = await admin
-    .from("driver_presence_sessions")
-    .select("id,driver_id,driver_name,town,status,login_at,logout_at,last_seen_at,source,device_id,created_at,updated_at")
-    .gte("login_at", since)
-    .order("login_at", { ascending: false })
-    .limit(5000);
+  const dummyDriverIds = new Set<string>();
+  const dummyPassengerIds = new Set<string>();
+  for (const row of testIdentityRes.data || []) {
+    if (row.entity_type === "driver") dummyDriverIds.add(s(row.entity_id));
+    if (row.entity_type === "passenger") dummyPassengerIds.add(s(row.entity_id));
+  }
 
-  if (sessionsRes.error) {
-    return json(500, { ok: false, error: "SESSIONS_READ_FAILED", message: sessionsRes.error.message });
+  const bookingsRes = await fetchPaged(() =>
+    admin
+      .from("analytics_v3_bookings_v1")
+      .select(
+        "id,booking_code,service_type,status,vendor_status,customer_status,driver_status,takeout_pricing_status,town,created_at,updated_at,completed_at,assigned_driver_id,driver_id,created_by_user_id,passenger_name,from_label,to_label,verified_fare,proposed_fare,takeout_total_payable,total_errand_fare,takeout_delivery_fee,company_cut,driver_payout,wallet_settlement_status,wallet_settled_at"
+      )
+      .gte("created_at", window.startAt)
+      .order("created_at", { ascending: false })
+  );
+
+  if (bookingsRes.error) {
+    return json(500, {
+      ok: false,
+      error: "BOOKINGS_READ_FAILED",
+      message: bookingsRes.error.message,
+    });
+  }
+
+  const presenceRes = await fetchPaged(() =>
+    admin
+      .from("driver_presence_daily_net_v1")
+      .select(
+        "driver_id,manila_date,raw_online_seconds,raw_online_hours,net_online_seconds,net_online_hours,security_excluded_seconds,security_excluded_hours,first_seen_at,last_seen_at"
+      )
+      .gte("manila_date", window.startDate)
+      .order("manila_date", { ascending: false })
+  );
+
+  if (presenceRes.error) {
+    return json(500, {
+      ok: false,
+      error: "PRESENCE_READ_FAILED",
+      message: presenceRes.error.message,
+    });
+  }
+
+  const sessionStartsRes = await fetchPaged(() =>
+    admin
+      .from("driver_presence_session_starts_daily_v1")
+      .select("driver_id,manila_date,session_count")
+      .gte("manila_date", window.startDate)
+      .order("manila_date", { ascending: false })
+  );
+
+  if (sessionStartsRes.error) {
+    return json(500, {
+      ok: false,
+      error: "SESSION_SUMMARY_READ_FAILED",
+      message: sessionStartsRes.error.message,
+    });
   }
 
   const locationsRes = await admin
     .from("driver_locations")
     .select("driver_id,lat,lng,status,town,home_town,updated_at,vehicle_type")
     .order("updated_at", { ascending: false })
-    .limit(1000);
+    .limit(5000);
 
-  const bookings = Array.isArray(bookingsRes.data) ? bookingsRes.data : [];
-  const sessions = Array.isArray(sessionsRes.data) ? sessionsRes.data : [];
-  const locations = !locationsRes.error && Array.isArray(locationsRes.data) ? locationsRes.data : [];
+  const bookings = bookingsRes.data || [];
+  const presenceRows = (presenceRes.data || []).filter(
+    (row: any) => !dummyDriverIds.has(s(row?.driver_id))
+  );
+  const sessionStartRows = (sessionStartsRes.data || []).filter(
+    (row: any) => !dummyDriverIds.has(s(row?.driver_id))
+  );
+  const locations = !locationsRes.error && Array.isArray(locationsRes.data)
+    ? locationsRes.data.filter((row: any) => !dummyDriverIds.has(s(row?.driver_id)))
+    : [];
 
-  const allDriverIds = Array.from(new Set([
-    ...bookings.map((row: any) => s(row?.assigned_driver_id || row?.driver_id)).filter(Boolean),
-    ...sessions.map((row: any) => s(row?.driver_id)).filter(Boolean),
-    ...locations.map((row: any) => s(row?.driver_id)).filter(Boolean),
-  ]));
+  const allDriverIds = Array.from(
+    new Set(
+      [
+        ...bookings.map((row: any) => s(row?.assigned_driver_id || row?.driver_id)),
+        ...presenceRows.map((row: any) => s(row?.driver_id)),
+        ...locations.map((row: any) => s(row?.driver_id)),
+      ].filter((id) => id && !dummyDriverIds.has(id))
+    )
+  );
 
   const driverIdentityById: Record<string, any> = {};
-
   if (allDriverIds.length > 0) {
-    const driverIdentityRes = await admin
-      .from("drivers")
-      .select("id,driver_name,driver_status,zone_id,toda_name,wallet_balance,min_wallet_required,wallet_locked,is_toda_member")
-      .in("id", allDriverIds);
+    const [driverIdentityRes, driverProfileRes] = await Promise.all([
+      admin
+        .from("drivers")
+        .select(
+          "id,driver_name,driver_status,zone_id,toda_name,wallet_balance,min_wallet_required,wallet_locked,is_toda_member"
+        )
+        .in("id", allDriverIds),
+      admin
+        .from("driver_profiles")
+        .select(
+          "driver_id,full_name,callsign,municipality,vehicle_type,plate_number,phone,photo_url,toda_org,is_toda_member"
+        )
+        .in("driver_id", allDriverIds),
+    ]);
 
     if (!driverIdentityRes.error && Array.isArray(driverIdentityRes.data)) {
       for (const row of driverIdentityRes.data as any[]) {
@@ -174,22 +365,17 @@ export async function GET(req: NextRequest) {
         if (!did) continue;
         driverIdentityById[did] = {
           ...(driverIdentityById[did] || {}),
-          driver_name: driverDisplayName(did, row?.driver_name),
+          driver_name: s(row?.driver_name) || null,
           driver_status_master: s(row?.driver_status) || null,
           zone_id: row?.zone_id || null,
           toda_name: s(row?.toda_name) || null,
-	 wallet_balance: row?.wallet_balance ?? null,
-	min_wallet_required: row?.min_wallet_required ?? null,
-	wallet_locked: row?.wallet_locked ?? null,
-	is_toda_member: row?.is_toda_member ?? null,
+          wallet_balance: row?.wallet_balance ?? null,
+          min_wallet_required: row?.min_wallet_required ?? null,
+          wallet_locked: row?.wallet_locked ?? null,
+          is_toda_member: row?.is_toda_member ?? null,
         };
       }
     }
-
-    const driverProfileRes = await admin
-      .from("driver_profiles")
-      .select("driver_id,full_name,callsign,municipality,vehicle_type,plate_number,phone,photo_url,toda_org,is_toda_member")
-      .in("driver_id", allDriverIds);
 
     if (!driverProfileRes.error && Array.isArray(driverProfileRes.data)) {
       for (const row of driverProfileRes.data as any[]) {
@@ -198,65 +384,103 @@ export async function GET(req: NextRequest) {
         driverIdentityById[did] = {
           ...(driverIdentityById[did] || {}),
           profile_full_name: s(row?.full_name) || null,
+          callsign: s(row?.callsign) || null,
+          municipality: s(row?.municipality) || null,
+          vehicle_type: s(row?.vehicle_type) || null,
+          plate_number: s(row?.plate_number) || null,
           phone: s(row?.phone) || null,
-	callsign: s(row?.callsign) || null,
-	municipality: s(row?.municipality) || null,
-	vehicle_type: s(row?.vehicle_type) || null,
-	plate_number: s(row?.plate_number) || null,
-	photo_url: s(row?.photo_url) || null,
-	toda_org: s(row?.toda_org) || null,
-	profile_is_toda_member: row?.is_toda_member ?? null,
+          photo_url: s(row?.photo_url) || null,
+          toda_org: s(row?.toda_org) || null,
+          profile_is_toda_member: row?.is_toda_member ?? null,
         };
       }
     }
   }
 
-  const reliabilityById: Record<string, any> = {};
+  function driverDisplayName(driverId: string, fallback?: any) {
+    const identity = driverIdentityById[driverId] || {};
+    return (
+      s(identity.driver_name) ||
+      s(identity.profile_full_name) ||
+      s(fallback) ||
+      "Unknown Driver"
+    );
+  }
 
+  const reliabilityById: Record<string, any> = {};
   if (allDriverIds.length > 0) {
     const reliabilityRes = await admin
       .from("driver_reliability_summary_v1")
-      .select("driver_id,is_placeholder_driver,is_production_driver,session_count,online_seconds,online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,duty_check_latest_ping,duty_check_latest_response,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
+      .select(
+        "driver_id,is_placeholder_driver,is_production_driver,session_count,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,duty_check_latest_ping,duty_check_latest_response,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments"
+      )
       .in("driver_id", allDriverIds);
-
     if (!reliabilityRes.error && Array.isArray(reliabilityRes.data)) {
       for (const row of reliabilityRes.data as any[]) {
         const did = s(row?.driver_id);
-        if (!did) continue;
-        reliabilityById[did] = row;
+        if (did) reliabilityById[did] = row;
       }
     }
+  }
+
+  const activePeriodRes = await admin
+    .from("driver_incentive_periods")
+    .select("id,name,start_at,end_at")
+    .eq("is_active", true)
+    .order("start_at", { ascending: false })
+    .limit(1);
+  const activePeriod =
+    !activePeriodRes.error && Array.isArray(activePeriodRes.data) && activePeriodRes.data[0]
+      ? activePeriodRes.data[0]
+      : null;
+  const incentiveStartDate = activePeriod?.start_at
+    ? manilaDateKey(activePeriod.start_at)
+    : window.startDate;
+
+  const incentivePresenceRes = await fetchPaged(() =>
+    admin
+      .from("driver_presence_daily_net_v1")
+      .select(
+        "driver_id,manila_date,raw_online_seconds,net_online_seconds,security_excluded_seconds"
+      )
+      .gte("manila_date", incentiveStartDate)
+      .order("manila_date", { ascending: false })
+  );
+
+  const incentivePresenceById: Record<string, any> = {};
+  if (!incentivePresenceRes.error) {
+    for (const row of incentivePresenceRes.data || []) {
+      const did = s(row?.driver_id);
+      if (!did || dummyDriverIds.has(did)) continue;
+      if (!incentivePresenceById[did]) {
+        incentivePresenceById[did] = {
+          raw_online_seconds: 0,
+          net_online_seconds: 0,
+          security_excluded_seconds: 0,
+        };
+      }
+      addPresence(incentivePresenceById[did], row);
+    }
+    for (const value of Object.values(incentivePresenceById)) finalizePresence(value);
   }
 
   const incentiveById: Record<string, any> = {};
-
   if (allDriverIds.length > 0) {
     const incentiveRes = await admin
       .from("driver_incentive_summary_v1")
-      .select("driver_id,incentive_period_id,incentive_period_name,incentive_period_start,incentive_period_end,session_count,online_seconds,online_hours,raw_online_seconds,raw_online_hours,eligible_online_seconds,eligible_online_hours,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments")
+      .select(
+        "driver_id,incentive_period_id,incentive_period_name,incentive_period_start,incentive_period_end,last_seen_at,duty_check_total_pings,duty_check_responded_pings,duty_check_expired_pings,duty_check_cancelled_pings,duty_check_response_rate_pct,unique_assigned_bookings,raw_assignment_events,repeated_assignment_pairs,progressed_assignments,completed_assignments,assignment_progression_pct,completion_pct,has_repeat_assignments"
+      )
       .in("driver_id", allDriverIds);
-
     if (!incentiveRes.error && Array.isArray(incentiveRes.data)) {
       for (const row of incentiveRes.data as any[]) {
         const did = s(row?.driver_id);
-        if (!did) continue;
-        incentiveById[did] = row;
+        if (did) incentiveById[did] = row;
       }
     }
   }
 
-  // Generic multi-tier incentive engine (replaces the old Weekly-only
-  // driver_weekly_qualification_v1 lookup). driver_incentive_claimability_v1
-  // returns one row per driver per policy_code per cycle_number. A policy
-  // can have more than one cycle row over time (e.g. Weekly cycle 1, 2, 3...),
-  // so this groups by [driver_id][policy_code] and keeps only the row with
-  // the highest cycle_number seen for that policy (the most recently started
-  // / current cycle). If a driver has zero days of data in a policy's current
-  // cycle window, no row exists at all for that cycle (the underlying views
-  // are fact-driven, not zero-filled) â€” that policy will be absent from
-  // incentive_qualification for that driver rather than showing zeroed stats.
   const incentiveQualificationById: Record<string, Record<string, any>> = {};
-
   if (allDriverIds.length > 0) {
     const incentiveQualificationRes = await admin
       .from("driver_incentive_claimability_v1")
@@ -265,20 +489,7 @@ export async function GET(req: NextRequest) {
       )
       .in("driver_id", allDriverIds);
 
-    if (incentiveQualificationRes.error) {
-      console.error(
-        "[ANALYTICS_V3_INCENTIVE_QUALIFICATION_QUERY_FAILED]",
-        JSON.stringify({
-          message: incentiveQualificationRes.error.message,
-          code: (incentiveQualificationRes.error as any)?.code || null,
-        })
-      );
-    }
-
-    if (
-      !incentiveQualificationRes.error &&
-      Array.isArray(incentiveQualificationRes.data)
-    ) {
+    if (!incentiveQualificationRes.error && Array.isArray(incentiveQualificationRes.data)) {
       for (const row of incentiveQualificationRes.data as any[]) {
         const did = s(row?.driver_id);
         const policyCode = s(row?.policy_code);
@@ -294,11 +505,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  function driverDisplayName(driverId: string, fallback?: any) {
-    const identity = driverIdentityById[driverId] || {};
-    return s(identity.driver_name) || s(identity.profile_full_name) || s(fallback) || "Unknown Driver";
-  }
-
   const summary = {
     total_bookings: bookings.length,
     completed: 0,
@@ -306,15 +512,23 @@ export async function GET(req: NextRequest) {
     active_uncompleted: 0,
     ride_completed: 0,
     takeout_completed: 0,
+    errand_completed: 0,
     ride_active: 0,
     takeout_active: 0,
+    errand_active: 0,
     revenue: 0,
+    completed_gross: 0,
     driver_payout: 0,
     company_cut: 0,
+    settled_company_cut: 0,
     drivers_with_sessions: 0,
-    total_login_sessions: sessions.length,
+    total_login_sessions: 0,
     total_login_minutes: 0,
+    total_raw_online_hours: 0,
+    total_security_excluded_hours: 0,
     online_now: 0,
+    dummy_driver_identities_excluded: dummyDriverIds.size,
+    dummy_passenger_identities_excluded: dummyPassengerIds.size,
   };
 
   const daily: Record<string, any> = {};
@@ -324,98 +538,85 @@ export async function GET(req: NextRequest) {
   const drivers: Record<string, any> = {};
 
   const operatingTowns = ["Banaue", "Hingyon", "Lagawe", "Lamut"];
-  for (const town of operatingTowns) {
-    addBucket(towns, town);
-  }
+  for (const town of operatingTowns) addBucket(towns, town);
 
   for (const row of bookings as any[]) {
-    if (isCompleted(row)) summary.completed += 1;
-    else if (isCancelled(row)) summary.cancelled += 1;
-    else summary.active_uncompleted += 1;
-
     const svc = serviceType(row);
-    if (isCompleted(row) && svc === "ride") summary.ride_completed += 1;
-    if (isCompleted(row) && svc === "takeout") summary.takeout_completed += 1;
-    if (isActive(row) && svc === "ride") summary.ride_active += 1;
-    if (isActive(row) && svc === "takeout") summary.takeout_active += 1;
+    if (isCompleted(row)) {
+      summary.completed += 1;
+      summary[`${svc}_completed` as "ride_completed"] += 1;
+      const gross = grossValue(row);
+      summary.revenue += gross;
+      summary.completed_gross += gross;
+      summary.driver_payout += n(row?.driver_payout);
+      summary.company_cut += n(row?.company_cut);
+      if (s(row?.wallet_settlement_status).toLowerCase() === "settled") {
+        summary.settled_company_cut += n(row?.company_cut);
+      }
+    } else if (isCancelled(row)) {
+      summary.cancelled += 1;
+    } else {
+      summary.active_uncompleted += 1;
+      summary[`${svc}_active` as "ride_active"] += 1;
+    }
 
-    summary.revenue += n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare);
-    summary.driver_payout += n(row?.driver_payout);
-    summary.company_cut += n(row?.company_cut);
-
-    addBookingStats(addBucket(daily, dateKey(row?.created_at)), row);
-    addBookingStats(addBucket(weekly, weekKey(row?.created_at)), row);
-    addBookingStats(addBucket(monthly, monthKey(row?.created_at)), row);
+    const dateKey = manilaDateKey(row?.created_at);
+    addBookingStats(addBucket(daily, dateKey), row);
+    addBookingStats(addBucket(weekly, weekKeyFromDateKey(dateKey)), row);
+    addBookingStats(addBucket(monthly, monthKeyFromDateKey(dateKey)), row);
     addBookingStats(addBucket(towns, s(row?.town) || "Unknown"), row);
 
     const did = s(row?.assigned_driver_id || row?.driver_id);
-    if (did) {
-      if (!drivers[did]) {
-        drivers[did] = {
-          driver_id: did,
-          driver_name: driverDisplayName(did),
-          town: s(row?.town) || null,
-          completed_trips: 0,
-          active_trips: 0,
-          cancelled_trips: 0,
-          ride_completed: 0,
-          takeout_completed: 0,
-          gross_revenue: 0,
-          driver_payout: 0,
-          company_cut: 0,
-          login_sessions: 0,
-          login_minutes: 0,
-          current_status: null,
-          last_seen_at: null,
-        };
-      }
-
-      if (isCompleted(row)) {
-        drivers[did].completed_trips += 1;
-        if (svc === "ride") drivers[did].ride_completed += 1;
-        if (svc === "takeout") drivers[did].takeout_completed += 1;
-      } else if (isCancelled(row)) {
-        drivers[did].cancelled_trips += 1;
-      } else {
-        drivers[did].active_trips += 1;
-      }
-
-      drivers[did].gross_revenue += n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare);
-      drivers[did].driver_payout += n(row?.driver_payout);
-      drivers[did].company_cut += n(row?.company_cut);
+    if (!did || dummyDriverIds.has(did)) continue;
+    if (!drivers[did]) drivers[did] = emptyDriver(did);
+    const d = drivers[did];
+    d.town = d.town || s(row?.town) || null;
+    if (isCompleted(row)) {
+      d.completed_trips += 1;
+      d[`${svc}_completed`] += 1;
+      d.gross_revenue += grossValue(row);
+      d.driver_payout += n(row?.driver_payout);
+      d.company_cut += n(row?.company_cut);
+    } else if (isCancelled(row)) {
+      d.cancelled_trips += 1;
+    } else {
+      d.active_trips += 1;
     }
   }
 
-  for (const row of sessions as any[]) {
+  const periodPresenceById: Record<string, any> = {};
+  for (const row of presenceRows as any[]) {
     const did = s(row?.driver_id);
     if (!did) continue;
-
-    if (!drivers[did]) {
-      drivers[did] = {
-        driver_id: did,
-        driver_name: driverDisplayName(did, row?.driver_name),
-        town: s(row?.town) || null,
-        completed_trips: 0,
-        active_trips: 0,
-        cancelled_trips: 0,
-        ride_completed: 0,
-        takeout_completed: 0,
-        gross_revenue: 0,
-        driver_payout: 0,
-        company_cut: 0,
-        login_sessions: 0,
-        login_minutes: 0,
-        current_status: null,
-        last_seen_at: null,
+    if (!drivers[did]) drivers[did] = emptyDriver(did);
+    if (!periodPresenceById[did]) {
+      periodPresenceById[did] = {
+        raw_online_seconds: 0,
+        net_online_seconds: 0,
+        security_excluded_seconds: 0,
       };
     }
+    addPresence(periodPresenceById[did], row);
+  }
 
-    drivers[did].driver_name = drivers[did].driver_name || s(row?.driver_name) || null;
-    drivers[did].town = drivers[did].town || s(row?.town) || null;
-    drivers[did].login_sessions += 1;
-    drivers[did].login_minutes += sessionMinutes(row);
+  for (const row of sessionStartRows as any[]) {
+    const did = s(row?.driver_id);
+    if (!did) continue;
+    if (!drivers[did]) drivers[did] = emptyDriver(did);
+    drivers[did].login_sessions += n(row?.session_count);
+    summary.total_login_sessions += n(row?.session_count);
+  }
 
-    summary.total_login_minutes += sessionMinutes(row);
+  for (const [did, p] of Object.entries(periodPresenceById)) {
+    finalizePresence(p);
+    if (!drivers[did]) drivers[did] = emptyDriver(did);
+    drivers[did].raw_online_hours = p.raw_online_hours;
+    drivers[did].security_excluded_hours = p.security_excluded_hours;
+    drivers[did].online_hours = p.online_hours;
+    drivers[did].login_minutes = p.login_minutes;
+    summary.total_login_minutes += p.login_minutes;
+    summary.total_raw_online_hours += p.raw_online_hours;
+    summary.total_security_excluded_hours += p.security_excluded_hours;
   }
 
   const latestLocationByDriver: Record<string, any> = {};
@@ -426,71 +627,52 @@ export async function GET(req: NextRequest) {
   }
 
   for (const [did, loc] of Object.entries(latestLocationByDriver)) {
-    if (!drivers[did]) {
-      drivers[did] = {
-        driver_id: did,
-        driver_name: driverDisplayName(did),
-        town: s((loc as any)?.town || (loc as any)?.home_town) || null,
-        completed_trips: 0,
-        active_trips: 0,
-        cancelled_trips: 0,
-        ride_completed: 0,
-        takeout_completed: 0,
-        gross_revenue: 0,
-        driver_payout: 0,
-        company_cut: 0,
-        login_sessions: 0,
-        login_minutes: 0,
-        current_status: null,
-        last_seen_at: null,
-      };
-    }
-
-    drivers[did].current_status = s((loc as any)?.status) || null;
+    if (!drivers[did]) drivers[did] = emptyDriver(did);
+    const state = effectiveLocationState(loc);
+    drivers[did].current_status = state.effective_status;
+    drivers[did].raw_location_status = state.raw_status;
+    drivers[did].location_is_fresh = state.is_fresh;
+    drivers[did].location_age_seconds = state.age_seconds;
     drivers[did].last_seen_at = (loc as any)?.updated_at || null;
-    drivers[did].town = drivers[did].town || s((loc as any)?.town || (loc as any)?.home_town) || null;
-
-    if (s((loc as any)?.status).toLowerCase() === "online") summary.online_now += 1;
+    drivers[did].town =
+      drivers[did].town || s((loc as any)?.home_town || (loc as any)?.town) || null;
+    if (state.is_online) summary.online_now += 1;
   }
 
   for (const did of Object.keys(drivers)) {
-    const r = reliabilityById[did];
-    drivers[did].is_placeholder_driver = r?.is_placeholder_driver ?? null;
-    drivers[did].is_production_driver = r?.is_production_driver ?? null;
-    drivers[did].online_hours = r?.online_hours ?? null;
-    drivers[did].duty_check_response_rate_pct = r?.duty_check_response_rate_pct ?? null;
-    drivers[did].assignment_progression_pct = r?.assignment_progression_pct ?? null;
-    drivers[did].completion_pct = r?.completion_pct ?? null;
-    drivers[did].unique_assigned_bookings = r?.unique_assigned_bookings ?? null;
-    drivers[did].repeated_assignment_pairs = r?.repeated_assignment_pairs ?? null;
-    drivers[did].has_repeat_assignments = r?.has_repeat_assignments ?? null;
-  }
+    const identity = driverIdentityById[did] || {};
+    const rel = reliabilityById[did] || {};
+    const inc = incentiveById[did] || {};
+    const incPresence = incentivePresenceById[did] || {};
 
-  // NOTE: prefixed with "incentive_" throughout - the reliability merge
-  // above already uses online_hours, unique_assigned_bookings,
-  // assignment_progression_pct, and completion_pct for ALL-TIME values.
-  // Reusing those names here would silently overwrite the historical
-  // figures with the current-period ones on the same driver row.
-  for (const did of Object.keys(drivers)) {
-    const i = incentiveById[did];
-    drivers[did].incentive_period_name = i?.incentive_period_name ?? null;
-    drivers[did].incentive_online_hours = i?.online_hours ?? null;
-    drivers[did].incentive_raw_online_hours = i?.raw_online_hours ?? null;
-    drivers[did].incentive_eligible_online_hours = i?.eligible_online_hours ?? null;
-    drivers[did].incentive_unique_assigned_bookings = i?.unique_assigned_bookings ?? null;
-    drivers[did].incentive_completed_assignments = i?.completed_assignments ?? null;
-    drivers[did].incentive_assignment_progression_pct = i?.assignment_progression_pct ?? null;
-    drivers[did].incentive_completion_pct = i?.completion_pct ?? null;
-  }
-
-  // Single nested object per driver, keyed by policy_code, instead of a
-  // flat weekly_* field set. Adding a 7th policy row to
-  // driver_incentive_policies requires no change here or in the UI.
-  for (const did of Object.keys(drivers)) {
+    drivers[did].driver_name = driverDisplayName(did, drivers[did].driver_name);
+    drivers[did].town =
+      s(identity.municipality) || drivers[did].town || null;
+    drivers[did].is_placeholder_driver = false;
+    drivers[did].is_production_driver = true;
+    drivers[did].duty_check_response_rate_pct = rel?.duty_check_response_rate_pct ?? null;
+    drivers[did].assignment_progression_pct = rel?.assignment_progression_pct ?? null;
+    drivers[did].completion_pct = rel?.completion_pct ?? null;
+    drivers[did].unique_assigned_bookings = rel?.unique_assigned_bookings ?? null;
+    drivers[did].repeated_assignment_pairs = rel?.repeated_assignment_pairs ?? null;
+    drivers[did].has_repeat_assignments = rel?.has_repeat_assignments ?? null;
+    drivers[did].incentive_period_name =
+      inc?.incentive_period_name || activePeriod?.name || null;
+    drivers[did].incentive_raw_online_hours = incPresence.raw_online_hours ?? 0;
+    drivers[did].incentive_eligible_online_hours = incPresence.online_hours ?? 0;
+    drivers[did].incentive_security_excluded_hours =
+      incPresence.security_excluded_hours ?? 0;
+    drivers[did].incentive_unique_assigned_bookings = inc?.unique_assigned_bookings ?? null;
+    drivers[did].incentive_completed_assignments = inc?.completed_assignments ?? null;
+    drivers[did].incentive_assignment_progression_pct =
+      inc?.assignment_progression_pct ?? null;
+    drivers[did].incentive_completion_pct = inc?.completion_pct ?? null;
     drivers[did].incentive_qualification = incentiveQualificationById[did] || {};
   }
 
-  summary.drivers_with_sessions = Object.values(drivers).filter((d: any) => d.login_sessions > 0).length;
+  summary.drivers_with_sessions = Object.values(drivers).filter(
+    (d: any) => n(d.login_sessions) > 0
+  ).length;
 
   const active_uncompleted_trips = bookings
     .filter((row: any) => isActive(row))
@@ -512,170 +694,201 @@ export async function GET(req: NextRequest) {
       updated_at: row.updated_at,
     }));
 
-      let driver_detail: any = null;
-  if (driverIdFilter) {
-    const d = drivers[driverIdFilter] || null;
+  let driver_detail: any = null;
+  if (driverIdFilter && !dummyDriverIds.has(driverIdFilter)) {
+    const d = drivers[driverIdFilter] || emptyDriver(driverIdFilter);
     const identity = driverIdentityById[driverIdFilter] || {};
 
-    const rideRatingsRes = await admin
-      .from("trip_ratings")
-      .select("id,booking_code,driver_id,rating,feedback,created_at")
-      .eq("driver_id", driverIdFilter)
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const [rideRatingsRes, takeoutRatingsRes, allPresenceRes, allSessionStartsRes, sessionsRes] =
+      await Promise.all([
+        admin
+          .from("trip_ratings")
+          .select("id,booking_code,driver_id,rating,feedback,created_at")
+          .eq("driver_id", driverIdFilter)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        admin
+          .from("takeout_ratings")
+          .select("id,booking_code,driver_id,driver_rating,driver_comment,created_at")
+          .eq("driver_id", driverIdFilter)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        admin
+          .from("driver_presence_daily_net_v1")
+          .select(
+            "driver_id,manila_date,raw_online_seconds,net_online_seconds,security_excluded_seconds,first_seen_at,last_seen_at"
+          )
+          .eq("driver_id", driverIdFilter)
+          .order("manila_date", { ascending: false })
+          .limit(5000),
+        admin
+          .from("driver_presence_session_starts_daily_v1")
+          .select("driver_id,manila_date,session_count")
+          .eq("driver_id", driverIdFilter)
+          .order("manila_date", { ascending: false })
+          .limit(5000),
+        admin
+          .from("driver_presence_sessions")
+          .select(
+            "id,driver_id,driver_name,town,status,login_at,logout_at,last_seen_at,source,device_id,created_at,updated_at,close_reason"
+          )
+          .eq("driver_id", driverIdFilter)
+          .order("login_at", { ascending: false })
+          .limit(100),
+      ]);
 
-    const takeoutRatingsRes = await admin
-      .from("takeout_ratings")
-      .select("id,booking_code,driver_id,driver_rating,driver_comment,created_at")
-      .eq("driver_id", driverIdFilter)
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const rideRatings =
+      !rideRatingsRes.error && Array.isArray(rideRatingsRes.data) ? rideRatingsRes.data : [];
+    const takeoutRatings =
+      !takeoutRatingsRes.error && Array.isArray(takeoutRatingsRes.data)
+        ? takeoutRatingsRes.data
+        : [];
+    const allPresence =
+      !allPresenceRes.error && Array.isArray(allPresenceRes.data) ? allPresenceRes.data : [];
+    const allSessionStarts =
+      !allSessionStartsRes.error && Array.isArray(allSessionStartsRes.data)
+        ? allSessionStartsRes.data
+        : [];
+    const driverSessions =
+      !sessionsRes.error && Array.isArray(sessionsRes.data) ? sessionsRes.data : [];
 
-    const rideRatings = !rideRatingsRes.error && Array.isArray(rideRatingsRes.data) ? rideRatingsRes.data : [];
-    const takeoutRatings = !takeoutRatingsRes.error && Array.isArray(takeoutRatingsRes.data) ? takeoutRatingsRes.data : [];
-
-    const rideRatingCount = rideRatings.length;
-    const takeoutRatingCount = takeoutRatings.length;
-    const rideRatingAverage =
-      rideRatingCount > 0
-        ? rideRatings.reduce((sum: number, row: any) => sum + n(row?.rating), 0) / rideRatingCount
-        : null;
-    const takeoutRatingAverage =
-      takeoutRatingCount > 0
-        ? takeoutRatings.reduce((sum: number, row: any) => sum + n(row?.driver_rating), 0) / takeoutRatingCount
-        : null;
-
-        const allDriverSessionsRes = await admin
-      .from("driver_presence_sessions")
-      .select("id,driver_id,driver_name,town,status,login_at,logout_at,last_seen_at,source,device_id,created_at,updated_at")
-      .eq("driver_id", driverIdFilter)
-      .order("login_at", { ascending: false })
-      .limit(5000);
-
-    const allDriverSessions =
-      !allDriverSessionsRes.error && Array.isArray(allDriverSessionsRes.data)
-        ? allDriverSessionsRes.data
-        : sessions.filter((row: any) => s(row.driver_id) === driverIdFilter);
-
-    function sessionMinutesLocal(row: any) {
-      const start = new Date(String(row?.login_at || row?.created_at || "")).getTime();
-      const endRaw = row?.logout_at || row?.last_seen_at || row?.updated_at || new Date().toISOString();
-      const end = new Date(String(endRaw)).getTime();
-      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
-      return Math.floor((end - start) / 60000);
+    const sessionCountByDate: Record<string, number> = {};
+    for (const row of allSessionStarts as any[]) {
+      sessionCountByDate[s(row?.manila_date)] = n(row?.session_count);
     }
 
-    const phNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" }));
-    const todayKey = phNow.toISOString().slice(0, 10);
-    const monthKey = todayKey.slice(0, 7);
-    const weekStart = new Date(phNow);
-    weekStart.setDate(phNow.getDate() - phNow.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-
+    const todayKey = window.today;
+    const weekStartKey = weekKeyFromDateKey(todayKey);
+    const monthKey = monthKeyFromDateKey(todayKey);
     const loginSummary = {
       today_minutes: 0,
       week_minutes: 0,
       month_minutes: 0,
       overall_minutes: 0,
+      today_raw_minutes: 0,
+      week_raw_minutes: 0,
+      month_raw_minutes: 0,
+      overall_raw_minutes: 0,
+      today_security_excluded_minutes: 0,
+      week_security_excluded_minutes: 0,
+      month_security_excluded_minutes: 0,
+      overall_security_excluded_minutes: 0,
       today_sessions: 0,
       week_sessions: 0,
       month_sessions: 0,
       overall_sessions: 0,
     };
 
-    for (const row of allDriverSessions as any[]) {
-      const start = new Date(String(row?.login_at || row?.created_at || ""));
-      if (!Number.isFinite(start.getTime())) continue;
-
-      const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
-      const key = phStart.toISOString().slice(0, 10);
-      const mins = sessionMinutesLocal(row);
-
-      loginSummary.overall_minutes += mins;
-      loginSummary.overall_sessions += 1;
-
+    for (const row of allPresence as any[]) {
+      const key = s(row?.manila_date);
+      const netMinutes = Math.round(n(row?.net_online_seconds) / 60);
+      const rawMinutes = Math.round(n(row?.raw_online_seconds) / 60);
+      const excludedMinutes = Math.round(n(row?.security_excluded_seconds) / 60);
+      loginSummary.overall_minutes += netMinutes;
+      loginSummary.overall_raw_minutes += rawMinutes;
+      loginSummary.overall_security_excluded_minutes += excludedMinutes;
       if (key === todayKey) {
-        loginSummary.today_minutes += mins;
-        loginSummary.today_sessions += 1;
+        loginSummary.today_minutes += netMinutes;
+        loginSummary.today_raw_minutes += rawMinutes;
+        loginSummary.today_security_excluded_minutes += excludedMinutes;
       }
-
-      if (phStart >= weekStart) {
-        loginSummary.week_minutes += mins;
-        loginSummary.week_sessions += 1;
+      if (key >= weekStartKey && key <= todayKey) {
+        loginSummary.week_minutes += netMinutes;
+        loginSummary.week_raw_minutes += rawMinutes;
+        loginSummary.week_security_excluded_minutes += excludedMinutes;
       }
-
-      if (key.slice(0, 7) === monthKey) {
-        loginSummary.month_minutes += mins;
-        loginSummary.month_sessions += 1;
-      }
-    }
-
-    const dailyLoginMap: Record<string, any> = {};
-
-    for (const row of allDriverSessions as any[]) {
-      const start = new Date(String(row?.login_at || row?.created_at || ""));
-      if (!Number.isFinite(start.getTime())) continue;
-
-      const phStart = new Date(start.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
-      const key = phStart.toISOString().slice(0, 10);
-      const mins = sessionMinutesLocal(row);
-
-      if (!dailyLoginMap[key]) {
-        dailyLoginMap[key] = {
-          date: key,
-          minutes: 0,
-          sessions: 0,
-          first_login_at: row?.login_at || row?.created_at || null,
-          last_seen_at: row?.logout_at || row?.last_seen_at || row?.updated_at || null,
-        };
-      }
-
-      dailyLoginMap[key].minutes += mins;
-      dailyLoginMap[key].sessions += 1;
-
-      const existingFirst = new Date(String(dailyLoginMap[key].first_login_at || "")).getTime();
-      const currentFirst = new Date(String(row?.login_at || row?.created_at || "")).getTime();
-      if (Number.isFinite(currentFirst) && (!Number.isFinite(existingFirst) || currentFirst < existingFirst)) {
-        dailyLoginMap[key].first_login_at = row?.login_at || row?.created_at || null;
-      }
-
-      const existingLast = new Date(String(dailyLoginMap[key].last_seen_at || "")).getTime();
-      const currentLast = new Date(String(row?.logout_at || row?.last_seen_at || row?.updated_at || "")).getTime();
-      if (Number.isFinite(currentLast) && (!Number.isFinite(existingLast) || currentLast > existingLast)) {
-        dailyLoginMap[key].last_seen_at = row?.logout_at || row?.last_seen_at || row?.updated_at || null;
+      if (monthKeyFromDateKey(key) === monthKey) {
+        loginSummary.month_minutes += netMinutes;
+        loginSummary.month_raw_minutes += rawMinutes;
+        loginSummary.month_security_excluded_minutes += excludedMinutes;
       }
     }
 
-    const dailyLoginSummary = Object.values(dailyLoginMap)
-      .sort((a: any, b: any) => String(b.date).localeCompare(String(a.date)))
-      .slice(0, 31);
+    for (const row of allSessionStarts as any[]) {
+      const key = s(row?.manila_date);
+      const count = n(row?.session_count);
+      loginSummary.overall_sessions += count;
+      if (key === todayKey) loginSummary.today_sessions += count;
+      if (key >= weekStartKey && key <= todayKey) loginSummary.week_sessions += count;
+      if (monthKeyFromDateKey(key) === monthKey) loginSummary.month_sessions += count;
+    }
 
-    const driverSessions = allDriverSessions.slice(0, 100);
+    const dailyLoginSummary = (allPresence as any[]).slice(0, 31).map((row: any) => ({
+      date: row.manila_date,
+      minutes: Math.round(n(row?.net_online_seconds) / 60),
+      raw_minutes: Math.round(n(row?.raw_online_seconds) / 60),
+      security_excluded_minutes: Math.round(n(row?.security_excluded_seconds) / 60),
+      sessions: sessionCountByDate[s(row?.manila_date)] || 0,
+      first_login_at: row?.first_seen_at || null,
+      last_seen_at: row?.last_seen_at || null,
+    }));
 
     const driverBookings = bookings
-      .filter((row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter)
+      .filter(
+        (row: any) => s(row.assigned_driver_id || row.driver_id) === driverIdFilter
+      )
       .slice(0, 100);
-
 
     const driverKpis = {
       total_bookings: driverBookings.length,
-      completed_bookings: driverBookings.filter((row: any) => normStatus(row.status) === "completed").length,
-      cancelled_bookings: driverBookings.filter((row: any) => normStatus(row.status) === "cancelled").length,
+      completed_bookings: driverBookings.filter((row: any) => isCompleted(row)).length,
+      cancelled_bookings: driverBookings.filter((row: any) => isCancelled(row)).length,
       active_bookings: driverBookings.filter((row: any) => isActive(row)).length,
-      ride_bookings: driverBookings.filter((row: any) => serviceType(row) !== "takeout").length,
+      ride_bookings: driverBookings.filter((row: any) => serviceType(row) === "ride").length,
       takeout_bookings: driverBookings.filter((row: any) => serviceType(row) === "takeout").length,
-      gross_total: driverBookings.reduce((sum: number, row: any) => sum + (n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare)), 0),
-      driver_payout_total: driverBookings.reduce((sum: number, row: any) => sum + n(row?.driver_payout), 0),
-      company_cut_total: driverBookings.reduce((sum: number, row: any) => sum + n(row?.company_cut), 0),
+      errand_bookings: driverBookings.filter((row: any) => serviceType(row) === "errand").length,
+      gross_total: driverBookings
+        .filter((row: any) => isCompleted(row))
+        .reduce((sum: number, row: any) => sum + grossValue(row), 0),
+      driver_payout_total: driverBookings
+        .filter((row: any) => isCompleted(row))
+        .reduce((sum: number, row: any) => sum + n(row?.driver_payout), 0),
+      company_cut_total: driverBookings
+        .filter((row: any) => isCompleted(row))
+        .reduce((sum: number, row: any) => sum + n(row?.company_cut), 0),
     };
 
-    const driverKpiDenominator = driverKpis.completed_bookings + driverKpis.cancelled_bookings;
+    const driverKpiDenominator =
+      driverKpis.completed_bookings + driverKpis.cancelled_bookings;
     const driverPerformance = {
       ...driverKpis,
-      completion_rate: driverKpiDenominator > 0 ? Math.round((driverKpis.completed_bookings / driverKpiDenominator) * 100) : null,
-      cancellation_rate: driverKpiDenominator > 0 ? Math.round((driverKpis.cancelled_bookings / driverKpiDenominator) * 100) : null,
+      completion_rate:
+        driverKpiDenominator > 0
+          ? Math.round((driverKpis.completed_bookings / driverKpiDenominator) * 100)
+          : null,
+      cancellation_rate:
+        driverKpiDenominator > 0
+          ? Math.round((driverKpis.cancelled_bookings / driverKpiDenominator) * 100)
+          : null,
     };
+
     const currentActiveBooking = driverBookings.find((row: any) => isActive(row)) || null;
+    const rideRatingCount = rideRatings.length;
+    const takeoutRatingCount = takeoutRatings.length;
+    const rideRatingAverage =
+      rideRatingCount > 0
+        ? rideRatings.reduce((sum: number, row: any) => sum + n(row?.rating), 0) /
+          rideRatingCount
+        : null;
+    const takeoutRatingAverage =
+      takeoutRatingCount > 0
+        ? takeoutRatings.reduce(
+            (sum: number, row: any) => sum + n(row?.driver_rating),
+            0
+          ) / takeoutRatingCount
+        : null;
+
+    const overallPresence = {
+      raw_online_seconds: 0,
+      net_online_seconds: 0,
+      security_excluded_seconds: 0,
+    };
+    for (const row of allPresence as any[]) addPresence(overallPresence, row);
+    finalizePresence(overallPresence);
+
+    const rel = reliabilityById[driverIdFilter] || null;
+    const inc = incentiveById[driverIdFilter] || null;
+    const incPresence = incentivePresenceById[driverIdFilter] || {};
 
     const timeline = [
       ...driverSessions.map((row: any) => ({
@@ -686,16 +899,6 @@ export async function GET(req: NextRequest) {
         source: row.source,
         device_id: row.device_id,
       })),
-      ...driverSessions
-        .filter((row: any) => row.logout_at)
-        .map((row: any) => ({
-          type: "session",
-          at: row.logout_at,
-          label: "Driver logout",
-          status: row.status,
-          source: row.source,
-          device_id: row.device_id,
-        })),
       ...driverBookings.map((row: any) => ({
         type: "booking",
         at: row.created_at,
@@ -703,10 +906,9 @@ export async function GET(req: NextRequest) {
         booking_code: row.booking_code,
         service_type: serviceType(row),
         status: normStatus(row.status),
-        gross_booking:
-          n(row?.verified_fare) || n(row?.takeout_total_payable) || n(row?.proposed_fare),
-        driver_payout: n(row?.driver_payout),
-        company_cut: n(row?.company_cut),
+        gross_booking: isCompleted(row) ? grossValue(row) : 0,
+        driver_payout: isCompleted(row) ? n(row?.driver_payout) : 0,
+        company_cut: isCompleted(row) ? n(row?.company_cut) : 0,
       })),
     ]
       .sort((a: any, b: any) => {
@@ -718,7 +920,7 @@ export async function GET(req: NextRequest) {
 
     driver_detail = {
       driver: {
-        ...(d || {}),
+        ...d,
         driver_id: driverIdFilter,
         driver_name: driverDisplayName(driverIdFilter, d?.driver_name),
         callsign: s(identity.callsign) || null,
@@ -727,11 +929,12 @@ export async function GET(req: NextRequest) {
         municipality: s(identity.municipality) || null,
         vehicle_type: s(identity.vehicle_type) || null,
         plate_number: s(identity.plate_number) || null,
-        driver_status_master: s(identity.driver_status_master) || d?.driver_status_master || null,
+        driver_status_master: s(identity.driver_status_master) || null,
         wallet_balance: identity.wallet_balance ?? null,
         min_wallet_required: identity.min_wallet_required ?? null,
         wallet_locked: identity.wallet_locked ?? null,
-        is_toda_member: identity.is_toda_member ?? identity.profile_is_toda_member ?? null,
+        is_toda_member:
+          identity.is_toda_member ?? identity.profile_is_toda_member ?? null,
         toda_name: s(identity.toda_name || identity.toda_org) || null,
       },
       current_booking: currentActiveBooking,
@@ -741,11 +944,28 @@ export async function GET(req: NextRequest) {
       login_summary: loginSummary,
       daily_login_summary: dailyLoginSummary,
       performance: driverPerformance,
-      reliability: reliabilityById[driverIdFilter] || null,
-      incentive: incentiveById[driverIdFilter] || null,
-      incentive_qualification:
-        incentiveQualificationById[driverIdFilter] || {},
-            ratings: {
+      reliability: rel
+        ? {
+            ...rel,
+            raw_online_hours: overallPresence.raw_online_hours,
+            security_excluded_hours: overallPresence.security_excluded_hours,
+            online_hours: overallPresence.online_hours,
+          }
+        : {
+            raw_online_hours: overallPresence.raw_online_hours,
+            security_excluded_hours: overallPresence.security_excluded_hours,
+            online_hours: overallPresence.online_hours,
+          },
+      incentive: {
+        ...(inc || {}),
+        incentive_period_name: inc?.incentive_period_name || activePeriod?.name || null,
+        raw_online_hours: incPresence.raw_online_hours ?? 0,
+        eligible_online_hours: incPresence.online_hours ?? 0,
+        online_hours: incPresence.online_hours ?? 0,
+        security_excluded_hours: incPresence.security_excluded_hours ?? 0,
+      },
+      incentive_qualification: incentiveQualificationById[driverIdFilter] || {},
+      ratings: {
         ride_average: rideRatingAverage,
         ride_count: rideRatingCount,
         takeout_average: takeoutRatingAverage,
@@ -759,23 +979,42 @@ export async function GET(req: NextRequest) {
 
   return json(200, {
     ok: true,
-    source: "analytics_v3",
+    source: "analytics_v3_canonical_v1",
     days,
+    window: {
+      manila_start_date: window.startDate,
+      manila_today: window.today,
+      start_at_utc: window.startAt,
+    },
     generated_at: new Date().toISOString(),
     summary,
     periods: {
-      daily: Object.values(daily).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
-      weekly: Object.values(weekly).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
-      monthly: Object.values(monthly).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
+      daily: Object.values(daily).sort((a: any, b: any) =>
+        String(b.key).localeCompare(String(a.key))
+      ),
+      weekly: Object.values(weekly).sort((a: any, b: any) =>
+        String(b.key).localeCompare(String(a.key))
+      ),
+      monthly: Object.values(monthly).sort((a: any, b: any) =>
+        String(b.key).localeCompare(String(a.key))
+      ),
     },
-    towns: Object.values(towns).sort((a: any, b: any) => String(a.key).localeCompare(String(b.key))),
-    drivers: Object.values(drivers).sort((a: any, b: any) => Number(b.completed_trips || 0) - Number(a.completed_trips || 0)),
+    towns: Object.values(towns).sort((a: any, b: any) =>
+      String(a.key).localeCompare(String(b.key))
+    ),
+    drivers: Object.values(drivers).sort(
+      (a: any, b: any) => Number(b.completed_trips || 0) - Number(a.completed_trips || 0)
+    ),
     active_uncompleted_trips,
     driver_detail,
+    data_quality: {
+      booking_source: "analytics_v3_bookings_v1",
+      presence_source: "driver_presence_daily_net_v1",
+      login_hours_definition: "raw presence minus Duty Check frozen intervals",
+      timezone: MANILA_TZ,
+      location_freshness_seconds: DRIVER_LOCATION_STALE_AFTER_SECONDS,
+      dummy_driver_identities_excluded: dummyDriverIds.size,
+      dummy_passenger_identities_excluded: dummyPassengerIds.size,
+    },
   });
 }
-
-
-
-
-
