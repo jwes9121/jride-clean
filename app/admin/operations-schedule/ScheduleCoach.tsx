@@ -23,6 +23,11 @@ function relevantWeeks(data: Data) {
   return Array.from(new Set(monthDays(month).filter((day) => day.startsWith(month)).map(weekStart)));
 }
 
+function isIncomplete(data: Data, employeeId: string, week: string) {
+  return weeklyDutySummary(data.state, employeeId, week).some((item) => item.count !== item.target)
+    || weeklyRestCount(data.state, employeeId, week) !== WEEKLY_REST_TARGET;
+}
+
 function guidanceText(data: Data, employeeId: string, day: string) {
   const week = weekStart(day);
   const duty = weeklyDutySummary(data.state, employeeId, week);
@@ -46,6 +51,7 @@ export default function ScheduleCoach() {
   const [open, setOpen] = useState(false);
   const [popup, setPopup] = useState<Popup>(null);
   const lastVersion = useRef<number | null>(null);
+  const initialGuideShown = useRef(false);
 
   const load = useCallback(async (guideDay?: string) => {
     try {
@@ -56,9 +62,15 @@ export default function ScheduleCoach() {
       lastVersion.current = body.version;
       setData(body);
       if (previous !== null && previous !== body.version) window.dispatchEvent(new Event("focus"));
-      if (guideDay && body.actor.role !== "admin") {
+      if (body.actor.role !== "admin" && !body.onboarding) {
         const employee = body.state.employees.find((item) => item.email === body.actor.email);
-        if (employee) setPopup({ title: "Weekly schedule guide", body: guidanceText(body, employee.id, guideDay) });
+        if (employee && guideDay) {
+          setPopup({ title: "Weekly schedule guide", body: guidanceText(body, employee.id, guideDay) });
+        } else if (employee && !initialGuideShown.current) {
+          initialGuideShown.current = true;
+          const firstIncomplete = relevantWeeks(body).find((week) => isIncomplete(body, employee.id, week));
+          if (firstIncomplete) setPopup({ title: "Start with this week", body: guidanceText(body, employee.id, firstIncomplete) });
+        }
       }
     } catch {
       // The main schedule page already handles connection errors.
