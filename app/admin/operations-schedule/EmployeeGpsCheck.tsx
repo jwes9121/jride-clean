@@ -1,36 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type SelfStatus = {
   captureAllowed: boolean;
   reason?: string;
   employee?: { id: string; name: string; area: string };
-  latest?: { accuracy_m: number; created_at: string } | null;
+  employees?: unknown[];
 };
 
 type CaptureState = "checking" | "ready" | "capturing" | "saved" | "error";
 
-export default function EmployeeGpsCheck() {
+export default function EmployeeGpsCheck({ children }: { children: ReactNode }) {
   const [self, setSelf] = useState<SelfStatus | null>(null);
   const [state, setState] = useState<CaptureState>("checking");
-  const [detail, setDetail] = useState("Checking staff GPS test status...");
-  const autoStarted = useRef(false);
+  const [detail, setDetail] = useState("Checking location requirement...");
 
   const loadStatus = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/employee-location", { cache: "no-store" });
-      if (!response.ok) return;
-      const body = (await response.json()) as SelfStatus;
+      const body = (await response.json()) as SelfStatus & { error?: string };
+      if (!response.ok) throw new Error(body.error || "Location check is unavailable.");
       setSelf(body);
+      if (Array.isArray(body.employees)) {
+        setState("saved");
+        return;
+      }
       if (body.captureAllowed) {
         setState((current) => current === "checking" ? "ready" : current);
-        setDetail((current) => current === "Checking staff GPS test status..."
-          ? "GPS accuracy test is ready. You can continue choosing your schedule."
+        setDetail((current) => current === "Checking location requirement..."
+          ? "Allow a current GPS reading to continue to the Operations Schedule."
           : current);
+      } else {
+        setState("ready");
       }
-    } catch {
-      // The schedule itself must remain usable if the optional GPS test is temporarily unavailable.
+    } catch (error) {
+      setState("error");
+      setDetail(error instanceof Error ? error.message : "Location check is unavailable.");
     }
   }, []);
 
@@ -59,9 +66,8 @@ export default function EmployeeGpsCheck() {
           });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || "GPS reading could not be saved.");
-          const accuracy = Math.round(Number(result.reading?.accuracy_m || position.coords.accuracy));
           setState("saved");
-          setDetail(`GPS test saved. Reported accuracy: +/- ${accuracy} meters.`);
+          setDetail("Location check complete.");
         } catch (error) {
           setState("error");
           setDetail(error instanceof Error ? error.message : "GPS reading could not be saved.");
@@ -82,33 +88,40 @@ export default function EmployeeGpsCheck() {
 
   useEffect(() => {
     void loadStatus();
-    const interval = window.setInterval(loadStatus, 10000);
+    const interval = window.setInterval(loadStatus, self?.captureAllowed ? 10000 : 1500);
     return () => window.clearInterval(interval);
-  }, [loadStatus]);
+  }, [loadStatus, self?.captureAllowed]);
 
-  useEffect(() => {
-    if (!self?.captureAllowed || autoStarted.current) return;
-    autoStarted.current = true;
-    const timer = window.setTimeout(capture, 12000);
-    return () => window.clearTimeout(timer);
-  }, [capture, self?.captureAllowed]);
+  if (state === "saved") return <>{children}</>;
 
-  if (!self?.captureAllowed) return null;
+  if (self && !self.captureAllowed) {
+    return <>{children}</>;
+  }
 
   return (
-    <aside className="fixed bottom-3 right-3 z-50 w-[min(92vw,360px)] rounded-xl border border-slate-300 bg-white p-4 text-slate-900 shadow-xl" aria-live="polite">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-500">JRide GPS accuracy test</div>
-      <div className="mt-1 text-sm font-semibold">{self.employee?.name} / {self.employee?.area}</div>
-      <p className="mt-2 text-sm leading-5 text-slate-700">One work-location reading is requested on this staff page for the accuracy test. You can continue choosing your schedule.</p>
-      <p className="mt-2 text-sm leading-5 text-slate-700">{detail}</p>
-      <button
-        type="button"
-        onClick={capture}
-        disabled={state === "capturing"}
-        className="mt-3 rounded-lg border border-slate-400 bg-slate-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {state === "capturing" ? "Getting GPS..." : state === "saved" ? "Refresh GPS reading" : "Run GPS test now"}
-      </button>
-    </aside>
+    <main className="min-h-screen bg-slate-950 px-4 py-10 text-white sm:px-6">
+      <div className="mx-auto flex min-h-[75vh] max-w-lg items-center justify-center">
+        <section className="w-full rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-400">JRide Staff Operations</div>
+          <h1 className="mt-3 text-2xl font-bold">Location check required</h1>
+          <p className="mt-4 text-sm leading-6 text-slate-300">
+            JRide may request GPS readings at any time while you are logged in to Staff Operations to confirm operational availability for driver and vendor assistance.
+          </p>
+          <p className="mt-3 text-sm leading-6 text-slate-300">
+            A current GPS reading is required before you can open or grab schedules. Keep Location/GPS on, then continue below.
+          </p>
+          {self?.employee && <p className="mt-4 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-200"><strong>{self.employee.name}</strong><br />{self.employee.area}</p>}
+          <p className={`mt-4 rounded-lg p-3 text-sm ${state === "error" ? "bg-red-950 text-red-200" : "bg-slate-800 text-slate-200"}`} aria-live="polite">{detail}</p>
+          <button
+            type="button"
+            onClick={state === "checking" ? loadStatus : capture}
+            disabled={state === "capturing"}
+            className="mt-5 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-50"
+          >
+            {state === "checking" ? "Check requirement" : state === "capturing" ? "Getting GPS..." : "Allow GPS and continue"}
+          </button>
+        </section>
+      </div>
+    </main>
   );
 }
