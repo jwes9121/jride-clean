@@ -35,6 +35,14 @@ function readActivePeriod(admin: any) {
     .maybeSingle();
 }
 
+function readExcludedDriverIds(admin: any) {
+  return admin
+    .from("analytics_test_identities")
+    .select("entity_id")
+    .eq("entity_type", "driver")
+    .eq("active", true);
+}
+
 async function readObservationRows(admin: any, periodId: string) {
   const rows: any[] = [];
   let totalCount: number | null = null;
@@ -166,15 +174,34 @@ export async function GET() {
       });
     }
 
-    const drivers = observationResult.rows.sort((left: any, right: any) => {
-      const byName = text(left?.driver_name).localeCompare(
-        text(right?.driver_name),
-        "en",
-        { sensitivity: "base" }
+    const exclusionResult = await readExcludedDriverIds(admin);
+    if (exclusionResult.error) {
+      console.error(
+        "[JRIDE_LOCATION_OBSERVATION_EXCLUSION_READ_FAILED]",
+        exclusionResult.error.message
       );
-      if (byName !== 0) return byName;
-      return text(left?.driver_id).localeCompare(text(right?.driver_id));
-    });
+      return json(500, {
+        ok: false,
+        error: "DRIVER_EXCLUSION_READ_FAILED",
+        message: "Unable to verify the active driver roster.",
+      });
+    }
+
+    const excludedDriverIds = new Set(
+      (exclusionResult.data || []).map((row: any) => text(row?.entity_id)).filter(Boolean)
+    );
+
+    const drivers = observationResult.rows
+      .filter((row: any) => !excludedDriverIds.has(text(row?.driver_id)))
+      .sort((left: any, right: any) => {
+        const byName = text(left?.driver_name).localeCompare(
+          text(right?.driver_name),
+          "en",
+          { sensitivity: "base" }
+        );
+        if (byName !== 0) return byName;
+        return text(left?.driver_id).localeCompare(text(right?.driver_id));
+      });
 
     const period = periodResult.data
       ? {
