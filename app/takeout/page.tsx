@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
+import TakeoutLoadingSkeleton from "./TakeoutLoadingSkeleton";
 
 
 
@@ -171,7 +172,7 @@ const LS_DEVICE_KEY = "JRIDE_PAX_DEVICE_KEY";
 const LS_TAKEOUT_CUSTOMER_NAME = "JRIDE_TAKEOUT_CUSTOMER_NAME";
 const LS_TAKEOUT_CUSTOMER_PHONE = "JRIDE_TAKEOUT_CUSTOMER_PHONE";
 
-const CANONICAL_TAKEOUT_TOWNS = ["Lamut", "Kiangan", "Lagawe", "Hingyon", "Banaue"] as const;
+const CANONICAL_TAKEOUT_TOWNS = ["Lagawe", "Hingyon", "Banaue", "Lamut"] as const;
 
 
 type LocalTakeoutLandmark = {
@@ -980,6 +981,10 @@ export default function TakeoutPage() {
   const [checkoutStage, setCheckoutStage] = useState<"browse" | "delivery">("browse");
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [vendorTownFilter, setVendorTownFilter] = useState("");
+  const [storesLoading, setStoresLoading] = useState(true);
+  const [storesLoadFailed, setStoresLoadFailed] = useState(false);
+  const [storeSearch, setStoreSearch] = useState("");
+  const [storeFilter, setStoreFilter] = useState<"open" | "all">("open");
   // JRIDE_TAKEOUT_COMPACT_TOPBAR_CART_FIX_V25: once a town is chosen, collapse the town picker into a summary row.
   const [townPickerOpen, setTownPickerOpen] = useState(false);
   const [expandedPackagingIds, setExpandedPackagingIds] = useState<Record<string, boolean>>({});
@@ -1088,6 +1093,19 @@ export default function TakeoutPage() {
   const comingSoonVendors = useMemo(() => {
     return visibleVendors.filter((v: any) => String(v?.marketplace_status || v?.onboarding_status || "").toLowerCase() === "batch2");
   }, [visibleVendors]);
+
+  const townStoreCounts = useMemo(() => {
+    return Object.fromEntries(vendorTowns.map((town) => {
+      const rows = vendors.filter((v) => vendorTown(v) === town && vendorKey(v));
+      const comingSoon = rows.filter((v: any) => String(v?.marketplace_status || v?.onboarding_status || "").toLowerCase() === "batch2").length;
+      return [town, { active: rows.length - comingSoon, comingSoon }];
+    }));
+  }, [vendors, vendorTowns]);
+  const storeQuery = storeSearch.trim().toLowerCase();
+  const matchingActiveVendors = activeVendors.filter((v) => vendorKey(v) && vendorLabel(v).toLowerCase().includes(storeQuery));
+  const matchingComingSoonVendors = comingSoonVendors.filter((v) => vendorKey(v) && vendorLabel(v).toLowerCase().includes(storeQuery));
+  const storeResults = matchingActiveVendors.filter((v) => storeFilter === "all" || vendorCardIsOpen(v, vendorAvailabilityById));
+  const townCounts = townStoreCounts[vendorTownFilter];
 
   const selectedVendor = useMemo(() => {
     const id = String(vendorId || "").trim();
@@ -1755,7 +1773,8 @@ function selectedAddressTown(
         // then vendorCardIsOpen/isVendorAcceptingOrders controls dimming and clickability.
         setVendors(rows);
       })
-      .catch(() => setVendors([]));
+      .catch(() => { setVendors([]); setStoresLoadFailed(true); })
+      .finally(() => setStoresLoading(false));
   }, []);
 
   useEffect(() => {
@@ -2192,14 +2211,7 @@ function selectedAddressTown(
   }
 
   if (authState === "unknown") {
-    return (
-      <div className="mx-auto max-w-md p-6">
-        <div className="rounded-xl border border-slate-700 bg-slate-950 p-5 text-sm text-slate-100 shadow">
-          <div className="font-semibold">Checking your JRide sign-in...</div>
-          <div className="mt-2 text-xs text-slate-300">Takeout will open after your passenger session is verified.</div>
-        </div>
-      </div>
-    );
+    return <TakeoutLoadingSkeleton />;
   }
 
   if (authState === "auth_check_failed") {
@@ -2228,13 +2240,7 @@ function selectedAddressTown(
   }
 
   if (authState === "guest") {
-    return (
-      <div className="mx-auto max-w-md p-6">
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-950 shadow">
-          Redirecting to JRide Passenger Login...
-        </div>
-      </div>
-    );
+    return <TakeoutLoadingSkeleton />;
   }
 
   return (
@@ -2312,7 +2318,7 @@ function selectedAddressTown(
                     Town: <span className="text-emerald-300">{vendorTownFilter}</span>
                     {!vendorId ? (
                       <span className="ml-1.5 font-semibold text-emerald-500">
-                        &middot; {visibleVendors.length} local {visibleVendors.length === 1 ? "store" : "stores"}
+                        - {storesLoading ? "Loading stores..." : storesLoadFailed ? "Store counts unavailable" : `${townCounts?.active ?? 0} active stores - ${townCounts?.comingSoon ?? 0} coming soon`}
                       </span>
                     ) : null}
                   </div>
@@ -2336,17 +2342,22 @@ function selectedAddressTown(
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-5 gap-1.5">
-                    {(["Lagawe", "Hingyon", "Banaue", "Lamut", "Kiangan"] as string[])
-      .filter((town) => vendorTowns.includes(town as any))
+                    {vendorTowns
       .map((town) => {
                       const active = vendorTownFilter === town;
                       return (
                         <button
                           key={town}
+                          data-jride-town-card="1"
+                          data-jride-town={town}
+                          data-jride-selected-town={active ? "1" : "0"}
+                          aria-pressed={active}
                           type="button"
                           onClick={() => {
                             const nextTown = normalizeTakeoutTown(town);
                             setVendorTownFilter(nextTown);
+                            setStoreSearch("");
+                            setStoreFilter("open");
                             setVendorId("");
                             setQty({});
                             setMenu([]);
@@ -2369,6 +2380,7 @@ function selectedAddressTown(
                           )}
                         >
                           <span className="block leading-tight">{town}</span>
+                          <small className="jride-town-store-count">{storesLoading ? "Loading stores..." : storesLoadFailed ? "Counts unavailable" : <>{townStoreCounts[town].active} active {townStoreCounts[town].active === 1 ? "store" : "stores"}<br />{townStoreCounts[town].comingSoon} coming soon</>}</small>
                         </button>
                       );
                     })}
@@ -2397,20 +2409,37 @@ function selectedAddressTown(
                 </div>
               )}
 
-              {!vendorTownFilter ? (
+              {vendorTownFilter && !vendorId && !storesLoading && !storesLoadFailed ? (
+                <div className="jride-takeout-store-search">
+                  <div className="jride-store-filters" role="group" aria-label="Store availability">
+                    <button type="button" aria-pressed={storeFilter === "open"} onClick={() => setStoreFilter("open")}>Open now</button>
+                    <button type="button" aria-pressed={storeFilter === "all"} onClick={() => setStoreFilter("all")}>All stores</button>
+                  </div>
+                  <label htmlFor="jride-takeout-store-search-input">Search stores</label>
+                  <input id="jride-takeout-store-search-input" type="search" autoComplete="off" placeholder="Search restaurant or store" value={storeSearch} onChange={(event) => setStoreSearch(event.target.value)} />
+                  <p className="jride-store-results" role="status">
+                    {storeResults.length} {storeFilter === "open" ? "open" : "active"} {storeResults.length === 1 ? "store" : "stores"}{storeQuery ? " found" : " shown"}
+                    {storeFilter === "all" ? " - " + matchingComingSoonVendors.length + " coming soon" + (storeQuery ? " found" : "") : ""}
+                  </p>
+                  <p className="jride-store-count-help">Active stores include open and closed stores. Coming Soon stores are not accepting orders yet.</p>
+                </div>
+              ) : null}
+              {storesLoading ? <TakeoutLoadingSkeleton /> : storesLoadFailed ? (
+                <div role="alert" className="p-4 text-sm text-amber-200">Stores could not be loaded. Please refresh to try again.</div>
+              ) : !vendorTownFilter ? (
                 <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   <div className="font-semibold text-slate-900">Choose your town first.</div>
-                  <div className="mt-1 text-xs">Nearby JRide Takeout vendors will appear here.</div>
+                  <div className="mt-1 text-xs">JRide Takeout stores in your town will appear here.</div>
                 </div>
                             ) : activeVendors.length === 0 && comingSoonVendors.length === 0 ? (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <div className="font-semibold">No vendors are listed for this town yet.</div>
+                  <div className="font-semibold">No stores are listed for this town yet.</div>
                   <div className="mt-1 text-xs">Try another town or refresh again later.</div>
                 </div>
               ) : (
                 <div className={cls("jride-vendor-grid grid w-full min-w-0 max-w-full gap-4 overflow-hidden", vendorId ? "grid-cols-1 lg:max-w-[520px]" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
                   {/* JRIDE_TAKEOUT_SELECTED_VENDOR_FIRST_V2: after a store is selected, keep only that store above the menu so the menu appears directly below it. */}
-                                    {(vendorId ? activeVendors.filter((v) => vendorKey(v) === vendorId) : activeVendors).map((v) => {
+                                    {(vendorId ? activeVendors.filter((v) => vendorKey(v) === vendorId) : storeResults).map((v) => {
                     const id = vendorKey(v);
                     if (!id) return null;
                     const isSelected = vendorId === id;
@@ -2470,6 +2499,7 @@ function selectedAddressTown(
                       <button
                         key={id}
                         type="button"
+                        data-jride-vendor-card="1"
                         disabled={isClosed}
                         aria-disabled={isClosed}
                         title={isClosed ? "This vendor is closed right now." : "View this vendor menu."}
@@ -2536,20 +2566,23 @@ function selectedAddressTown(
                   })}
                 </div>
               )}
-              {comingSoonVendors.length > 0 && !vendorId ? (
-                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              {vendorTownFilter && !vendorId && !storesLoading && !storesLoadFailed && storeResults.length === 0 && visibleVendors.length > 0 ? (
+                <p className="p-3 text-sm text-slate-300">{storeQuery ? (storeFilter === "all" && matchingComingSoonVendors.length > 0 ? "No active stores match. Coming Soon matches are listed below." : "No stores match your search in this view.") : storeFilter === "open" ? "No stores are open now in this town." : "No active stores are listed in this town yet."} {storeFilter === "open" ? "Choose All stores to see closed and Coming Soon stores." : ""}</p>
+              ) : null}
+              {matchingComingSoonVendors.length > 0 && storeFilter === "all" && !vendorId ? (
+                <div className="jride-coming-soon mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-sm font-black text-slate-900">Coming soon</div>
-                      <div className="text-[11px] text-slate-500">These partner vendors are queued for the next takeout batch.</div>
+                      <div className="text-[11px] text-slate-500">Not open for orders yet. Counted separately from active stores.</div>
                     </div>
                     <div className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600">
-                      {comingSoonVendors.length} {comingSoonVendors.length === 1 ? "store" : "stores"}
+                      {matchingComingSoonVendors.length} {matchingComingSoonVendors.length === 1 ? "store" : "stores"}
                     </div>
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {comingSoonVendors.map((v: any) => {
+                    {matchingComingSoonVendors.map((v: any) => {
                       const id = vendorKey(v);
                       const label = vendorLabel(v);
                       const logoUrl = vendorUploadedLogoUrl(v);

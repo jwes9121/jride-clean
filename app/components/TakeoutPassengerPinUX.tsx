@@ -151,5 +151,5 @@ export default function TakeoutPassengerPinUX() {
   }, [pathname]);
 
   if (pathname !== "/takeout") return null;
-  return <style>{STYLES}</style>;
+  return <style dangerouslySetInnerHTML={{ __html: STYLES }} />;
 }

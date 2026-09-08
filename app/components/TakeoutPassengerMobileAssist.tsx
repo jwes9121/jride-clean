@@ -532,5 +532,5 @@ export default function TakeoutPassengerMobileAssist() {
   }, [pathname]);
 
   if (pathname !== "/takeout") return null;
-  return <style>{MOBILE_STYLES}</style>;
+  return <style dangerouslySetInnerHTML={{ __html: MOBILE_STYLES }} />;
 }

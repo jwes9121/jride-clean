@@ -60,7 +60,7 @@
 }
 
 .jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"]::after {
-  content: "Browse stores";
+  content: none;
   grid-column: 2;
   grid-row: 2;
   color: #94a3b8;
@@ -86,7 +86,7 @@
 }
 
 .jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"][data-jride-selected-town="1"]::after {
-  content: "Selected town";
+  content: none;
   color: #d1fae5;
 }
 
@@ -222,3 +222,22 @@
     padding: 10px !important;
   }
 }
+
+/* Takeout store discovery and loading states. */
+.jride-town-store-count { grid-column: 2; grid-row: 2; color: #b6cbd0; font-size: 10px; line-height: 1.5; text-align: left; }
+.jride-store-filters { display: flex; gap: 6px; margin-bottom: 12px; }
+.jride-store-filters button { flex: 1; border: 1px solid #315663; border-radius: 10px; padding: 10px; color: #cbd5e1; font-size: 12px; font-weight: 800; background: #071014; }
+.jride-store-filters button[aria-pressed="true"] { border-color: #5eead4; color: #fff; background: #0f766e; }
+.jride-store-results { margin-top: 10px; color: #a7f3d0; font-size: 12px; font-weight: 700; }
+.jride-store-count-help { margin-top: 5px; color: #94a3b8; font-size: 11px; line-height: 1.5; }
+.jride-takeout-unified-v1 .jride-coming-soon { background: #101b24 !important; border-style: dashed; border-color: #52616e !important; }
+.jride-takeout-unified-v1 .jride-coming-soon .bg-white { background: #1b2934 !important; }
+.jride-takeout-loading { width: 100%; max-width: 720px; margin: 0 auto; min-height: 65vh; padding: 24px 16px; background: #071014; color: #cbd5e1; border-radius: 20px; }
+.jride-takeout-loading-brand { color: #5eead4; font-size: 11px; font-weight: 900; letter-spacing: .16em; }
+.jride-takeout-loading p { margin: 8px 0 24px; font-size: 14px; }
+.jride-takeout-loading-shapes { display: grid; gap: 14px; }
+.jride-takeout-loading-line { height: 14px; width: 45%; border-radius: 5px; background: #25434a; }
+.jride-takeout-loading-towns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.jride-takeout-loading-towns > div, .jride-takeout-loading-store { height: 82px; border: 1px solid #25434a; border-radius: 15px; background: linear-gradient(100deg, #10232b 25%, #1c3a43 50%, #10232b 75%); background-size: 200% 100%; animation: jride-takeout-shimmer 1.8s ease-in-out infinite; }
+@keyframes jride-takeout-shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .jride-takeout-loading-towns > div, .jride-takeout-loading-store { animation: none; } }
