@@ -1,0 +1,168 @@
+.jride-ride-route-shell {
+  min-height: 100vh;
+  background: #061014;
+  color: #e5eef1;
+}
+
+.jride-ride-service-header {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 0.8rem 0.9rem 0.7rem;
+  border-bottom: 1px solid rgba(71, 102, 115, 0.38);
+  background: rgba(6, 16, 20, 0.96);
+  backdrop-filter: blur(14px);
+}
+
+.jride-ride-service-header .jride-ride-eyebrow {
+  color: #2dd4bf;
+  font-size: 0.66rem;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.jride-ride-service-header h1 {
+  margin: 0.25rem 0 0;
+  color: #f8fafc;
+  font-size: 1.35rem;
+  line-height: 1.15;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.jride-ride-service-header p {
+  margin: 0.25rem 0 0;
+  color: #94a3b8;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.jride-ride-service-header nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.jride-ride-service-header nav a {
+  display: inline-flex;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(71, 102, 115, 0.6);
+  border-radius: 0.8rem;
+  background: #10202a;
+  padding: 0.45rem 0.7rem;
+  color: #dff7ef;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.jride-ride-service-header nav a:hover {
+  border-color: rgba(45, 212, 191, 0.72);
+  background: #15303a;
+}
+
+/* Remove the older page-local header; the route shell above is the one JRide header. */
+.jride-ride-route-shell > main > div > div:first-child {
+  display: none !important;
+}
+
+.jride-ride-route-shell > main {
+  min-height: auto !important;
+  background: transparent !important;
+  color: #0f172a !important;
+}
+
+.jride-ride-route-shell > main > div {
+  width: 100% !important;
+  max-width: 46rem !important;
+  margin: 0 auto !important;
+  padding: 0.7rem 0.75rem 6rem !important;
+}
+
+/* Keep Ride content in the same light-card-on-dark-shell language as Errand/AgriMarket. */
+.jride-ride-route-shell main .bg-white,
+.jride-ride-route-shell main .bg-white\/90,
+.jride-ride-route-shell main .bg-white\/95 {
+  border-color: #d9e4e7 !important;
+  background-color: #f8fafc !important;
+}
+
+.jride-ride-route-shell main input,
+.jride-ride-route-shell main select,
+.jride-ride-route-shell main textarea {
+  min-height: 2.9rem;
+  border-radius: 0.85rem !important;
+  font-size: 0.9rem !important;
+}
+
+.jride-ride-route-shell main button {
+  min-height: 2.75rem;
+}
+
+.jride-ride-route-shell main .rounded-\[24px\],
+.jride-ride-route-shell main .rounded-\[28px\] {
+  border-radius: 1.05rem !important;
+}
+
+/* The separate blocker cards already explain failures. Hide the technical eligibility dashboard on phones. */
+@media (max-width: 639px) {
+  .jride-ride-service-header {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .jride-ride-service-header p {
+    display: none;
+  }
+
+  .jride-ride-service-header nav a {
+    min-height: 2.25rem;
+    padding: 0.42rem 0.62rem;
+    font-size: 0.69rem;
+  }
+
+  .jride-ride-route-shell > main > div {
+    padding: 0.55rem 0.65rem 5.5rem !important;
+  }
+
+  .jride-ride-route-shell main > div > .space-y-4:has(select) > div:first-child {
+    display: none !important;
+  }
+
+  .jride-ride-route-shell main .space-y-4 {
+    row-gap: 0.7rem !important;
+  }
+
+  .jride-ride-route-shell main label {
+    font-size: 0.72rem !important;
+    font-weight: 800 !important;
+  }
+
+  .jride-ride-route-shell main input,
+  .jride-ride-route-shell main select,
+  .jride-ride-route-shell main textarea {
+    min-height: 2.75rem;
+  }
+
+  .jride-ride-route-shell main .p-4 {
+    padding: 0.8rem !important;
+  }
+
+  .jride-ride-route-shell main .p-5 {
+    padding: 0.9rem !important;
+  }
+
+  .jride-ride-route-shell main .gap-3 {
+    gap: 0.6rem !important;
+  }
+}
