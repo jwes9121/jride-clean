@@ -1,0 +1,224 @@
+/* JRIDE_TAKEOUT_UNIFIED_V2
+   Presentation-only refinement:
+   - stronger town choices
+   - store search
+   - higher-contrast store cards
+   - cart hidden until an item exists
+*/
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child {
+  border-color: #1f4750 !important;
+  background: linear-gradient(145deg, #10202a 0%, #0b1820 100%) !important;
+  color: #f8fafc !important;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.24) !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child label,
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child .text-xs,
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"] {
+  position: relative;
+  display: grid !important;
+  min-height: 72px !important;
+  grid-template-columns: 32px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  align-items: center !important;
+  justify-items: start !important;
+  column-gap: 9px !important;
+  row-gap: 1px !important;
+  padding: 10px 11px !important;
+  border: 1px solid #285665 !important;
+  border-radius: 16px !important;
+  background: #13252d !important;
+  color: #f8fafc !important;
+  text-align: left !important;
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.2) !important;
+  transform: none !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"]::before {
+  content: "";
+  grid-row: 1 / span 2;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background-color: #5eead4;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z'/%3E%3Ccircle cx='12' cy='10' r='2.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z'/%3E%3Ccircle cx='12' cy='10' r='2.5'/%3E%3C/svg%3E") center / 22px 22px no-repeat;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"] span {
+  grid-column: 2;
+  grid-row: 1;
+  color: inherit !important;
+  font-size: 14px !important;
+  line-height: 1.1 !important;
+  font-weight: 900 !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"]::after {
+  content: "Browse stores";
+  grid-column: 2;
+  grid-row: 2;
+  color: #94a3b8;
+  font-size: 10px;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"]:hover {
+  border-color: #5eead4 !important;
+  background: #17323a !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"][data-jride-selected-town="1"] {
+  border-color: #5eead4 !important;
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 24px rgba(5, 150, 105, 0.28) !important;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"][data-jride-selected-town="1"]::before {
+  background-color: #ffffff;
+}
+
+.jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"][data-jride-selected-town="1"]::after {
+  content: "Selected town";
+  color: #d1fae5;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-menu-section {
+  border-color: #1f4750 !important;
+  background: #0d1a21 !important;
+  color: #f8fafc !important;
+  box-shadow: 0 12px 30px rgba(2, 6, 23, 0.22) !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-menu-section .text-xs.font-semibold.uppercase,
+.jride-takeout-unified-v1 .jride-vendor-menu-section .text-slate-900,
+.jride-takeout-unified-v1 .jride-vendor-menu-section .text-slate-700 {
+  color: #f8fafc !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-menu-section .text-slate-500 {
+  color: #94a3b8 !important;
+}
+
+.jride-takeout-store-search {
+  margin: 8px 0 10px;
+  padding: 9px 10px;
+  border: 1px solid #254b56;
+  border-radius: 15px;
+  background: #10202a;
+}
+
+.jride-takeout-store-search > label {
+  display: block;
+  margin-bottom: 6px;
+  color: #a7f3d0;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.jride-takeout-store-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.jride-takeout-store-search input {
+  min-width: 0;
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #315663;
+  border-radius: 12px !important;
+  outline: none;
+  background: #071014 !important;
+  color: #f8fafc !important;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.jride-takeout-store-search input::placeholder {
+  color: #64748b !important;
+}
+
+.jride-takeout-store-search input:focus {
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.12);
+}
+
+.jride-takeout-store-search [data-jride-store-search-count] {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] {
+  min-height: 88px !important;
+  border-color: #285665 !important;
+  background: #13252d !important;
+  color: #f8fafc !important;
+  box-shadow: 0 7px 22px rgba(2, 6, 23, 0.24) !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"]:not(:disabled):hover {
+  border-color: #5eead4 !important;
+  background: #17323a !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-white {
+  color: #ffffff !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-emerald-100,
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-emerald-200 {
+  color: #a7f3d0 !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-emerald-300 {
+  color: #6ee7b7 !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-slate-300,
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"] .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+.jride-takeout-unified-v1 .jride-vendor-grid > button[data-jride-vendor-card="1"]:disabled {
+  border-color: #24343c !important;
+  background: #0b1419 !important;
+  color: #64748b !important;
+  opacity: 0.62 !important;
+}
+
+.jride-takeout-unified-v1 .jride-takeout-page[data-jride-cart-empty="1"] .jride-takeout-cart {
+  display: none !important;
+}
+
+@media (max-width: 639px) {
+  .jride-takeout-unified-v1 .jride-takeout-page[data-jride-cart-empty="1"] {
+    padding-bottom: 20px !important;
+  }
+
+  .jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child .grid.grid-cols-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .jride-takeout-unified-v1 .jride-town-and-vendors > div:first-child button[data-jride-town-card="1"]:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .jride-takeout-unified-v1 .jride-vendor-menu-section {
+    padding: 10px !important;
+  }
+}
