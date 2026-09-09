@@ -367,7 +367,35 @@ export async function offerAgrimarketDriver(input: {
     };
   }
 
-  const candidateIds = locations.map((row: any) => text(row.driver_id));
+  let candidateIds = locations.map((row: any) => text(row.driver_id));
+  const approvedDevicesRes = await admin
+    .from("agrimarket_driver_devices")
+    .select("driver_id")
+    .in("driver_id", candidateIds)
+    .eq("status", "approved");
+  if (approvedDevicesRes.error) {
+    return { ok: false, error: "AGRIMARKET_DRIVER_DEVICE_READ_FAILED", message: approvedDevicesRes.error.message };
+  }
+
+  const approvedDriverIds = new Set(
+    (Array.isArray(approvedDevicesRes.data) ? approvedDevicesRes.data : [])
+      .map((row: any) => text(row.driver_id))
+      .filter(Boolean)
+  );
+  locations = locations.filter((row: any) => approvedDriverIds.has(text(row.driver_id)));
+  candidateIds = locations.map((row: any) => text(row.driver_id));
+
+  if (!locations.length) {
+    return {
+      ok: true,
+      order_id: resolvedOrderId,
+      order_code: resolvedOrderCode,
+      offered: false,
+      error: "NO_APPROVED_AGRIMARKET_DRIVER_AVAILABLE",
+      assignment_anchor: assignmentAnchor,
+    };
+  }
+
   const driversRes = await admin
     .from("drivers")
     .select("id,wallet_balance,min_wallet_required,wallet_locked,roster_status")
