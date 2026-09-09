@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ACTION_LABELS, averageOnline, currentShift, duration, matchesMetric, phTime, type MetricKey, type ShiftAction, type ShiftReport, type ShiftSelection } from "@/lib/operations-shift-report";
 import styles from "./shift-report.module.css";
+import DriverOutreachPanel from "./DriverOutreachPanel";
 
 const endpoint = "/api/admin/operations-schedule/shift-report";
 const shiftLabel = (duty: string) => duty === "primary" ? "Primary 10 AM - 3 PM" : "Evening 3 PM - 7 PM";
@@ -104,11 +105,15 @@ export default function ShiftReportPanel({ admin }: { admin: boolean }) {
   async function perform(action: ShiftAction, bookingId: string | null = null, reason = "", receiver: string | null = null) {
     if (!report || mutating.current || loadError) return;
     const base = { day: report.day, duty: report.duty, version: report.run.version, action, booking_id: bookingId, note: reason.trim(), target: receiver };
-    const key = JSON.stringify(base);
+    // Polling can advance the version after a lost response. Preserve the same
+    // request ID for a retry of that intent so a saved contact cannot be doubled.
+    const key = JSON.stringify({ day: base.day, duty: base.duty, action, bookingId, reason: base.note, receiver });
     if (!pending.current || pending.current.key !== key) pending.current = { key, request_id: crypto.randomUUID() };
     mutating.current = true; setBusy(true); setActionError(""); setMessage("");
+    const abort = new AbortController();
+    const timeout = window.setTimeout(() => abort.abort(), 20000);
     try {
-      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...base, request_id: pending.current.request_id }) });
+      const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...base, request_id: pending.current.request_id }), signal: abort.signal });
       const result = await response.json();
       if (!response.ok) { if (response.status === 409) { const old = controller.current; controller.current = null; old?.abort(); loading.current = false; await load(true); } throw new Error(result.error || "This action could not be saved."); }
       if (!mounted.current) return;
@@ -118,7 +123,7 @@ export default function ShiftReportPanel({ admin }: { admin: boolean }) {
       await load(true);
     } catch (error) {
       if (mounted.current) setActionError(error instanceof Error ? error.message : "Save could not be confirmed. Retry the same action.");
-    } finally { mutating.current = false; if (mounted.current) setBusy(false); }
+    } finally { clearTimeout(timeout); mutating.current = false; if (mounted.current) setBusy(false); }
   }
   function openDraft(action: ShiftAction, bookingId: string | null = null) {
     setDraft({ action, booking_id: bookingId }); setNote(""); setTarget(""); setActionError(""); setMessage("");
@@ -249,6 +254,8 @@ export default function ShiftReportPanel({ admin }: { admin: boolean }) {
           <h4>All-town coverage (not team-filtered)</h4><div className={styles.tableWrap}><table><thead><tr><th>Town</th><th>Unique recorded drivers</th><th>Net time</th><th>Average recorded online</th><th>Time without recorded eligible presence</th></tr></thead><tbody>{report.presence.towns.map(t => <tr key={t.town}><td>{t.town}</td><td>{t.unique_drivers}</td><td>{duration(Number(t.net_seconds))}</td><td>{Number(t.average_online).toFixed(1)}</td><td>{duration(Number(t.no_recorded_presence_seconds))}</td></tr>)}</tbody></table></div>
         </>}
       </section>
+
+      <DriverOutreachPanel key={`${report.day}/${report.duty}`} report={report} canAct={canAct && report.window.phase === "LIVE"} onBusyChange={value => { mutating.current = value; setBusy(value); }} />
 
       <section className={styles.panel}><h3>Coordinator actions and handover</h3><p>Server-recorded actions are evidence of acknowledgement and follow-through, not proof of a phone conversation or continuous attention. No employee score is assigned.</p>
         {!report.actions.length && <p className={styles.notice}>No coordinator actions recorded for this shift. This does not prove that no assistance happened before action logging was introduced.</p>}
