@@ -1,0 +1,50 @@
+.root { color: #172e38; padding: 8px 0 24px; }
+.heading,.row { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.heading { margin:8px 0 20px; }
+.heading h2 { font-size:28px; font-weight:800; margin:4px 0; }
+.eyebrow { font-size:11px; font-weight:800; letter-spacing:.14em; color:#187b65; text-transform:uppercase; }
+.root h3 { font-size:19px; font-weight:800; margin:0 0 8px; }
+.root h4 { font-weight:800; margin:20px 0 10px; }
+.root p { line-height:1.55; margin:10px 0; font-size:14px; overflow-wrap:anywhere; }
+.root button { border:1px solid #a8bbc5; background:#fff; padding:9px 13px; border-radius:8px; font-size:13px; font-weight:700; color:#203a49; cursor:pointer; }
+.root button:hover:not(:disabled) { border-color:#14775e; background:#effaf5; }
+.root button:disabled { cursor:not-allowed; opacity:.55; }
+.root button:focus-visible,.root select:focus-visible,.root textarea:focus-visible,.root input:focus-visible { outline:3px solid #3e8be0; outline-offset:2px; }
+.root button.primary { background:#11664f; border-color:#11664f; color:#fff; }
+.root label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:700; }
+.root input,.root select,.root textarea { border:1px solid #a8bbc5; padding:10px; background:#fff; border-radius:8px; color:#203a49; font-size:14px; max-width:100%; }
+.controls,.buttons { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; margin:12px 0; }
+.panel { border:1px solid #c7d5dc; border-radius:14px; background:#fff; padding:20px; margin:18px 0; box-shadow:0 2px 5px #17364808; }
+.identityGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:16px 0; }
+.identityGrid div { display:flex; flex-direction:column; gap:5px; }
+.identityGrid strong { font-size:17px; }
+.muted,.root small { color:#546b78; font-size:12px; }
+.badge { padding:5px 9px; border-radius:6px; background:#e7eef2; font-size:11px; font-weight:800; word-break:break-word; }
+.notice,.error,.success { padding:12px 14px; border-radius:8px; border:1px solid; }
+.notice { border-color:#e3bc66; background:#fff8e5; color:#795416; }
+.error { border-color:#db9b98; background:#fff1ef; color:#8c2925; }
+.success { border-color:#95cbb6; background:#effaf5; color:#195c45; }
+.editor { border:2px solid #28759e; background:#f2f9ff; padding:20px; border-radius:12px; margin:18px 0; }
+.editor textarea { width:100%; }
+.editor label { margin:12px 0; }
+.watchGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.trip { border:2px solid #8eb7a6; background:#f4fbf7; border-radius:12px; padding:16px; min-width:0; }
+.trip.unacknowledged { border-color:#ce952c; background:#fff9eb; box-shadow:0 0 0 2px #f9e7bc; }
+.trip.issue { border-color:#bf5652; background:#fff4f2; box-shadow:0 0 0 2px #f6dad6; }
+.stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:16px 0; }
+.stats > div,.stats > button { display:flex; flex-direction:column; align-items:flex-start; gap:7px; border:1px solid #bdcfd6; border-radius:10px; padding:16px; background:#f5f9fb; text-align:left; }
+.stats strong { font-size:24px; line-height:1.2; }
+.stats span { font-size:12px; font-weight:700; }
+.stats .selected { border:2px solid #166c52; background:#e6f7ee; }
+.tableWrap { width:100%; overflow:auto; margin:12px 0; }
+.root table { border-collapse:collapse; width:100%; min-width:650px; font-size:12px; }
+.root th { background:#eaf1f5; text-align:left; font-weight:800; padding:11px; border-bottom:2px solid #b8cbd5; }
+.root td { padding:11px; border-bottom:1px solid #dce5e9; vertical-align:top; overflow-wrap:anywhere; }
+.root tbody tr:nth-child(even) { background:#f8fbfc; }
+.activity { display:grid; gap:10px; margin:14px 0; }
+.activity article { border-left:4px solid #608da3; background:#f5f9fb; padding:12px 15px; border-radius:4px; }
+.activity span { font-size:12px; }
+.root details { border-top:1px solid #d0dce2; padding-top:12px; margin-top:14px; }
+.root summary { cursor:pointer; font-size:13px; font-weight:700; }
+@media (max-width:850px) { .watchGrid { grid-template-columns:1fr; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:520px) { .panel { padding:14px; } .identityGrid { grid-template-columns:1fr; } .controls label { width:100%; } .stats strong { font-size:20px; } .heading h2 { font-size:24px; } }
