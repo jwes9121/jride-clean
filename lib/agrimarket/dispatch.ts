@@ -4,6 +4,7 @@ import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
+const DRIVER_REOFFER_COOLDOWN_SECONDS = 1800;
 const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = 10;
 const ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 const ACTIVE_BOOKING_STATUSES = [
@@ -298,16 +299,31 @@ export async function offerAgrimarketDriver(input: {
 
   const priorOffersRes = await admin
     .from("agrimarket_driver_offers")
-    .select("driver_id")
+    .select("id,driver_id,offer_rank,status,responded_at,expires_at,updated_at")
     .eq("order_id", resolvedOrderId);
   if (priorOffersRes.error) {
     return { ok: false, error: "AGRIMARKET_PRIOR_OFFERS_READ_FAILED", message: priorOffersRes.error.message };
   }
-  const excludedDrivers = new Set(
-    (Array.isArray(priorOffersRes.data) ? priorOffersRes.data : [])
-      .map((row: any) => text(row.driver_id))
-      .filter(Boolean)
-  );
+  const priorOffers = Array.isArray(priorOffersRes.data) ? priorOffersRes.data : [];
+  const priorOfferByDriver = new Map<string, any>();
+  const excludedDrivers = new Set<string>();
+
+  for (const row of priorOffers as any[]) {
+    const driverId = text(row.driver_id);
+    if (!driverId) continue;
+    priorOfferByDriver.set(driverId, row);
+
+    if (lower(row.status) !== "expired") {
+      excludedDrivers.add(driverId);
+      continue;
+    }
+
+    const cooldownAnchor = row.responded_at || row.expires_at || row.updated_at;
+    const cooldownAge = ageSeconds(cooldownAnchor);
+    if (cooldownAge == null || cooldownAge < DRIVER_REOFFER_COOLDOWN_SECONDS) {
+      excludedDrivers.add(driverId);
+    }
+  }
 
   const locationsRes = await admin
     .from("driver_locations")
@@ -539,35 +555,42 @@ export async function offerAgrimarketDriver(input: {
     feeCap: approachFeeCap,
   });
 
-  const priorCountRes = await admin
-    .from("agrimarket_driver_offers")
-    .select("id", { count: "exact", head: true })
-    .eq("order_id", resolvedOrderId);
-  if (priorCountRes.error) {
-    return { ok: false, error: "AGRIMARKET_OFFER_RANK_READ_FAILED", message: priorCountRes.error.message };
-  }
-
-  const offerRank = Number(priorCountRes.count || 0) + 1;
+  const offerRank =
+    priorOffers.reduce(
+      (highest: number, row: any) => Math.max(highest, Number(row.offer_rank || 0)),
+      0
+    ) + 1;
   const expiresAt = new Date(now.getTime() + DRIVER_ACCEPT_TTL_SECONDS * 1000).toISOString();
-  const insertRes = await admin
-    .from("agrimarket_driver_offers")
-    .insert({
-      order_id: resolvedOrderId,
-      driver_id: nearest.driverId,
-      offer_rank: offerRank,
-      status: "offered",
-      assignment_anchor: assignmentAnchor,
-      pickup_road_distance_km: pickupDistanceKm,
-      pickup_distance_fee: pickupFee,
-      estimated_seconds_to_first_pickup: etaToFirstPickup,
-      estimated_seconds_to_farmer: etaToFarmer,
-      offered_at: nowIso,
-      expires_at: expiresAt,
-      created_at: nowIso,
-      updated_at: nowIso,
-    })
-    .select("id,pickup_distance_fee")
-    .single();
+  const priorOffer = priorOfferByDriver.get(nearest.driverId);
+  const offerValues = {
+    order_id: resolvedOrderId,
+    driver_id: nearest.driverId,
+    offer_rank: offerRank,
+    status: "offered",
+    assignment_anchor: assignmentAnchor,
+    pickup_road_distance_km: pickupDistanceKm,
+    pickup_distance_fee: pickupFee,
+    estimated_seconds_to_first_pickup: etaToFirstPickup,
+    estimated_seconds_to_farmer: etaToFarmer,
+    offered_at: nowIso,
+    expires_at: expiresAt,
+    updated_at: nowIso,
+  };
+  const offerQuery = priorOffer
+    ? admin
+        .from("agrimarket_driver_offers")
+        .update({
+          ...offerValues,
+          responded_at: null,
+          reason_code: null,
+        })
+        .eq("id", priorOffer.id)
+        .eq("status", "expired")
+    : admin.from("agrimarket_driver_offers").insert({
+        ...offerValues,
+        created_at: nowIso,
+      });
+  const insertRes = await offerQuery.select("id,pickup_distance_fee").single();
 
   if (insertRes.error) {
     if (isUniqueViolation(insertRes.error)) {
@@ -618,6 +641,8 @@ export async function offerAgrimarketDriver(input: {
       pickup_road_distance_km: pickupDistanceKm,
       driver_approach_distance_km: driverApproachDistanceKm,
       driver_approach_max_assignment_km: AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM,
+      retry_after_timeout: Boolean(priorOffer),
+      reoffer_cooldown_seconds: DRIVER_REOFFER_COOLDOWN_SECONDS,
       driver_approach_fee_rule: "agrimarket_driver_approach_v1",
       driver_approach_free_km: approachFreeKm,
       driver_approach_fee_per_started_km: approachFeePerStartedKm,
