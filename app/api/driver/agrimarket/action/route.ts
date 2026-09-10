@@ -1,3 +1,4 @@
+import { readAssignedAgrimarketState } from "@/lib/agrimarket/driverState";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveDriverRequest } from "@/lib/driver/resolveDriverRequest";
@@ -88,7 +89,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const admin = supabaseAdmin();
+    const admin = supabaseAdmin({ noStore: true });
     const resultRes = await admin.rpc("agrimarket_driver_execute_v2", {
       p_order_code: orderCode,
       p_driver_id: identity.driverId,
@@ -117,11 +118,36 @@ export async function POST(req: Request) {
       );
     }
 
+    // Opt-in keeps old clients on their existing response path. Never turn a
+    // committed action into an error because its optional snapshot cannot load.
+    const includeState = req.headers.get("x-jride-agrimarket-state") === "1";
+    let driverState: Record<string, unknown> | null = null;
+    let driverStateError: string | null = null;
+    if (includeState && result.status !== "completed" && result.settlement?.settled !== true) {
+      try {
+        const current = await readAssignedAgrimarketState(admin, identity.driverId, identity.authMode, orderCode, AbortSignal.timeout(4000));
+        if (current.status === 200 && current.body?.state === "assigned") {
+          driverState = {
+            version: 1,
+            driver_id: identity.driverId,
+            order_code: orderCode,
+            action,
+            snapshot: current.body,
+          };
+        } else {
+          driverStateError = current.body?.error || "AGRIMARKET_ACTION_STATE_UNAVAILABLE";
+        }
+      } catch {
+        driverStateError = "AGRIMARKET_ACTION_STATE_UNAVAILABLE";
+      }
+    }
+
     return NextResponse.json(
       {
         ...result,
         ok: true,
         auth_mode: identity.authMode,
+        ...(includeState ? { driver_state: driverState, driver_state_error: driverStateError } : {}),
       },
       { status: 200, headers: headers() }
     );
