@@ -10,6 +10,7 @@ import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
 import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
 import VendorComplianceNotice from "./components/VendorComplianceNotice";
 import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
+import VendorIncomingOrderPopup from "./components/VendorIncomingOrderPopup";
 import VendorPortalDailyCompression from "./components/VendorPortalDailyCompression";
 import VendorPortalMobileChrome from "./components/VendorPortalMobileChrome";
 import VendorPresenceHeartbeat from "./components/VendorPresenceHeartbeat";
@@ -33,6 +34,7 @@ export default function RootLayout({
         <VendorHoursGate />
         <VendorComplianceNotice />
         <VendorPortalMobileChrome />
+        <VendorIncomingOrderPopup />
         <PassengerSessionGuardian />
         {children}
         <AnalyticsCompletedTicketsVendorAttendance />
