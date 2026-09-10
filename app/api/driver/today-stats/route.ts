@@ -180,6 +180,26 @@ export async function GET(req: NextRequest) {
     const weekStart = manilaWeekStart(now);
     const monthStart = manilaMonthStart(now);
 
+    // AgriMarket orders live outside bookings. Count the assigned driver's
+    // completions in the same Manila calendar day without a row-fetch limit.
+    const agrimarketRes = await supabase
+      .from("agrimarket_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("assigned_driver_id", driverId)
+      .eq("status", "completed")
+      .gte("completed_at", dayStart.toISOString())
+      .lt("completed_at", manilaNextDayStart(now).toISOString());
+
+    if (agrimarketRes.error || agrimarketRes.count == null) {
+      return withNoStore(
+        NextResponse.json(
+          { ok: false, error: "Failed to fetch Agrimarket completed count" },
+          { status: 500 }
+        )
+      );
+    }
+    const agrimarketCompleted = agrimarketRes.count;
+
     let rideCompleted = 0;
     let takeoutCompleted = 0;
     let errandCompleted = 0;
@@ -203,7 +223,7 @@ export async function GET(req: NextRequest) {
       .limit(10000);
 
     const sessionRows = sessionsRes.error ? [] : sessionsRes.data || [];
-    const totalCompleted = rideCompleted + takeoutCompleted + errandCompleted;
+    const totalCompleted = rideCompleted + takeoutCompleted + errandCompleted + agrimarketCompleted;
 
     return withNoStore(
       NextResponse.json({
@@ -214,13 +234,14 @@ export async function GET(req: NextRequest) {
         ride_completed: rideCompleted,
         takeout_completed: takeoutCompleted,
         errand_completed: errandCompleted,
+        agrimarket_completed: agrimarketCompleted,
         total_completed: totalCompleted,
         today_online_minutes: mergedFreshOnlineMinutes(sessionRows, dayStart, now),
         week_online_minutes: mergedFreshOnlineMinutes(sessionRows, weekStart, now),
         month_online_minutes: mergedFreshOnlineMinutes(sessionRows, monthStart, now),
         session_source: "driver_presence_sessions_fresh_login_day_v2",
         session_error: sessionsRes.error?.message || null,
-        source: "bookings_completed_driver_today_v3_errand",
+        source: "bookings_and_agrimarket_completed_driver_today_v4",
       })
     );
   } catch (e: any) {
