@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useVendorOrderSoundQueue, VendorOrderSoundControls } from "./VendorOrderSound";
 
 const ROUTES = new Set(["/vendor-portal", "/vendor-orders", "/vendor-analytics"]);
 const VENDOR_KEYS = ["JRIDE_VENDOR_PORTAL_VENDOR_ID", "jride_vendor_id", "JRIDE_VENDOR_ID", "vendor_id", "JRIDE_TAKEOUT_VENDOR_ID"];
@@ -143,6 +144,8 @@ function PopupSession() {
   }, []);
 
   const pending = useMemo(() => pendingOrders(snapshot, now), [snapshot, now]);
+  // Use all pending orders, including a dismissed popup, until resolved or expired.
+  useVendorOrderSoundQueue(snapshot.vendorId, pending.map((order) => ({ id: orderKey(order), deadline: deadline(order) })));
   const unseen = pending.filter((order) => (reviewedUntil[orderKey(order)] || 0) <= now);
   const showPopup = unseen.length > 0;
 
@@ -198,6 +201,7 @@ function PopupSession() {
         .jride-incoming-dialog :focus-visible { outline: 3px solid #fbbf24; outline-offset: 2px; }
         .jride-incoming-reminder { position: fixed; top: max(52px, calc(env(safe-area-inset-top, 0px) + 12px)); left: 12px; right: 12px; z-index: 2147482999; border-color: #fbbf24; background: #422006; }
         .jride-incoming-error { color: #fecdd3; }
+        .jride-incoming-dialog .jride-order-sound { margin-top: 12px; }
       `}</style>
       {showPopup ? (
         <dialog ref={dialogRef} className="jride-incoming-dialog" aria-labelledby="jride-incoming-title"
@@ -205,6 +209,7 @@ function PopupSession() {
           <header>
             <h2 id="jride-incoming-title">New order - action required</h2>
             <p>{pending.length} order{pending.length === 1 ? "" : "s"} waiting. Open Orders to accept or decline.</p>
+            <VendorOrderSoundControls />
           </header>
           <div className="jride-incoming-list">
             {pending.map((order) => (

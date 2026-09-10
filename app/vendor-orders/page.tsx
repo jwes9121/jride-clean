@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { VendorOrderSoundControls } from "../components/VendorOrderSound";
 
 type TakeoutItem = {
   name?: string | null;
@@ -50,11 +51,7 @@ const VENDOR_ID_KEYS = [
   "JRIDE_TAKEOUT_VENDOR_ID",
 ] as const;
 
-const LS_VENDOR_SOUND_ENABLED = "jride_vendor_sound_enabled";
-const VENDOR_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
 const REFRESH_MS = 10000;
-const VENDOR_ALERT_REPEAT_MS = 30000;
-const VENDOR_ALERT_MAX_MS = 5 * 60 * 1000;
 const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
 
 const VENDOR_REJECT_REASONS = [
@@ -217,10 +214,6 @@ export default function VendorOrdersPage() {
   const [rejectOrder, setRejectOrder] = useState<TakeoutOrder | null>(null);
   const [rejectReason, setRejectReason] = useState<string>(VENDOR_REJECT_REASONS[0]);
   const [rejectOther, setRejectOther] = useState("");
-  const [soundEnabled, setSoundEnabled] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const soundUnlockedRef = useRef(false);
-  const alertTimerRef = useRef<number | null>(null);
   const initialViewResolvedRef = useRef(false);
 
   useEffect(() => {
@@ -231,11 +224,6 @@ export default function VendorOrdersPage() {
     }
     persistVendorId(id);
     setVendorId(id);
-    try {
-      setSoundEnabled(window.localStorage.getItem(LS_VENDOR_SOUND_ENABLED) === "1");
-    } catch {
-      // Ignore restricted storage.
-    }
   }, []);
 
   const activeOrders = useMemo(
@@ -307,70 +295,6 @@ export default function VendorOrdersPage() {
     return () => window.clearInterval(timer);
   }, [loadOrders, vendorId]);
 
-  const stopAlertLoop = useCallback(() => {
-    if (alertTimerRef.current !== null) {
-      window.clearInterval(alertTimerRef.current);
-      alertTimerRef.current = null;
-    }
-  }, []);
-
-  const playAlert = useCallback(async () => {
-    if (!soundEnabled || !soundUnlockedRef.current || !audioRef.current) return;
-    try {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      audioRef.current.volume = 1;
-      await audioRef.current.play();
-    } catch {
-      // Android can require one explicit user interaction before audio plays.
-    }
-  }, [soundEnabled]);
-
-  useEffect(() => {
-    stopAlertLoop();
-    if (!soundEnabled || !soundUnlockedRef.current || pendingOrders.length === 0) return;
-    const started = Date.now();
-    void playAlert();
-    alertTimerRef.current = window.setInterval(() => {
-      if (Date.now() - started >= VENDOR_ALERT_MAX_MS) {
-        stopAlertLoop();
-        return;
-      }
-      void playAlert();
-    }, VENDOR_ALERT_REPEAT_MS);
-    return stopAlertLoop;
-  }, [pendingOrders.length, playAlert, soundEnabled, stopAlertLoop]);
-
-  async function enableSound() {
-    soundUnlockedRef.current = true;
-    setSoundEnabled(true);
-    try {
-      window.localStorage.setItem(LS_VENDOR_SOUND_ENABLED, "1");
-    } catch {
-      // Ignore restricted storage.
-    }
-    if (audioRef.current) {
-      try {
-        audioRef.current.volume = 1;
-        audioRef.current.currentTime = 0;
-        await audioRef.current.play();
-      } catch {
-        // The next real order will retry after this user interaction.
-      }
-    }
-  }
-
-  function disableSound() {
-    stopAlertLoop();
-    soundUnlockedRef.current = false;
-    setSoundEnabled(false);
-    try {
-      window.localStorage.setItem(LS_VENDOR_SOUND_ENABLED, "0");
-    } catch {
-      // Ignore restricted storage.
-    }
-  }
-
   async function acceptOrder(order: TakeoutOrder) {
     const id = orderId(order);
     if (!vendorId || !id || savingId) return;
@@ -420,7 +344,6 @@ export default function VendorOrdersPage() {
 
   return (
     <main className="min-h-screen bg-[#061014] text-slate-100" style={{ paddingTop: "max(52px, calc(env(safe-area-inset-top, 0px) + 8px))" }}>
-      <audio ref={audioRef} src={VENDOR_ALERT_SOUND_URL} preload="auto" className="hidden" />
 
       <div className="sticky top-[44px] z-40 border-b border-emerald-500/20 bg-[#061014]/95 px-3 py-2 backdrop-blur-xl">
         <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
@@ -450,18 +373,7 @@ export default function VendorOrdersPage() {
                 {lastUpdated ? "Last updated " + lastUpdated : loading ? "Loading orders..." : "Waiting for update"}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void (soundEnabled ? disableSound() : enableSound())}
-              className={
-                "rounded-xl border px-3 py-2 text-xs font-black " +
-                (soundEnabled
-                  ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
-                  : "border-slate-600 bg-slate-900 text-slate-300")
-              }
-            >
-              {soundEnabled ? "Sound ON" : "Enable sound"}
-            </button>
+            <VendorOrderSoundControls />
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">

@@ -3,6 +3,7 @@
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { VendorOrderSoundControls } from "../components/VendorOrderSound";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V5
 // JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
@@ -280,7 +281,6 @@ const VENDOR_CANCEL_REASONS = [
 
 const MENU_CATEGORIES = ["Meals", "Rice Meals", "Noodles", "Drinks", "Coffee", "Bread", "Desserts", "Snacks", "Add-ons", "Others"] as const;
 
-const VENDOR_ACCEPT_RING_INTERVAL_MS = 30 * 1000;
 const VENDOR_ACCEPT_RING_WINDOW_MS = 5 * 60 * 1000;
 function prepMinutes(value: any) {
   const n = Number(value);
@@ -295,8 +295,6 @@ function vendorLabel(v: VendorRow) {
   return clean(v.display_name || v.vendor_name || v.name || v.email || vendorKey(v) || "Vendor");
 }
 
-const VENDOR_PORTAL_ALERT_SOUND_URL = "/sounds/vendor-order-alert.mp3";
-const LS_VENDOR_ALERT_SOUND_ENABLED = "JRIDE_VENDOR_ALERT_SOUND_ENABLED";
 
 const LS_VENDOR_ID = "JRIDE_VENDOR_PORTAL_VENDOR_ID";
 const LEGACY_LS_VENDOR_ID = "jride_vendor_id";
@@ -936,22 +934,8 @@ export default function VendorPortalPage() {
   const [itemRemainingQuantity, setItemRemainingQuantity] = useState("0");
   const [itemFile, setItemFile] = useState<File | null>(null);
   const [itemPreview, setItemPreview] = useState("");
-  const vendorAlertAudioRef = useRef<HTMLAudioElement | null>(null);
-  const lastVendorAlertRingRef = useRef(0);
-  const vendorAlertAudioUnlockedRef = useRef(false);
-  const [vendorAlertSoundEnabled, setVendorAlertSoundEnabled] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(LS_VENDOR_ALERT_SOUND_ENABLED) === "1";
-  });
   const vendorNotificationLastCountRef = useRef(0);
   const [vendorNotificationPermission, setVendorNotificationPermission] = useState<string>("unknown");
-  const [vendorAlertDebug, setVendorAlertDebug] = useState({
-    audioUnlocked: false,
-    pendingCount: 0,
-    loopState: "stopped",
-    lastAttempt: "none",
-    lastResult: "not started",
-  });
   const [analyticsRange, setAnalyticsRange] = useState<VendorAnalyticsRange>("today");
 
   const selectedVendor = useMemo(() => {
@@ -1051,107 +1035,14 @@ export default function VendorPortalPage() {
       }),
     });
   }
-  const markVendorPortalAudioUnlocked = React.useCallback(() => {
-    vendorAlertAudioUnlockedRef.current = true;
-    setVendorAlertDebug((prev) => ({ ...prev, audioUnlocked: true }));
-  }, []);
-
-  const playVendorPortalAlert = React.useCallback(async (source: string) => {
-    const attempt = new Date().toLocaleTimeString();
-    setVendorAlertDebug((prev) => ({
-      ...prev,
-      lastAttempt: source + " @ " + attempt,
-      lastResult: "attempting",
-    }));
-
-    if (!vendorAlertAudioUnlockedRef.current) {
-      setVendorAlertDebug((prev) => ({ ...prev, lastResult: "blocked: audio not unlocked" }));
-      return false;
-    }
-
-    const audio = vendorAlertAudioRef.current;
-    if (!audio) {
-      setVendorAlertDebug((prev) => ({ ...prev, lastResult: "failed: audio element missing" }));
-      return false;
-    }
-
+  async function enableVendorNotifications() {
     try {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.volume = 1;
-      audio.muted = false;
-      audio.src = VENDOR_PORTAL_ALERT_SOUND_URL;
-      await audio.play();
-      setVendorAlertDebug((prev) => ({ ...prev, lastResult: "played" }));
-      return true;
-    } catch (e: any) {
-      const msg = String(e?.name || e?.message || e || "play failed");
-      setVendorAlertDebug((prev) => ({ ...prev, lastResult: "failed: " + msg }));
-      return false;
+      const permission = await requestVendorNotifications();
+      if (permission === "granted") await subscribeVendorPushNotifications();
+    } catch {
+      setVendorNotificationPermission("unavailable");
     }
-  }, []);
-
-  async function enableVendorPortalSound() {
-    vendorAlertAudioUnlockedRef.current = true;
-    setVendorAlertSoundEnabled(true);
-    if (typeof window !== "undefined") window.localStorage.setItem(LS_VENDOR_ALERT_SOUND_ENABLED, "1");
-    setVendorAlertDebug((prev) => ({
-      ...prev,
-      audioUnlocked: true,
-      lastAttempt: "enable click",
-      lastResult: "enabled",
-    }));
-        const permission = await requestVendorNotifications();
-    if (permission === "granted") {
-      await subscribeVendorPushNotifications();
-    }
-    void playVendorPortalAlert("enable test");
   }
-
-  function disableVendorPortalSound() {
-    vendorAlertAudioUnlockedRef.current = false;
-    setVendorAlertSoundEnabled(false);
-    if (typeof window !== "undefined") window.localStorage.removeItem(LS_VENDOR_ALERT_SOUND_ENABLED);
-    setVendorAlertDebug((prev) => ({
-      ...prev,
-      audioUnlocked: false,
-      loopState: "stopped",
-      lastAttempt: "disable click",
-      lastResult: "disabled",
-    }));
-  }
-
-  useEffect(() => {
-    const pendingCount = pendingVendorOrdersForAlert.length;
-    setVendorAlertDebug((prev) => ({
-      ...prev,
-      pendingCount,
-      audioUnlocked: vendorAlertAudioUnlockedRef.current,
-      loopState: vendorAlertSoundEnabled && vendorAlertAudioUnlockedRef.current && pendingCount > 0 ? "starting" : "stopped",
-    }));
-
-    if (!vendorAlertSoundEnabled || !vendorAlertAudioUnlockedRef.current || pendingCount === 0) {
-      return;
-    }
-
-    let cancelled = false;
-
-    const ring = () => {
-      if (cancelled) return;
-      const now = Date.now();
-      if (now - lastVendorAlertRingRef.current < VENDOR_ACCEPT_RING_INTERVAL_MS - 1000) return;
-      lastVendorAlertRingRef.current = now;
-      setVendorAlertDebug((prev) => ({ ...prev, loopState: "running" }));
-      void playVendorPortalAlert("loop");
-    };
-
-    ring();
-    const t = window.setInterval(ring, VENDOR_ACCEPT_RING_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(t);
-    };
-  }, [pendingVendorOrdersForAlert.length, playVendorPortalAlert, vendorAlertSoundEnabled]);
 
   useEffect(() => {
     const count = pendingVendorOrdersForAlert.length;
@@ -2444,33 +2335,12 @@ export default function VendorPortalPage() {
                 </div>
                 <div className="text-xs text-slate-500">New: {newOrders.length} | Active: {activeOrders.length} | History: {historyOrders.length}</div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <button
-                    type="button"
-                    className="rounded-xl border px-3 py-1 hover:bg-slate-50"
-                    onClick={vendorAlertSoundEnabled ? disableVendorPortalSound : enableVendorPortalSound}
-                  >
-                    {vendorAlertSoundEnabled ? "Disable vendor sound" : "Enable vendor sound"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border px-3 py-1 hover:bg-slate-50"
-                    onClick={() => {
-                      markVendorPortalAudioUnlocked();
-                      setVendorAlertSoundEnabled(true);
-    if (typeof window !== "undefined") window.localStorage.setItem(LS_VENDOR_ALERT_SOUND_ENABLED, "1");
-                      void playVendorPortalAlert("manual test");
-                    }}
-                  >
-                    Test sound
-                  </button>
-                  <span>Vendor alert sound: {vendorAlertSoundEnabled ? "on" : "off"}</span>
+                  <VendorOrderSoundControls />
+                  <button type="button" className="rounded-xl border px-3 py-1 hover:bg-slate-50"
+                    onClick={() => void enableVendorNotifications()}>Enable browser notifications</button>
                   <span>Notifications: {vendorNotificationPermission}</span>
                   {pendingVendorOrdersForAlert.length > 0 ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">Pending accept: {pendingVendorOrdersForAlert.length}</span> : null}
-                  <span className={vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "text-emerald-700" : "text-slate-500"}>
-                    {vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "Sound ready" : "Sound off"}
-                  </span>
                 </div>
-                <audio ref={vendorAlertAudioRef} src={VENDOR_PORTAL_ALERT_SOUND_URL} preload="auto" className="hidden" />
               </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3">
@@ -2487,9 +2357,6 @@ export default function VendorPortalPage() {
       ) : (
         <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200">Queue clear</span>
       )}
-      <span className={vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200" : "rounded-full border border-amber-400/40 bg-amber-500/10 px-3 py-1 font-semibold text-amber-100"}>
-        {vendorAlertSoundEnabled && vendorAlertDebug.audioUnlocked ? "Sound ready" : "Sound off"}
-      </span>
     </div>
   </div>
 </div>
