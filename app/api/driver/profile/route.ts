@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import sharp from "sharp";
+import { decodeHistoryCursor, readJobHistory } from "@/lib/driver/jobHistory";
 
 function noStoreHeaders() {
   return {
@@ -187,6 +188,38 @@ export async function GET(req: NextRequest) {
       ? "LOW"
       : "OK";
 
+    const profile = {
+          driver_id: authRes.driverId,
+          full_name:
+            text(profileRow?.full_name) ||
+            text(wallet?.driver_name) ||
+            null,
+          town: text(profileRow?.municipality) || null,
+          phone: text(profileRow?.phone) || null,
+          email: text(profileRow?.email) || null,
+	  driver_photo_url: text(profileRow?.photo_url) || null,
+          wallet_balance: walletBalance,
+          wallet_min_required: walletMinRequired,
+          wallet_locked: walletLocked,
+          wallet_status: walletStatus,
+          wallet_source: "drivers.wallet_balance",
+        };
+
+    if (req.nextUrl.searchParams.get("history_version") === "2") {
+      try {
+        const cursor = decodeHistoryCursor(req.nextUrl.searchParams.get("history_cursor"));
+        const job_history = await readJobHistory(supabase, authRes.driverId, cursor);
+        return NextResponse.json({ ok: true, profile, job_history }, { headers: noStoreHeaders() });
+      } catch (error) {
+        const invalid = error instanceof Error && error.message === "INVALID_HISTORY_CURSOR";
+        return NextResponse.json({
+          ok: true, profile,
+          job_history: { version: 2, error: invalid ? "INVALID_HISTORY_CURSOR" : "HISTORY_UNAVAILABLE",
+            message: invalid ? "Refresh history to start again." : "History could not be loaded. Please retry." },
+        }, { headers: noStoreHeaders() });
+      }
+    }
+
     const { data: tripRows, error: tripErr } = await supabase
       .from("bookings")
       .select(
@@ -210,22 +243,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        profile: {
-          driver_id: authRes.driverId,
-          full_name:
-            text(profileRow?.full_name) ||
-            text(wallet?.driver_name) ||
-            null,
-          town: text(profileRow?.municipality) || null,
-          phone: text(profileRow?.phone) || null,
-          email: text(profileRow?.email) || null,
-	  driver_photo_url: text(profileRow?.photo_url) || null,
-          wallet_balance: walletBalance,
-          wallet_min_required: walletMinRequired,
-          wallet_locked: walletLocked,
-          wallet_status: walletStatus,
-          wallet_source: "drivers.wallet_balance",
-        },
+        profile,
         recent_trips: (tripRows || []).map(buildTripSummary),
       },
       { headers: noStoreHeaders() }
