@@ -184,8 +184,15 @@ function ensureAddItemToggle(menu: HTMLElement) {
   const header = directChildren(menu).find((child) => child !== editor && child !== grid) || null;
   if (header) header.dataset.jrideMenuHeader = "true";
 
+  // Only hide the shortcut row. Searching descendant buttons also matches the
+  // enclosing Category field and hides its input on Android/mobile.
+  editor.querySelectorAll<HTMLElement>("[data-jride-menu-category-chips='true']").forEach((node) => {
+    delete node.dataset.jrideMenuCategoryChips;
+  });
   const categoryPanel = Array.from(editor.querySelectorAll<HTMLElement>("div")).find((node) => {
-    const labels = Array.from(node.querySelectorAll("button")).map((button) => text(button));
+    const labels = directChildren(node)
+      .filter((child) => child instanceof HTMLButtonElement)
+      .map((button) => text(button));
     const matches = labels.filter((label) => MENU_CATEGORIES.includes(label as any));
     return matches.length >= 5;
   });
