@@ -6,6 +6,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import TakeoutLoadingSkeleton from "./TakeoutLoadingSkeleton";
+import TakeoutFareProposal from "./TakeoutFareProposal";
+import { fareProposal, expectedFare, mergeConfirmedOrder } from "./fareProposal";
 
 
 
@@ -1951,11 +1953,15 @@ function selectedAddressTown(
     return rows[0] || null;
   }
 
-  async function refreshPricingOrder(current: TakeoutPricingOrder | null = pricingOrder) {
+  const pricingReadSequence = useRef(0);
+  const confirmingFare = useRef(false);
+
+  async function refreshPricingOrder(current: TakeoutPricingOrder | null = pricingOrder, force = false) {
+    if (confirmingFare.current && !force) return;
+    const sequence = ++pricingReadSequence.current;
     const dk = normText(deviceKey);
     if (!dk) return;
     setPricingBusy(true);
-    setPricingErr(null);
     try {
       const createdId = normText(
         takeoutOrderId(current) ||
@@ -1976,22 +1982,24 @@ function selectedAddressTown(
       const j = await getJson("/api/takeout/orders?" + qs);
       const rows = normalizeTakeoutOrders(j);
       const found = findPricingOrder(rows, current, createdId);
-      if (found) setPricingOrder(found);
+      if (sequence === pricingReadSequence.current && found) setPricingOrder(found);
     } catch (e: any) {
-      setPricingErr(String(e?.message || e || "Failed to refresh takeout pricing."));
+      if (sequence === pricingReadSequence.current) setPricingErr(String(e?.message || e || "Failed to refresh takeout pricing."));
     } finally {
-      setPricingBusy(false);
+      if (sequence === pricingReadSequence.current) setPricingBusy(false);
     }
   }
 
   async function confirmTakeoutFee() {
-    if (!pricingOrder) return;
+    if (!pricingOrder || confirmingFare.current || !fareProposal(pricingOrder)) return;
     const orderId = normText(pricingOrder.id);
     const bookingCode = normText(pricingOrder.booking_code || pricingOrder.code);
     if (!orderId && !bookingCode) {
       setPricingErr("Missing takeout order id.");
       return;
     }
+    confirmingFare.current = true;
+    ++pricingReadSequence.current;
     setConfirmBusy(true);
     setPricingErr(null);
     try {
@@ -1999,13 +2007,16 @@ function selectedAddressTown(
         order_id: orderId || undefined,
         booking_code: bookingCode || undefined,
         confirm: true,
+        expected_proposal: expectedFare(pricingOrder),
       });
       const next = (j?.order || j?.data || j?.proposal || null) as TakeoutPricingOrder | null;
-      if (next) setPricingOrder(next);
+      if (next) setPricingOrder(current => mergeConfirmedOrder(current, next));
       setResult("Takeout total confirmed. Driver is now assigned.");
     } catch (e: any) {
       setPricingErr(String(e?.message || e || "Failed to confirm takeout total."));
     } finally {
+      await refreshPricingOrder(pricingOrder, true);
+      confirmingFare.current = false;
       setConfirmBusy(false);
     }
   }
@@ -3525,7 +3536,7 @@ function selectedAddressTown(
               const hasMovedPastCustomerConfirmation = ["rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed", "cancelled"].includes(progressStatus);
               const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill ?? itemsSubtotal);
               const deliveryFee = toNum(order?.takeout_delivery_fee);
-              const serviceFee = toNum(order?.takeout_service_fee || 15);
+              const serviceFee = toNum(order?.takeout_service_fee ?? 15);
               const totalPayable = toNum(order?.takeout_total_payable);
               const confirmationPackagingSubtotal = Math.max(
                 0,
@@ -3536,7 +3547,7 @@ function selectedAddressTown(
                 packagingEstimate
               );
               const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
-              const readyToConfirm = !isOrderCompleted && !isOrderCancelled && status === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+              const readyToConfirm = Boolean(fareProposal(order));
               const driverStatus = normText(order?.driver_status || "").toLowerCase();
               const routePlan = normText(order?.takeout_route_plan || "").toLowerCase();
               const driverPoint = takeoutMapPoint(order?.driver_lat, order?.driver_lng);
@@ -3732,16 +3743,14 @@ function selectedAddressTown(
                     </div>
                   ) : null}
 
-                  {readyToConfirm ? (
-                    <button
-                      type="button"
-                      onClick={confirmTakeoutFee}
-                      disabled={confirmBusy}
-                      className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
-                    >
-                      {confirmBusy ? "Confirming..." : "Confirm total payable now"}
-                    </button>
-                  ) : null}
+                  <TakeoutFareProposal order={order} busy={confirmBusy} error={pricingErr} onConfirm={confirmTakeoutFee}
+                    cashFirst={cashFirstRoute} lines={[
+                      { label: "Food subtotal", amount: foodSubtotal },
+                      ...(confirmationPackagingSubtotal > 0 ? [{ label: "Premium packaging", amount: confirmationPackagingSubtotal }] : []),
+                      { label: "Delivery fee", amount: deliveryFee + serviceFee },
+                      ...(totalPayable - foodSubtotal - confirmationPackagingSubtotal - deliveryFee - serviceFee > 0.005
+                        ? [{ label: "Pickup distance fee", amount: totalPayable - foodSubtotal - confirmationPackagingSubtotal - deliveryFee - serviceFee }] : []),
+                    ]} />
                 </div>
               );
             })()}

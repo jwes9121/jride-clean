@@ -639,24 +639,24 @@ export default function ErrandLiveMap({
   );
 
   return (
-    <div className="rounded-[24px] border border-white/80 bg-white p-5 shadow-sm">
+    <div className="rounded-[24px] border border-[#36536A] bg-[#101F2B] p-5 shadow-sm">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="text-sm font-semibold text-slate-950">Live Errand map</div>
-          <div className="mt-1 text-xs text-slate-500">
+          <div className="text-sm font-semibold text-[#F3F6FA]">Live Errand map</div>
+          <div className="mt-1 text-xs text-[#B6C7D3]">
             Follow the labeled route in order. The customer meeting point, task stops and destination are identified on the map.
           </div>
         </div>
-        <div className="text-xs text-slate-500">
+        <div className="text-xs text-[#B6C7D3]">
           {loading ? "Loading tracking..." : `GPS points: ${actualPointCount}`}
         </div>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+      <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-[#F3F6FA]">
         {routeOrder.map((item, index) => (
           <React.Fragment key={`${item}-${index}`}>
-            {index > 0 ? <span className="text-slate-400">-&gt;</span> : null}
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1">
+            {index > 0 ? <span className="text-[#B6C7D3]">-&gt;</span> : null}
+            <span className="rounded-full border border-[#36536A] bg-[#162228] px-2.5 py-1">
               {item}
             </span>
           </React.Fragment>
@@ -664,44 +664,44 @@ export default function ErrandLiveMap({
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-2 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-xl border border-teal-100 bg-teal-50 px-3 py-2 text-teal-900">
+        <div className="rounded-xl border border-[#376E66] bg-[#163A37] px-3 py-2 text-[#99F6E4]">
           <span className="font-bold">Teal solid:</span> Driver -&gt; You / Meeting Point
         </div>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-700">
+        <div className="rounded-xl border border-[#36536A] bg-[#162228] px-3 py-2 text-[#F3F6FA]">
           <span className="font-bold">Gray dashed:</span> task-route preview before confirmation
         </div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-emerald-900">
+        <div className="rounded-xl border border-[#A7F3D0] bg-[#123B31] px-3 py-2 text-[#A7F3D0]">
           <span className="font-bold">Green solid:</span> confirmed Errand billing route
         </div>
-        <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-blue-900">
+        <div className="rounded-xl border border-[#3D6880] bg-[#152E3D] px-3 py-2 text-[#BFDBFE]">
           <span className="font-bold">Blue dashed:</span> actual driver GPS history only
         </div>
       </div>
 
       {MAPBOX_TOKEN ? (
-        <div ref={mapDivRef} className="mt-4 h-[460px] w-full rounded-2xl bg-slate-100" />
+        <div ref={mapDivRef} className="mt-4 h-[460px] w-full rounded-2xl bg-[#071113]" />
       ) : (
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="mt-4 rounded-2xl border border-[#806A3D] bg-[#392A15] p-4 text-sm text-[#FDE68A]">
           Mapbox token is unavailable.
         </div>
       )}
 
       <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <div className="text-slate-400">Task route</div>
-          <div className="mt-1 font-semibold text-slate-800">
+        <div className="rounded-2xl bg-[#162228] p-3">
+          <div className="text-[#B6C7D3]">Task route</div>
+          <div className="mt-1 font-semibold text-[#F3F6FA]">
             {confirmedKm == null
               ? "Preview only - fare not locked yet"
               : `${confirmedKm.toFixed(1)} km confirmed`}
           </div>
         </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <div className="text-slate-400">Current stage</div>
-          <div className="mt-1 font-semibold text-slate-800">{displayedStage}</div>
+        <div className="rounded-2xl bg-[#162228] p-3">
+          <div className="text-[#B6C7D3]">Current stage</div>
+          <div className="mt-1 font-semibold text-[#F3F6FA]">{displayedStage}</div>
         </div>
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <div className="text-slate-400">Driver location</div>
-          <div className="mt-1 font-semibold text-slate-800">
+        <div className="rounded-2xl bg-[#162228] p-3">
+          <div className="text-[#B6C7D3]">Driver location</div>
+          <div className="mt-1 font-semibold text-[#F3F6FA]">
             {secondsSinceUpdate == null
               ? "No GPS update yet"
               : secondsSinceUpdate < 60
@@ -712,22 +712,22 @@ export default function ErrandLiveMap({
       </div>
 
       {!confirmed ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+        <div className="mt-3 rounded-2xl border border-[#36536A] bg-[#162228] p-3 text-xs text-[#F3F6FA]">
           The gray task route is only a preview so you can see the meeting point, Task Stop 1 and the Errand destination clearly. The green billing route appears only after the driver finishes reviewing the task with you and you confirm it.
         </div>
       ) : null}
 
       {secondsSinceUpdate != null && secondsSinceUpdate >= 60 ? (
-        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+        <div className="mt-3 rounded-2xl border border-[#806A3D] bg-[#392A15] p-3 text-xs text-[#FDE68A]">
           Last driver location update: {staleMinutes} minute{staleMinutes === 1 ? "" : "s"} ago. The map holds the last known marker and does not fake movement.
         </div>
       ) : null}
 
-      <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+      <div className="mt-3 rounded-2xl border border-[#36536A] bg-[#162228] p-3 text-xs text-[#B6C7D3]">
         {text(tracking?.map_note) || "Fare is based on the confirmed route, not the driver's live path."}
       </div>
 
-      {error ? <div className="mt-3 text-xs text-red-600">{error}</div> : null}
+      {error ? <div className="mt-3 text-xs text-[#FCA5A5]">{error}</div> : null}
     </div>
   );
 }

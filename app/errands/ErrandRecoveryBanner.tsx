@@ -76,24 +76,24 @@ export default function ErrandRecoveryBanner() {
   const targetTerm = returningToCustomer ? "customer" : "source";
 
   return (
-    <div className="bg-[#f7faf9] px-4 pt-3">
-      <div className="mx-auto max-w-5xl rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 shadow-sm">
-        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-800">
+    <div className="bg-[#071113] px-4 pt-3">
+      <div className="mx-auto max-w-5xl rounded-2xl border border-[#806A3D] bg-[#392A15] px-4 py-3 shadow-sm">
+        <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#FDE68A]">
           Errand Recovery
         </div>
         {state.stage === "unreachable_escalated" ? (
           <>
-            <div className="mt-1 font-bold text-amber-950">Handoff escalated to JRide</div>
-            <div className="mt-1 text-sm text-amber-900">
+            <div className="mt-1 font-bold text-[#FDE68A]">Handoff escalated to JRide</div>
+            <div className="mt-1 text-sm text-[#FDE68A]">
               The driver's waiting clock is stopped while dispatch decides where the item must be returned.
             </div>
           </>
         ) : state.stage === "returning_after_unreachable" ? (
           <>
-            <div className="mt-1 font-bold text-amber-950">
+            <div className="mt-1 font-bold text-[#FDE68A]">
               Driver returning item to {targetTerm}
             </div>
-            <div className="mt-1 text-sm text-amber-900">
+            <div className="mt-1 text-sm text-[#FDE68A]">
               {state.targetLabel ? `Return location: ${state.targetLabel}. ` : ""}
               Waiting is paused while travelling.
               {Number.isFinite(state.returnKm) ? ` Added routed distance: ${state.returnKm.toFixed(1)} km.` : ""}
@@ -102,10 +102,10 @@ export default function ErrandRecoveryBanner() {
           </>
         ) : (
           <>
-            <div className="mt-1 font-bold text-amber-950">
+            <div className="mt-1 font-bold text-[#FDE68A]">
               Driver at the approved return location
             </div>
-            <div className="mt-1 text-sm text-amber-900">
+            <div className="mt-1 text-sm text-[#FDE68A]">
               The shared Errand waiting timer has resumed until custody of the item is returned.
             </div>
           </>

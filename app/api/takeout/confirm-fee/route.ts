@@ -178,7 +178,9 @@ export async function POST(req: NextRequest) {
         .from("bookings")
         .update({ takeout_pricing_status: "expired" })
         .eq("id", order.id)
-        .eq("service_type", "takeout");
+        .eq("service_type", "takeout")
+        .eq("takeout_pricing_status", "driver_fee_proposed")
+        .eq("takeout_fee_expires_at", order.takeout_fee_expires_at);
 
       return json(409, {
         ok: false,
@@ -187,9 +189,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // New clients confirm the exact quote they displayed. Older installed clients remain supported.
+    const expected = body?.expected_proposal;
+    if (expected && (
+      new Date(expected.expires_at).getTime() !== new Date(order.takeout_fee_expires_at).getTime() ||
+      Number(expected.total) !== Number(order.takeout_total_payable) ||
+      (expected.proposed_at && new Date(expected.proposed_at).getTime() !== new Date(order.takeout_fee_proposed_at).getTime()) ||
+      (expected.driver_id && text(expected.driver_id) !== proposedDriverId)
+    )) {
+      return json(409, { ok: false, error: "TAKEOUT_PROPOSAL_CHANGED", message: "The delivery quote changed. Review the updated total before confirming." });
+    }
+
     const nowIso = new Date().toISOString();
 
-    const updateRes = await serviceSupabase
+    let confirmation = serviceSupabase
       .from("bookings")
       .update({
         assigned_driver_id: proposedDriverId,
@@ -204,10 +217,17 @@ export async function POST(req: NextRequest) {
       .eq("id", order.id)
       .eq("service_type", "takeout")
       .eq("takeout_pricing_status", "driver_fee_proposed")
-      .select(
+      .eq("takeout_fee_expires_at", order.takeout_fee_expires_at)
+      .gt("takeout_fee_expires_at", nowIso)
+      .eq("takeout_total_payable", order.takeout_total_payable);
+    // A status change between the read and update must require a fresh review.
+    for (const field of ["status", "vendor_status", "customer_status", "takeout_fee_proposed_by_driver_id", "takeout_fee_proposed_at"] as const) {
+      confirmation = order[field] == null ? confirmation.is(field, null) : confirmation.eq(field, order[field]);
+    }
+    const updateRes = await confirmation.select(
         "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
       )
-      .single();
+      .maybeSingle();
 
     if (updateRes.error) {
       return json(500, {
@@ -215,6 +235,10 @@ export async function POST(req: NextRequest) {
         error: "TAKEOUT_CONFIRM_UPDATE_FAILED",
         message: updateRes.error.message,
       });
+    }
+
+    if (!updateRes.data) {
+      return json(409, { ok: false, error: "TAKEOUT_PROPOSAL_CHANGED", message: "This quote expired or the order changed. Refresh and review the latest total." });
     }
 
     // JRIDE_TAKEOUT_INVENTORY_DECREMENT_V43

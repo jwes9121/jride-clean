@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import TakeoutFareProposal from "../../TakeoutFareProposal";
+import { fareProposal, expectedFare, mergeConfirmedOrder } from "../../fareProposal";
 
 type TakeoutOrder = {
   id?: string | null;
@@ -25,6 +27,10 @@ type TakeoutOrder = {
   takeout_pickup_billable_excess_km?: number | string | null;
   takeout_pickup_excess_fee?: number | string | null;
   takeout_fee_expires_at?: string | null;
+  takeout_fee_proposed_at?: string | null;
+  takeout_fee_proposed_by_driver_id?: string | null;
+  takeout_customer_confirmed_at?: string | null;
+  status?: string | null;
   total_bill?: number | string | null;
   takeout_items_subtotal?: number | string | null;
   created_at?: string | null;
@@ -177,16 +183,19 @@ export default function TakeoutTrackPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [ratingBusy, setRatingBusy] = useState(false);
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
-  const [driverRating, setDriverRating] = useState(5);
-  const [vendorRating, setVendorRating] = useState(5);
+  const [driverRating, setDriverRating] = useState(0);
+  const [vendorRating, setVendorRating] = useState(0);
   const [driverComment, setDriverComment] = useState("");
   const [vendorComment, setVendorComment] = useState("");
   const [nowTick, setNowTick] = useState(0);
 
-  async function refreshOrder() {
-    if (!trackingKey) return;
+  const readSequence = useRef(0);
+  const confirming = useRef(false);
+
+  async function refreshOrder(force = false) {
+    if (!trackingKey || (confirming.current && !force)) return;
+    const sequence = ++readSequence.current;
     setBusy(true);
-    setErr(null);
     try {
       const qs = looksLikeUuid(trackingKey)
         ? "order_id=" + encodeURIComponent(trackingKey)
@@ -197,24 +206,27 @@ export default function TakeoutTrackPage() {
         const id = normText(r.id);
         const code = normText(r.booking_code || r.code);
         return id === trackingKey || code === trackingKey;
-      }) || rows[0] || null;
+      }) || null;
+      if (sequence !== readSequence.current) return;
       if (found) setOrder(found);
       if (!found) setErr("Takeout order not found yet. Refresh in a few seconds.");
     } catch (e: any) {
-      setErr(String(e?.message || e || "Failed to refresh takeout order."));
+      if (sequence === readSequence.current) setErr(String(e?.message || e || "Failed to refresh takeout order."));
     } finally {
-      setBusy(false);
+      if (sequence === readSequence.current) setBusy(false);
     }
   }
 
   async function confirmTakeoutFee() {
-    if (!order) return;
+    if (!order || confirming.current || !fareProposal(order)) return;
     const orderId = normText(order.id);
     const bookingCode = normText(order.booking_code || order.code);
     if (!orderId && !bookingCode) {
       setErr("Missing takeout order id.");
       return;
     }
+    confirming.current = true;
+    ++readSequence.current;
     setConfirmBusy(true);
     setErr(null);
     try {
@@ -222,13 +234,16 @@ export default function TakeoutTrackPage() {
         order_id: orderId || undefined,
         booking_code: bookingCode || undefined,
         confirm: true,
+        expected_proposal: expectedFare(order),
       });
       const next = (j?.order || j?.data || j?.proposal || null) as TakeoutOrder | null;
-      if (next) setOrder(next);
-      await refreshOrder();
+      if (next) setOrder(current => mergeConfirmedOrder(current, next));
+      await refreshOrder(true);
     } catch (e: any) {
       setErr(String(e?.message || e || "Failed to confirm takeout total."));
+      await refreshOrder(true);
     } finally {
+      confirming.current = false;
       setConfirmBusy(false);
     }
   }
@@ -282,6 +297,7 @@ export default function TakeoutTrackPage() {
             onClick={() => props.onChange(n)}
             className={n <= props.value ? "text-2xl text-amber-500" : "text-2xl text-slate-300"}
             aria-label={"Rate " + n + " stars"}
+            aria-pressed={n === props.value}
           >
             {STAR_CHAR}
           </button>
@@ -291,9 +307,11 @@ export default function TakeoutTrackPage() {
   }
 
   useEffect(() => {
+    setOrder(null);
+    setErr(null);
     refreshOrder().catch(() => undefined);
     const t = window.setInterval(() => refreshOrder().catch(() => undefined), 5000);
-    return () => window.clearInterval(t);
+    return () => { ++readSequence.current; window.clearInterval(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingKey]);
 
@@ -306,9 +324,11 @@ export default function TakeoutTrackPage() {
     const pricingStatus = normText(order?.takeout_pricing_status || "pricing_pending").toLowerCase();
     const vendorStatus = normText(order?.vendor_status || "").toLowerCase();
     const customerStatus = normText(order?.customer_status || "").toLowerCase();
-    const progressStatus = customerStatus || vendorStatus;
-    const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "preparing", "pickup_ready", "completed"].includes(vendorStatus);
-    const passengerConfirmed = pricingStatus.includes("customer_confirmed") || pricingStatus.includes("confirmed") || customerStatus.includes("confirmed");
+    const terminal = [customerStatus, vendorStatus, normText(order?.status)].find(v => ["completed", "cancelled", "vendor_timeout"].includes(v));
+    const workflow = vendorStatus && !["requested", "vendor_pending"].includes(vendorStatus) ? vendorStatus : "";
+    const progressStatus = terminal || workflow || customerStatus || vendorStatus;
+    const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(vendorStatus);
+    const passengerConfirmed = ["customer_confirmed", "confirmed"].includes(pricingStatus) || Boolean(order?.takeout_customer_confirmed_at);
     const progressLabels: Record<string, string> = {
       requested: "Order submitted",
       vendor_pending: "Waiting for vendor confirmation",
@@ -316,7 +336,8 @@ export default function TakeoutTrackPage() {
       preparing: "Vendor preparing order",
       pickup_ready: "Order ready for pickup",
       driver_assigned: passengerConfirmed ? "Passenger confirmed total" : "Driver assigned",
-      driver_fee_proposed: "Driver fee proposed",
+      driver_accepted: "Driver accepted your order",
+      driver_fee_proposed: "Delivery quote ready",
       customer_confirmed: "Passenger confirmed total",
       rider_arrived_vendor: "Driver arrived at vendor",
       arrived_vendor: "Driver arrived at vendor",
@@ -331,8 +352,8 @@ export default function TakeoutTrackPage() {
     const isCancelled = progressStatus === "cancelled" || progressStatus === "vendor_timeout";
     const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill);
     const deliveryFee = toNum(order?.takeout_delivery_fee);
-    const serviceFee = toNum(order?.takeout_service_fee || 15);
-    const displayDeliveryFee = deliveryFee > 0 ? deliveryFee + serviceFee : 0;
+    const serviceFee = toNum(order?.takeout_service_fee ?? 15);
+    const displayDeliveryFee = order?.takeout_delivery_fee != null ? deliveryFee + serviceFee : 0;
     const totalPayable = toNum(order?.takeout_total_payable);
     const packagingSubtotal = Math.max(
       0,
@@ -350,7 +371,7 @@ export default function TakeoutTrackPage() {
     const pickupFreeKm = toNum(order?.takeout_pickup_free_km || 1.5);
     const pickupBillableExcessKm = toNum(order?.takeout_pickup_billable_excess_km);
     const expiresIn = secondsUntil(order?.takeout_fee_expires_at);
-    const readyToConfirm = !isCompleted && !isCancelled && pricingStatus === "driver_fee_proposed" && totalPayable > 0 && (expiresIn === null || expiresIn > 0);
+    const readyToConfirm = Boolean(fareProposal(order));
     const assignedDriverId = normText(order?.assigned_driver_id || order?.driver_id);
     const driverName = normText(order?.driver_name || order?.driver_callsign);
     const driverPhone = normText(order?.driver_phone);
@@ -418,16 +439,27 @@ export default function TakeoutTrackPage() {
   }, [order, nowTick]);
 
   return (
-    <div className="mx-auto max-w-2xl p-6">
+    <div className="jride-takeout-track mx-auto max-w-2xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-bold">Takeout tracking</div>
-          <div className="mt-1 text-sm text-slate-600">Track pricing, vendor status, driver progress, and completion for this order.</div>
+          <h1 className="text-2xl font-bold">Your Takeout order</h1>
+          <div className="mt-1 text-sm text-slate-600">{order ? state.progressLabel : "Loading your order..."}</div>
           <div className="mt-1 text-xs text-slate-500">Order: <span className="font-mono">{trackingKey || "--"}</span></div>
         </div>
 
       </div>
 
+      {state.pricingStatus === "driver_fee_proposed" && state.expiresIn === 0 && !state.isCompleted && !state.isCancelled ? (
+        <p role="status" className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">This delivery quote expired. Waiting for a new proposal.</p>
+      ) : null}
+      <TakeoutFareProposal order={order} busy={confirmBusy} error={err} onConfirm={confirmTakeoutFee}
+        cashFirst={order?.takeout_cash_collection_required === true}
+        lines={[
+          { label: "Food subtotal", amount: state.foodSubtotal },
+          ...(state.packagingSubtotal > 0 ? [{ label: "Premium packaging", amount: state.packagingSubtotal }] : []),
+          { label: "Delivery fee", amount: state.displayDeliveryFee },
+          ...(state.pickupExcessFee > 0 ? [{ label: "Pickup distance fee", amount: state.pickupExcessFee }] : []),
+        ]} />
       <div className="mt-4 rounded-lg border bg-white p-4 text-sm">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -616,8 +648,7 @@ export default function TakeoutTrackPage() {
 
     <div className="mt-1">
       The nearest available driver is far from the pickup area.
-      Because this order requires cash collection before going to the store,
-      the pickup distance fee may be significantly higher than normal.
+      The pickup distance fee may be higher because the driver must travel farther to reach the pickup area.
     </div>
 
     <div className="mt-2">
@@ -638,7 +669,7 @@ export default function TakeoutTrackPage() {
 
             {state.passengerConfirmed && !state.isCompleted && !state.isCancelled ? (
               <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                Passenger confirmed the total. The driver and vendor workflow can proceed.
+                Your total is confirmed. Follow your delivery progress below.
               </div>
             ) : null}
 
@@ -676,8 +707,7 @@ export default function TakeoutTrackPage() {
 </div>
                 <div className="font-semibold text-slate-900">Live takeout progress</div>
                 <div className="mt-1">{state.progressLabel}</div>
-                {state.vendorStatus ? <div className="mt-1 text-slate-500">Vendor status: {state.vendorStatus.replace(/_/g, " ")}</div> : null}
-                {state.customerStatus ? <div className="mt-1 text-slate-500">Customer status: {state.customerStatus.replace(/_/g, " ")}</div> : null}
+
                                 {state.takeoutMapUrl ? (
                   <a
                     href={state.takeoutMapUrl}
@@ -689,17 +719,6 @@ export default function TakeoutTrackPage() {
                   </a>
                 ) : null}
               </div>
-            ) : null}
-
-            {state.readyToConfirm ? (
-              <button
-                type="button"
-                onClick={confirmTakeoutFee}
-                disabled={confirmBusy}
-                className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
-              >
-                {confirmBusy ? "Confirming..." : "Confirm order total"}
-              </button>
             ) : null}
 
             {state.isCompleted ? (
@@ -753,7 +772,7 @@ export default function TakeoutTrackPage() {
                       <button
                         type="button"
                         onClick={submitTakeoutRating}
-                        disabled={ratingBusy}
+                        disabled={ratingBusy || driverRating === 0 || vendorRating === 0}
                         className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
                       >
                         {ratingBusy ? "Submitting..." : "Submit rating"}

@@ -1,0 +1,21 @@
+/* Scoped to Errand; Mapbox tiles and built-in controls keep their own theme. */
+.jride-errand {
+  color-scheme: dark;
+  min-height: 100dvh;
+  background: #071113;
+  color: #F3F6FA;
+}
+.jride-errand input::placeholder,
+.jride-errand textarea::placeholder { color: #9CAFBD; opacity: 1; }
+.jride-errand input,
+.jride-errand textarea { color: #F3F6FA; caret-color: #A7F3D0; }
+.jride-errand button:not([class*="mapboxgl-"]):focus-visible,
+.jride-errand summary:focus-visible {
+  outline: 2px solid #A7F3D0;
+  outline-offset: 3px;
+}
+.jride-errand input:focus-visible,
+.jride-errand textarea:focus-visible { outline: 2px solid #A7F3D0; outline-offset: 2px; }
+.jride-errand button:not([class*="mapboxgl-"]) { min-height: 44px; }
+.jride-errand button:disabled { cursor: not-allowed; }
+.jride-errand .mapboxgl-ctrl { color-scheme: light; }
