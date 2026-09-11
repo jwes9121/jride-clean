@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
@@ -11,6 +10,12 @@ function normalize(value: string | null | undefined) {
 export default function TakeoutPassengerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isOrderingPage = pathname === "/takeout";
+  const isOrdersPage = pathname === "/takeout/orders";
+  const isOrderDetailPage =
+    pathname?.startsWith("/takeout/orders/") ||
+    pathname?.startsWith("/takeout/track/");
+  const showPassengerNavigation = isOrderingPage || isOrdersPage || isOrderDetailPage;
+  const pageTitle = isOrderingPage ? "Order Food" : isOrdersPage ? "My orders" : "Order details";
 
   useEffect(() => {
     if (!isOrderingPage) return;
@@ -75,17 +80,23 @@ export default function TakeoutPassengerShell({ children }: { children: React.Re
 
   return (
     <div className="jride-takeout-route-shell">
-      {isOrderingPage ? (
+      {showPassengerNavigation ? (
         <header className="jride-takeout-service-header">
           <div className="min-w-0">
             <div className="jride-takeout-eyebrow">JRIDE PASSENGER</div>
-            <h1>Order Food</h1>
-            <p>Choose a store, add items, and review your delivery.</p>
+            <h1>{pageTitle}</h1>
+            {isOrderingPage ? (
+              <p>Choose a store, add items, and review your delivery.</p>
+            ) : null}
           </div>
           <nav aria-label="Takeout service navigation">
-            {/* Home leaves Takeout; use a full page navigation. */}
+            {/* Full navigations let Android handle Home and refresh the service page. */}
             <a href="/passenger">Home</a>
-            <Link href="/takeout/orders">Orders</Link>
+            {isOrdersPage ? (
+              <a href="/takeout">Order Food</a>
+            ) : (
+              <a href="/takeout/orders">Orders</a>
+            )}
           </nav>
         </header>
       ) : null}
