@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:vendor-workflow": "node tests/vendor-workflow/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

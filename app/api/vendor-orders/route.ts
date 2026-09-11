@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { auth } from "@/auth";
+import { requireVendorSession } from "@/lib/vendorSession";
+import { VENDOR_ACCEPT_WINDOW_MS, VENDOR_ACCEPT_TIMEOUT_REASON } from "@/lib/vendorOrderWorkflow";
 
 function isTakeoutEnabled() {
   return String(process.env.TAKEOUT_ENABLED || "0").trim() === "1";
@@ -246,7 +248,7 @@ function deriveZoneFromTown(town: string | null): string | null {
 /* PHASE_3E_TOWNZONE_DERIVE_END */
 
 function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status });
+  return NextResponse.json(payload, { status, headers: { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie" } });
 }
 
 function toNum(v: any): number {
@@ -566,9 +568,6 @@ function computeSubtotal(items: SnapshotItem[]): number {
   return s;
 }
 
-const VENDOR_ACCEPT_WINDOW_MS = 15 * 60 * 1000;
-const VENDOR_ACCEPT_TIMEOUT_REASON = "Vendor did not respond within 15 minutes";
-
 function vendorAcceptDeadlineMs(row: any): number | null {
   const raw = String(row?.created_at || "").trim();
   if (!raw) return null;
@@ -736,20 +735,11 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createRouteHandlerClient({ cookies });
-
-  // Optional: keep auth check in place (but do not hard-fail pilot flows unless you want it later)
-  // await isAuthedWithEither(supabase).catch(() => false);
-
-  const vendor_id = String(
+  const requestedVendorId = String(
     req.nextUrl.searchParams.get("vendor_id") ||
       req.nextUrl.searchParams.get("vendorId") ||
       ""
   ).trim();
-
-  if (!vendor_id) {
-    return json(400, { ok: false, error: "vendor_id_required", message: "vendor_id required (pilot mode)" });
-  }
 
   const admin = getServiceRoleAdmin();
   if (!admin) {
@@ -758,6 +748,13 @@ export async function GET(req: NextRequest) {
       error: "SERVER_MISCONFIG",
       message: "Missing SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY",
     });
+  }
+
+  const session = await requireVendorSession(req, admin);
+  if (!session.ok) return json(session.status, { ok: false, error: session.error, message: "Sign in again to view your orders." });
+  const vendor_id = session.vendor.vendorId;
+  if (requestedVendorId && requestedVendorId !== vendor_id) {
+    return json(403, { ok: false, error: "VENDOR_SCOPE_MISMATCH", message: "This order list belongs to another vendor. Sign in again." });
   }
 
   const b = await admin
@@ -782,6 +779,7 @@ export async function GET(req: NextRequest) {
       status: "cancelled",
       cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
       vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
+      updated_at: new Date().toISOString(),
     };
 
     const expiredUpdate = await admin
@@ -789,15 +787,30 @@ export async function GET(req: NextRequest) {
       .update(expiredPatch)
       .in("id", expiredPendingIds)
       .eq("vendor_id", vendor_id)
-      .eq("service_type", "takeout");
+      .eq("service_type", "takeout")
+      .or("vendor_status.is.null,vendor_status.eq.requested,vendor_status.eq.vendor_pending")
+      .not("status", "in", "(completed,cancelled,canceled)")
+      .is("assigned_driver_id", null)
+      .is("driver_id", null)
+      .lte("created_at", new Date(Date.now() - VENDOR_ACCEPT_WINDOW_MS).toISOString())
+      .select("id");
 
     if (!expiredUpdate.error) {
-      const expiredSet = new Set(expiredPendingIds);
+      const expiredSet = new Set((expiredUpdate.data || []).map((row: any) => String(row.id)));
       rows = rows.map((r) =>
         expiredSet.has(String(r?.id || ""))
           ? { ...r, ...expiredPatch, updated_at: new Date().toISOString() }
           : r
       );
+      // A concurrent acceptance may have won. Return its fresh state, not the
+      // expired candidate read before the conditional update.
+      const skipped = expiredPendingIds.filter((id) => !expiredSet.has(id));
+      if (skipped.length) {
+        const fresh = await admin.from("bookings").select("*").in("id", skipped).eq("vendor_id", vendor_id).eq("service_type", "takeout");
+        if (fresh.error) return json(503, { ok: false, error: "ORDER_REFRESH_REQUIRED", message: "Orders changed. Please refresh." });
+        const byId = new Map((fresh.data || []).map((row: any) => [String(row.id), row]));
+        rows = rows.map((row: any) => byId.get(String(row.id)) || row);
+      }
     }
   }
 
@@ -905,6 +918,8 @@ export async function GET(req: NextRequest) {
       service_type: r?.service_type ?? null,
       created_at: r?.created_at ?? null,
       updated_at: r?.updated_at ?? null,
+      completed_at: r?.completed_at ?? null,
+      driver_status: r?.driver_status ?? null,
       takeout_pricing_status: r?.takeout_pricing_status ?? null,
       takeout_fee_proposed_by_driver_id: r?.takeout_fee_proposed_by_driver_id ?? null,
       takeout_fee_proposed_at: r?.takeout_fee_proposed_at ?? null,
@@ -945,15 +960,11 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return json(200, { ok: true, vendor_id, orders });
+  return json(200, { ok: true, vendor_id, orders, server_now: new Date().toISOString() });
 }
 
 export async function POST(req: NextRequest) {
   if (!isTakeoutEnabled()) return takeoutDisabledResponse();
-  const supabase = createRouteHandlerClient({ cookies });
-  // Keep auth system untouched; do not enforce hard fail unless you want later
-  // const authed = await isAuthedWithEither(supabase).catch(() => false);
-
   const admin = getServiceRoleAdmin();
   if (!admin) {
     return json(500, {
@@ -980,15 +991,23 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 // Phase 3A bridge: when vendor marks ready (driver_arrived), do not move booking.status to ride lifecycle values
 // so it becomes dispatch-visible. Idempotent: only if status is still requested/empty.
   if (order_id) {
+    // Passenger creation below retains its own verified-passenger check.
+    const session = await requireVendorSession(req, admin);
+    if (!session.ok) return json(session.status, { ok: false, error: session.error, message: "Sign in again to update your orders." });
+    if (session.vendor.vendorId !== vendor_id) return json(403, { ok: false, error: "VENDOR_SCOPE_MISMATCH", message: "This order belongs to another vendor." });
+    const origin = req.headers.get("origin");
+    if (origin && origin !== req.nextUrl.origin) return json(403, { ok: false, error: "INVALID_ORIGIN" });
     const cur = await admin
       .from("bookings")
-      .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town")
+      .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town,takeout_customer_confirmed_at")
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
       .eq("service_type", "takeout")
-      .single();
+      .maybeSingle();
 
     if (cur.error) return json(500, { ok: false, error: "DB_ERROR", message: cur.error.message });
+    if (!cur.data) return json(404, { ok: false, error: "ORDER_NOT_FOUND", message: "This order is not in your store's order list." });
+    const currentOrder = cur.data;
 
     const curStatus = String((cur.data as any)?.status || "").trim();
     const curVendor = String((cur.data as any)?.vendor_status || "").trim().toLowerCase();
@@ -998,10 +1017,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       "": ["vendor_accepted", "cancelled"],
       "requested": ["vendor_accepted", "cancelled"],
       "vendor_pending": ["vendor_accepted", "cancelled"],
-      "vendor_accepted": ["preparing", "cancelled"],
+      "vendor_accepted": ["preparing", "pickup_ready", "cancelled"],
       "driver_assigned": ["pickup_ready", "cancelled"],
+      "driver_accepted": ["pickup_ready"],
+      "cash_collected": ["pickup_ready"],
+      "rider_arrived_vendor": ["pickup_ready"],
       "preparing": ["pickup_ready", "cancelled"],
-      "pickup_ready": ["completed", "cancelled"],
+      "pickup_ready": [],
       "completed": [],
       "cancelled": [],
       "canceled": [],
@@ -1012,26 +1034,47 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
     const normalizedNextRaw = nextVendor === "accepted" ? "vendor_accepted" : nextVendor;
     const normalizedNext = normalizedNextRaw === "canceled" ? "cancelled" : normalizedNextRaw;
 
-    if (normalizedCurrent === "vendor_pending" && normalizedNext === "vendor_accepted" && vendorAcceptExpired(cur.data)) {
+    // Compare the state again in the UPDATE so a driver update, cancellation,
+    // expiry, or second tap cannot be overwritten by this earlier read.
+    const matchCurrent = (query: any) => {
+      let q = currentOrder.vendor_status == null ? query.is("vendor_status", null) : query.eq("vendor_status", currentOrder.vendor_status);
+      q = currentOrder.status == null ? q.is("status", null) : q.eq("status", currentOrder.status);
+      q = currentOrder.assigned_driver_id == null ? q.is("assigned_driver_id", null) : q.eq("assigned_driver_id", currentOrder.assigned_driver_id);
+      return currentOrder.driver_id == null ? q.is("driver_id", null) : q.eq("driver_id", currentOrder.driver_id);
+    };
+    if (["completed", "cancelled", "canceled"].includes(curStatus.toLowerCase())) {
+      return json(409, { ok: false, error: "TERMINAL_STATE_LOCKED", message: "This order is already closed. Refresh Orders." });
+    }
+    if (normalizedNext === "vendor_accepted" && (cur.data.assigned_driver_id || cur.data.driver_id)) {
+      return json(409, { ok: false, error: "ORDER_ALREADY_ASSIGNED", message: "This order already has a driver. Refresh its current status." });
+    }
+    if (["preparing", "pickup_ready"].includes(normalizedNext) && !cur.data.takeout_customer_confirmed_at) {
+      return json(409, { ok: false, error: "CUSTOMER_CONFIRMATION_REQUIRED", message: "Wait for the customer to approve the delivery fee before preparing." });
+    }
+    if (normalizedNext === "cancelled" && (cur.data.assigned_driver_id || cur.data.driver_id)) {
+      return json(409, { ok: false, error: "DRIVER_ALREADY_ASSIGNED", message: "A driver is assigned. Contact dispatch to stop this order." });
+    }
+
+    if (["vendor_pending", "requested"].includes(normalizedCurrent) && normalizedNext === "vendor_accepted" && vendorAcceptExpired(cur.data)) {
       const expiredPatch: any = {
-        vendor_status: "cancelled",
-        customer_status: "cancelled",
+        vendor_status: "vendor_timeout",
+        customer_status: "vendor_timeout",
         status: "cancelled",
         cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
         vendor_cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
       };
 
-      await admin
+      await matchCurrent(admin
         .from("bookings")
         .update(expiredPatch)
         .eq("id", order_id)
         .eq("vendor_id", vendor_id)
-        .eq("service_type", "takeout");
+        .eq("service_type", "takeout"));
 
       return json(409, {
         ok: false,
         error: "VENDOR_ACCEPT_EXPIRED",
-        message: "Vendor did not respond within 15 minutes. This order was automatically closed.",
+        message: "The 5-minute acceptance window has ended. Refresh Orders.",
         current: "vendor_timeout",
         attempted: normalizedNext,
         cancel_reason: VENDOR_ACCEPT_TIMEOUT_REASON,
@@ -1078,12 +1121,13 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       // Persist vendor acceptance first. Auto-assign is best-effort and must never block acceptance.
       patch.customer_status = "vendor_accepted";
 
-      const acceptUp = await admin
+      const acceptUp = await matchCurrent(admin
         .from("bookings")
         .update(patch)
         .eq("id", order_id)
         .eq("vendor_id", vendor_id)
-        .eq("service_type", "takeout")
+        .eq("service_type", "takeout"))
+        .gt("created_at", new Date(Date.now() - VENDOR_ACCEPT_WINDOW_MS).toISOString())
         .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town");
 
       if (acceptUp.error) {
@@ -1138,6 +1182,10 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
           .eq("id", order_id)
           .eq("vendor_id", vendor_id)
           .eq("service_type", "takeout")
+          .eq("vendor_status", "vendor_accepted")
+          .eq("status", acceptedRow.status)
+          .is("assigned_driver_id", null)
+          .is("driver_id", null)
           .select("id,vendor_status,customer_status,driver_status,status,assigned_driver_id,driver_id,assigned_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at");
 
         const assignedRow = Array.isArray(assignUp.data) ? assignUp.data[0] : assignUp.data;
@@ -1192,16 +1240,21 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
       patch.cancel_reason = cancelSummary;
     }
 
-    const up = await admin
+    let updateQuery = matchCurrent(admin
       .from("bookings")
       .update(patch)
       .eq("id", order_id)
       .eq("vendor_id", vendor_id)
-      .eq("service_type", "takeout")
+      .eq("service_type", "takeout"));
+    if (["preparing", "pickup_ready"].includes(normalizedNext)) {
+      updateQuery = updateQuery.eq("takeout_customer_confirmed_at", cur.data.takeout_customer_confirmed_at);
+    }
+    const up = await updateQuery
       .select("*")
-      .single();
+      .maybeSingle();
 
     if (up.error) return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+    if (!up.data) return json(409, { ok: false, error: "ORDER_CHANGED", message: "This order changed while you were updating it. Refresh and try again." });
 
     return json(200, {
       ok: true,

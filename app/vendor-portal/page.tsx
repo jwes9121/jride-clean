@@ -5,6 +5,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { VendorOrderSoundControls } from "../components/VendorOrderSound";
 import VendorNavigation from "../components/VendorNavigation";
+import { useVendorOrders } from "../components/useVendorOrders";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V5
 // JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
@@ -847,7 +848,8 @@ export default function VendorPortalPage() {
   const [vendorId, setVendorId] = useState(() => readInitialVendorId());
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [orders, setOrders] = useState<TakeoutOrder[]>([]);
+  const orderFeed = useVendorOrders(vendorId);
+  const orders = orderFeed.orders as TakeoutOrder[];
   const [busy, setBusy] = useState(false);
   const [menuLoaded, setMenuLoaded] = useState(false);
   const [menuLoading, setMenuLoading] = useState(true);
@@ -865,6 +867,10 @@ export default function VendorPortalPage() {
   useEffect(() => {
     const readView = () => {
       const hash = window.location.hash;
+      if (hash === "#operations") {
+        window.location.replace("/vendor-orders" + window.location.search);
+        return;
+      }
       setPortalView(hash === "#profile" ? "profile" : hash === "#operations" ? "operations" : "menu");
     };
     readView();
@@ -1216,14 +1222,8 @@ export default function VendorPortalPage() {
     const vid = clean(id || vendorId);
     if (!vid) return;
     if (!silent) setBusy(true);
-    setError("");
     try {
-      const j = await getJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(vid));
-      const rows = Array.isArray(j?.orders) ? j.orders : [];
-      setOrders(rows);
-    } catch (e: any) {
-      setError(String(e?.message || e || "Failed to load vendor orders"));
-      setOrders([]);
+      await orderFeed.refresh();
     } finally {
       if (!silent) setBusy(false);
     }
@@ -1243,10 +1243,6 @@ export default function VendorPortalPage() {
   useEffect(() => {
     if (!vendorId) return;
     refreshAll(vendorId).catch((e) => setError(String(e?.message || e)));
-    const t = setInterval(() => {
-      loadOrders(vendorId, true).catch(() => undefined);
-    }, 8000);
-    return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
   useEffect(() => {
@@ -1699,10 +1695,10 @@ export default function VendorPortalPage() {
         </header>
 
         {newOrders.length + activeOrders.length > 0 && portalView !== "operations" ? (
-          <a className={"vendor-queue-link " + (newOrders.length > 0 ? "vendor-queue-urgent" : "")} href="#operations">
+          <a className={"vendor-queue-link " + (newOrders.length > 0 ? "vendor-queue-urgent" : "")} href={vendorOrdersHref}>
             <span><strong>{newOrders.length > 0 ? `${newOrders.length} new order${newOrders.length === 1 ? "" : "s"} waiting` : `${activeOrders.length} order${activeOrders.length === 1 ? "" : "s"} in progress`}</strong>
               <small>{newOrders.length > 0 ? "Accept or decline within 5 minutes." : "View driver, preparation, and pickup updates."}</small></span>
-            <span>Open queue</span>
+            <span>Open Orders</span>
           </a>
         ) : null}
 
