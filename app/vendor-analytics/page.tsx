@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import VendorNavigation from "../components/VendorNavigation";
 
 type PeriodKey = "today" | "week" | "month" | "all";
 
@@ -245,11 +246,9 @@ export default function VendorAnalyticsPage() {
   const vendorQuery = text(vendorId) ? "?vendor_id=" + encodeURIComponent(text(vendorId)) : "";
 
   return (
-    <main
-      className="min-h-screen bg-[#031016] px-3 pb-24 text-slate-100 sm:px-4"
-      style={{ paddingTop: "max(56px, calc(env(safe-area-inset-top, 0px) + 12px))" }}
-    >
-      <div className="mx-auto max-w-6xl space-y-4">
+    <main className="vendor-workspace vendor-analytics-workspace">
+      <VendorNavigation active="analytics" vendorId={vendorId} />
+      <div className="vendor-workspace-content">
         <section className="rounded-3xl border border-emerald-500/25 bg-[#071820] p-4 shadow-2xl sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -258,12 +257,6 @@ export default function VendorAnalyticsPage() {
               <div className="mt-1 text-sm text-slate-400">{periodLabel} performance from real vendor activity.</div>
             </div>
             <div className="flex flex-wrap gap-2 print:hidden">
-              <a href={"/vendor-portal" + vendorQuery} className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs font-black text-slate-200">
-                Portal
-              </a>
-              <a href={"/vendor-orders" + vendorQuery} className="rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-xs font-black text-slate-200">
-                Orders
-              </a>
               <button type="button" onClick={() => void loadAnalytics()} disabled={loading} className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-50">
                 {loading ? "Refreshing..." : "Refresh"}
               </button>
@@ -276,6 +269,7 @@ export default function VendorAnalyticsPage() {
                 key={key}
                 type="button"
                 onClick={() => setPeriod(key)}
+                aria-pressed={period === key}
                 className={
                   "rounded-xl border px-2 py-2 text-[11px] font-black " +
                   (period === key

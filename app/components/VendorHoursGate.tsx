@@ -416,7 +416,7 @@ export default function VendorHoursGate() {
 
   return (
     <div
-      className="relative z-[50] border-b border-emerald-500/20 bg-slate-950 text-slate-100 shadow-lg"
+      className="vendor-hours relative z-[50] border-b border-emerald-500/20 bg-slate-950 text-slate-100 shadow-lg"
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 8px)" }}
     >
       <div className="mx-auto max-w-7xl space-y-2 px-3 pb-3 sm:px-4">
@@ -502,7 +502,7 @@ export default function VendorHoursGate() {
 
         {status && !needsHours ? (
           <section className="rounded-2xl border border-emerald-500/25 bg-slate-900/90 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="vendor-hours-summary flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -536,7 +536,7 @@ export default function VendorHoursGate() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 flex-wrap gap-2">
+              <div className="vendor-hours-actions flex shrink-0 flex-wrap gap-2">
                 {canCloseToday ? (
                   <button
                     type="button"
@@ -552,7 +552,7 @@ export default function VendorHoursGate() {
                     }}
                     className="rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100 disabled:opacity-50"
                   >
-                    CLOSE TODAY
+                    Close today
                   </button>
                 ) : null}
                 <button
