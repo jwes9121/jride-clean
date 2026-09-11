@@ -4,6 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { VendorOrderSoundControls } from "../components/VendorOrderSound";
+import VendorNavigation from "../components/VendorNavigation";
 
 // JRIDE_VENDOR_ACTIVE_ORDER_DETAILS_RENDER_V5
 // JRIDE_VENDOR_REALTIME_OPERATIONS_UI_V3
@@ -851,6 +852,31 @@ export default function VendorPortalPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [portalView, setPortalView] = useState<"menu" | "profile" | "operations">("menu");
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState("");
+  const [menuCategoryFilter, setMenuCategoryFilter] = useState("");
+  const [customCategory, setCustomCategory] = useState(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const readView = () => {
+      const hash = window.location.hash;
+      setPortalView(hash === "#profile" ? "profile" : hash === "#operations" ? "operations" : "menu");
+    };
+    readView();
+    const onHashChange = () => {
+      readView();
+      window.requestAnimationFrame(() => contentRef.current?.scrollIntoView({ block: "start" }));
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (portalView === "profile") vendorMapRef.current?.resize();
+  }, [portalView]);
 
   const vendorOrdersHref = vendorId ? "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-orders";
   const vendorAnalyticsHref = vendorId ? "/vendor-analytics?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-analytics";
@@ -939,6 +965,19 @@ export default function VendorPortalPage() {
   const vendorNotificationLastCountRef = useRef(0);
   const [vendorNotificationPermission, setVendorNotificationPermission] = useState<string>("unknown");
   const [analyticsRange, setAnalyticsRange] = useState<VendorAnalyticsRange>("today");
+
+  useEffect(() => {
+    if (editorOpen) editorRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [editorOpen, editingId]);
+
+  const menuCategories = useMemo(() => Array.from(new Set(menu.map((item) => item.category || "Others"))).sort(), [menu]);
+  const filteredMenu = useMemo(() => {
+    const query = menuSearch.trim().toLowerCase();
+    return menu.filter((item) =>
+      (!menuCategoryFilter || (item.category || "Others") === menuCategoryFilter) &&
+      (!query || [item.name, item.category, item.description].some((value) => String(value || "").toLowerCase().includes(query)))
+    );
+  }, [menu, menuSearch, menuCategoryFilter]);
 
   const selectedVendor = useMemo(() => {
     return vendors.find((v) => vendorKey(v) === vendorId) || null;
@@ -1352,6 +1391,8 @@ export default function VendorPortalPage() {
   }, [profileTown, vendorLat, vendorLng]);
 
   function resetItemForm() {
+    setEditorOpen(false);
+    setCustomCategory(false);
     setEditingId("");
     setItemName("");
     setItemDescription("");
@@ -1377,6 +1418,8 @@ export default function VendorPortalPage() {
   }
 
   function editItem(m: MenuItem) {
+    setEditorOpen(true);
+    setCustomCategory(!MENU_CATEGORIES.some((category) => category === (m.category || "Others")));
     setEditingId(clean(m.id || m.menu_item_id));
     setItemName(m.name || "");
     setItemDescription(m.description || "");
@@ -1500,6 +1543,7 @@ export default function VendorPortalPage() {
       resetItemForm();
       setItemSaveNotice(savedMessage);
       await loadVendorData(vid, true);
+      window.requestAnimationFrame(() => contentRef.current?.scrollIntoView({ block: "start" }));
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
@@ -1640,65 +1684,31 @@ export default function VendorPortalPage() {
   }
 
   return (
-    <main className="jride-vendor-premium-shell min-h-screen p-3 text-slate-100 sm:p-4">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border bg-white p-4 shadow-sm">
-          <div>
-            <h1 className="text-2xl font-semibold">Vendor Portal</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Manage profile, logo, menu items, packaging options, and takeout orders.
-            </p>
+    <main className="jride-vendor-premium-shell vendor-workspace">
+      <VendorNavigation active={portalView === "operations" ? "orders" : portalView} vendorId={vendorId} />
+      <div className="vendor-workspace-content" ref={contentRef}>
+        <header className="vendor-identity">
+          <div className="vendor-identity-name">
+            <span className="vendor-eyebrow">JRIDE VENDOR</span>
+            <h1>{profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor) : "Your store")}</h1>
+            <p>{profileTown || normalizeTakeoutTown(selectedVendor?.town) || "Loading store details..."}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-72 rounded-xl border px-3 py-2 text-sm">
-              <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Authenticated vendor
-              </div>
-              <div className="mt-1 font-semibold text-slate-900">
-                {profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor) : "Vendor")}
-              </div>
-              <div className="text-xs text-slate-500">
-                {profileTown || normalizeTakeoutTown(selectedVendor?.town) || "Town not set"}
-              </div>
-            </div>
+          <button type="button" className="vendor-button" disabled={!vendorId || busy}
+            onClick={() => refreshAll().catch((e) => setError(String(e?.message || e)))}>
+            {busy ? "Please wait..." : "Refresh"}
+          </button>
+        </header>
 
-            <a
-              href={vendorOrdersHref}
-              className={["rounded-xl border px-4 py-2 text-sm hover:bg-slate-50", !vendorId ? "pointer-events-none opacity-50" : ""].join(" ")}
-              aria-disabled={!vendorId}
-            >
-              Orders
-            </a>
+        {newOrders.length + activeOrders.length > 0 && portalView !== "operations" ? (
+          <a className={"vendor-queue-link " + (newOrders.length > 0 ? "vendor-queue-urgent" : "")} href="#operations">
+            <span><strong>{newOrders.length > 0 ? `${newOrders.length} new order${newOrders.length === 1 ? "" : "s"} waiting` : `${activeOrders.length} order${activeOrders.length === 1 ? "" : "s"} in progress`}</strong>
+              <small>{newOrders.length > 0 ? "Accept or decline within 5 minutes." : "View driver, preparation, and pickup updates."}</small></span>
+            <span>Open queue</span>
+          </a>
+        ) : null}
 
-            <a
-              href={vendorAnalyticsHref}
-              className={["rounded-xl border px-4 py-2 text-sm hover:bg-slate-50", !vendorId ? "pointer-events-none opacity-50" : ""].join(" ")}
-              aria-disabled={!vendorId}
-            >
-              Analytics
-            </a>
-
-            <button
-              type="button"
-              onClick={() => refreshAll().catch((e) => setError(String(e?.message || e)))}
-              className="rounded-xl border px-4 py-2 text-sm hover:bg-slate-50"
-              disabled={!vendorId || busy}
-            >
-              Refresh
-            </button>
-
-            <button
-              type="button"
-              onClick={handleVendorLogout}
-              className="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {error ? <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
-        {message ? <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div> : null}
+        {error ? <div role="alert" className="vendor-notice vendor-notice-error">{error}</div> : null}
+        {message ? <div role="status" className="vendor-notice vendor-notice-success">{message}</div> : null}
 
         {cancelTargetOrder ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -1806,12 +1816,12 @@ export default function VendorPortalPage() {
         {!vendorId ? (
           <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
         ) : (
-          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">            {/* JRIDE_VENDOR_OPERATIONS_LAYOUT_V2D: operations-first visual order. Order queue first, then menu, analytics, profile. JRIDE_VENDOR_OPERATIONS_LAYOUT_V2E: profile moved beside live queue and escaped newline artifact removed. */}
-            <section className={cls("order-1 self-start rounded-2xl border bg-white p-4 shadow-sm lg:order-1 lg:col-span-1", acceptingOrders ? "border-emerald-200" : "border-rose-200")}>
+          <div className="vendor-panels">
+            <section data-vendor-panel hidden={portalView !== "profile"} className="vendor-panel vendor-profile-panel">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Vendor profile</h2>
-                  <p className="text-xs text-slate-500">Store identity and live order availability.</p>
+                  <p className="text-xs text-slate-500">Your store details, logo, and pickup location.</p>
                 </div>
                 <span
                   className={cls(
@@ -1831,7 +1841,6 @@ export default function VendorPortalPage() {
                 <div className="min-w-0 text-sm">
                   <div className="font-semibold">{profile?.name || profileName || (selectedVendor ? vendorLabel(selectedVendor as any) : "Vendor")}</div>
                   <div className="text-xs text-slate-500">{profileTown || "Town not set"}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Logo is optional, but recommended for customer trust.</div>
                 </div>
               </div>
 
@@ -2000,59 +2009,58 @@ export default function VendorPortalPage() {
                 />
               </div>
 
+              {error ? <div role="alert" className="vendor-notice vendor-notice-error mt-4">{error}</div> : null}
               <button type="button" onClick={saveProfile} disabled={busy} className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">
                 {busy ? "Saving..." : "Save profile details"}
               </button>
+              <div className="vendor-profile-footer">
+                <a href="/vendor-faq" className="vendor-button">Help and FAQ</a>
+                <button type="button" onClick={handleVendorLogout} className="vendor-button vendor-button-danger">Log out</button>
+              </div>
             </section>
 
-            <section className="order-2 rounded-2xl border bg-white p-4 shadow-sm lg:order-2 lg:col-span-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+            <section data-vendor-panel hidden={portalView !== "menu"} className="vendor-panel vendor-menu-panel">
+              <div className="vendor-section-heading">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">Menu catalog with categories, fixed prices, packaging, availability, and optimized photos.</p>
+                  <p className="text-xs text-slate-500">{menu.length} item{menu.length === 1 ? "" : "s"}. Keep prices and stock up to date.</p>
                 </div>
-                <span className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-  Unlimited menu items
-</span>
+                <button type="button" disabled={busy} className="vendor-button vendor-button-primary"
+                  onClick={() => { resetItemForm(); setEditorOpen(true); }}>
+                  + Add item
+                </button>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 shadow-inner md:grid-cols-6">
+              <div hidden={!editorOpen} ref={editorRef} className="vendor-item-editor mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 md:grid-cols-6">
+                <div className="vendor-editor-heading md:col-span-6">
+                  <div><h3>{editingId ? "Edit menu item" : "Add menu item"}</h3><p>{editingId ? itemName : "Add an item customers can order."}</p></div>
+                  <button type="button" disabled={busy} className="vendor-button" onClick={resetItemForm}>Cancel</button>
+                </div>
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-slate-700">Menu name</label>
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemName} onChange={(e) => setItemName(e.target.value)} disabled={limitReached} placeholder="Example: Chicken adobo" />
                 </div>
-                <div>
-                  <label className="text-xs font-medium text-slate-700">Category</label>
-                  <input
-                    className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
-                    value={itemCategory}
-                    onChange={(e) => setItemCategory(e.target.value)}
-                    disabled={limitReached}
-                    list="jride-menu-category-suggestions"
-                    placeholder="Example: Noodles"
-                  />
-                  <datalist id="jride-menu-category-suggestions">
-                    {MENU_CATEGORIES.map((cat) => <option key={cat} value={cat} />)}
-                  </datalist>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {MENU_CATEGORIES.map((cat) => (
-                      <button
-                        key={cat}
-                        type="button"
-                        disabled={limitReached}
-                        onClick={() => setItemCategory(cat)}
-                        className={[
-                          "rounded-full border px-2 py-1 text-[11px] font-semibold",
-                          itemCategory === cat ? "border-emerald-500 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-                        ].join(" ")}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500">Type a custom category if the preset list does not fit, for example Silog, Bilao, Pancit, or Milk Tea.</div>
+                <div className="md:col-span-2">
+                  <label htmlFor="vendor-item-category" className="text-xs font-medium text-slate-700">Category</label>
+                  <select id="vendor-item-category" className="mt-1 w-full rounded-xl border px-3 py-2 text-sm"
+                    value={customCategory ? "__custom" : itemCategory} disabled={limitReached || busy}
+                    onChange={(e) => {
+                      const custom = e.target.value === "__custom";
+                      setCustomCategory(custom);
+                      setItemCategory(custom ? "" : e.target.value);
+                    }}>
+                    {MENU_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                    <option value="__custom">Custom category...</option>
+                  </select>
+                  {customCategory ? (
+                    <label className="mt-2 block text-xs text-slate-600">Category name
+                      <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemCategory}
+                        onChange={(e) => setItemCategory(e.target.value)} disabled={limitReached || busy} placeholder="Example: Milk Tea" />
+                    </label>
+                  ) : null}
+                  <p className="mt-1 text-xs text-slate-500">Choose a category, then save your changes.</p>
                 </div>
-                <div>
+                <div className="md:col-span-2">
                   <label className="text-xs font-medium text-slate-700">Price</label>
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemPrice} onChange={(e) => setItemPrice(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached} inputMode="decimal" placeholder="0.00" />
                 </div>
@@ -2129,53 +2137,51 @@ export default function VendorPortalPage() {
                     Set how many items are available for JRide customers. Keep a buffer for walk-in and in-store customers. Update availability throughout the day as items are sold or restocked.
                   </div>
                   {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
-                  <button type="button" onClick={saveItem} disabled={busy || limitReached} className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:bg-slate-400">{busy ? "Saving..." : editingId ? "Update item" : "Add item"}</button>
-                  <button type="button" onClick={resetItemForm} className="rounded-2xl border bg-white shadow-sm px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear</button>
+                  <button type="button" onClick={saveItem} disabled={busy || limitReached || !itemCategory.trim()} className="vendor-button vendor-button-primary vendor-save-item">{busy ? "Saving..." : editingId ? "Save changes" : "Save new item"}</button>
+                  <button type="button" onClick={resetItemForm} disabled={busy} className="vendor-button">Cancel</button>
+                  {error ? <div role="alert" className="vendor-notice vendor-notice-error basis-full">{error}</div> : null}
                   {itemSaveNotice ? <div className="basis-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">{itemSaveNotice}</div> : null}
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+              <div className="vendor-menu-filters">
+                <label>Search menu
+                  <input type="search" value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} placeholder="Search items..." />
+                </label>
+                <label>Filter category
+                  <select value={menuCategoryFilter} onChange={(e) => setMenuCategoryFilter(e.target.value)}>
+                    <option value="">All categories</option>
+                    {menuCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="vendor-results-count" aria-live="polite">Showing {filteredMenu.length} of {menu.length} items</div>
+              <div className="vendor-menu-grid">
                 {menu.length === 0 ? (
                   <div className="rounded-2xl border bg-white shadow-sm p-4 text-sm text-slate-600">No menu items yet.</div>
                 ) : (
-                  menu.map((m) => (
-                    <div key={m.id || m.menu_item_id || m.name} className="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                      <div className="h-44 bg-slate-100">
+                  filteredMenu.map((m) => (
+                    <article key={m.id || m.menu_item_id || m.name} className="vendor-menu-card">
+                      <div className="vendor-menu-photo">
                         {m.photo_url ? <img src={m.photo_url} alt={m.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-400">No photo</div>}
                       </div>
-                      <div className="space-y-3 p-4">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <div className="line-clamp-2 text-lg font-extrabold leading-tight tracking-tight text-slate-900">{m.name}</div>
-                            <div className="mt-1 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">{m.category || "Others"}</div>
-                            <div className="mt-2 text-xl font-black tracking-tight text-slate-900">{money(m.price)}</div>
-                          </div>
-                          <button type="button" className="rounded-lg border bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" onClick={() => editItem(m)}>Edit</button>
-                        </div>
-                        {m.description ? <div className="text-sm leading-relaxed text-slate-600">{m.description}</div> : null}
-                        <div className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-700">Prep time: {prepMinutes(m.prep_time_minutes)} min</div>
-                        <div className="text-[11px] font-semibold text-emerald-700">Remaining today: {Number(m.remaining_quantity || 0)} / {Number(m.daily_available_quantity || 0)}</div>
-                        {m.packaging_note ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">Packaging: {m.packaging_note}</div> : null}
-                        {m.premium_packaging_enabled ? (
-                          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-[11px] font-medium text-emerald-800">
-                            Premium packaging available (+{money(toNum(m.premium_packaging_fee))})
-                          </div>
-                        ) : null}
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span className={cls("rounded-full border px-2 py-1", m.is_available ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-300 bg-slate-50 text-slate-600")}>{m.is_available ? "Available" : "Unavailable"}</span>
-                          {m.sold_out_today ? <span className="rounded-full border border-rose-300 bg-rose-50 px-2 py-1 text-rose-700">Sold out</span> : null}
-                        </div>
-                        {m.sold_out_today || !m.is_available ? (
-                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
-                            This item is blocked from customer ordering until it is made available and sold-out status is cleared.
-                          </div>
-                        ) : null}
-                        <div className="grid grid-cols-2 gap-2">
+                      <div className="vendor-menu-description">
+                        <span className="vendor-category-label">{m.category || "Others"}</span>
+                        <h3>{m.name}</h3>
+                        <strong className="vendor-menu-price">{money(m.price)}</strong>
+                      </div>
+                      <button type="button" disabled={busy} className="vendor-button vendor-item-edit" aria-label={"Edit " + m.name} onClick={() => editItem(m)}>Edit</button>
+                      <div className="vendor-menu-meta">
+                        <span className={"vendor-item-state " + (m.sold_out_today ? "is-sold-out" : m.is_available ? "is-available" : "is-unavailable")}>{m.sold_out_today ? "Sold out" : m.is_available ? "Available" : "Unavailable"}</span>
+                        <span>{prepMinutes(m.prep_time_minutes)} min prep</span>
+                        <span><strong>{Number(m.remaining_quantity || 0)}</strong> / {Number(m.daily_available_quantity || 0)} left</span>
+                      </div>
+                        <div className="vendor-menu-actions">
                           {m.is_available && !m.sold_out_today ? (
                             <button
                               type="button"
-                              className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              disabled={busy}
+                              className="vendor-button"
                               onClick={() => markItemUnavailable(m)}
                             >
                               Make unavailable
@@ -2183,7 +2189,8 @@ export default function VendorPortalPage() {
                           ) : (
                             <button
                               type="button"
-                              className="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                              disabled={busy}
+                              className="vendor-button vendor-button-success"
                               onClick={() => makeItemOrderable(m)}
                             >
                               Make available
@@ -2192,7 +2199,8 @@ export default function VendorPortalPage() {
                           {m.sold_out_today ? (
                             <button
                               type="button"
-                              className="rounded-lg border bg-white px-2 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                              disabled={busy}
+                              className="vendor-button"
                               onClick={() => makeItemOrderable(m)}
                             >
                               Clear sold out
@@ -2200,119 +2208,29 @@ export default function VendorPortalPage() {
                           ) : (
                             <button
                               type="button"
-                              className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100"
+                              disabled={busy}
+                              className="vendor-button vendor-button-warning"
                               onClick={() => markItemSoldOut(m)}
                             >
                               Mark sold out
                             </button>
                           )}
                         </div>
-                      </div>
-                    </div>
+                    </article>
                   ))
                 )}
+                {menu.length > 0 && filteredMenu.length === 0 ? (
+                  <div className="vendor-empty-state"><h3>No matching items</h3><p>Try another name or category.</p>
+                    <button type="button" className="vendor-button" onClick={() => { setMenuSearch(""); setMenuCategoryFilter(""); }}>Clear filters</button>
+                  </div>
+                ) : null}
               </div>
             </section>
 
-            <section className="order-3 rounded-2xl border bg-white p-4 shadow-sm lg:order-3 lg:col-span-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-lg font-semibold">Vendor summary</h2>
-                  <p className="text-xs text-slate-500">Read-only sales and order overview based on loaded vendor orders.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {(["today", "week", "month", "all"] as VendorAnalyticsRange[]).map((range) => (
-                    <button
-                      key={range}
-                      type="button"
-                      onClick={() => setAnalyticsRange(range)}
-                      className={cls(
-                        "rounded-full border px-3 py-1 text-xs font-semibold",
-                        analyticsRange === range ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      )}
-                    >
-                      {range === "today" ? "Today" : range === "week" ? "This week" : range === "month" ? "This month" : "All time"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-                <div className="rounded-2xl border bg-slate-50 p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Orders received</div>
-                  <div className="mt-1 text-2xl font-black text-slate-900">{vendorAnalytics.receivedCount}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Active: {vendorAnalytics.activeCount}</div>
-                </div>
-                <div className="rounded-2xl border bg-emerald-50 p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Completed</div>
-                  <div className="mt-1 text-2xl font-black text-emerald-800">{vendorAnalytics.completedCount}</div>
-                  <div className="mt-1 text-[11px] text-emerald-700">Cancelled: {vendorAnalytics.cancelledCount}</div>
-                </div>
-                <div className="rounded-2xl border bg-white p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Food sales</div>
-                  <div className="mt-1 text-xl font-black text-slate-900">{money(vendorAnalytics.grossFoodSales)}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Completed food only</div>
-                </div>
-                <div className="rounded-2xl border bg-white p-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Avg order value</div>
-                  <div className="mt-1 text-xl font-black text-slate-900">{money(vendorAnalytics.averageOrderValue)}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">Completed orders</div>
-                </div>
-              </div>
-
-              <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
-                <div className="rounded-2xl border bg-white p-3">
-                  <div className="text-sm font-semibold text-slate-900">Sales breakdown</div>
-                  <div className="mt-2 space-y-1 text-xs text-slate-600">
-                    <div className="flex justify-between gap-3">
-                      <span>Food/item sales</span>
-                      <span className="font-semibold text-slate-900">{money(vendorAnalytics.grossFoodSales)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span>Packaging/add-ons</span>
-                      <span className="font-semibold text-slate-900">{money(vendorAnalytics.packagingSales)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3 border-t pt-1">
-                      <span>Total vendor sales shown</span>
-                      <span className="font-bold text-slate-900">{money(vendorAnalytics.completedSales)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3 text-amber-700">
-                      <span>Estimated JRide commission</span>
-                      <span className="font-semibold">{money(vendorAnalytics.estimatedCommission)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border bg-white p-3 lg:col-span-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold text-slate-900">Top-selling items</div>
-                    <div className="text-[11px] text-slate-500">By completed quantity</div>
-                  </div>
-                  {vendorAnalytics.topItems.length === 0 ? (
-                    <div className="mt-2 rounded-xl border bg-slate-50 p-3 text-xs text-slate-500">No completed item sales in this period.</div>
-                  ) : (
-                    <div className="mt-2 grid gap-2">
-                      {vendorAnalytics.topItems.map((item) => (
-                        <div key={item.name} className="flex items-center justify-between gap-3 rounded-xl border bg-slate-50 px-3 py-2 text-xs">
-                          <div className="font-semibold text-slate-900">{item.name}</div>
-                          <div className="text-right">
-                            <div className="font-bold text-slate-900">{item.qty} sold</div>
-                            <div className="text-slate-500">{money(item.sales)}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-              </div>
-
-              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] text-blue-800">
-                Vendor analytics show food/item sales and packaging/add-ons from completed orders only. Driver delivery fees are not counted as vendor sales.
-              </div>
-            </section>
-            <section className="order-1 rounded-2xl border border-emerald-500/30 bg-white p-4 shadow-sm ring-1 ring-emerald-500/10 lg:order-1 lg:col-span-2">
-<div className="mb-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 p-4 shadow-sm ring-1 ring-amber-200">
+            <section data-vendor-panel hidden={portalView !== "operations"} className="vendor-panel vendor-operations-panel">
+<details className="vendor-pilot-details">
+<summary>Pilot program details</summary>
+<div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4">
   <div className="flex items-start gap-3">
     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl">
       
@@ -2330,17 +2248,18 @@ export default function VendorPortalPage() {
     </div>
   </div>
 </div>
+</details>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">Live order queue</h2>
                   <p className="text-xs text-slate-500">Live orders first. Keep sound on and watch this panel during service hours.</p>
                 </div>
-                <div className="text-xs text-slate-500">New: {newOrders.length} | Active: {activeOrders.length} | History: {historyOrders.length}</div>
+                <a href={vendorOrdersHref} className="vendor-button">Order history</a>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <VendorOrderSoundControls />
-                  <button type="button" className="rounded-xl border px-3 py-1 hover:bg-slate-50"
+                  <button type="button" className="vendor-browser-notifications rounded-xl border px-3 py-1 hover:bg-slate-50"
                     onClick={() => void enableVendorNotifications()}>Enable browser notifications</button>
-                  <span>Notifications: {vendorNotificationPermission}</span>
+                  <span className="vendor-browser-notifications">Notifications: {vendorNotificationPermission}</span>
                   {pendingVendorOrdersForAlert.length > 0 ? <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">Pending accept: {pendingVendorOrdersForAlert.length}</span> : null}
                 </div>
               </div>
@@ -2365,7 +2284,7 @@ export default function VendorPortalPage() {
 <div className="mb-5 rounded-2xl border-2 border-amber-400 bg-amber-50 p-3 shadow-sm ring-1 ring-amber-200">
   <div className="flex flex-wrap items-start justify-between gap-3">
     <div>
-      <div className="text-xs font-black uppercase tracking-wider text-amber-800">NEW ORDERS - ACTION REQUIRED</div>
+      <div className="text-xs font-black uppercase tracking-wider text-amber-800">{newOrders.length > 0 ? "New orders - action required" : "Ready for new orders"}</div>
       <div className="mt-1 text-xs text-amber-900">Accept or decline each order within 5 minutes. The most urgent order appears first.</div>
     </div>
     <span className="rounded-full border border-amber-400 bg-white px-3 py-1 text-xs font-black text-amber-900">
@@ -2569,170 +2488,9 @@ export default function VendorPortalPage() {
           </div>
         )}
       </div>
-      <style jsx global>{`
-        /* JRIDE_VENDOR_PORTAL_PREMIUM_MOBILE_UI_V1 */
-        .jride-vendor-premium-shell {
-          min-height: 100vh;
-          background:
-            radial-gradient(circle at 20% 0%, rgba(34, 197, 94, 0.18), transparent 28%),
-            radial-gradient(circle at 90% 8%, rgba(16, 185, 129, 0.13), transparent 25%),
-            linear-gradient(180deg, #061014 0%, #08131b 48%, #050b10 100%);
-          color: #e8fff2;
-        }
-        .jride-vendor-premium-shell .mx-auto.max-w-7xl {
-          max-width: 1120px;
-        }
-        .jride-vendor-premium-shell .bg-white,
-        .jride-vendor-premium-shell .bg-slate-50 {
-          background: rgba(8, 20, 29, 0.88) !important;
-          border-color: rgba(34, 197, 94, 0.24) !important;
-          color: #e8fff2 !important;
-          box-shadow: 0 18px 45px rgba(0, 0, 0, 0.26);
-          backdrop-filter: blur(10px);
-        }
-        .jride-vendor-premium-shell .border {
-          border-color: rgba(34, 197, 94, 0.20) !important;
-        }
-        .jride-vendor-premium-shell h1,
-        .jride-vendor-premium-shell h2,
-        .jride-vendor-premium-shell h3,
-        .jride-vendor-premium-shell .text-slate-900,
-        .jride-vendor-premium-shell .font-semibold,
-        .jride-vendor-premium-shell .font-bold {
-          color: #f3fff7 !important;
-        }
-        .jride-vendor-premium-shell .text-slate-600,
-        .jride-vendor-premium-shell .text-slate-500,
-        .jride-vendor-premium-shell .text-slate-400,
-        .jride-vendor-premium-shell .text-xs {
-          color: #9fb3c8 !important;
-        }
-        .jride-vendor-premium-shell input,
-        .jride-vendor-premium-shell select,
-        .jride-vendor-premium-shell textarea {
-          background: rgba(4, 12, 20, 0.82) !important;
-          color: #f3fff7 !important;
-          border-color: rgba(148, 163, 184, 0.26) !important;
-          outline: none;
-        }
-        .jride-vendor-premium-shell input:focus,
-        .jride-vendor-premium-shell select:focus,
-        .jride-vendor-premium-shell textarea:focus {
-          border-color: #22c55e !important;
-          box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
-        }
-        .jride-vendor-premium-shell button {
-          transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
-        }
-        .jride-vendor-premium-shell button:not(:disabled):active {
-          transform: scale(0.98);
-        }
-        .jride-vendor-premium-shell .bg-black,
-        .jride-vendor-premium-shell .bg-emerald-600,
-        .jride-vendor-premium-shell .bg-emerald-700 {
-          background: linear-gradient(135deg, #22c55e, #16a34a) !important;
-          color: #04110a !important;
-          box-shadow: 0 12px 24px rgba(34, 197, 94, 0.22);
-        }
-        .jride-vendor-premium-shell .bg-emerald-50 {
-          background: rgba(16, 185, 129, 0.14) !important;
-          border-color: rgba(52, 211, 153, 0.36) !important;
-          color: #bbf7d0 !important;
-        }
-        .jride-vendor-premium-shell .bg-blue-50 {
-          background: rgba(59, 130, 246, 0.12) !important;
-          border-color: rgba(96, 165, 250, 0.30) !important;
-          color: #bfdbfe !important;
-        }
-        .jride-vendor-premium-shell .bg-amber-50 {
-          background: rgba(245, 158, 11, 0.14) !important;
-          border-color: rgba(251, 191, 36, 0.34) !important;
-          color: #fde68a !important;
-        }
-        .jride-vendor-premium-shell .bg-rose-50 {
-          background: rgba(244, 63, 94, 0.12) !important;
-          border-color: rgba(251, 113, 133, 0.32) !important;
-          color: #fecdd3 !important;
-        }
-        .jride-vendor-premium-shell .rounded-2xl,
-        .jride-vendor-premium-shell .rounded-xl {
-          border-radius: 18px;
-        }
-        .jride-vendor-premium-shell img {
-          border-color: rgba(34, 197, 94, 0.22);
-        }
-        .jride-vendor-premium-shell table,
-        .jride-vendor-premium-shell thead,
-        .jride-vendor-premium-shell tbody,
-        .jride-vendor-premium-shell tr,
-        .jride-vendor-premium-shell td,
-        .jride-vendor-premium-shell th {
-          border-color: rgba(34, 197, 94, 0.16) !important;
-        }
-        .jride-vendor-premium-shell ::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        .jride-vendor-premium-shell ::-webkit-scrollbar-thumb {
-          background: rgba(34, 197, 94, 0.45);
-          border-radius: 999px;
-        }
-        @media (max-width: 760px) {
-          .jride-vendor-premium-shell {
-            padding: 10px !important;
-          }
-          .jride-vendor-premium-shell .flex.flex-wrap.items-start.justify-between.gap-3.rounded-2xl {
-            position: sticky;
-            top: 0;
-            z-index: 30;
-            margin: -10px -10px 10px;
-            border-radius: 0 0 22px 22px;
-            padding: 14px 12px !important;
-          }
-          .jride-vendor-premium-shell h1 {
-            font-size: 1.25rem !important;
-          }
-          .jride-vendor-premium-shell .lg\\:grid-cols-3 {
-            grid-template-columns: 1fr !important;
-          }
-          .jride-vendor-premium-shell .lg\\:col-span-2 {
-            grid-column: auto !important;
-          }
-          .jride-vendor-premium-shell .min-w-72 {
-            min-width: 0 !important;
-            width: 100% !important;
-          }
-          .jride-vendor-premium-shell .grid {
-            gap: 12px !important;
-          }
-          .jride-vendor-premium-shell .p-6 {
-            padding: 14px !important;
-          }
-          .jride-vendor-premium-shell .p-4,
-          .jride-vendor-premium-shell .p-5 {
-            padding: 12px !important;
-          }
-          .jride-vendor-premium-shell .px-4.py-2,
-          .jride-vendor-premium-shell .px-4.py-3 {
-            padding: 10px 12px !important;
-          }
-          .jride-vendor-premium-shell .max-h-\[520px\] {
-            max-height: 360px !important;
-          }
-        }
-      `}</style>
     </main>
   );
 }
-
-
-
-
-
-
-
-
-
 
 
 

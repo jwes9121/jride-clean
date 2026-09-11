@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { VendorOrderSoundControls } from "../components/VendorOrderSound";
+import VendorNavigation from "../components/VendorNavigation";
 
 type TakeoutItem = {
   name?: string | null;
@@ -343,27 +344,9 @@ export default function VendorOrdersPage() {
   const visibleOrders = view === "active" ? activeOrders : historyOrders;
 
   return (
-    <main className="min-h-screen bg-[#061014] text-slate-100" style={{ paddingTop: "max(52px, calc(env(safe-area-inset-top, 0px) + 8px))" }}>
-
-      <div className="sticky top-[44px] z-40 border-b border-emerald-500/20 bg-[#061014]/95 px-3 py-2 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2">
-          <a href="/vendor-portal" className="rounded-xl border border-emerald-500/30 bg-slate-950 px-3 py-2 text-xs font-bold text-emerald-100">Back to portal</a>
-          <div className="text-center">
-            <div className="text-sm font-black">Vendor Orders</div>
-            <div className="text-[10px] text-slate-400">Auto-refresh every 10 seconds</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadOrders(true)}
-            disabled={refreshing}
-            className="rounded-xl border border-emerald-500/30 bg-slate-950 px-3 py-2 text-xs font-bold text-emerald-100 disabled:opacity-50"
-          >
-            {refreshing ? "Refreshing" : "Refresh"}
-          </button>
-        </div>
-      </div>
-
-      <div className="mx-auto max-w-4xl space-y-4 px-3 py-4 sm:px-4">
+    <main className="vendor-workspace vendor-orders-workspace">
+      <VendorNavigation active="orders" vendorId={vendorId} />
+      <div className="vendor-workspace-content">
         <section className="rounded-2xl border border-emerald-500/25 bg-slate-950/70 p-4 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -373,7 +356,12 @@ export default function VendorOrdersPage() {
                 {lastUpdated ? "Last updated " + lastUpdated : loading ? "Loading orders..." : "Waiting for update"}
               </div>
             </div>
-            <VendorOrderSoundControls />
+            <div className="vendor-order-toolbar">
+              <button type="button" className="vendor-button" disabled={refreshing} onClick={() => void loadOrders(true)}>
+                {refreshing ? "Refreshing..." : "Refresh"}
+              </button>
+              <VendorOrderSoundControls />
+            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -399,6 +387,7 @@ export default function VendorOrdersPage() {
             <button
               type="button"
               onClick={() => setView("active")}
+              aria-pressed={view === "active"}
               className={
                 "rounded-lg px-3 py-2.5 text-sm font-black " +
                 (view === "active" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
@@ -409,6 +398,7 @@ export default function VendorOrdersPage() {
             <button
               type="button"
               onClick={() => setView("history")}
+              aria-pressed={view === "history"}
               className={
                 "rounded-lg px-3 py-2.5 text-sm font-black " +
                 (view === "history" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
@@ -444,11 +434,11 @@ export default function VendorOrdersPage() {
               const remainingLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
 
               return (
-                <article key={id || orderCode(order)} className="rounded-2xl border border-emerald-500/20 bg-slate-950/70 p-4 shadow-lg">
-                  <div className="flex items-start justify-between gap-3">
+                <article key={id || orderCode(order)} className={"vendor-order-card rounded-2xl border border-emerald-500/20 bg-slate-950/70 p-4 shadow-lg " + (status === "vendor_pending" ? "vendor-order-pending" : "")}>
+                  <div className="vendor-order-card-heading">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="font-black text-white">{orderCode(order)}</div>
+                        <div className="vendor-order-code font-black text-white">{orderCode(order)}</div>
                         <span className={"rounded-full border px-2 py-1 text-[10px] font-black " + statusClass(status)}>{statusLabel(status)}</span>
                       </div>
                       <div className="mt-1 text-sm font-semibold text-slate-200">{clean(order.customer_name || order.passenger_name) || "Customer"}</div>
@@ -520,9 +510,11 @@ export default function VendorOrdersPage() {
                         Reject order
                       </button>
                     </div>
-                  ) : status === "vendor_accepted" || status === "driver_assigned" || status === "driver_accepted" ? (
+                  ) : ["vendor_accepted", "driver_assigned", "driver_accepted", "preparing", "pickup_ready"].includes(status) ? (
                     <div className="mt-3 rounded-xl border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
-                      Order accepted. Follow the live workflow in the Vendor Portal for driver and customer confirmation before preparation.
+                      <p>View the next step, driver updates, and preparation controls in your live queue.</p>
+                      <a href={"/vendor-portal" + (vendorId ? "?vendor_id=" + encodeURIComponent(vendorId) : "") + "#operations"}
+                        className="vendor-button vendor-button-primary mt-3">Open live order queue</a>
                     </div>
                   ) : null}
                 </article>

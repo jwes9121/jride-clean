@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./vendor-workspace.css";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
@@ -9,10 +10,7 @@ import TakeoutPassengerMobileAssist from "./components/TakeoutPassengerMobileAss
 import TakeoutPassengerPinUX from "./components/TakeoutPassengerPinUX";
 import TakeoutTrackingMilestoneAssist from "./components/TakeoutTrackingMilestoneAssist";
 import VendorComplianceNotice from "./components/VendorComplianceNotice";
-import VendorMenuEditorAssist from "./components/VendorMenuEditorAssist";
 import VendorIncomingOrderPopup from "./components/VendorIncomingOrderPopup";
-import VendorPortalDailyCompression from "./components/VendorPortalDailyCompression";
-import VendorPortalMobileChrome from "./components/VendorPortalMobileChrome";
 import VendorPresenceHeartbeat from "./components/VendorPresenceHeartbeat";
 import VendorHoursGate from "./components/VendorHoursGate";
 
@@ -33,7 +31,6 @@ export default function RootLayout({
       <body className={inter.className}>
         <VendorHoursGate />
         <VendorComplianceNotice />
-        <VendorPortalMobileChrome />
         <VendorIncomingOrderPopup />
         <PassengerSessionGuardian />
         {children}
@@ -42,8 +39,6 @@ export default function RootLayout({
         <TakeoutPassengerMobileAssist />
         <TakeoutPassengerPinUX />
         <TakeoutTrackingMilestoneAssist />
-        <VendorPortalDailyCompression />
-        <VendorMenuEditorAssist />
         <VendorPresenceHeartbeat />
       </body>
     </html>
