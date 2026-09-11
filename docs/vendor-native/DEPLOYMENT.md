@@ -2,7 +2,7 @@
 
 Date: 2026-09-11.
 Project: JRide-prod, `gxaullwnxbkbjqbjotsr`.
-Reviewed code: `972e2b4270130e013fd1bafb97099e30215765e6`, draft PR #39.
+Reviewed application code: `972e2b4270130e013fd1bafb97099e30215765e6`, draft PR #39.
 
 ## Installed
 
@@ -10,52 +10,58 @@ Reviewed code: `972e2b4270130e013fd1bafb97099e30215765e6`, draft PR #39.
   signed-registration support RPCs, pending-order queries, claim/validate/finish RPCs.
 - Edge Function `vendor-native-alerts`, version 1, ACTIVE as a deployed endpoint.
   ID: `3da26e20-8601-4375-a49e-75efc32125e0`.
-  Its own hook-secret authentication is enforced; platform JWT checking is disabled.
+  The handler enforces its own hook-secret authentication.
 - Migration `vendor_native_alerts_scheduler_disabled_v1`: pg_net, pg_cron,
   booking-change trigger and five-second due-work scheduler.
-- Random hook credential stored in Supabase Vault as `vendor_native_hook_secret`.
-  No secret value was printed, committed or added to an Android file.
+- Random hook credential in Supabase Vault as `vendor_native_hook_secret`.
+- User-supplied Firebase service-account credential stored in Vault as
+  `vendor_native_firebase_service_account`. This is the existing default Firebase
+  service account for `jride-notifications`, not a newly created dedicated account.
+  No IAM roles were changed. The sender requests only the `firebase.messaging`
+  OAuth scope. The private key is not part of this repository or the Android package.
 
 The endpoint being ACTIVE does not mean sending is enabled.
 `vendor_native_private.settings.enabled=false`.
-There were zero registered devices and zero claimed devices at verification.
-No real vendor notification was sent.
+There were zero registered devices at verification. No real notification was sent.
 
-## Live verification
+## Verification
 
-- Authorized request from pg_net using the Vault hook: HTTP 200,
-  `{"enabled":false,"sent":0}`.
-- Wrong 64-character hook: HTTP 401, `{"error":"UNAUTHORIZED"}`.
-- Latest two scheduled executions succeeded.
-- `anon` and `authenticated` cannot read device records or execute the worker
-  configuration RPC; `service_role` can.
-- Security advisors reported only the expected RLS-without-policy informational
-  findings for these new tables. They deliberately have no end-user access;
-  the server-only privileges were tested directly.
+- Uploaded credential parsed as a service account for the correct Firebase project.
+  The PKCS#8 RSA private key parsed successfully and meets a 2048-bit minimum.
+- A metadata-only query confirmed that the deployed worker-config RPC retrieves the
+  expected project/account and private key from Vault. Sending remains disabled.
+- `anon` and `authenticated` cannot execute the worker-config RPC or read Vault's
+  decrypted secrets. No client privileges were added.
+- Earlier authorized pg_net request to the deployed Edge Function: HTTP 200,
+  `{"enabled":false,"sent":0}`. Wrong hook: HTTP 401.
+- Earlier scheduler runs succeeded.
+- Native-object security advisors report only intentional RLS-without-policy
+  informational findings for server-only device/settings tables.
   [Supabase explanation](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy).
-- Prior source verification: 61 checks passed; strict TypeScript passed; Vercel
-  preview for the reviewed code completed successfully.
+- Prior source verification: 61 checks and strict TypeScript passed.
+- Vercel reports a successful preview for `d873f1a724ec26eeb14955cc78eee90ed0c960dc`.
 
-## Remaining blockers
+## Remaining work
 
-The user approved creation of a notification-only Firebase service account and
-storage of its private key in Supabase Vault. The Google Cloud service-account
-page displayed "Site Unavailable" in the browser, and one reload attempt timed
-out. No service account or Firebase server key was created.
-`vendor_native_firebase_service_account` does not exist in Vault.
+The direct Google OAuth/FCM validation attempt was blocked: network approval was
+cancelled before a decision was returned. No OAuth or FCM success was observed.
+A local test of the uploaded key must request a messaging-scoped OAuth token and
+call FCM with `validate_only=true`; no message should be delivered by that check.
+This tests messaging authorization, not the account's complete IAM role inventory.
 
-Android dependency downloading was previously blocked by cancelled network
-approval. No Kotlin/APK compilation or physical device background sound test has
-been completed. The Android review archive remains the 11-file change package
-for vendor 1.0.80, based on the user's most recent uploaded Android source.
+Android dependency downloading was also previously blocked by cancelled network
+approval. Kotlin/APK compilation and physical-device background sound remain
+unverified. The Android review archive contains the same 11 native source files
+for vendor 1.0.80, based on the latest uploaded source. Respect the user's manual,
+one-change-at-a-time Android workflow; no automatic patch/build script is included.
 
-The web changes remain in draft PR #39; they have not been merged into production.
-Complete the Google credential, web release, Android build and controlled phone
-test before enabling vendor notification sending. Do not advertise background
-sound or exact 30-second delivery as working on the basis of these server checks.
+The web/API changes remain in draft PR #39 and have not been merged into production.
+Complete Firebase authorization, web release, Android build and a controlled phone
+test before broad activation. Do not claim background audio or exact 30-second
+delivery works from configuration/static checks alone.
 
 ## Stop / activation control
 
-Sending remains disabled by the single settings row. For immediate stop:
+For immediate stop:
 `update vendor_native_private.settings set enabled=false where id;`
-The scheduled function returns before sending any HTTP request while disabled.
+The scheduled function returns before sending HTTP requests while disabled.

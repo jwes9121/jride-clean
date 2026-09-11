@@ -1,7 +1,8 @@
 # Vendor background order alerts
 
-Status: Supabase backend installed with sender DISABLED; Firebase sender credential
-and Android build/device verification remain outstanding. See DEPLOYMENT.md.
+Status: Supabase backend and user-supplied Firebase credential installed; sender
+DISABLED. Google authorization, web release and Android build/device verification
+remain outstanding. See DEPLOYMENT.md.
 Firebase project: `jride-notifications`. Android package: `com.jride.vendor`.
 Web baseline: `b7d1db4747da19dd496325faf3626227bb022748`.
 
@@ -46,12 +47,13 @@ An installation lease and event IDs limit duplicates; FCM delivery is not exactl
 
 1. Review and merge the web/API changes after the full Next.js build succeeds.
 2. Apply `schema.sql` using the normal Supabase migration workflow. It starts disabled.
-3. With action-time approval, create a dedicated notification sender service account
-   in `jride-notifications`, give it only the FCM send permission required by Google,
-   and store its JSON credential in Supabase Vault as
-   `vendor_native_firebase_service_account`. Keep private keys out of app code,
-   browser code, source control, logs and APKs. The uploaded `google-services.json`
-   identifies the Android app; it is not a server credential.
+3. Store the authorized Firebase service-account JSON in Supabase Vault as
+   `vendor_native_firebase_service_account`, then verify a messaging-scoped OAuth
+   exchange and an FCM `validate_only=true` request. The user's supplied credential
+   has now been stored; live Google authorization is pending. A dedicated sender
+   with the required FCM permission remains the preferred least-privilege setup.
+   Keep private keys out of app/browser code, source control, logs and APKs.
+   `google-services.json` identifies the Android app; it is not a server credential.
 4. Deploy `supabase/functions/vendor-native-alerts/index.ts` plus `core.ts` with
    `verify_jwt=false`. The handler enforces its own constant-time hook-secret check.
 5. Apply `scheduler.sql`. It enables pg_net/pg_cron and creates a random
@@ -81,7 +83,10 @@ preparation. The later disabled backend installation is recorded in DEPLOYMENT.m
 | Changed API and Edge Function TypeScript | Strict typecheck passed |
 | Android XML and Firebase resource mapping | Passed static checks |
 | Android Kotlin compilation / APK build | Blocked; dependency network approval cancelled |
-| Live cron/Edge deployment, real FCM and physical phone sound | Not tested |
+| Live cron and Edge Function with sender disabled | Verified |
+| Server credential in Vault / worker access | Verified |
+| Google OAuth / FCM authorization | Blocked; network approval cancelled |
+| Actual FCM delivery and physical phone sound | Not tested |
 
 SQL checks ran with temporary booking/credential fixtures inside BEGIN/ROLLBACK;
 no real orders or permanent native schema objects were changed. No result above
