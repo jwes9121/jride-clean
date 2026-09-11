@@ -849,6 +849,8 @@ export default function VendorPortalPage() {
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<TakeoutOrder[]>([]);
   const [busy, setBusy] = useState(false);
+  const [menuLoaded, setMenuLoaded] = useState(false);
+  const [menuLoading, setMenuLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -1183,6 +1185,7 @@ export default function VendorPortalPage() {
   async function loadVendorData(id?: string, silent = false) {
     const vid = clean(id || vendorId);
     if (!vid) return;
+    setMenuLoading(true);
     if (!silent) setBusy(true);
     setError("");
     try {
@@ -1200,15 +1203,11 @@ export default function VendorPortalPage() {
       setAcceptingOrders(v?.accepting_orders !== false);
       setLogoPreview(clean(v?.logo_url || ""));
       setMenu(items);
+      setMenuLoaded(true);
     } catch (e: any) {
       setError(String(e?.message || e || "Failed to load vendor menu"));
-      setProfile(null);
-      setProfileTagline("");
-      setVendorLat("");
-      setVendorLng("");
-      setVendorLocationLabel("");
-      setMenu([]);
     } finally {
+      setMenuLoading(false);
       if (!silent) setBusy(false);
     }
   }
@@ -1237,7 +1236,7 @@ export default function VendorPortalPage() {
   }
 
   useEffect(() => {
-    loadVendors().catch((e) => setError(String(e?.message || e)));
+    loadVendors().catch((e) => { setError(String(e?.message || e)); setMenuLoading(false); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1513,9 +1512,9 @@ export default function VendorPortalPage() {
     setItemSaveNotice(editingId ? "Updating menu item..." : "Adding menu item...");
     try {
       const photoDataUrl = await fileToDataUrl(itemFile);
-      const stockIsPositive = hasPositiveJrideStock(itemDailyAvailableQuantity, itemRemainingQuantity);
-      const nextAvailable = stockIsPositive ? true : itemAvailable;
-      const nextSoldOut = stockIsPositive ? false : itemSoldOut;
+      // Editing details must preserve the vendor's explicit availability choices.
+      const nextAvailable = itemAvailable;
+      const nextSoldOut = itemSoldOut;
 
       const j = await postJson("/api/vendor-menu/manage", {
         action: "save_item",
@@ -1813,8 +1812,13 @@ export default function VendorPortalPage() {
           </div>
         ) : null}
 
-        {!vendorId ? (
-          <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">Select a vendor to continue.</div>
+        {!vendorId || !menuLoaded ? (
+          <div className="vendor-loading-panel" role="status" aria-busy={menuLoading}>
+            <strong>{menuLoading ? "Loading your store..." : "Store details could not be loaded. Please retry."}</strong>
+            {menuLoading ? <><span className="vendor-skeleton-line" /><span className="vendor-skeleton-line" /></> : (
+              <button type="button" className="vendor-button" onClick={() => window.location.reload()}>Retry</button>
+            )}
+          </div>
         ) : (
           <div className="vendor-panels">
             <section data-vendor-panel hidden={portalView !== "profile"} className="vendor-panel vendor-profile-panel">
@@ -1996,9 +2000,15 @@ export default function VendorPortalPage() {
                   ) : null}
                 </div>
 
-                <label className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
+                <label htmlFor="vendor-logo-photo" className="mt-3 block text-xs font-medium text-slate-700">Vendor logo</label>
+                <div className="vendor-photo-picker">
+                  {logoPreview ? <img src={logoPreview} alt="Store logo preview" /> : <span className="vendor-photo-placeholder">No logo</span>}
+                  <button type="button" className="vendor-button" disabled={busy} onClick={() => logoInputRef.current?.click()}>{logoPreview ? "Change logo" : "Add logo"}</button>
+                </div>
                 <input
-                  className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm"
+                  id="vendor-logo-photo"
+                  ref={logoInputRef}
+                  hidden
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
                   onChange={(e) => {
@@ -2023,7 +2033,7 @@ export default function VendorPortalPage() {
               <div className="vendor-section-heading">
                 <div>
                   <h2 className="text-lg font-semibold">Menu manager</h2>
-                  <p className="text-xs text-slate-500">{menu.length} item{menu.length === 1 ? "" : "s"}. Keep prices and stock up to date.</p>
+                  <p className="text-xs text-slate-500">{menu.length} item{menu.length === 1 ? "" : "s"}</p>
                 </div>
                 <button type="button" disabled={busy} className="vendor-button vendor-button-primary"
                   onClick={() => { resetItemForm(); setEditorOpen(true); }}>
@@ -2034,7 +2044,10 @@ export default function VendorPortalPage() {
               <div hidden={!editorOpen} ref={editorRef} className="vendor-item-editor mt-4 grid grid-cols-1 gap-3 rounded-2xl border bg-slate-50 p-3 md:grid-cols-6">
                 <div className="vendor-editor-heading md:col-span-6">
                   <div><h3>{editingId ? "Edit menu item" : "Add menu item"}</h3><p>{editingId ? itemName : "Add an item customers can order."}</p></div>
-                  <button type="button" disabled={busy} className="vendor-button" onClick={resetItemForm}>Cancel</button>
+                  <div className="vendor-editor-heading-actions">
+                    <button type="button" onClick={saveItem} disabled={busy || limitReached || !itemCategory.trim()} className="vendor-button vendor-button-primary">{busy ? "Saving..." : "Save"}</button>
+                    <button type="button" disabled={busy} className="vendor-button" onClick={resetItemForm}>Cancel</button>
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-slate-700">Menu name</label>
@@ -2065,10 +2078,15 @@ export default function VendorPortalPage() {
                   <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" value={itemPrice} onChange={(e) => setItemPrice(e.target.value.replace(/[^0-9.]/g, ""))} disabled={limitReached} inputMode="decimal" placeholder="0.00" />
                 </div>
                 <div className="md:col-span-3">
-                  <label className="text-xs font-medium text-slate-700">Photo</label>
+                  <label htmlFor="vendor-item-photo" className="text-xs font-medium text-slate-700">Photo</label>
+                  <div className="vendor-photo-picker">
+                    {itemPreview ? <img src={itemPreview} alt="Item photo preview" /> : <span className="vendor-photo-placeholder">No photo</span>}
+                    <button type="button" className="vendor-button" disabled={busy || limitReached} onClick={() => itemInputRef.current?.click()}>{itemPreview ? "Change photo" : "Add photo"}</button>
+                  </div>
                   <input
+                    id="vendor-item-photo"
                     ref={itemInputRef}
-                    className="mt-1 w-full rounded-2xl border bg-white shadow-sm px-3 py-2 text-sm"
+                    hidden
                     type="file"
                     accept="image/png,image/jpeg,image/webp"
                     disabled={limitReached}
@@ -2078,7 +2096,7 @@ export default function VendorPortalPage() {
                       if (f) setItemPreview(URL.createObjectURL(f));
                     }}
                   />
-                  <div className="mt-1 text-[11px] text-slate-500">Up to 5MB input. JRide compresses photos before upload for faster customer browsing.</div>
+                  <div className="mt-1 text-[11px] text-slate-500">JPG, PNG or WebP. Up to 5 MB.</div>
                 </div>
                 <div className="md:col-span-6">
                   <label className="text-xs font-medium text-slate-700">Description</label>
@@ -2090,10 +2108,12 @@ export default function VendorPortalPage() {
                     {PREP_TIME_OPTIONS.map((mins) => <option key={mins} value={mins}>{mins} minutes</option>)}
                   </select>
                 </div>
+                </div>
+                <details className="vendor-editor-options md:col-span-6">
+                  <summary>Packaging and pricing help</summary>
                   <label className="text-xs font-medium text-slate-700">Packaging note</label>
                   <textarea className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" rows={2} value={itemPackagingNote} onChange={(e) => setItemPackagingNote(e.target.value)} disabled={limitReached} placeholder="Example: Packed in standard takeaway packaging." />
                   <div className="mt-1 text-[11px] text-slate-500">This explains the default packaging included with the item.</div>
-                </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 md:col-span-6">
                   <div className="text-sm font-semibold text-slate-900">Pilot menu pricing rule</div>
                   <div className="mt-1 text-xs leading-relaxed text-slate-600">
@@ -2122,13 +2142,14 @@ export default function VendorPortalPage() {
                     </label>
                   </div>
                 </div>
+                </details>
                 <div className="flex flex-wrap items-center gap-4 md:col-span-6">
                   <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={itemAvailable} onChange={(e) => setItemAvailable(e.target.checked)} disabled={limitReached} /> Available</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label className="text-xs font-medium text-slate-700">Available for JRide orders
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="number" min="0" value={itemDailyAvailableQuantity} onChange={(e) => setItemDailyAvailableQuantity(e.target.value)} disabled={limitReached} />
                     </label>
-                    <label className="text-xs font-medium text-slate-700">Remaining today (auto-calculated)
+                    <label className="text-xs font-medium text-slate-700">Remaining today
                       <input className="mt-1 w-full rounded-xl border px-3 py-2 text-sm" type="number" min="0" value={itemRemainingQuantity} onChange={(e) => setItemRemainingQuantity(e.target.value)} disabled={limitReached} />
                     </label>
                   </div>
@@ -2136,7 +2157,8 @@ export default function VendorPortalPage() {
                   <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-800 md:col-span-2">
                     Set how many items are available for JRide customers. Keep a buffer for walk-in and in-store customers. Update availability throughout the day as items are sold or restocked.
                   </div>
-                  {itemPreview ? <img src={itemPreview} alt="Item preview" className="h-12 w-12 rounded-xl border object-cover" /> : null}
+                </div>
+                <div className="vendor-editor-actions md:col-span-6">
                   <button type="button" onClick={saveItem} disabled={busy || limitReached || !itemCategory.trim()} className="vendor-button vendor-button-primary vendor-save-item">{busy ? "Saving..." : editingId ? "Save changes" : "Save new item"}</button>
                   <button type="button" onClick={resetItemForm} disabled={busy} className="vendor-button">Cancel</button>
                   {error ? <div role="alert" className="vendor-notice vendor-notice-error basis-full">{error}</div> : null}
@@ -2491,9 +2513,6 @@ export default function VendorPortalPage() {
     </main>
   );
 }
-
-
-
 
 
 

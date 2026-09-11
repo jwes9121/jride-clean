@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { VendorOrderSoundControls } from "../components/VendorOrderSound";
 import VendorNavigation from "../components/VendorNavigation";
 
@@ -215,7 +215,6 @@ export default function VendorOrdersPage() {
   const [rejectOrder, setRejectOrder] = useState<TakeoutOrder | null>(null);
   const [rejectReason, setRejectReason] = useState<string>(VENDOR_REJECT_REASONS[0]);
   const [rejectOther, setRejectOther] = useState("");
-  const initialViewResolvedRef = useRef(false);
 
   useEffect(() => {
     const id = readVendorId();
@@ -228,7 +227,12 @@ export default function VendorOrdersPage() {
   }, []);
 
   const activeOrders = useMemo(
-    () => orders.filter((order) => !isHistoryStatus(normalizedStatus(order))).sort((a, b) => orderCreatedMs(b) - orderCreatedMs(a)),
+    () => orders.filter((order) => !isHistoryStatus(normalizedStatus(order))).sort((a, b) => {
+      const aWaiting = normalizedStatus(a) === "vendor_pending" && pendingAcceptRemainingMs(a) > 0;
+      const bWaiting = normalizedStatus(b) === "vendor_pending" && pendingAcceptRemainingMs(b) > 0;
+      if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
+      return aWaiting ? pendingAcceptRemainingMs(a) - pendingAcceptRemainingMs(b) : orderCreatedMs(b) - orderCreatedMs(a);
+    }),
     [orders],
   );
 
@@ -275,12 +279,6 @@ export default function VendorOrdersPage() {
         hour12: true,
       }).format(new Date()));
 
-      if (!initialViewResolvedRef.current) {
-        const activeCount = list.filter((order) => !isHistoryStatus(normalizedStatus(order))).length;
-        const historyCount = list.length - activeCount;
-        if (activeCount === 0 && historyCount > 0) setView("history");
-        initialViewResolvedRef.current = true;
-      }
     } catch (err: any) {
       setError(clean(err?.message || err || "Could not load vendor orders."));
     } finally {
@@ -347,10 +345,9 @@ export default function VendorOrdersPage() {
     <main className="vendor-workspace vendor-orders-workspace">
       <VendorNavigation active="orders" vendorId={vendorId} />
       <div className="vendor-workspace-content">
-        <section className="rounded-2xl border border-emerald-500/25 bg-slate-950/70 p-4 shadow-lg">
+        <section className="vendor-orders-header rounded-2xl border border-emerald-500/25 bg-slate-950/70 p-4 shadow-lg">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300">JRide Takeout</div>
               <h1 className="mt-1 text-2xl font-black text-white">Orders</h1>
               <div className="mt-1 text-xs text-slate-400">
                 {lastUpdated ? "Last updated " + lastUpdated : loading ? "Loading orders..." : "Waiting for update"}
@@ -360,11 +357,10 @@ export default function VendorOrdersPage() {
               <button type="button" className="vendor-button" disabled={refreshing} onClick={() => void loadOrders(true)}>
                 {refreshing ? "Refreshing..." : "Refresh"}
               </button>
-              <VendorOrderSoundControls />
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {view === "history" && lastUpdated ? <div className="vendor-order-counts">
             <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-3">
               <div className="text-[10px] font-bold uppercase text-slate-400">Active</div>
               <div className="mt-1 text-2xl font-black text-white">{activeOrders.length}</div>
@@ -381,7 +377,7 @@ export default function VendorOrdersPage() {
               <div className="text-[10px] font-bold uppercase text-amber-200">Timeouts</div>
               <div className="mt-1 text-2xl font-black text-amber-100">{timeoutCount}</div>
             </div>
-          </div>
+          </div> : null}
 
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-700 bg-slate-900/70 p-1.5">
             <button
@@ -393,7 +389,7 @@ export default function VendorOrdersPage() {
                 (view === "active" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
               }
             >
-              Active ({activeOrders.length})
+              Active {lastUpdated ? `(${activeOrders.length})` : ""}
             </button>
             <button
               type="button"
@@ -404,20 +400,27 @@ export default function VendorOrdersPage() {
                 (view === "history" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
               }
             >
-              History ({historyOrders.length})
+              History {lastUpdated ? `(${historyOrders.length})` : ""}
             </button>
           </div>
 
           {pendingOrders.length > 0 ? (
-            <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-100">
-              {pendingOrders.length} order{pendingOrders.length === 1 ? "" : "s"} waiting for vendor confirmation.
-            </div>
+            <button type="button" onClick={() => setView("active")} className="vendor-waiting-orders">
+              {pendingOrders.length} order{pendingOrders.length === 1 ? "" : "s"} waiting - accept or decline
+            </button>
           ) : null}
           {error ? <div className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-100">{error}</div> : null}
         </section>
 
-        {loading && orders.length === 0 ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-5 text-sm text-slate-400">Loading orders...</div>
+        <details className="vendor-sound-settings">
+          <summary>Order sound settings</summary>
+          <VendorOrderSoundControls />
+        </details>
+
+        {loading && !lastUpdated ? (
+          <div className="vendor-loading-panel" role="status" aria-busy="true">Loading orders...<span className="vendor-skeleton-line" /></div>
+        ) : error && !lastUpdated ? (
+          <div className="vendor-notice vendor-notice-error" role="alert">Orders could not be loaded. Tap Refresh to retry.</div>
         ) : visibleOrders.length === 0 ? (
           <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-5 text-sm text-slate-300">
             {view === "active" ? "No active orders right now." : "No completed, cancelled, or timed-out orders yet."}
