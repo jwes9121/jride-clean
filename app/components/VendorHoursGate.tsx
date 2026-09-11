@@ -412,7 +412,7 @@ export default function VendorHoursGate() {
     !suspended && status?.daily_opened && status?.manual_accepting_orders
   );
 
-  if (pathname !== "/vendor-portal" || !vendorId) return null;
+  if (pathname !== "/vendor-portal") return null;
 
   return (
     <div
@@ -420,6 +420,12 @@ export default function VendorHoursGate() {
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 8px)" }}
     >
       <div className="mx-auto max-w-7xl space-y-2 px-3 pb-3 sm:px-4">
+        {!status && !error ? (
+          <section className="vendor-hours-loading" role="status" aria-busy="true">
+            <strong>Checking store status...</strong>
+            <span className="vendor-skeleton-line" />
+          </section>
+        ) : null}
         {!status && error ? (
           <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-100">
             Store hours could not be loaded: {error}
@@ -501,32 +507,24 @@ export default function VendorHoursGate() {
         ) : null}
 
         {status && !needsHours ? (
-          <section className="rounded-2xl border border-emerald-500/25 bg-slate-900/90 p-3">
+          <section className={"vendor-store-status rounded-2xl border p-3 " + (suspended ? "is-suspended" : status.effective_accepting_orders ? "is-open" : "is-closed")}>
             <div className="vendor-hours-summary flex flex-wrap items-center justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${
-                      status.effective_accepting_orders
-                        ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
-                        : "border-rose-400/50 bg-rose-500/15 text-rose-100"
-                    }`}
-                  >
+                <div className="vendor-store-state" role="status">
+                  <span className="vendor-store-state-dot" aria-hidden="true" />
+                  <strong>
                     {suspended
-                      ? "SUSPENDED"
+                      ? "Store is SUSPENDED"
                       : status.effective_accepting_orders
-                        ? "OPEN"
-                        : "CLOSED"}
-                  </span>
-                  <span className="text-sm font-black text-white">
-                    Store status
-                  </span>
+                        ? "Store is OPEN"
+                        : "Store is CLOSED"}
+                  </strong>
                 </div>
                 <div className="mt-1 text-xs text-slate-300">
                   {statusText(status)}
                 </div>
-                <div className="mt-1 text-[11px] text-slate-400">
-                  Normal hours: {formatClock(status.normal_open_time)} -{" "}
+                <div className="vendor-hours-schedule mt-1 text-[11px] text-slate-400">
+                  Hours: {formatClock(status.normal_open_time)} -{" "}
                   {formatClock(status.normal_close_time)}
                   {extensionScheduled
                     ? ` | Extended until ${formatManilaDateTime(
@@ -550,15 +548,16 @@ export default function VendorHoursGate() {
                         void postAction("close_today");
                       }
                     }}
-                    className="rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-xs font-black text-rose-100 disabled:opacity-50"
+                    className="vendor-hours-secondary"
                   >
-                    Close today
+                    Close store
                   </button>
                 ) : null}
                 <button
                   type="button"
                   onClick={() => setPanelOpen((value) => !value)}
-                  className="rounded-xl border border-emerald-500/40 bg-slate-950 px-3 py-2 text-xs font-black text-emerald-100 hover:border-emerald-300"
+                  aria-expanded={panelOpen}
+                  className="vendor-hours-secondary"
                 >
                   {panelOpen ? "Hide hours" : "Manage hours"}
                 </button>

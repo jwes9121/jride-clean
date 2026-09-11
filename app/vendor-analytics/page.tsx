@@ -177,7 +177,7 @@ export default function VendorAnalyticsPage() {
   const [vendorId, setVendorId] = useState("");
   const [period, setPeriod] = useState<PeriodKey>("today");
   const [data, setData] = useState<AnalyticsPayload | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -185,6 +185,9 @@ export default function VendorAnalyticsPage() {
     if (id) {
       setVendorId(id);
       persistVendorId(id);
+    } else {
+      setLoading(false);
+      setError("Your vendor session is missing. Please sign in again.");
     }
   }, []);
 
@@ -268,7 +271,8 @@ export default function VendorAnalyticsPage() {
               <button
                 key={key}
                 type="button"
-                onClick={() => setPeriod(key)}
+                onClick={() => { if (key !== period) { setLoading(true); setPeriod(key); } }}
+                disabled={loading}
                 aria-pressed={period === key}
                 className={
                   "rounded-xl border px-2 py-2 text-[11px] font-black " +
@@ -296,7 +300,7 @@ export default function VendorAnalyticsPage() {
           {error ? <div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm font-semibold text-rose-100">{error}</div> : null}
         </section>
 
-        {!data && !loading ? null : (
+        {loading ? <div className="vendor-loading-panel" role="status" aria-busy="true">Loading analytics...<span className="vendor-skeleton-line" /><span className="vendor-skeleton-line" /></div> : !data ? null : (
           <>
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <MetricCard label="Food sales" value={money(summary.gross_food_sales)} note="Completed orders only" strong />
@@ -305,6 +309,9 @@ export default function VendorAnalyticsPage() {
               <MetricCard label="Cancellation rate" value={pct(summary.cancellation_rate)} note={integer(summary.cancelled_orders) + " cancelled/timeout"} />
             </section>
 
+            {Number(summary.total_orders || 0) === 0 ? <div className="vendor-notice">No real orders in this period. Choose another period to view earlier activity.</div> : null}
+            <details className="vendor-report-details" key={period} open={Number(summary.total_orders || 0) > 0}>
+              <summary>Detailed report</summary>
             <section className="rounded-3xl border border-emerald-500/20 bg-[#071820] p-4 shadow-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -406,6 +413,7 @@ export default function VendorAnalyticsPage() {
                 ))}
               </div>
             </section>
+            </details>
           </>
         )}
       </div>
