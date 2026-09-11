@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getDisplayStatus, isActive } from "./historyStatus";
 
 type TakeoutOrder = {
   id: string;
@@ -58,42 +59,6 @@ function formatDate(value: string | null | undefined): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "-";
   return d.toLocaleString();
-}
-
-function getDisplayStatus(order: TakeoutOrder): string {
-  // Prefer customer_status -> vendor_status -> status
-  return (
-    order.customer_status ||
-    order.vendor_status ||
-    order.status ||
-    "unknown"
-  ).replace(/_/g, " ");
-}
-
-const ACTIVE_STATUSES = new Set([
-  "pending",
-  "pending_confirmation",
-  "order_accepted",
-  "preparing_order",
-  "ready_for_pickup",
-  "on_the_way",
-  "picked_up",
-  "driver_arrived",
-]);
-
-const PAST_STATUSES = new Set(["completed", "cancelled"]);
-
-function isActive(order: TakeoutOrder): boolean {
-  const s =
-    (order.customer_status ||
-      order.vendor_status ||
-      order.status ||
-      ""
-    ).toLowerCase();
-  if (ACTIVE_STATUSES.has(s)) return true;
-  if (PAST_STATUSES.has(s)) return false;
-  // Fallback: treat unknown as active so it doesn't disappear
-  return true;
 }
 
 export default function TakeoutOrdersPage() {
@@ -226,7 +191,7 @@ export default function TakeoutOrdersPage() {
 
           {!loading && pastOrders.length === 0 && (
             <p className="text-sm text-slate-500">
-              Your completed and cancelled takeout orders will appear here.
+              Your completed, cancelled and expired takeout orders will appear here.
             </p>
           )}
 
