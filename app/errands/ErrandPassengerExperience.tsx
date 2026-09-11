@@ -21,7 +21,7 @@ const TEXT_REPLACEMENTS = new Map<string, string>([
   ],
   [
     "JRide will keep the Errand in matching; it will not silently pull a driver from another town.",
-    "JRide is looking for an eligible driver from your meeting-point town.",
+    "JRide is looking for an eligible driver for your meeting point.",
   ],
   [
     "Check the task stops, cargo and starting fare above. After confirmation there is no normal edit flow; exceptions require explicit handling.",
@@ -421,11 +421,11 @@ export default function ErrandPassengerExperience() {
   return (
     <>
       {validationItems.length ? (
-        <div className="fixed inset-x-3 bottom-24 z-[95] mx-auto max-w-xl rounded-2xl border border-red-200 bg-white p-4 shadow-2xl shadow-slate-950/20">
-          <div className="text-xs font-black uppercase tracking-[0.14em] text-red-700">
+        <div className="fixed inset-x-3 bottom-24 z-[95] mx-auto max-w-xl rounded-2xl border border-[#824450] bg-[#101F2B] p-4 shadow-2xl shadow-slate-950/20">
+          <div className="text-xs font-bold uppercase tracking-[0.14em] text-[#FCA5A5]">
             Please complete the following
           </div>
-          <div className="mt-2 space-y-1.5 text-sm font-semibold text-slate-800">
+          <div className="mt-2 space-y-1.5 text-sm font-semibold text-[#F3F6FA]">
             {validationItems.map((item) => (
               <div key={item} className="flex items-start gap-2">
                 <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
@@ -437,16 +437,16 @@ export default function ErrandPassengerExperience() {
       ) : null}
 
       {confirmLabel ? (
-        <div className="fixed inset-x-0 bottom-0 z-[90] px-3 pb-3">
-          <div className="mx-auto max-w-xl rounded-[24px] border border-amber-300 bg-slate-950 p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.28)]">
-            <div className="mb-2 text-center text-[10px] font-black uppercase tracking-[0.14em] text-amber-300">
+        <div className="fixed inset-x-0 bottom-0 z-[90] px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="mx-auto max-w-xl rounded-[24px] border border-[#806A3D] bg-[#101F2B] p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.28)]">
+            <div className="mb-2 text-center text-[10px] font-bold uppercase tracking-[0.14em] text-amber-300">
               Your confirmation is needed
             </div>
             <button
               type="button"
               disabled={confirmDisabled}
               onClick={() => confirmButtonRef.current?.click()}
-              className="w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950 disabled:opacity-60"
+              className="w-full rounded-2xl bg-[#A7F3D0] py-3.5 text-sm font-bold text-[#071113] disabled:opacity-60"
             >
               {confirmLabel}
             </button>

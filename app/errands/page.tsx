@@ -186,7 +186,7 @@ function stageMeta(stageRaw: unknown, statusRaw: unknown) {
   if (["requested", "pending", "searching"].includes(status) || stage === "matching") {
     return {
       label: "Finding your driver",
-      detail: "JRide is matching an eligible driver from your meeting-point town.",
+      detail: "JRide is matching an eligible driver for your meeting point.",
       tone: "sky",
     };
   }
@@ -293,10 +293,10 @@ function vehicleLabel(raw: unknown): string {
 
 function stopStatusClasses(statusRaw: unknown): string {
   const status = clean(statusRaw).toLowerCase();
-  if (["completed", "done"].includes(status)) return "bg-emerald-100 text-emerald-800";
-  if (["arrived", "waiting", "waiting_at_stop"].includes(status)) return "bg-violet-100 text-violet-800";
-  if (["skipped", "cancelled", "blocked"].includes(status)) return "bg-red-100 text-red-800";
-  return "bg-slate-100 text-slate-600";
+  if (["completed", "done"].includes(status)) return "bg-[#123B31] text-[#A7F3D0]";
+  if (["arrived", "waiting", "waiting_at_stop"].includes(status)) return "bg-[#2B2540] text-[#DDD6FE]";
+  if (["skipped", "cancelled", "blocked"].includes(status)) return "bg-[#3B2027] text-[#FCA5A5]";
+  return "bg-[#071113] text-[#B6C7D3]";
 }
 
 export default function ErrandPage() {
@@ -848,9 +848,9 @@ function NewErrandFlow(props: {
       : finalLocation?.label || "Not set";
 
   return (
-    <main className="min-h-screen bg-slate-100 pb-28 text-slate-900">
-      <div className="mx-auto min-h-screen max-w-xl bg-white shadow-xl shadow-slate-300/20">
-        <header className="bg-slate-950 px-5 pb-5 pt-4 text-white">
+    <main className="min-h-screen bg-[#071113] pb-28 text-[#F3F6FA]">
+      <div className="mx-auto min-h-screen max-w-xl bg-[#071113] shadow-xl shadow-black/20">
+        <header className="bg-[#101F2B] px-5 pb-5 pt-4 text-[#F3F6FA]">
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
@@ -861,8 +861,8 @@ function NewErrandFlow(props: {
               <span aria-hidden="true">&#8249;</span>
             </button>
             <div className="text-center">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">JRide Passenger</div>
-              <div className="text-lg font-black">Errand</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#A7F3D0]">JRide Passenger</div>
+              <div className="text-lg font-bold">Errand</div>
             </div>
             <button
               type="button"
@@ -878,17 +878,17 @@ function NewErrandFlow(props: {
               <div key={label} className="min-w-0 text-center">
                 <div
                   className={
-                    "mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-black ring-1 " +
+                    "mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold ring-1 " +
                     (index < requestStep
-                      ? "bg-emerald-400 text-slate-950 ring-emerald-300"
+                      ? "bg-[#A7F3D0] text-[#071113] ring-[#A7F3D0]"
                       : index === requestStep
-                        ? "bg-white text-slate-950 ring-white"
-                        : "bg-white/5 text-slate-500 ring-white/10")
+                        ? "bg-[#A7F3D0] text-[#071113] ring-[#A7F3D0]"
+                        : "bg-white/5 text-[#B6C7D3] ring-white/10")
                   }
                 >
                   {index + 1}
                 </div>
-                <div className={"mt-1 truncate text-[9px] font-bold " + (index === requestStep ? "text-white" : "text-slate-500")}>
+                <div className={"mt-1 truncate text-[11px] font-bold " + (index === requestStep ? "text-[#F3F6FA]" : "text-[#B6C7D3]")}>
                   {label}
                 </div>
               </div>
@@ -897,12 +897,12 @@ function NewErrandFlow(props: {
         </header>
 
         <div className="px-4 py-5">
-          <div className="mb-4 rounded-2xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-200">
-            Passenger: <span className="font-bold text-slate-900">{profileName}</span>
+          <div className="mb-4 rounded-2xl bg-[#162228] px-4 py-3 text-xs text-[#B6C7D3] ring-1 ring-[#36536A]">
+            Passenger: <span className="font-bold text-[#F3F6FA]">{profileName}</span>
           </div>
 
           {notice ? (
-            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+            <div className="mb-4 rounded-2xl border border-[#824450] bg-[#3B2027] px-4 py-3 text-sm font-semibold text-[#FCA5A5]">
               {notice}
             </div>
           ) : null}
@@ -934,9 +934,9 @@ function NewErrandFlow(props: {
                 value={taskDescription}
                 onChange={(event) => setTaskDescription(event.target.value)}
                 placeholder="Example: Pick up one sack of rice and two cases of drinks, then return them to me."
-                className="min-h-[150px] w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-base leading-6 outline-none transition focus:border-emerald-400 focus:bg-white focus:ring-4 focus:ring-emerald-100"
+                className="min-h-[150px] w-full resize-none rounded-2xl border border-[#36536A] bg-[#162228] px-4 py-4 text-base leading-6 outline-none transition focus:border-[#A7F3D0] focus:bg-[#101F2B] focus:ring-2 focus:ring-[#A7F3D0]/40"
               />
-              <div className="mt-2 text-right text-xs text-slate-400">
+              <div className="mt-2 text-right text-xs text-[#B6C7D3]">
                 {clean(taskDescription).length < 3 ? "Add a short task description" : "Ready"}
               </div>
             </StepCard>
@@ -951,14 +951,14 @@ function NewErrandFlow(props: {
               >
                 <div className="space-y-3">
                   {stops.map((stop, index) => (
-                    <div key={stop.id} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                    <div key={stop.id} className="rounded-2xl bg-[#162228] p-3 ring-1 ring-[#36536A]">
                       <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="font-bold text-slate-900">Task Stop {index + 1}</div>
+                        <div className="font-bold text-[#F3F6FA]">Task Stop {index + 1}</div>
                         {stops.length > 1 ? (
                           <button
                             type="button"
                             onClick={() => removeStop(stop.id)}
-                            className="text-xs font-bold text-red-600"
+                            className="text-xs font-bold text-[#FCA5A5]"
                           >
                             Remove
                           </button>
@@ -975,7 +975,7 @@ function NewErrandFlow(props: {
                         value={stop.instructions}
                         onChange={(event) => updateStopInstructions(stop.id, event.target.value)}
                         placeholder="Optional instructions"
-                        className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-emerald-400"
+                        className="mt-3 w-full rounded-2xl border border-[#36536A] bg-[#101F2B] px-4 py-3 text-sm outline-none focus:border-[#A7F3D0]"
                       />
                     </div>
                   ))}
@@ -983,7 +983,7 @@ function NewErrandFlow(props: {
                 <button
                   type="button"
                   onClick={addStop}
-                  className="mt-3 w-full rounded-2xl border border-dashed border-emerald-400 bg-emerald-50 py-3 text-sm font-black text-emerald-800"
+                  className="mt-3 w-full rounded-2xl border border-dashed border-[#A7F3D0] bg-[#123B31] py-3 text-sm font-bold text-[#A7F3D0]"
                 >
                   + Add another task stop
                 </button>
@@ -1020,7 +1020,7 @@ function NewErrandFlow(props: {
                     />
                   </div>
                 ) : (
-                  <div className="mt-3 rounded-2xl bg-emerald-50 px-3 py-3 text-xs font-semibold text-emerald-900">
+                  <div className="mt-3 rounded-2xl bg-[#123B31] px-3 py-3 text-xs font-semibold text-[#A7F3D0]">
                     {stage0?.label || "Set the meeting point first"}
                   </div>
                 )}
@@ -1051,8 +1051,8 @@ function NewErrandFlow(props: {
                 </div>
 
                 {isPabili ? (
-                  <div className="mt-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-                    <label className="text-xs font-black uppercase tracking-wide text-amber-900">Estimated purchase amount</label>
+                  <div className="mt-4 rounded-2xl bg-[#392A15] p-4 ring-1 ring-[#806A3D]">
+                    <label className="text-xs font-bold uppercase tracking-wide text-[#FDE68A]">Estimated purchase amount</label>
                     <input
                       type="number"
                       min="0"
@@ -1060,9 +1060,9 @@ function NewErrandFlow(props: {
                       value={estimatedPurchase}
                       onChange={(event) => setEstimatedPurchase(event.target.value)}
                       placeholder="PHP 0"
-                      className="mt-2 w-full rounded-2xl border border-amber-200 bg-white px-4 py-3 text-base font-bold outline-none focus:border-amber-400"
+                      className="mt-2 w-full rounded-2xl border border-[#806A3D] bg-[#101F2B] px-4 py-3 text-base font-bold outline-none focus:border-amber-400"
                     />
-                    <div className="mt-2 text-xs leading-5 text-amber-800">
+                    <div className="mt-2 text-xs leading-5 text-[#FDE68A]">
                       Customer-funded only. Hand cash to the driver only after the in-person task review.
                     </div>
                   </div>
@@ -1074,7 +1074,7 @@ function NewErrandFlow(props: {
                 title="Weight and vehicle"
                 subtitle="This helps JRide send a vehicle that can safely handle the load."
               >
-                <label className="text-xs font-black uppercase tracking-wide text-slate-500">Estimated cargo weight</label>
+                <label className="text-xs font-bold uppercase tracking-wide text-[#B6C7D3]">Estimated cargo weight</label>
                 <div className="relative mt-2">
                   <input
                     type="number"
@@ -1084,17 +1084,17 @@ function NewErrandFlow(props: {
                     value={cargoWeight}
                     onChange={(event) => setCargoWeight(event.target.value)}
                     placeholder="0"
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-base font-bold outline-none focus:border-emerald-400 focus:bg-white"
+                    className="w-full rounded-2xl border border-[#36536A] bg-[#162228] px-4 py-3 pr-12 text-base font-bold outline-none focus:border-[#A7F3D0] focus:bg-[#101F2B]"
                   />
-                  <span className="absolute right-4 top-3.5 text-sm font-bold text-slate-400">kg</span>
+                  <span className="absolute right-4 top-3.5 text-sm font-bold text-[#B6C7D3]">kg</span>
                 </div>
 
                 {cargoTooHeavy ? (
-                  <div className="mt-2 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">More than 100 kg is not eligible for a normal JRide Errand.</div>
+                  <div className="mt-2 rounded-xl bg-[#3B2027] px-3 py-2 text-xs font-bold text-[#FCA5A5]">More than 100 kg is not eligible for a normal JRide Errand.</div>
                 ) : cargoKg != null && cargoKg > 50 ? (
-                  <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">51-100 kg requires a tricycle and driver acceptance.</div>
+                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">51-100 kg requires a tricycle and driver acceptance.</div>
                 ) : cargoKg != null && cargoKg > 25 ? (
-                  <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Above 25 kg requires a tricycle.</div>
+                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">Above 25 kg requires a tricycle.</div>
                 ) : null}
 
                 <div className="mt-4 grid grid-cols-3 gap-2">
@@ -1109,12 +1109,13 @@ function NewErrandFlow(props: {
                         key={value}
                         type="button"
                         disabled={disabled}
+                        aria-pressed={vehicleRequirement === value}
                         onClick={() => setVehicleRequirement(value)}
                         className={
-                          "rounded-2xl border px-2 py-3 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-30 " +
+                          "rounded-2xl border px-2 py-3 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-30 " +
                           (vehicleRequirement === value
-                            ? "border-emerald-400 bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                            : "border-slate-200 bg-white text-slate-700")
+                            ? "border-[#A7F3D0] bg-[#A7F3D0] text-[#071113] shadow-lg shadow-black/10"
+                            : "border-[#36536A] bg-[#101F2B] text-[#F3F6FA]")
                         }
                       >
                         {label}
@@ -1143,27 +1144,27 @@ function NewErrandFlow(props: {
                 <ReviewRow label="Vehicle" value={vehicleLabel(vehicleRequirement)} />
               </StepCard>
 
-              <details className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
-                <summary className="cursor-pointer font-black text-slate-800">How the fare is calculated</summary>
-                <div className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
-                  <div><span className="font-bold text-slate-900">Approach:</span> PHP 40 minimum, or the routed pickup-distance charge when higher. They are never added together.</div>
-                  <div><span className="font-bold text-slate-900">Confirmed route:</span> PHP 15 per kilometer.</div>
-                  <div><span className="font-bold text-slate-900">Extra stops:</span> Task Stop 1 included; PHP 40 for each additional confirmed stop.</div>
-                  <div><span className="font-bold text-slate-900">Waiting:</span> First 15 total minutes free, then PHP 20 per started 15-minute block.</div>
+              <details className="rounded-2xl bg-[#162228] p-4 text-sm ring-1 ring-[#36536A]">
+                <summary className="cursor-pointer font-bold text-[#F3F6FA]">How the fare is calculated</summary>
+                <div className="mt-3 space-y-2 text-xs leading-5 text-[#B6C7D3]">
+                  <div><span className="font-bold text-[#F3F6FA]">Approach:</span> PHP 40 minimum, or the routed pickup-distance charge when higher. They are never added together.</div>
+                  <div><span className="font-bold text-[#F3F6FA]">Confirmed route:</span> PHP 15 per kilometer.</div>
+                  <div><span className="font-bold text-[#F3F6FA]">Extra stops:</span> Task Stop 1 included; PHP 40 for each additional confirmed stop.</div>
+                  <div><span className="font-bold text-[#F3F6FA]">Waiting:</span> First 15 total minutes free, then PHP 20 per started 15-minute block.</div>
                 </div>
               </details>
             </div>
           ) : null}
         </div>
 
-        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-3">
-          <div className="mx-auto max-w-xl rounded-[24px] border border-slate-200 bg-white/95 p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)] backdrop-blur">
+        <div className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(12px,env(safe-area-inset-bottom))]">
+          <div className="mx-auto max-w-xl rounded-[24px] border border-[#36536A] bg-[#101F2B]/95 p-3 shadow-[0_-12px_40px_rgba(15,23,42,0.12)] backdrop-blur">
             <div className="flex gap-2">
               {requestStep > 0 ? (
                 <button
                   type="button"
                   onClick={onPrevious}
-                  className="w-28 rounded-2xl border border-slate-200 bg-white py-3 text-sm font-black text-slate-700"
+                  className="w-28 rounded-2xl border border-[#36536A] bg-[#101F2B] py-3 text-sm font-bold text-[#F3F6FA]"
                 >
                   Back
                 </button>
@@ -1174,7 +1175,7 @@ function NewErrandFlow(props: {
                   type="button"
                   onClick={onNext}
                   disabled={!stepReady[requestStep]}
-                  className="flex-1 rounded-2xl bg-emerald-500 py-3 text-sm font-black text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                  className="flex-1 rounded-2xl bg-[#A7F3D0] py-3 text-sm font-bold text-[#071113] shadow-lg shadow-black/10 disabled:cursor-not-allowed disabled:bg-[#29404A] disabled:text-[#B6C7D3] disabled:shadow-none"
                 >
                   Continue
                 </button>
@@ -1183,7 +1184,7 @@ function NewErrandFlow(props: {
                   type="button"
                   onClick={onSubmit}
                   disabled={!formReady || bookingBusy}
-                  className="flex-1 rounded-2xl bg-emerald-500 py-3 text-sm font-black text-white shadow-lg shadow-emerald-500/20 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                  className="flex-1 rounded-2xl bg-[#A7F3D0] py-3 text-sm font-bold text-[#071113] shadow-lg shadow-black/10 disabled:cursor-not-allowed disabled:bg-[#29404A] disabled:text-[#B6C7D3] disabled:shadow-none"
                 >
                   {bookingBusy ? "Requesting Errand..." : "Request Errand"}
                 </button>
@@ -1282,9 +1283,9 @@ function ActiveErrandScreen(props: {
   const fareValue = matching ? money(Math.max(base, 40)) : money(totalFare);
 
   return (
-    <main className="min-h-screen bg-slate-100 pb-6 text-slate-900">
-      <div className="mx-auto min-h-screen max-w-xl bg-white shadow-xl shadow-slate-300/20">
-        <header className="bg-slate-950 px-4 pb-5 pt-4 text-white">
+    <main className="min-h-screen bg-[#071113] pb-6 text-[#F3F6FA]">
+      <div className="mx-auto min-h-screen max-w-xl bg-[#071113] shadow-xl shadow-black/20">
+        <header className="bg-[#101F2B] px-4 pb-5 pt-4 text-[#F3F6FA]">
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
@@ -1295,8 +1296,8 @@ function ActiveErrandScreen(props: {
               <span aria-hidden="true">&#8249;</span>
             </button>
             <div className="text-center">
-              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300">JRide Errand</div>
-              <div className="text-sm font-black">{clean(booking?.booking_code) || "Active trip"}</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#A7F3D0]">JRide Errand</div>
+              <div className="text-sm font-bold">{clean(booking?.booking_code) || "Active trip"}</div>
             </div>
             <div className="w-10" />
           </div>
@@ -1304,13 +1305,13 @@ function ActiveErrandScreen(props: {
           <div className={`mt-5 rounded-[24px] border p-4 ${toneClasses(meta.tone)}`}>
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] opacity-70">Step {currentStep + 1} of 6</div>
-                <div className="mt-1 text-xl font-black leading-tight">{meta.label}</div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">Step {currentStep + 1} of 6</div>
+                <div className="mt-1 text-xl font-bold leading-tight">{meta.label}</div>
                 <div className="mt-1 text-xs leading-5 opacity-80">{meta.detail}</div>
               </div>
               <div className="shrink-0 text-right">
                 <div className="text-[10px] font-bold uppercase tracking-wide opacity-60">{fareTitle}</div>
-                <div className="mt-1 text-2xl font-black">{fareValue}</div>
+                <div className="mt-1 text-2xl font-bold">{fareValue}</div>
               </div>
             </div>
             {matching ? (
@@ -1323,8 +1324,8 @@ function ActiveErrandScreen(props: {
           <div className="mt-4 grid grid-cols-6 gap-1.5">
             {ACTIVE_STEPS.map((label, index) => (
               <div key={label} className="min-w-0 text-center">
-                <div className={"h-1.5 rounded-full " + (index <= currentStep ? "bg-emerald-400" : "bg-white/10")} />
-                <div className={"mt-1 truncate text-[8px] font-bold " + (index === currentStep ? "text-white" : "text-slate-600")}>
+                <div className={"h-1.5 rounded-full " + (index <= currentStep ? "bg-[#A7F3D0]" : "bg-white/10")} />
+                <div className={"mt-1 truncate text-[10px] font-bold " + (index === currentStep ? "text-[#F3F6FA]" : "text-[#B6C7D3]")}>
                   {label}
                 </div>
               </div>
@@ -1334,34 +1335,34 @@ function ActiveErrandScreen(props: {
 
         <div className="space-y-4 px-4 py-4">
           {error ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</div>
+            <div className="rounded-2xl border border-[#824450] bg-[#3B2027] px-4 py-3 text-sm font-semibold text-[#FCA5A5]">{error}</div>
           ) : null}
           {notice ? (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{notice}</div>
+            <div className="rounded-2xl border border-[#806A3D] bg-[#392A15] px-4 py-3 text-sm font-semibold text-[#FDE68A]">{notice}</div>
           ) : null}
-          {loading ? <div className="text-center text-xs font-semibold text-slate-400">Refreshing trip...</div> : null}
+          {loading ? <div className="text-center text-xs font-semibold text-[#B6C7D3]">Refreshing trip...</div> : null}
 
           {clean(driver?.driver_id) ? (
-            <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+            <section className="rounded-[22px] bg-[#101F2B] p-4 ring-1 ring-[#36536A] shadow-sm">
               <div className="flex items-center gap-3">
                 {clean(driver?.photo_url) ? (
                   <img
                     src={clean(driver.photo_url)}
                     alt="Assigned driver"
-                    className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200"
+                    className="h-14 w-14 rounded-2xl object-cover ring-1 ring-[#36536A]"
                   />
                 ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-xs font-bold text-slate-500">Driver</div>
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#071113] text-xs font-bold text-[#B6C7D3]">Driver</div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Assigned driver</div>
-                  <div className="truncate text-lg font-black text-slate-950">{clean(driver?.full_name) || "JRide Driver"}</div>
-                  <div className="text-xs font-semibold text-slate-500">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Assigned driver</div>
+                  <div className="truncate text-lg font-bold text-[#F3F6FA]">{clean(driver?.full_name) || "JRide Driver"}</div>
+                  <div className="text-xs font-semibold text-[#B6C7D3]">
                     {[vehicleLabel(driver?.vehicle_type), clean(driver?.plate_number)].filter(Boolean).join(" | ")}
                   </div>
                 </div>
                 {driverLocation?.updated_at ? (
-                  <div className="text-right text-[10px] font-semibold text-slate-400">
+                  <div className="text-right text-[10px] font-semibold text-[#B6C7D3]">
                     GPS<br />
                     {new Date(driverLocation.updated_at).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" })}
                   </div>
@@ -1369,9 +1370,9 @@ function ActiveErrandScreen(props: {
               </div>
             </section>
           ) : (
-            <section className="rounded-[22px] bg-sky-50 p-4 ring-1 ring-sky-200">
-              <div className="font-black text-sky-950">Looking for your driver</div>
-              <div className="mt-1 text-xs leading-5 text-sky-800">JRide will keep matching an eligible driver from your meeting-point town.</div>
+            <section className="rounded-[22px] bg-[#152E3D] p-4 ring-1 ring-[#3D6880]">
+              <div className="font-bold text-[#BAE6FD]">Looking for your driver</div>
+              <div className="mt-1 text-xs leading-5 text-[#BAE6FD]">JRide will keep matching an eligible driver for your meeting point.</div>
             </section>
           )}
 
@@ -1387,15 +1388,15 @@ function ActiveErrandScreen(props: {
           ) : null}
 
           {awaitingConfirmation ? (
-            <section className="overflow-hidden rounded-[24px] bg-slate-950 text-white shadow-xl shadow-slate-300/30">
-              <div className="bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-slate-950">Fare ready - your action</div>
+            <section className="overflow-hidden rounded-[24px] bg-[#101F2B] text-[#F3F6FA] shadow-xl shadow-black/20">
+              <div className="bg-amber-400 px-4 py-2 text-xs font-bold uppercase tracking-[0.16em] text-[#071113]">Fare ready - your action</div>
               <div className="p-4">
                 <div className="flex items-end justify-between gap-3">
                   <div>
-                    <div className="text-xs font-bold uppercase tracking-wide text-slate-400">Starting fare</div>
-                    <div className="mt-1 text-3xl font-black">{money(totalFare)}</div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-[#B6C7D3]">Starting fare</div>
+                    <div className="mt-1 text-3xl font-bold">{money(totalFare)}</div>
                   </div>
-                  <div className="rounded-xl bg-white/5 px-3 py-2 text-right text-[10px] font-semibold text-slate-400 ring-1 ring-white/10">
+                  <div className="rounded-xl bg-white/5 px-3 py-2 text-right text-[10px] font-semibold text-[#B6C7D3] ring-1 ring-white/10">
                     Route {km(job?.confirmed_route_distance_km)}
                   </div>
                 </div>
@@ -1413,23 +1414,23 @@ function ActiveErrandScreen(props: {
                   type="button"
                   onClick={onConfirm}
                   disabled={confirmBusy}
-                  className="mt-4 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/20 disabled:opacity-50"
+                  className="mt-4 w-full rounded-2xl bg-[#A7F3D0] py-3.5 text-sm font-bold text-[#071113] shadow-lg shadow-emerald-950/20 disabled:opacity-50"
                 >
                   {confirmBusy ? "Confirming..." : `Confirm ${money(totalFare)}`}
                 </button>
-                <div className="mt-2 text-center text-[10px] leading-4 text-slate-400">
+                <div className="mt-2 text-center text-[10px] leading-4 text-[#B6C7D3]">
                   Waiting can add charges only after the first 15 total waiting minutes.
                 </div>
               </div>
             </section>
           ) : (
-            <section className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
+            <section className="rounded-[22px] bg-[#101F2B] p-4 ring-1 ring-[#36536A] shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Fare</div>
-                  <div className="mt-1 text-2xl font-black text-slate-950">{matching ? money(Math.max(base, 40)) : money(totalFare)}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Fare</div>
+                  <div className="mt-1 text-2xl font-bold text-[#F3F6FA]">{matching ? money(Math.max(base, 40)) : money(totalFare)}</div>
                 </div>
-                <div className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-800">
+                <div className="rounded-full bg-[#123B31] px-3 py-1.5 text-xs font-bold text-[#A7F3D0]">
                   {numberOrZero(waiting?.current_fee) > 0 ? `Waiting ${money(waiting.current_fee)}` : "No waiting fee"}
                 </div>
               </div>
@@ -1440,7 +1441,7 @@ function ActiveErrandScreen(props: {
                 </div>
               ) : null}
               {waiting?.running === true ? (
-                <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                <div className="mt-3 rounded-xl bg-[#162228] px-3 py-2 text-xs font-semibold text-[#B6C7D3]">
                   {numberOrZero(waiting?.free_remaining_seconds) > 0
                     ? `Free waiting remaining: ${Math.floor(numberOrZero(waiting.free_remaining_seconds) / 60)}m ${Math.floor(numberOrZero(waiting.free_remaining_seconds) % 60)}s`
                     : `Current waiting fee: ${money(waiting?.current_fee)}`}
@@ -1449,36 +1450,36 @@ function ActiveErrandScreen(props: {
             </section>
           )}
 
-          <details className="rounded-[22px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
-            <summary className="cursor-pointer list-none font-black text-slate-950">
+          <details className="rounded-[22px] bg-[#101F2B] p-4 ring-1 ring-[#36536A] shadow-sm">
+            <summary className="cursor-pointer list-none font-bold text-[#F3F6FA]">
               <div className="flex items-center justify-between gap-3">
                 <span>Task & route details</span>
-                <span className="text-xs font-bold text-emerald-700">View</span>
+                <span className="text-xs font-bold text-[#A7F3D0]">View</span>
               </div>
             </summary>
 
-            <div className="mt-4 space-y-4 border-t border-slate-100 pt-4 text-sm">
+            <div className="mt-4 space-y-4 border-t border-[#36536A] pt-4 text-sm">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Task</div>
-                <div className="mt-1 font-semibold text-slate-800">{clean(job?.task_description) || "--"}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Task</div>
+                <div className="mt-1 font-semibold text-[#F3F6FA]">{clean(job?.task_description) || "--"}</div>
               </div>
 
               <div>
-                <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Meet driver</div>
-                <div className="mt-1 font-semibold text-slate-800">{clean(booking?.from_label) || "--"}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Meet driver</div>
+                <div className="mt-1 font-semibold text-[#F3F6FA]">{clean(booking?.from_label) || "--"}</div>
               </div>
 
               <div>
-                <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-400">Task stops</div>
+                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Task stops</div>
                 <div className="space-y-2">
                   {currentStops.map((stop: any) => (
-                    <div key={String(stop?.id || stop?.sequence)} className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                    <div key={String(stop?.id || stop?.sequence)} className="rounded-2xl bg-[#162228] p-3 ring-1 ring-[#36536A]">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-900">Stop {stop?.sequence || "-"}: {clean(stop?.location_label) || "--"}</div>
-                          {clean(stop?.instructions) ? <div className="mt-1 text-xs text-slate-500">{clean(stop.instructions)}</div> : null}
+                          <div className="font-bold text-[#F3F6FA]">Stop {stop?.sequence || "-"}: {clean(stop?.location_label) || "--"}</div>
+                          {clean(stop?.instructions) ? <div className="mt-1 text-xs text-[#B6C7D3]">{clean(stop.instructions)}</div> : null}
                         </div>
-                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-black ${stopStatusClasses(stop?.status)}`}>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${stopStatusClasses(stop?.status)}`}>
                           {clean(stop?.status) || "pending"}
                         </span>
                       </div>
@@ -1500,15 +1501,15 @@ function ActiveErrandScreen(props: {
           </details>
 
           {job?.is_pabili ? (
-            <section className="rounded-[22px] bg-amber-50 p-4 ring-1 ring-amber-200">
-              <div className="font-black text-amber-950">Pabili money</div>
+            <section className="rounded-[22px] bg-[#392A15] p-4 ring-1 ring-[#806A3D]">
+              <div className="font-bold text-[#FDE68A]">Pabili money</div>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <MiniMetric label="Customer funds" value={money(pabili?.customer_funds_received)} />
                 <MiniMetric label="Purchase total" value={money(pabili?.purchase_total)} />
                 <MiniMetric label="Change due" value={money(pabili?.change_due)} />
                 <MiniMetric label="Change returned" value={money(pabili?.change_returned)} />
               </div>
-              <div className="mt-2 text-[10px] leading-4 text-amber-800">Purchase money is separate from the JRide service fare.</div>
+              <div className="mt-2 text-[10px] leading-4 text-[#FDE68A]">Purchase money is separate from the JRide service fare.</div>
             </section>
           ) : null}
         </div>
@@ -1524,17 +1525,17 @@ function CompletedReceipt(props: { receipt: Receipt; onDone: () => void }) {
   const approach = numberOrZero(receipt.approach_fee) || Math.max(numberOrZero(receipt.base_fare), numberOrZero(receipt.pickup_distance_fee));
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900">
-      <div className="mx-auto max-w-md overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-400/30">
-        <div className="h-1.5 bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400" />
+    <main className="min-h-screen bg-[#071113] px-4 py-6 text-[#F3F6FA]">
+      <div className="mx-auto max-w-md overflow-hidden rounded-[30px] bg-[#101F2B] text-[#F3F6FA] shadow-2xl shadow-black/20">
+        <div className="h-1.5 bg-gradient-to-r from-[#A7F3D0] via-[#A7F3D0] to-[#67DDB4]" />
         <div className="p-5">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">Errand completed</div>
-          <div className="mt-1 text-xl font-black">{clean(receipt.booking_code) || "JRide Errand"}</div>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#A7F3D0]">Errand completed</div>
+          <div className="mt-1 text-xl font-bold">{clean(receipt.booking_code) || "JRide Errand"}</div>
 
           <div className="mt-5 rounded-[22px] bg-white/5 p-4 ring-1 ring-white/10">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Final fare</div>
-            <div className="mt-1 text-4xl font-black">{money(finalFare)}</div>
-            {startingFare > 0 ? <div className="mt-1 text-xs text-slate-400">Started at {money(startingFare)}</div> : null}
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#B6C7D3]">Final fare</div>
+            <div className="mt-1 text-4xl font-bold">{money(finalFare)}</div>
+            {startingFare > 0 ? <div className="mt-1 text-xs text-[#B6C7D3]">Started at {money(startingFare)}</div> : null}
           </div>
 
           <div className="mt-4 space-y-2 text-sm">
@@ -1546,7 +1547,7 @@ function CompletedReceipt(props: { receipt: Receipt; onDone: () => void }) {
             {numberOrZero(receipt.heavy_load_fee) > 0 ? <DarkFareRow label="Heavy load" value={receipt.heavy_load_fee} /> : null}
           </div>
 
-          <div className="mt-4 text-xs leading-5 text-slate-400">
+          <div className="mt-4 text-xs leading-5 text-[#B6C7D3]">
             Waiting time: {Math.max(0, Math.round(numberOrZero(receipt.waiting_minutes)))} min total.
             {receipt.completed_at
               ? ` Completed ${new Date(receipt.completed_at).toLocaleString("en-PH", {
@@ -1561,7 +1562,7 @@ function CompletedReceipt(props: { receipt: Receipt; onDone: () => void }) {
           <button
             type="button"
             onClick={onDone}
-            className="mt-5 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950"
+            className="mt-5 w-full rounded-2xl bg-[#A7F3D0] py-3.5 text-sm font-bold text-[#071113]"
           >
             Done
           </button>
@@ -1578,10 +1579,10 @@ function StepCard(props: {
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-[24px] bg-white p-4 ring-1 ring-slate-200 shadow-sm">
-      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-700">{props.eyebrow}</div>
-      <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{props.title}</h2>
-      <p className="mt-1 text-xs leading-5 text-slate-500">{props.subtitle}</p>
+    <section className="rounded-[24px] bg-[#101F2B] p-4 ring-1 ring-[#36536A] shadow-sm">
+      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#A7F3D0]">{props.eyebrow}</div>
+      <h2 className="mt-1 text-xl font-bold tracking-tight text-[#F3F6FA]">{props.title}</h2>
+      <p className="mt-1 text-xs leading-5 text-[#B6C7D3]">{props.subtitle}</p>
       <div className="mt-4">{props.children}</div>
     </section>
   );
@@ -1597,15 +1598,16 @@ function ChoiceCard(props: {
     <button
       type="button"
       onClick={props.onClick}
+      aria-pressed={props.selected}
       className={
-        "rounded-2xl border p-3 text-left transition " +
+        "min-h-12 rounded-2xl border p-3 text-left transition " +
         (props.selected
-          ? "border-emerald-400 bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-          : "border-slate-200 bg-white text-slate-800")
+          ? "border-[#A7F3D0] bg-[#A7F3D0] text-[#071113] shadow-lg shadow-black/10"
+          : "border-[#36536A] bg-[#101F2B] text-[#F3F6FA]")
       }
     >
-      <div className="text-sm font-black">{props.title}</div>
-      <div className={"mt-1 text-[11px] leading-4 " + (props.selected ? "text-emerald-50" : "text-slate-500")}>
+      <div className="text-sm font-bold">{props.title}</div>
+      <div className={"mt-1 text-[11px] leading-4 " + (props.selected ? "text-[#173B31]" : "text-[#B6C7D3]")}>
         {props.detail}
       </div>
     </button>
@@ -1614,9 +1616,9 @@ function ChoiceCard(props: {
 
 function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-slate-100 py-3 last:border-b-0">
-      <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</span>
-      <span className="max-w-[65%] text-right text-sm font-bold leading-5 text-slate-900">{value}</span>
+    <div className="flex items-start justify-between gap-4 border-b border-[#36536A] py-3 last:border-b-0">
+      <span className="text-xs font-bold uppercase tracking-wide text-[#B6C7D3]">{label}</span>
+      <span className="max-w-[65%] text-right text-sm font-bold leading-5 text-[#F3F6FA]">{value}</span>
     </div>
   );
 }
@@ -1625,25 +1627,25 @@ function DarkFareRow({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="text-slate-300">{label}</span>
-      <span className="font-black text-white">{money(value)}</span>
+      <span className="font-bold text-[#F3F6FA]">{money(value)}</span>
     </div>
   );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-      <div className="text-[9px] font-black uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="mt-1 text-sm font-black text-slate-900">{value}</div>
+    <div className="rounded-2xl bg-[#162228] p-3 ring-1 ring-[#36536A]">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-[#B6C7D3]">{label}</div>
+      <div className="mt-1 text-sm font-bold text-[#F3F6FA]">{value}</div>
     </div>
   );
 }
 
 function LoadingScreen({ label }: { label: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
+    <main className="flex min-h-screen items-center justify-center bg-[#101F2B] px-6 text-[#F3F6FA]">
       <div className="text-center">
-        <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-emerald-400" />
+        <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-[#A7F3D0]" />
         <div className="mt-4 text-sm font-bold text-slate-300">{label}</div>
       </div>
     </main>
@@ -1657,17 +1659,17 @@ function GateScreen(props: {
   onAction: () => void;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-8 text-slate-900">
-      <div className="w-full max-w-md overflow-hidden rounded-[30px] bg-slate-950 text-white shadow-2xl shadow-slate-400/30">
-        <div className="h-1.5 bg-emerald-400" />
+    <main className="flex min-h-screen items-center justify-center bg-[#071113] px-4 py-8 text-[#F3F6FA]">
+      <div className="w-full max-w-md overflow-hidden rounded-[30px] bg-[#101F2B] text-[#F3F6FA] shadow-2xl shadow-black/20">
+        <div className="h-1.5 bg-[#A7F3D0]" />
         <div className="p-6">
-          <div className="text-xs font-black uppercase tracking-[0.18em] text-emerald-300">JRide Passenger</div>
-          <h1 className="mt-2 text-2xl font-black">{props.title}</h1>
+          <div className="text-xs font-bold uppercase tracking-[0.18em] text-[#A7F3D0]">JRide Passenger</div>
+          <h1 className="mt-2 text-2xl font-bold">{props.title}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-300">{props.message}</p>
           <button
             type="button"
             onClick={props.onAction}
-            className="mt-6 w-full rounded-2xl bg-emerald-400 py-3.5 text-sm font-black text-slate-950"
+            className="mt-6 w-full rounded-2xl bg-[#A7F3D0] py-3.5 text-sm font-bold text-[#071113]"
           >
             {props.action}
           </button>

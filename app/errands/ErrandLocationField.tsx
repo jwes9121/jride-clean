@@ -509,9 +509,9 @@ export default function ErrandLocationField({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-semibold text-slate-700">{title}</label>
+        <label className="text-xs font-semibold text-[#F3F6FA]">{title}</label>
         {value ? (
-          <span className="text-[11px] font-medium text-emerald-700">Pin set</span>
+          <span className="text-[11px] font-medium text-[#A7F3D0]">Pin set</span>
         ) : null}
       </div>
 
@@ -525,25 +525,25 @@ export default function ErrandLocationField({
           }}
           onFocus={() => scheduleSearch(query)}
           placeholder={placeholder}
-          className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 pr-24 text-sm shadow-sm outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+          className="min-h-[52px] w-full rounded-2xl border border-[#36536A] bg-[#162228] px-3 py-3 pr-24 text-sm shadow-sm outline-none focus:border-[#A7F3D0] focus:ring-2 focus:ring-[#A7F3D0]/40"
         />
         <button
           type="button"
           onClick={openMap}
-          className="absolute right-2 top-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+          className="absolute right-2 top-1 rounded-xl border border-[#36536A] bg-[#162228] px-3 py-1.5 text-xs font-semibold text-[#F3F6FA] hover:bg-[#071113]"
         >
           Map
         </button>
 
         {suggestions.length > 0 ? (
-          <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 shadow-xl">
+          <div className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-2xl border border-[#36536A] bg-[#101F2B] p-1 shadow-xl">
             {suggestions.map((suggestion) => (
               <button
                 key={suggestion.id}
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => chooseSuggestion(suggestion)}
-                className="block w-full rounded-xl px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                className="block w-full rounded-xl px-3 py-2.5 text-left text-sm text-[#F3F6FA] hover:bg-[#162228]"
               >
                 {suggestion.label}
               </button>
@@ -558,7 +558,7 @@ export default function ErrandLocationField({
             type="button"
             onClick={useCurrentLocation}
             disabled={locating}
-            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+            className="rounded-xl border border-[#A7F3D0] bg-[#123B31] px-3 py-2 text-xs font-semibold text-[#A7F3D0] hover:bg-[#123B31] disabled:cursor-wait disabled:opacity-60"
           >
             {locating
               ? "Locating..."
@@ -568,33 +568,33 @@ export default function ErrandLocationField({
           </button>
         ) : null}
         {allowCurrentLocation && preferredStage0 ? (
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-[#B6C7D3]">
             Recent meeting point: {preferredStage0.label}
           </span>
         ) : null}
-        {searching ? <span className="text-xs text-slate-500">Searching...</span> : null}
+        {searching ? <span className="text-xs text-[#B6C7D3]">Searching...</span> : null}
         {value ? (
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-[#B6C7D3]">
             {value.lat.toFixed(5)}, {value.lng.toFixed(5)}
           </span>
         ) : null}
       </div>
 
       {allowCurrentLocation ? (
-        <div className="text-[11px] text-slate-500">
+        <div className="text-[11px] text-[#B6C7D3]">
           The customer meeting point search and map are limited to Ifugao Province. Task stops and the final destination may be outside Ifugao.
         </div>
       ) : null}
-      {helpText ? <div className="text-[11px] text-slate-500">{helpText}</div> : null}
-      {error ? <div className="text-xs font-medium text-red-600">{error}</div> : null}
+      {helpText ? <div className="text-[11px] text-[#B6C7D3]">{helpText}</div> : null}
+      {error ? <div className="text-xs font-medium text-[#FCA5A5]">{error}</div> : null}
 
       {mapOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center">
-          <div className="w-full max-w-2xl rounded-[28px] bg-white p-4 shadow-2xl">
+          <div className="w-full max-w-2xl max-h-[calc(100dvh-24px)] overflow-y-auto rounded-[24px] bg-[#101F2B] p-4 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="font-semibold text-slate-900">Set {title}</div>
-                <div className="text-xs text-slate-500">
+                <div className="font-semibold text-[#F3F6FA]">Set {title}</div>
+                <div className="text-xs text-[#B6C7D3]">
                   {draftNeedsMove
                     ? "Tap the exact location before confirming."
                     : "Tap the map to move the pin."}
@@ -603,21 +603,21 @@ export default function ErrandLocationField({
               <button
                 type="button"
                 onClick={() => setMapOpen(false)}
-                className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+                className="rounded-xl border border-[#36536A] px-3 py-2 text-xs font-semibold text-[#F3F6FA]"
               >
                 Close
               </button>
             </div>
 
             {MAPBOX_TOKEN ? (
-              <div ref={mapDivRef} className="mt-3 h-[55vh] min-h-[320px] w-full rounded-2xl bg-slate-100" />
+              <div ref={mapDivRef} className="mt-3 h-[45dvh] min-h-[180px] w-full rounded-2xl bg-[#071113]" />
             ) : (
-              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <div className="mt-3 rounded-2xl border border-[#806A3D] bg-[#392A15] p-4 text-sm text-[#FDE68A]">
                 Mapbox token is unavailable.
               </div>
             )}
 
-            <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
+            <div className="mt-3 rounded-2xl bg-[#162228] p-3 text-xs text-[#B6C7D3]">
               {draft?.label || "Move the pin to select a location."}
             </div>
 
@@ -625,7 +625,7 @@ export default function ErrandLocationField({
               type="button"
               onClick={confirmMapPin}
               disabled={!draft || draftNeedsMove}
-              className="mt-3 w-full rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white hover:bg-emerald-400 disabled:opacity-50"
+              className="mt-3 w-full rounded-2xl bg-[#A7F3D0] py-3 text-sm font-semibold text-[#071113] hover:bg-[#A7F3D0] disabled:opacity-50"
             >
               {draftNeedsMove ? "Tap map to set pin" : "Use this pin"}
             </button>
