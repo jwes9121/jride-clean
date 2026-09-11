@@ -18,13 +18,28 @@ const driver = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS ' + name); }
 
+// Evaluate the nested and/or filters used by the actual active-trip route.
+function splitFilters(expression) {
+  let depth=0,start=0;const parts=[];
+  for(let i=0;i<expression.length;i++) {const ch=expression[i];if(ch==='(')depth++;else if(ch===')')depth--;else if(ch===','&&depth===0){parts.push(expression.slice(start,i));start=i+1;}}
+  parts.push(expression.slice(start));return parts;
+}
+function matchesFilter(row,expression) {
+  for(const op of ['and','or'])if(expression.startsWith(op+'(')) {const values=splitFilters(expression.slice(op.length+1,-1));return op==='and'?values.every(value=>matchesFilter(row,value)):values.some(value=>matchesFilter(row,value));}
+  const [key,op,...parts]=expression.split('.'),value=parts.join('.');
+  if(op==='eq')return String(row[key])===value;
+  if(op==='is')return value==='null'?row[key]==null:String(row[key])===value;
+  if(op==='in')return value.slice(1,-1).split(',').includes(row[key]);
+  throw Error('Unsupported test filter: '+expression);
+}
+
 function database(rows = []) {
   const db = { tables: { bookings: copy(rows), vendor_onboarding_credentials:[{vendor_id:vendor,vendor_name:'Test vendor',town:'Lagawe',status:'active'}], driver_locations:[], driver_profiles:[], takeout_order_items:[] }, writes:[], reads:[], beforeUpdate:null };
   db.from = table => {
-    let mode='read', patch, single=false, limit=Infinity, countOnly=false;
+    let mode='read', patch, single=false, limit=Infinity, countOnly=false, fields='*';
     const filters=[];
     const q = {
-      select(_fields,opts) { if (opts?.head) countOnly=true; return q; },
+      select(_fields,opts) { fields=_fields||'*';if (opts?.head) countOnly=true; return q; },
       update(value) { mode='update'; patch=value; return q; },
       eq(key,value) { filters.push(row => row[key] === value); return q; },
       is(key,value) { filters.push(row => value === null ? row[key] == null : row[key] === value); return q; },
@@ -32,7 +47,7 @@ function database(rows = []) {
       not(key,op,value) { assert.equal(op,'in'); const values=value.slice(1,-1).split(','); filters.push(row => row[key] != null && !values.includes(row[key])); return q; },
       gt(key,value) { filters.push(row => row[key] > value); return q; },
       lte(key,value) { filters.push(row => row[key] <= value); return q; },
-      or(expression) { const alternatives=expression.split(',').map(term => { const [key,op,...parts]=term.split('.'); const value=parts.join('.'); return row => op==='is' ? row[key]==null : row[key]===value; }); filters.push(row => alternatives.some(fn=>fn(row))); return q; },
+      or(expression) { filters.push(row=>splitFilters(expression).some(term=>matchesFilter(row,term))); return q; },
       order() { return q; }, limit(value) { limit=value; return q; },
       single() { single=true; return q; }, maybeSingle() { single=true; return q; },
       then(resolve,reject) { return Promise.resolve().then(() => {
@@ -40,7 +55,8 @@ function database(rows = []) {
         const matches=(db.tables[table] || []).filter(row=>filters.every(fn=>fn(row))).slice(0,limit);
         if(mode==='update') { db.writes.push({table,patch:copy(patch),ids:matches.map(row=>row.id)}); for(const row of matches) Object.assign(row,copy(patch)); }
         else db.reads.push(table);
-        return {data:countOnly?null:copy(single?(matches[0]||null):matches),error:null,count:matches.length};
+        const result=db.projectFields&&fields!=='*'?matches.map(row=>Object.fromEntries(fields.split(',').map(key=>[key,row[key]]))):matches;
+        return {data:countOnly?null:copy(single?(result[0]||null):result),error:null,count:matches.length};
       }).then(resolve,reject); },
     };
     return q;
@@ -75,7 +91,7 @@ function harness(db, globals={}) {
     const value=options.token===undefined?token:options.token;
     return {nextUrl:url,headers:new Headers({origin:options.origin||url.origin}),cookies:{get:key=>key==='jr_vendor_session'&&value?{value}:undefined},json:async()=>body};
   };
-  return {load,request,token,session};
+  return {load,request,token,session,env};
 }
 
 async function routes() {
@@ -128,6 +144,65 @@ async function routes() {
       assert.equal(result.status,200);assert.equal(workflow.orderStatus(db.tables.bookings[0]),status);assert(!workflow.canMarkReady(db.tables.bookings[0]));
       if(status==='completed')assert.equal(result.body.wallet_deduction.owner,'database_trigger');
     }
+  });
+}
+
+async function driverReadiness() {
+  const confirmed=new Date().toISOString();
+  const approved=(extra={})=>booking({status:'fare_proposed',vendor_status:'driver_accepted',customer_status:'driver_accepted',driver_status:'driver_accepted',assigned_driver_id:driver,driver_id:driver,takeout_customer_confirmed_at:confirmed,takeout_pricing_status:'customer_confirmed',takeout_delivery_fee:40,takeout_total_payable:140,...extra});
+  const setup=row=>{
+    const db=database([row]);db.projectFields=true;
+    const h=harness(db);h.env.DRIVER_PING_SECRET='test-only-driver';
+    const req=body=>{const r=h.request(body,{query:'?driver_id='+driver});r.headers.set('x-jride-driver-secret','test-only-driver');return r;};
+    return {db,h,req,vendorApi:h.load('app/api/vendor-orders/route.ts'),driverApi:h.load('app/api/driver/takeout-status/route.ts'),activeApi:h.load('app/api/driver/active-trip/route.ts'),takeoutApi:h.load('app/api/driver/takeout-active/route.ts')};
+  };
+  await test('vendor Ready survives driver arrival and both driver feeds retain readiness and actual progress',async()=>{
+    for(const cashFirst of [false,true]) {
+      const {db,h,req,vendorApi,driverApi,activeApi,takeoutApi}=setup(approved({takeout_cash_collection_required:cashFirst,takeout_route_plan:cashFirst?'customer_cash_first':'vendor_first'}));
+      assert.equal((await activeApi.GET(req())).body.trip.vendor_pickup_ready,false);
+      assert.equal((await vendorApi.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'pickup_ready'}))).status,200);
+      const initial=(await activeApi.GET(req())).body.trip;
+      assert.equal(initial.vendor_pickup_ready,true);assert.equal(initial.vendor_status_label,'Ready for pickup');assert.equal(initial.status,'driver_accepted');assert.equal(initial.takeout_status,'driver_accepted');assert.equal(initial.driver_status,'driver_accepted');
+      const stages=cashFirst?['cash_collected','rider_arrived_vendor']:['rider_arrived_vendor'];
+      for(const stage of stages) {
+        const result=await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:stage}));assert.equal(result.status,200);
+        assert.equal(db.tables.bookings[0].vendor_status,'pickup_ready');assert.equal(db.tables.bookings[0].customer_status,'ready_for_pickup');assert.equal(db.tables.bookings[0].status,'fare_proposed');assert.equal(db.tables.bookings[0].takeout_delivery_fee,40);assert.equal(db.tables.bookings[0].takeout_total_payable,140);assert.equal(db.tables.bookings[0].takeout_customer_confirmed_at,confirmed);
+        const active=await activeApi.GET(req());assert.equal(active.status,200);assert.equal(active.body.trip.vendor_pickup_ready,true);assert.equal(active.body.trip.takeout_status,stage==='rider_arrived_vendor'?'arrived_vendor':stage);assert.equal(active.body.trip.driver_status,stage);assert.deepEqual(active.body.trip,active.body.active_trip);
+        if(stage==='cash_collected'){assert.equal(active.body.trip.cash_collection_confirmed,true);assert.equal(active.body.trip.current_nav_target,'vendor_or_pickup');}
+        const takeout=await takeoutApi.GET(req());assert.equal(takeout.status,200);assert.equal(takeout.body.trip.vendor_pickup_ready,true);assert.equal(takeout.body.trip.workflow_status,stage);assert.equal(takeout.body.trip.vendor_status_label,'Ready for pickup');assert.equal(takeout.body.trip.takeout_customer_confirmed_at,confirmed);assert.match(takeout.headers['Cache-Control'],/no-store/);
+      }
+      for(const stage of ['picked_up','delivering','completed']) {
+        const result=await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:stage}));assert.equal(result.status,200);
+        const active=await activeApi.GET(req()),takeout=await takeoutApi.GET(req());assert.equal(active.status,200);assert.equal(takeout.status,200);
+        if(stage==='completed'){assert.equal(active.body.trip,null);assert.equal(takeout.body.trip,null);assert.equal(result.body.wallet_deduction.owner,'database_trigger');}
+        else{assert.equal(active.body.trip.vendor_pickup_ready,false);assert.equal(active.body.trip.status,stage);assert.equal(takeout.body.trip.vendor_pickup_ready,false);}
+      }
+    }
+  });
+  await test('arrival before Ready stays arrived; no approval and terminal rows cannot show a ready alert',async()=>{
+    const {db,h,req,vendorApi,driverApi,activeApi}=setup(approved());
+    assert.equal((await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}))).status,200);
+    assert.equal(db.tables.bookings[0].vendor_status,'rider_arrived_vendor');
+    assert.equal((await vendorApi.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'pickup_ready'}))).status,200);
+    const trip=(await activeApi.GET(req())).body.trip;assert.equal(trip.vendor_pickup_ready,true);assert.equal(trip.status,'arrived_vendor');
+    db.tables.bookings[0].takeout_customer_confirmed_at=null;assert.equal((await activeApi.GET(req())).body.trip.vendor_pickup_ready,false);
+    db.tables.bookings[0].status='completed';assert.equal((await activeApi.GET(req())).body.trip,null);
+    for(const state of ['picked_up','delivering','completed','cancelled']) {const row=approved({vendor_status:'pickup_ready',driver_status:state});const readiness=h.load('lib/takeoutVendorReadiness.ts').takeoutVendorReadiness(row);assert.equal(readiness.vendor_pickup_ready,false);assert.equal(readiness.vendor_status_label,null);}
+  });
+  await test('stale arrival cannot overwrite a concurrent Ready, pickup, closure, or reassignment',async()=>{
+    for(const change of [{vendor_status:'pickup_ready',customer_status:'ready_for_pickup'},{vendor_status:'picked_up',driver_status:'picked_up'},{status:'completed',vendor_status:'completed'},{status:'cancelled',vendor_status:'cancelled'},{assigned_driver_id:other,driver_id:other}]) {
+      const {db,req,driverApi}=setup(approved());
+      db.beforeUpdate=()=>{db.beforeUpdate=null;Object.assign(db.tables.bookings[0],change);};
+      const result=await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}));assert.equal(result.status,409);for(const [key,value] of Object.entries(change))assert.equal(db.tables.bookings[0][key],value);
+      if(change.vendor_status==='pickup_ready'){assert.equal((await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}))).status,200);assert.equal(db.tables.bookings[0].vendor_status,'pickup_ready');}
+    }
+    for(const status of ['picked_up','delivering','completed','cancelled']) {const {db,req,driverApi}=setup(approved({vendor_status:status,driver_status:status}));assert.equal((await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}))).status,409);assert.equal(db.writes.length,0);}
+  });
+  await test('driver read authorization and normal ride status remain unchanged',async()=>{
+    const {db,h,req,activeApi,takeoutApi}=setup(approved());
+    assert.equal((await activeApi.GET(h.request())).status,401);assert.equal((await takeoutApi.GET(h.request())).status,401);
+    db.tables.bookings[0]=booking({service_type:'ride',booking_code:'JR-TEST',status:'arrived',assigned_driver_id:driver,driver_id:driver});
+    const result=await activeApi.GET(req());assert.equal(result.status,200);assert.equal(result.body.trip.status,'arrived');assert.equal(result.body.trip.takeout_status,null);assert.equal(result.body.trip.vendor_pickup_ready,undefined);
   });
 }
 
@@ -216,4 +291,4 @@ async function client() {
   });
 }
 
-(async()=>{await routes();await client();console.log('\n'+passed+' vendor workflow test groups passed. No production orders changed.');})().catch(error=>{console.error(error);process.exitCode=1;});
+(async()=>{await routes();await driverReadiness();await client();console.log('\n'+passed+' vendor workflow test groups passed. No production orders changed.');})().catch(error=>{console.error(error);process.exitCode=1;});

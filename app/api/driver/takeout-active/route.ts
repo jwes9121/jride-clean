@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { takeoutVendorReadiness } from "@/lib/takeoutVendorReadiness";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 function json(status: number, payload: any) {
-  return NextResponse.json(payload, { status });
+  return NextResponse.json(payload, { status, headers: { "Cache-Control": "private, no-store, max-age=0" } });
 }
 
 function getAdmin() {
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
 
   const res = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan")
+    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,takeout_customer_confirmed_at,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan")
     .eq("service_type", "takeout")
     .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
     .in("status", activeCanonicalStatuses)
@@ -126,6 +127,8 @@ export async function GET(req: NextRequest) {
 
     status: canonicalStatus,
     workflow_status: workflowStatus,
+    ...takeoutVendorReadiness(row),
+    takeout_customer_confirmed_at: row.takeout_customer_confirmed_at,
     vendor_status: normWorkflowStatus(row.vendor_status || workflowStatus),
     customer_status: normWorkflowStatus(row.customer_status || workflowStatus),
     driver_status: normWorkflowStatus(row.driver_status || workflowStatus),
