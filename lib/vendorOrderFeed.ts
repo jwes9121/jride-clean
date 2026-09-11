@@ -1,4 +1,4 @@
-import { isClosed, orderKey, orderStatus, shortOrderCode, type VendorOrder } from "./vendorOrderWorkflow";
+import { canMarkReady, customerConfirmed, isClosed, orderKey, orderStatus, shortOrderCode, type VendorOrder } from "./vendorOrderWorkflow";
 
 export type OrderNotice = { id: string; title: string; orderId: string; closed: boolean };
 export type OrderFeedSnapshot = {
@@ -6,6 +6,28 @@ export type OrderFeedSnapshot = {
   stale: boolean; error: string; authRequired: boolean; notices: OrderNotice[];
 };
 export const EMPTY_FEED: OrderFeedSnapshot = { orders: [], lastUpdated: 0, serverOffset: 0, refreshing: false, stale: true, error: "", authRequired: false, notices: [] };
+
+export function reconcileOrderNotices(previous: VendorOrder[], orders: VendorOrder[], existing: OrderNotice[]): OrderNotice[] {
+  const current = new Map(orders.map(order => [orderKey(order), order]));
+  const old = new Map(previous.map(order => [orderKey(order), order]));
+  // Instructions are valid only for the current stage. Never retain "prepare now"
+  // after ready, pickup, cancellation, or completion, including skipped poll stages.
+  let notices = existing.filter(notice => {
+    const order = current.get(notice.orderId);
+    return order && (notice.closed ? isClosed(order) && notice.id === orderKey(order) + ":" + orderStatus(order) : canMarkReady(order));
+  });
+  for (const order of orders) {
+    const before = old.get(orderKey(order));
+    if (!before || isClosed(before)) continue;
+    const closed = isClosed(order);
+    if (!closed && (customerConfirmed(before) || !canMarkReady(order))) continue;
+    const id = orderKey(order) + ":" + (closed ? orderStatus(order) : "confirmed");
+    if (notices.some(notice => notice.id === id)) continue;
+    notices = notices.filter(notice => notice.orderId !== orderKey(order));
+    notices.push({ id, orderId: orderKey(order), closed, title: shortOrderCode(order) + " " + (closed ? (orderStatus(order) === "completed" ? "completed" : orderStatus(order) === "vendor_timeout" ? "acceptance expired" : "cancelled") : "customer confirmed - prepare now") });
+  }
+  return notices.slice(-5);
+}
 
 // One request stream per vendor, shared by Orders, the portal, and the popup.
 // No persisted order cache: returning from the background requires fresh data.
@@ -50,18 +72,7 @@ export function createVendorOrderFeed(vendorId: string) {
         }
         if (!response.ok || body?.ok === false || !Array.isArray(body.orders) || body.vendor_id !== vendorId) throw new Error("Order refresh failed");
         const received = Date.now();
-        const old = new Map(snapshot.orders.map(order => [orderKey(order), order]));
-        const notices = [...snapshot.notices];
-        for (const order of body.orders as VendorOrder[]) {
-          const previous = old.get(orderKey(order));
-          if (!previous || isClosed(previous)) continue;
-          const closed = isClosed(order);
-          const confirmed = !previous.takeout_customer_confirmed_at && Boolean(order.takeout_customer_confirmed_at);
-          if (closed || confirmed) {
-            const noticeId = orderKey(order) + ":" + (closed ? orderStatus(order) : "confirmed");
-            if (!notices.some(n => n.id === noticeId)) notices.push({ id: noticeId, orderId: orderKey(order), closed, title: shortOrderCode(order) + " " + (closed ? (orderStatus(order) === "completed" ? "completed" : orderStatus(order) === "vendor_timeout" ? "acceptance expired" : "cancelled") : "customer confirmed - prepare now") });
-          }
-        }
+        const notices = reconcileOrderNotices(snapshot.orders, body.orders, snapshot.notices);
         const server = Date.parse(String(body.server_now || ""));
         failures = 0;
         publish({ orders: body.orders, lastUpdated: received, serverOffset: Number.isFinite(server) ? server - received : 0, stale: false, authRequired: false, error: "", notices: notices.slice(-5) });
@@ -113,7 +124,8 @@ export function createVendorOrderFeed(vendorId: string) {
     refresh,
     acknowledge(orderId: string, status: string) {
       ++requestId; controller?.abort(); controller = null; pending = null; clearTimeout(timer);
-      publish({ stale: true, refreshing: false, orders: snapshot.orders.map(order => orderKey(order) === orderId ? { ...order, vendor_status: status, ...(status === "cancelled" ? { status: "cancelled" } : {}) } : order) });
+      const orders = snapshot.orders.map(order => orderKey(order) === orderId ? { ...order, vendor_status: status, ...(status === "cancelled" ? { status: "cancelled" } : {}) } : order);
+      publish({ stale: true, refreshing: false, orders, notices: reconcileOrderNotices(snapshot.orders, orders, snapshot.notices) });
     },
     dismissNotice(id: string) { publish({ notices: snapshot.notices.filter(notice => notice.id !== id) }); },
   };
