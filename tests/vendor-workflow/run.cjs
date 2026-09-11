@@ -56,7 +56,8 @@ function harness(db, globals={}) {
     if(cache.has(file))return cache.get(file).exports;
     const module={exports:{}};cache.set(file,module);
     const filename=path.join(root,file);
-    const mocks={ 'next/server':{NextResponse:{json:(body,options={})=>({status:options.status||200,body,headers:options.headers})}}, 'next/headers':{cookies:()=>({})}, '@supabase/auth-helpers-nextjs':{createRouteHandlerClient:()=>db}, '@supabase/supabase-js':{createClient:()=>db}, '@/auth':{auth:async()=>null} };
+    const element=(type,props,key)=>({type,props:props||{},key});
+    const mocks={ 'react/jsx-runtime':{jsx:element,jsxs:element,Fragment:'fragment'}, 'next/server':{NextResponse:{json:(body,options={})=>({status:options.status||200,body,headers:options.headers})}}, 'next/headers':{cookies:()=>({})}, '@supabase/auth-helpers-nextjs':{createRouteHandlerClient:()=>db}, '@supabase/supabase-js':{createClient:()=>db}, '@/auth':{auth:async()=>null} };
     const req=name=>{
       if(mocks[name])return mocks[name];
       if(name.startsWith('@/'))return load(name.slice(2)+'.ts');
@@ -119,12 +120,72 @@ async function routes() {
     for(const status of ['picked_up','delivering','completed']) {result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status}));assert.equal(result.status,200);assert.equal(db.tables.bookings[0].vendor_status,status);}
     assert.equal(db.tables.bookings[0].status,'completed');assert(db.tables.bookings[0].completed_at);assert.equal(result.body.wallet_deduction.owner,'database_trigger');
   });
+  await test('existing driver pickup path remains supported when the vendor did not press Ready',async()=>{
+    const db=database([booking({vendor_status:'driver_accepted',status:'fare_proposed',assigned_driver_id:driver,driver_id:driver,takeout_customer_confirmed_at:new Date().toISOString()})]);
+    const h=harness(db),api=h.load('app/api/driver/takeout-status/route.ts'),workflow=h.load('lib/vendorOrderWorkflow.ts');
+    for(const status of ['picked_up','delivering','completed']) {
+      const result=await api.POST(h.request({driver_id:driver,order_id:'order-1',status}));
+      assert.equal(result.status,200);assert.equal(workflow.orderStatus(db.tables.bookings[0]),status);assert(!workflow.canMarkReady(db.tables.bookings[0]));
+      if(status==='completed')assert.equal(result.body.wallet_deduction.owner,'database_trigger');
+    }
+  });
 }
 
 async function client() {
   const h=harness(database()),workflow=h.load('lib/vendorOrderWorkflow.ts');
   await test('UI deadline, preparation, final-status labels, and urgent ordering agree',async()=>{
     const now=Date.now(),order=booking();assert.equal(workflow.acceptDeadline(order)-Date.parse(order.created_at),300000);assert.equal(workflow.acceptDeadline({}),0);assert(!workflow.isPending({...order,created_at:new Date(now-300000).toISOString()},now));assert(!workflow.canMarkReady({...order,vendor_status:'driver_accepted',takeout_pricing_status:'accepted'}));assert(workflow.canMarkReady({...order,vendor_status:'driver_accepted',takeout_customer_confirmed_at:new Date().toISOString()}));assert.equal(workflow.orderStatus({...order,status:'cancelled'}),'cancelled');assert.equal(workflow.orderStage({...order,vendor_status:'picked_up'}).title,'Picked up');assert.equal(workflow.orderStage({...order,vendor_status:'delivering'}).title,'Out for delivery');const urgent={...order,id:'urgent',created_at:new Date(now-280000).toISOString()};assert.equal(workflow.sortActive([{...order,id:'active',vendor_status:'driver_accepted'},order,urgent],now)[0].id,'urgent');
+  });
+  await test('selected order stays stable; completed orders fall back to the most urgent active order',async()=>{
+    const now=Date.now(),chosen=booking({id:'chosen',vendor_status:'driver_accepted'}),urgent=booking({id:'urgent',created_at:new Date(now-290000).toISOString()}),next=booking({id:'next'});
+    assert.equal(workflow.selectedActiveOrder(workflow.sortActive([next,chosen,urgent],now),'chosen').id,'chosen');
+    assert.equal(workflow.selectedActiveOrder(workflow.sortActive([next,{...chosen,status:'completed'},urgent],now),'chosen').id,'urgent');
+    assert.equal(workflow.selectedActiveOrder([], 'chosen'),null);
+    assert.equal(workflow.orderBadge(booking({vendor_status:'vendor_accepted'})),'Finding driver');
+    assert.equal(workflow.orderBadge(booking({vendor_status:'driver_assigned',driver_id:driver})),'Driver confirmation');
+    assert.equal(workflow.orderBadge(booking({vendor_status:'driver_accepted'})),'Driver setting fee');
+    assert.equal(workflow.orderBadge(booking({vendor_status:'driver_accepted',takeout_fee_proposed_at:new Date().toISOString()})),'Customer approval');
+    assert.equal(workflow.orderFreshness(now-5000,now,false,false),'Updated 5 seconds ago');
+    assert.equal(workflow.orderFreshness(now-5000,now,true,false),'Connection needed');
+    assert.equal(workflow.orderFreshness(now-5000,now,true,true),'Updating...');
+  });
+  await test('obsolete preparation instructions clear on ready, pickup, delivery, cancellation and completion',async()=>{
+    const {reconcileOrderNotices}=h.load('lib/vendorOrderFeed.ts');
+    const before=booking({vendor_status:'driver_accepted'}),approved={...before,takeout_customer_confirmed_at:new Date().toISOString()};
+    const notice=reconcileOrderNotices([before],[approved],[]);assert.equal(notice.length,1);
+    for(const status of ['pickup_ready','picked_up','delivering','cancelled','completed','vendor_timeout']) {
+      const next={...approved,vendor_status:status};
+      const result=reconcileOrderNotices([approved],[next],notice);
+      assert(!result.some(item=>item.title.includes('prepare now')));
+      assert.equal(result.length,['cancelled','completed','vendor_timeout'].includes(status)?1:0);
+    }
+    assert.equal(reconcileOrderNotices([before],[{...approved,vendor_status:'picked_up'}],[]).length,0);
+    assert.equal(reconcileOrderNotices([],[{...approved,status:'completed',vendor_status:'completed'}],[]).length,0);
+    const second={...approved,id:'other-active'};
+    const both=reconcileOrderNotices([before,{...before,id:'other-active'}],[approved,second],[]);
+    const updated=reconcileOrderNotices([approved,second],[{...approved,status:'completed',vendor_status:'completed'},second],both);
+    assert.equal(updated.length,2);assert(updated.some(item=>item.orderId==='other-active'&&!item.closed));assert(updated.some(item=>item.orderId==='order-1'&&item.closed));
+  });
+  await test('fixed order panel exposes only valid actions and disables expiry, stale and duplicate submission',async()=>{
+    const Focus=h.load('app/components/VendorOrderFocus.tsx').default;
+    const flatten=node=>!node||typeof node!=='object'?[]:Array.isArray(node)?node.flatMap(flatten):[node,...flatten(node.props?.children)];
+    const textOf=node=>node==null||typeof node==='boolean'?'':Array.isArray(node)?node.map(textOf).join(''):typeof node==='object'?textOf(node.props?.children):String(node);
+    let calls=[];const now=Date.now();
+    const render=(order,extra={})=>flatten(Focus({order,active:[order],now,disabled:false,savingId:'',driverPhone:'tel:+639000000000',onAccept:()=>calls.push('accept'),onDecline:()=>calls.push('decline'),onReady:()=>calls.push('ready'),onItems:()=>calls.push('items'),onSelect:id=>calls.push(id),...extra}));
+    const base=booking({items:[{name:'Test item',quantity:1,price:90}]});
+    const buttons=nodes=>nodes.filter(node=>node.type==='button');
+    const find=(nodes,label)=>buttons(nodes).find(node=>textOf(node)===label);
+    const newOrder=render(base);find(newOrder,'Accept order').props.onClick();assert.deepEqual(calls,['accept']);
+    assert(find(render(base,{disabled:true}),'Accept order').props.disabled);
+    assert(find(render({...base,created_at:new Date(now-300000).toISOString()}),'Accept order').props.disabled);
+    assert(find(render({...base,items:[]}),'Accept order').props.disabled);
+    const waiting={...base,vendor_status:'driver_accepted'};assert(!find(render(waiting),'Mark order ready'));
+    const approved={...waiting,takeout_customer_confirmed_at:new Date().toISOString()};
+    find(render(approved),'Mark order ready').props.onClick();assert.deepEqual(calls,['accept','ready']);
+    assert(find(render(approved,{disabled:true,savingId:'order-1'}),'Confirming...').props.disabled);
+    for(const status of ['pickup_ready','picked_up','delivering','completed','cancelled'])assert(!find(render({...approved,vendor_status:status}),'Mark order ready'));
+    const multiple=render(approved,{active:[approved,{...base,id:'other-order'}]});const selector=multiple.find(node=>node.type==='select');selector.props.onChange({target:{value:'other-order'}});assert.equal(calls.at(-1),'other-order');
+    assert(multiple.some(node=>node.type==='a'&&node.props.href==='tel:+639000000000'));
   });
   const events=()=>{const listeners=new Map();return {addEventListener:(name,fn)=>{if(!listeners.has(name))listeners.set(name,new Set());listeners.get(name).add(fn);},removeEventListener:(name,fn)=>listeners.get(name)?.delete(fn),fire:name=>listeners.get(name)?.forEach(fn=>fn())};};
   const window=events(),document={...events(),visibilityState:'visible'};
@@ -143,8 +204,9 @@ async function client() {
   await test('refresh failure retains data, disables actions, and schedules an automatic retry',async()=>{
     void feed.refresh();requests.at(-1).reject(Error('Network lost'));await flush();assert.equal(feed.getSnapshot().orders.length,1);assert(feed.getSnapshot().stale);assert(feed.getSnapshot().error);assert([...timers.values()].some(t=>t.delay===2000));window.fire('online');respond(requests.at(-1),[booking({vendor_status:'driver_accepted'})]);await flush();assert(!feed.getSnapshot().stale);
   });
-  await test('customer approval and completion produce one notice each; first-load history does not',async()=>{
-    void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'driver_accepted',takeout_customer_confirmed_at:new Date().toISOString()})]);await flush();assert.equal(feed.getSnapshot().notices.length,1);assert.match(feed.getSnapshot().notices[0].title,/prepare now/);void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'completed',status:'completed'})]);await flush();assert.equal(feed.getSnapshot().notices.length,2);assert.match(feed.getSnapshot().notices[1].title,/completed/);void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'completed',status:'completed'})]);await flush();assert.equal(feed.getSnapshot().notices.length,2);
+  await test('completion replaces preparation notices instead of stacking contradictory instructions',async()=>{
+    void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'driver_accepted',takeout_customer_confirmed_at:new Date().toISOString()})]);await flush();assert.equal(feed.getSnapshot().notices.length,1);assert.match(feed.getSnapshot().notices[0].title,/prepare now/);void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'completed',status:'completed'})]);await flush();assert.equal(feed.getSnapshot().notices.length,1);assert.match(feed.getSnapshot().notices[0].title,/completed/);void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'completed',status:'completed'})]);await flush();assert.equal(feed.getSnapshot().notices.length,1);
+    feed.dismissNotice(feed.getSnapshot().notices[0].id);void feed.refresh();respond(requests.at(-1),[booking({vendor_status:'completed',status:'completed'})]);await flush();assert.equal(feed.getSnapshot().notices.length,0);
   });
   await test('confirmed actions stop pending alerts and stale responses cannot restore them',async()=>{
     void feed.refresh();respond(requests.at(-1),[booking()]);await flush();void feed.refresh();const old=requests.at(-1);feed.acknowledge('order-1','vendor_accepted');respond(old,[booking()]);await flush();assert(!workflow.isPending(feed.getSnapshot().orders[0],Date.now()));assert(feed.getSnapshot().stale);

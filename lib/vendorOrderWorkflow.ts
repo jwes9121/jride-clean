@@ -58,6 +58,19 @@ export function sortActive(orders: VendorOrder[], now: number): VendorOrder[] {
   });
 }
 
+// Keep the vendor's selection stable when another order arrives or polling reorders the list.
+export function selectedActiveOrder(active: VendorOrder[], selectedId: string): VendorOrder | null {
+  return active.find(order => orderKey(order) === selectedId) || active[0] || null;
+}
+
+export function orderFreshness(lastUpdated: number, now: number, stale: boolean, refreshing: boolean): string {
+  if (!lastUpdated) return "Connecting...";
+  if (stale) return refreshing ? "Updating..." : "Connection needed";
+  const seconds = Math.max(0, Math.floor((now - lastUpdated) / 1000));
+  if (seconds < 2) return "Updated just now";
+  return seconds < 60 ? "Updated " + seconds + " seconds ago" : "Updated " + Math.floor(seconds / 60) + " min ago";
+}
+
 export function customerConfirmed(order: VendorOrder): boolean {
   // Driver acceptance and generic pricing status are not customer approval.
   return Boolean(clean(order.takeout_customer_confirmed_at));
@@ -71,7 +84,13 @@ export function orderBadge(order: VendorOrder): string {
   const status = orderStatus(order);
   if (canMarkReady(order)) return "Prepare now";
   const labels: Record<string, string> = { vendor_pending: "New order", completed: "Completed", cancelled: "Cancelled", vendor_timeout: "Expired", pickup_ready: "Ready", picked_up: "Picked up", delivering: "Delivering" };
-  return labels[status] || "Waiting";
+  const waiting: Record<string, string> = {
+    "Finding a driver": "Finding driver",
+    "Waiting for driver confirmation": "Driver confirmation",
+    "Waiting for delivery fee proposal": "Driver setting fee",
+    "Waiting for customer approval": "Customer approval",
+  };
+  return labels[status] || waiting[orderStage(order).title] || "In progress";
 }
 
 export function orderStage(order: VendorOrder): { title: string; note: string; tone: string } {
@@ -80,12 +99,12 @@ export function orderStage(order: VendorOrder): { title: string; note: string; t
   if (status === "vendor_timeout" || status === "expired") return { title: "Acceptance expired", note: clean(order.cancel_reason) || VENDOR_ACCEPT_TIMEOUT_REASON, tone: "danger" };
   if (status === "cancelled") return { title: "Cancelled", note: clean(order.vendor_cancel_reason || order.cancel_reason) || "This order was cancelled. Do not prepare it.", tone: "danger" };
   if (status === "vendor_pending") return { title: "New order", note: "Review the items, then accept or decline.", tone: "urgent" };
-  if (status === "picked_up") return { title: "Picked up", note: "The driver has collected the order.", tone: "progress" };
-  if (status === "delivering") return { title: "Out for delivery", note: "The driver is delivering to the customer.", tone: "progress" };
+  if (status === "picked_up") return { title: "Picked up", note: "The driver has the order. No store action needed.", tone: "progress" };
+  if (status === "delivering") return { title: "Out for delivery", note: "The driver is delivering. No store action needed.", tone: "progress" };
   if (status === "pickup_ready") return { title: "Ready for pickup", note: "Keep the order packed. Check the order number with the driver at handoff.", tone: "success" };
-  if (customerConfirmed(order)) return { title: "Customer confirmed - prepare now", note: status === "rider_arrived_vendor" ? "The driver is at your store. Mark ready when all items are packed." : "The customer approved the total. Prepare the items, then mark the order ready.", tone: "success" };
-  if (order.takeout_fee_proposed_at || order.takeout_fee_proposed_by_driver_id || ["fare_proposed", "driver_fee_proposed", "fee_proposed"].includes(clean(order.takeout_pricing_status))) return { title: "Waiting for customer approval", note: "The delivery fee was proposed. Do not prepare until the customer confirms.", tone: "waiting" };
-  if (["driver_accepted", "cash_collected", "rider_arrived_vendor"].includes(status) || clean(order.driver_status) === "driver_accepted") return { title: "Waiting for delivery fee proposal", note: "The driver accepted. Wait for the delivery fee and customer approval before preparing.", tone: "waiting" };
-  if (order.driver_id || order.driver_name || status === "driver_assigned") return { title: "Waiting for driver confirmation", note: "A driver was selected. Do not prepare yet.", tone: "waiting" };
-  return { title: "Finding a driver", note: "Order accepted. Wait for driver assignment and customer approval before preparing.", tone: "waiting" };
+  if (customerConfirmed(order)) return { title: "Customer confirmed - prepare now", note: status === "rider_arrived_vendor" ? "The driver is at your store. Mark ready when all items are packed." : "Prepare and pack the items, then mark the order ready.", tone: "success" };
+  if (order.takeout_fee_proposed_at || order.takeout_fee_proposed_by_driver_id || ["fare_proposed", "driver_fee_proposed", "fee_proposed"].includes(clean(order.takeout_pricing_status))) return { title: "Waiting for customer approval", note: "The customer is reviewing the total. Do not prepare yet.", tone: "waiting" };
+  if (["driver_accepted", "cash_collected", "rider_arrived_vendor"].includes(status) || clean(order.driver_status) === "driver_accepted") return { title: "Waiting for delivery fee proposal", note: "The driver is setting the fee. Wait for customer approval before preparing.", tone: "waiting" };
+  if (order.driver_id || order.driver_name || status === "driver_assigned") return { title: "Waiting for driver confirmation", note: "A driver was selected. Wait for customer approval before preparing.", tone: "waiting" };
+  return { title: "Finding a driver", note: "Order accepted. Preparation starts after customer approval.", tone: "waiting" };
 }
