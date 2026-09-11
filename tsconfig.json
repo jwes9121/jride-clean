@@ -65,6 +65,8 @@
     "**/_patch_backups/**",
     "_auth-debug",
     "_auth-debug/**",
-    "**/_auth-debug/**"
+    "**/_auth-debug/**",
+    "supabase/functions/vendor-native-alerts/**",
+    "tests/vendor-native/**"
   ]
 }

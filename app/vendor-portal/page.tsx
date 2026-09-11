@@ -855,7 +855,9 @@ export default function VendorPortalPage() {
   const vendorOrdersHref = vendorId ? "/vendor-orders?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-orders";
   const vendorAnalyticsHref = vendorId ? "/vendor-analytics?vendor_id=" + encodeURIComponent(vendorId) : "/vendor-analytics";
 
-  function handleVendorLogout() {
+  async function handleVendorLogout() {
+    try { await fetch("/api/vendor/logout", { method: "POST", credentials: "same-origin" }); }
+    catch { /* Native registration is also cleared on the login screen. */ }
     try {
       const keysToClear = [
         "jride_vendor_session",
@@ -2722,6 +2724,7 @@ export default function VendorPortalPage() {
     </main>
   );
 }
+
 
 
 
