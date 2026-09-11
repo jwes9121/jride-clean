@@ -1,579 +1,139 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { VendorOrderSoundControls } from "../components/VendorOrderSound";
+import { useEffect, useMemo, useRef, useState } from "react";
 import VendorNavigation from "../components/VendorNavigation";
+import { VendorOrderSoundControls } from "../components/VendorOrderSound";
+import { useOrderClock, useVendorIdentity, useVendorOrders } from "../components/useVendorOrders";
+import { acceptDeadline, canMarkReady, clean, countdown, isClosed, isPending, orderBadge, orderKey, orderStage, orderStatus, shortOrderCode, sortActive, type VendorOrder } from "@/lib/vendorOrderWorkflow";
 
-type TakeoutItem = {
-  name?: string | null;
-  price?: number | string | null;
-  quantity?: number | string | null;
-};
-
-type TakeoutOrder = {
-  id?: string | null;
-  order_id?: string | null;
-  booking_id?: string | null;
-  booking_code?: string | null;
-  vendor_id?: string | null;
-  vendor_status?: string | null;
-  customer_status?: string | null;
-  status?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-  customer_name?: string | null;
-  passenger_name?: string | null;
-  customer_phone?: string | null;
-  note?: string | null;
-  customer_note?: string | null;
-  passenger_note?: string | null;
-  system_instructions?: string[] | null;
-  to_label?: string | null;
-  dropoff_label?: string | null;
-  items?: TakeoutItem[] | null;
-  items_subtotal?: number | string | null;
-  total_bill?: number | string | null;
-};
-
-type ApiResult = {
-  ok?: boolean;
-  error?: string;
-  message?: string;
-  orders?: TakeoutOrder[];
-};
-
-type OrderView = "active" | "history";
-
-const VENDOR_ID_KEYS = [
-  "JRIDE_VENDOR_PORTAL_VENDOR_ID",
-  "jride_vendor_id",
-  "JRIDE_VENDOR_ID",
-  "vendor_id",
-  "JRIDE_TAKEOUT_VENDOR_ID",
-] as const;
-
-const REFRESH_MS = 10000;
-const VENDOR_ACCEPT_WINDOW_MS = 5 * 60 * 1000;
-
-const VENDOR_REJECT_REASONS = [
-  "Out of stock",
-  "Store closed",
-  "Item unavailable",
-  "Too many active orders",
-  "Outside delivery service coverage",
-  "Vendor unavailable",
-  "Other",
-] as const;
-
-function clean(value: unknown): string {
-  return String(value ?? "").trim();
+const REASONS = ["Out of stock", "Store closed", "Item unavailable", "Too many active orders", "Outside delivery service coverage", "Vendor unavailable", "Other"];
+function money(value: unknown) { const n = Number(value); return "PHP " + (Number.isFinite(n) ? n : 0).toFixed(2); }
+function dateTime(value: unknown) {
+  const date = new Date(typeof value === "number" ? value : clean(value));
+  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date) : "";
 }
-
-function money(value: unknown): string {
-  const amount = Number(value ?? 0);
-  return "PHP " + (Number.isFinite(amount) ? amount : 0).toFixed(2);
-}
-
-function readVendorId(): string {
-  if (typeof window === "undefined") return "";
-
-  const queryId = clean(new URLSearchParams(window.location.search).get("vendor_id"));
-  if (queryId) return queryId;
-
-  for (const key of VENDOR_ID_KEYS) {
-    const values = [window.sessionStorage.getItem(key), window.localStorage.getItem(key)];
-    for (const value of values) {
-      const id = clean(value);
-      if (id) return id;
-    }
-  }
-
-  return "";
-}
-
-function persistVendorId(vendorId: string) {
-  if (typeof window === "undefined") return;
-  const id = clean(vendorId);
-  if (!id) return;
-  for (const key of VENDOR_ID_KEYS) {
-    try {
-      window.localStorage.setItem(key, id);
-      window.sessionStorage.setItem(key, id);
-    } catch {
-      // Storage can be unavailable in restricted WebViews.
-    }
-  }
-}
-
-function formatPhilippineDateTime(value: unknown): string {
-  const raw = clean(value);
-  if (!raw) return "-";
-  const date = new Date(raw);
-  if (!Number.isFinite(date.getTime())) return raw;
-  return new Intl.DateTimeFormat("en-PH", {
-    timeZone: "Asia/Manila",
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).format(date);
-}
-
-function orderId(order: TakeoutOrder): string {
-  return clean(order.id || order.order_id || order.booking_id);
-}
-
-function orderCode(order: TakeoutOrder): string {
-  return clean(order.booking_code) || orderId(order).slice(0, 8) || "Order";
-}
-
-function normalizedStatus(order: TakeoutOrder): string {
-  // Vendor workflow status is authoritative on the vendor screen.
-  const raw = clean(order.vendor_status || order.status || order.customer_status || "vendor_pending").toLowerCase();
-  if (!raw || raw === "requested") return "vendor_pending";
-  if (raw === "accepted") return "vendor_accepted";
-  if (raw === "canceled") return "cancelled";
-  if (raw === "ready" || raw === "prepared" || raw === "ready_for_pickup") return "pickup_ready";
-  if (raw === "preparing_order") return "preparing";
-  return raw;
-}
-
-function isHistoryStatus(status: string): boolean {
-  return status === "completed" || status === "cancelled" || status === "vendor_timeout";
-}
-
-function statusLabel(status: string): string {
-  if (status === "vendor_pending") return "Waiting for confirmation";
-  if (status === "vendor_accepted") return "Vendor accepted";
-  if (status === "driver_assigned") return "Driver selected";
-  if (status === "driver_accepted") return "Driver accepted";
-  if (status === "preparing") return "Preparing";
-  if (status === "pickup_ready") return "Ready for pickup";
-  if (status === "completed") return "Completed";
-  if (status === "vendor_timeout") return "Vendor timeout";
-  if (status === "cancelled") return "Cancelled";
-  return status.replace(/_/g, " ");
-}
-
-function statusClass(status: string): string {
-  if (status === "completed") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-200";
-  if (status === "cancelled" || status === "vendor_timeout") return "border-rose-400/40 bg-rose-500/10 text-rose-100";
-  if (status === "pickup_ready") return "border-blue-400/40 bg-blue-500/10 text-blue-100";
-  if (status === "vendor_pending") return "border-amber-400/40 bg-amber-500/10 text-amber-100";
-  return "border-emerald-400/30 bg-emerald-500/10 text-emerald-100";
-}
-
-function orderCreatedMs(order: TakeoutOrder): number {
-  const value = new Date(clean(order.created_at || order.updated_at)).getTime();
-  return Number.isFinite(value) ? value : 0;
-}
-
-function pendingAcceptRemainingMs(order: TakeoutOrder): number {
-  if (normalizedStatus(order) !== "vendor_pending") return 0;
-  const created = orderCreatedMs(order);
-  if (!created) return VENDOR_ACCEPT_WINDOW_MS;
-  return Math.max(0, VENDOR_ACCEPT_WINDOW_MS - (Date.now() - created));
-}
-
-async function getJson(url: string): Promise<ApiResult> {
-  const response = await fetch(url, {
-    method: "GET",
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || body?.ok === false) {
-    throw new Error(clean(body?.message || body?.error || `HTTP ${response.status}`));
-  }
-  return body as ApiResult;
-}
-
-async function postJson(url: string, payload: Record<string, unknown>): Promise<ApiResult> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok || body?.ok === false) {
-    throw new Error(clean(body?.message || body?.error || `HTTP ${response.status}`));
-  }
-  return body as ApiResult;
-}
+function phoneHref(phone: unknown) { const value = clean(phone).replace(/[^+0-9]/g, ""); return value.replace(/\D/g, "").length >= 7 ? "tel:" + value : ""; }
 
 export default function VendorOrdersPage() {
-  const [vendorId, setVendorId] = useState("");
-  const [orders, setOrders] = useState<TakeoutOrder[]>([]);
-  const [view, setView] = useState<OrderView>("active");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [lastUpdated, setLastUpdated] = useState("");
+  const vendorId = useVendorIdentity();
+  const feed = useVendorOrders(vendorId);
+  const now = useOrderClock(feed.serverOffset);
+  const [view, setView] = useState<"active" | "history">("active");
   const [savingId, setSavingId] = useState("");
-  const [rejectOrder, setRejectOrder] = useState<TakeoutOrder | null>(null);
-  const [rejectReason, setRejectReason] = useState<string>(VENDOR_REJECT_REASONS[0]);
-  const [rejectOther, setRejectOther] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [message, setMessage] = useState("");
+  const [rejectOrder, setRejectOrder] = useState<VendorOrder | null>(null);
+  const [reason, setReason] = useState(REASONS[0]);
+  const [otherReason, setOtherReason] = useState("");
+  const [focusId, setFocusId] = useState("");
+  const rejectDialog = useRef<HTMLDialogElement>(null);
+  const actionLock = useRef(false);
+  const actionController = useRef<AbortController | null>(null);
+  const active = useMemo(() => sortActive(feed.orders, now), [feed.orders, now]);
+  const history = useMemo(() => feed.orders.filter(isClosed).sort((a,b) => Date.parse(clean(b.created_at)) - Date.parse(clean(a.created_at))), [feed.orders]);
+  const pending = active.filter(order => isPending(order, now));
+  const visible = view === "active" ? active : history;
 
   useEffect(() => {
-    const id = readVendorId();
-    if (!id) {
-      window.location.replace("/vendor-login");
-      return;
-    }
-    persistVendorId(id);
-    setVendorId(id);
+    const id = new URLSearchParams(window.location.search).get("order_id");
+    if (id) setFocusId(id);
+    return () => actionController.current?.abort();
   }, []);
-
-  const activeOrders = useMemo(
-    () => orders.filter((order) => !isHistoryStatus(normalizedStatus(order))).sort((a, b) => {
-      const aWaiting = normalizedStatus(a) === "vendor_pending" && pendingAcceptRemainingMs(a) > 0;
-      const bWaiting = normalizedStatus(b) === "vendor_pending" && pendingAcceptRemainingMs(b) > 0;
-      if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
-      return aWaiting ? pendingAcceptRemainingMs(a) - pendingAcceptRemainingMs(b) : orderCreatedMs(b) - orderCreatedMs(a);
-    }),
-    [orders],
-  );
-
-  const historyOrders = useMemo(
-    () => orders.filter((order) => isHistoryStatus(normalizedStatus(order))).sort((a, b) => orderCreatedMs(b) - orderCreatedMs(a)),
-    [orders],
-  );
-
-  const completedCount = useMemo(
-    () => historyOrders.filter((order) => normalizedStatus(order) === "completed").length,
-    [historyOrders],
-  );
-
-  const cancelledCount = useMemo(
-    () => historyOrders.filter((order) => normalizedStatus(order) === "cancelled").length,
-    [historyOrders],
-  );
-
-  const timeoutCount = useMemo(
-    () => historyOrders.filter((order) => normalizedStatus(order) === "vendor_timeout").length,
-    [historyOrders],
-  );
-
-  const pendingOrders = useMemo(
-    () => activeOrders.filter((order) => normalizedStatus(order) === "vendor_pending" && pendingAcceptRemainingMs(order) > 0),
-    [activeOrders],
-  );
-
-  const loadOrders = useCallback(async (silent = false) => {
-    const id = clean(vendorId || readVendorId());
-    if (!id) return;
-    if (silent) setRefreshing(true);
-    else setLoading(true);
-    setError("");
-    try {
-      const data = await getJson("/api/vendor-orders?vendor_id=" + encodeURIComponent(id));
-      const list = Array.isArray(data.orders) ? data.orders : [];
-      setOrders(list);
-      setLastUpdated(new Intl.DateTimeFormat("en-PH", {
-        timeZone: "Asia/Manila",
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: true,
-      }).format(new Date()));
-
-    } catch (err: any) {
-      setError(clean(err?.message || err || "Could not load vendor orders."));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [vendorId]);
-
   useEffect(() => {
-    if (!vendorId) return;
-    void loadOrders(false);
-    const timer = window.setInterval(() => void loadOrders(true), REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [loadOrders, vendorId]);
+    if (!focusId || !feed.lastUpdated || feed.stale) return;
+    const target = feed.orders.find(order => orderKey(order) === focusId);
+    if (!target) return;
+    const targetView = isClosed(target) ? "history" : "active";
+    if (view !== targetView) { setView(targetView); return; }
+    document.getElementById("order-" + focusId)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    setFocusId("");
+  }, [focusId, view, feed.lastUpdated, feed.stale, feed.orders]);
+  useEffect(() => {
+    const dialog = rejectDialog.current;
+    if (rejectOrder && dialog && !dialog.open) dialog.showModal();
+    return () => { if (dialog?.open) dialog.close(); };
+  }, [rejectOrder]);
+  useEffect(() => {
+    if (rejectOrder && feed.orders.some(order => orderKey(order) === orderKey(rejectOrder) && orderStatus(order) !== "vendor_pending")) setRejectOrder(null);
+  }, [feed.orders, rejectOrder]);
 
-  async function acceptOrder(order: TakeoutOrder) {
-    const id = orderId(order);
-    if (!vendorId || !id || savingId) return;
-    setSavingId(id);
-    setError("");
+  async function updateOrder(order: VendorOrder, next: string, cancelReason?: string) {
+    if (actionLock.current || feed.stale || feed.authRequired || !vendorId) return;
+    if (next === "vendor_accepted" && !isPending(order, Date.now() + feed.serverOffset)) { setActionError("The acceptance window has ended. Refresh Orders."); void feed.refresh(true); return; }
+    const id = orderKey(order);
+    actionLock.current = true;
+    setSavingId(id); setActionError(""); setMessage("");
+    const controller = new AbortController();
+    actionController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      await postJson("/api/vendor-orders", {
-        vendor_id: vendorId,
-        order_id: id,
-        vendor_status: "vendor_accepted",
+      const response = await fetch("/api/vendor-orders", {
+        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ vendor_id: vendorId, order_id: id, vendor_status: next, ...(cancelReason ? { cancel_reason: cancelReason, vendor_cancel_reason: cancelReason } : {}) }), signal: controller.signal,
       });
-      await loadOrders(true);
-    } catch (err: any) {
-      setError(clean(err?.message || err || "Could not accept this order."));
-    } finally {
-      setSavingId("");
-    }
-  }
-
-  async function confirmReject() {
-    if (!rejectOrder || !vendorId || savingId) return;
-    const id = orderId(rejectOrder);
-    const reason = rejectReason === "Other" ? clean(rejectOther) : clean(rejectReason);
-    if (!id || !reason) return;
-    setSavingId(id);
-    setError("");
-    try {
-      await postJson("/api/vendor-orders", {
-        vendor_id: vendorId,
-        order_id: id,
-        vendor_status: "cancelled",
-        cancel_reason: reason,
-        vendor_cancel_reason: reason,
-      });
+      const body = await response.json();
+      if (!response.ok || body?.ok === false) throw new Error(clean(body?.message) || "The update was not confirmed. Refresh Orders before trying again.");
+      feed.acknowledge(id, clean(body.vendor_status) || next);
       setRejectOrder(null);
-      setRejectOther("");
-      setRejectReason(VENDOR_REJECT_REASONS[0]);
-      await loadOrders(true);
-    } catch (err: any) {
-      setError(clean(err?.message || err || "Could not reject this order."));
+      setMessage(shortOrderCode(order) + (next === "vendor_accepted" ? " accepted. Wait for customer approval before preparing." : next === "pickup_ready" ? " marked ready for pickup." : " declined. The reason has been saved."));
+    } catch (error: any) {
+      setActionError(error?.name === "AbortError" ? "The response took too long. Checking the order before you try again." : clean(error?.message) || "The update could not be confirmed. Check the refreshed order.");
     } finally {
-      setSavingId("");
+      window.clearTimeout(timeout);
+      await feed.refresh(true);
+      actionLock.current = false; setSavingId(""); actionController.current = null;
     }
   }
-
-  const visibleOrders = view === "active" ? activeOrders : historyOrders;
 
   return (
     <main className="vendor-workspace vendor-orders-workspace">
       <VendorNavigation active="orders" vendorId={vendorId} />
       <div className="vendor-workspace-content">
-        <section className="vendor-orders-header rounded-2xl border border-emerald-500/25 bg-slate-950/70 p-4 shadow-lg">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h1 className="mt-1 text-2xl font-black text-white">Orders</h1>
-              <div className="mt-1 text-xs text-slate-400">
-                {lastUpdated ? "Last updated " + lastUpdated : loading ? "Loading orders..." : "Waiting for update"}
-              </div>
-            </div>
-            <div className="vendor-order-toolbar">
-              <button type="button" className="vendor-button" disabled={refreshing} onClick={() => void loadOrders(true)}>
-                {refreshing ? "Refreshing..." : "Refresh"}
-              </button>
-            </div>
-          </div>
-
-          {view === "history" && lastUpdated ? <div className="vendor-order-counts">
-            <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-3">
-              <div className="text-[10px] font-bold uppercase text-slate-400">Active</div>
-              <div className="mt-1 text-2xl font-black text-white">{activeOrders.length}</div>
-            </div>
-            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
-              <div className="text-[10px] font-bold uppercase text-emerald-300">Completed</div>
-              <div className="mt-1 text-2xl font-black text-emerald-100">{completedCount}</div>
-            </div>
-            <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 p-3">
-              <div className="text-[10px] font-bold uppercase text-rose-200">Cancelled</div>
-              <div className="mt-1 text-2xl font-black text-rose-100">{cancelledCount}</div>
-            </div>
-            <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3">
-              <div className="text-[10px] font-bold uppercase text-amber-200">Timeouts</div>
-              <div className="mt-1 text-2xl font-black text-amber-100">{timeoutCount}</div>
-            </div>
-          </div> : null}
-
-          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-700 bg-slate-900/70 p-1.5">
-            <button
-              type="button"
-              onClick={() => setView("active")}
-              aria-pressed={view === "active"}
-              className={
-                "rounded-lg px-3 py-2.5 text-sm font-black " +
-                (view === "active" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
-              }
-            >
-              Active {lastUpdated ? `(${activeOrders.length})` : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => setView("history")}
-              aria-pressed={view === "history"}
-              className={
-                "rounded-lg px-3 py-2.5 text-sm font-black " +
-                (view === "history" ? "bg-emerald-500 text-slate-950" : "text-slate-300")
-              }
-            >
-              History {lastUpdated ? `(${historyOrders.length})` : ""}
-            </button>
-          </div>
-
-          {pendingOrders.length > 0 ? (
-            <button type="button" onClick={() => setView("active")} className="vendor-waiting-orders">
-              {pendingOrders.length} order{pendingOrders.length === 1 ? "" : "s"} waiting - accept or decline
-            </button>
-          ) : null}
-          {error ? <div className="mt-3 rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2 text-xs font-bold text-rose-100">{error}</div> : null}
-        </section>
-
-        <details className="vendor-sound-settings">
-          <summary>Order sound settings</summary>
-          <VendorOrderSoundControls />
-        </details>
-
-        {loading && !lastUpdated ? (
-          <div className="vendor-loading-panel" role="status" aria-busy="true">Loading orders...<span className="vendor-skeleton-line" /></div>
-        ) : error && !lastUpdated ? (
-          <div className="vendor-notice vendor-notice-error" role="alert">Orders could not be loaded. Tap Refresh to retry.</div>
-        ) : visibleOrders.length === 0 ? (
-          <div className="rounded-2xl border border-slate-700 bg-slate-950/60 p-5 text-sm text-slate-300">
-            {view === "active" ? "No active orders right now." : "No completed, cancelled, or timed-out orders yet."}
-          </div>
-        ) : (
-          <section className="space-y-3">
-            {visibleOrders.map((order) => {
-              const id = orderId(order);
-              const status = normalizedStatus(order);
-              const items = Array.isArray(order.items) ? order.items : [];
-              const saving = savingId === id;
-              const remainingMs = pendingAcceptRemainingMs(order);
-              const remainingSeconds = Math.ceil(remainingMs / 1000);
-              const remainingLabel = `${Math.floor(remainingSeconds / 60)}:${String(remainingSeconds % 60).padStart(2, "0")}`;
-
-              return (
-                <article key={id || orderCode(order)} className={"vendor-order-card rounded-2xl border border-emerald-500/20 bg-slate-950/70 p-4 shadow-lg " + (status === "vendor_pending" ? "vendor-order-pending" : "")}>
-                  <div className="vendor-order-card-heading">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="vendor-order-code font-black text-white">{orderCode(order)}</div>
-                        <span className={"rounded-full border px-2 py-1 text-[10px] font-black " + statusClass(status)}>{statusLabel(status)}</span>
-                      </div>
-                      <div className="mt-1 text-sm font-semibold text-slate-200">{clean(order.customer_name || order.passenger_name) || "Customer"}</div>
-                      {clean(order.customer_phone) ? <div className="text-xs text-slate-400">{clean(order.customer_phone)}</div> : null}
-                      <div className="mt-1 text-xs text-slate-400">{clean(order.to_label || order.dropoff_label) || "Delivery address not shown"}</div>
-                      <div className="mt-1 text-[10px] text-slate-500">{formatPhilippineDateTime(order.created_at || order.updated_at)}</div>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <div className="text-[10px] uppercase text-slate-500">Subtotal</div>
-                      <div className="text-base font-black text-white">{money(order.items_subtotal ?? order.total_bill)}</div>
-                    </div>
-                  </div>
-
-                  {status === "vendor_pending" && remainingMs > 0 ? (
-                    <div className="mt-3 inline-flex rounded-full border border-amber-400/40 bg-amber-500/10 px-2.5 py-1 text-xs font-black text-amber-100">
-                      Accept within {remainingLabel}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-3 rounded-xl border border-slate-700 bg-slate-900/70 p-3">
-                    <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</div>
-                    {items.length === 0 ? (
-                      <div className="mt-2 text-xs text-slate-500">No item snapshot saved for this order.</div>
-                    ) : (
-                      <div className="mt-2 divide-y divide-slate-700">
-                        {items.map((item, index) => {
-                          const qty = Math.max(1, Number(item.quantity ?? 1) || 1);
-                          const price = Number(item.price ?? 0) || 0;
-                          return (
-                            <div key={index} className="flex items-center justify-between gap-3 py-2 text-sm">
-                              <div>
-                                <div className="font-semibold text-slate-100">{qty} x {clean(item.name) || "Item"}</div>
-                                <div className="text-[10px] text-slate-500">{money(price)} each</div>
-                              </div>
-                              <div className="font-bold text-slate-200">{money(qty * price)}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {clean(order.customer_note || order.passenger_note || order.note) ? (
-                    <div className="mt-3 rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-100">
-                      <span className="font-black">Customer note: </span>{clean(order.customer_note || order.passenger_note || order.note)}
-                    </div>
-                  ) : null}
-
-                  {status === "vendor_pending" ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => void acceptOrder(order)}
-                        className="rounded-xl bg-emerald-500 px-3 py-2.5 text-xs font-black text-slate-950 disabled:opacity-50"
-                      >
-                        {saving ? "Saving..." : "Accept order"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => {
-                          setRejectOrder(order);
-                          setRejectReason(VENDOR_REJECT_REASONS[0]);
-                          setRejectOther("");
-                        }}
-                        className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-3 py-2.5 text-xs font-black text-rose-100 disabled:opacity-50"
-                      >
-                        Reject order
-                      </button>
-                    </div>
-                  ) : ["vendor_accepted", "driver_assigned", "driver_accepted", "preparing", "pickup_ready"].includes(status) ? (
-                    <div className="mt-3 rounded-xl border border-blue-400/30 bg-blue-500/10 px-3 py-2 text-xs text-blue-100">
-                      <p>View the next step, driver updates, and preparation controls in your live queue.</p>
-                      <a href={"/vendor-portal" + (vendorId ? "?vendor_id=" + encodeURIComponent(vendorId) : "") + "#operations"}
-                        className="vendor-button vendor-button-primary mt-3">Open live order queue</a>
-                    </div>
-                  ) : null}
-                </article>
-              );
-            })}
-          </section>
-        )}
-      </div>
-
-      {rejectOrder ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-5 text-slate-100 shadow-2xl">
-            <div className="text-lg font-black">Reject {orderCode(rejectOrder)}</div>
-            <div className="mt-1 text-xs text-slate-400">A reason is required and will be saved with the cancellation.</div>
-
-            <label className="mt-4 block text-xs font-bold text-slate-300">Reason</label>
-            <select
-              value={rejectReason}
-              onChange={(event) => {
-                setRejectReason(event.target.value);
-                if (event.target.value !== "Other") setRejectOther("");
-              }}
-              className="mt-1 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-3 text-sm text-white"
-            >
-              {VENDOR_REJECT_REASONS.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
-            </select>
-
-            {rejectReason === "Other" ? (
-              <input
-                value={rejectOther}
-                onChange={(event) => setRejectOther(event.target.value)}
-                placeholder="Type reason"
-                className="mt-3 w-full rounded-xl border border-slate-600 bg-slate-900 px-3 py-3 text-sm text-white"
-              />
-            ) : null}
-
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setRejectOrder(null)}
-                className="rounded-xl border border-slate-600 px-3 py-2.5 text-xs font-black text-slate-200"
-              >
-                Keep order
-              </button>
-              <button
-                type="button"
-                disabled={!!savingId || (rejectReason === "Other" && !clean(rejectOther))}
-                onClick={() => void confirmReject()}
-                className="rounded-xl bg-rose-600 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
-              >
-                {savingId ? "Saving..." : "Confirm reject"}
-              </button>
-            </div>
-          </div>
+        <header className="vendor-orders-heading">
+          <div><span className="vendor-eyebrow">YOUR STORE</span><h1>Orders</h1><p>{feed.lastUpdated ? "Updated " + dateTime(feed.lastUpdated) : "Connecting to your order list..."}</p></div>
+          <button type="button" className="vendor-button" onClick={() => void feed.refresh(true)} disabled={!vendorId || feed.refreshing}>{feed.refreshing ? "Refreshing..." : "Refresh"}</button>
+        </header>
+        {!vendorId && now > 0 ? <div className="vendor-notice vendor-notice-error">Sign in to view your store's orders. <a href="/vendor-login">Sign in</a></div> : null}
+        {feed.authRequired ? <div className="vendor-notice vendor-notice-error" role="alert">{feed.error} <a className="vendor-button" href="/vendor-login">Sign in again</a></div> : feed.stale && vendorId ? (
+          <div className="vendor-order-connection" role="status"><strong>{feed.error ? "Order list needs a connection" : "Updating your orders"}</strong><p>{feed.error || "Checking the latest order status before enabling actions."}</p>{feed.error ? <button type="button" className="vendor-button" onClick={() => void feed.refresh(true)} disabled={feed.refreshing}>Retry now</button> : null}</div>
+        ) : null}
+        {actionError ? <div className="vendor-notice vendor-notice-error" role="alert">{actionError}</div> : null}
+        {message ? <div className="vendor-order-feedback" role="status"><span>{message}</span><button type="button" onClick={() => setMessage("")} aria-label="Dismiss confirmation">Dismiss</button></div> : null}
+        {feed.notices.map(notice => <div key={notice.id} className="vendor-order-feedback" role="status"><strong>{notice.title}</strong><button type="button" onClick={() => { setView(notice.closed ? "history" : "active"); setFocusId(notice.orderId); }}>View order</button><button type="button" onClick={() => feed.dismissNotice(notice.id)} aria-label={"Dismiss " + notice.title}>Dismiss</button></div>)}
+        <div className="vendor-order-tabs" aria-label="Order list">
+          <button type="button" aria-pressed={view === "active"} onClick={() => setView("active")}>Active {feed.lastUpdated ? "(" + active.length + ")" : ""}</button>
+          <button type="button" aria-pressed={view === "history"} onClick={() => setView("history")}>History {feed.lastUpdated ? "(" + history.length + ")" : ""}</button>
         </div>
-      ) : null}
+        {pending.length > 0 && !feed.stale ? <button type="button" className="vendor-waiting-orders" onClick={() => { setView("active"); setFocusId(orderKey(pending[0])); }}>{pending.length} new order{pending.length === 1 ? "" : "s"} waiting - review now</button> : null}
+        <details className="vendor-sound-settings"><summary>Order sound settings</summary><VendorOrderSoundControls /></details>
+        {!feed.lastUpdated && !feed.authRequired && vendorId ? <div className="vendor-loading-panel" role="status">Loading your orders...<span className="vendor-skeleton-line" /></div> : feed.lastUpdated && visible.length === 0 ? (
+          <div className="vendor-orders-empty"><strong>{view === "active" ? "No active orders" : "No order history yet"}</strong><p>{view === "active" ? "New orders will appear here. Completed and cancelled orders are in History." : "Finished orders will stay here for reference."}</p></div>
+        ) : <section className="vendor-order-list" aria-label={view === "active" ? "Active orders" : "Order history"} aria-busy={feed.refreshing}>
+          {visible.map(order => {
+            const id = orderKey(order), status = orderStatus(order), stage = orderStage(order);
+            const expired = status === "vendor_pending" && acceptDeadline(order) <= now;
+            const items = Array.isArray(order.items) ? order.items : [];
+            const driverPhone = phoneHref(order.driver_phone);
+            const customerPhone = phoneHref(order.customer_phone);
+            const disabled = !!savingId || feed.stale || feed.authRequired;
+            return (
+              <article key={id} id={"order-" + id} className={"vendor-flow-card vendor-flow-" + (expired ? "danger" : stage.tone)}>
+                <header><div><span className="vendor-flow-reference" title={clean(order.booking_code)}>{shortOrderCode(order)}</span><h2>{clean(order.customer_name || order.passenger_name) || "Customer"}</h2></div><span className={"vendor-flow-badge vendor-flow-badge-" + stage.tone}>{expired ? "Expired" : orderBadge(order)}</span></header>
+                <p className="vendor-flow-date">{dateTime(order.created_at)}{feed.stale ? " | Last known status - updating" : ""}</p>
+                {status === "vendor_pending" ? <div className="vendor-flow-deadline">{expired ? "The 5-minute window has ended. Waiting for the final status." : "Accept within " + countdown(order, now)}</div> : <div className={"vendor-flow-next vendor-flow-next-" + stage.tone}><strong>{stage.title}</strong><p>{stage.note}</p></div>}
+                <div className="vendor-flow-items"><h3>Order items</h3>{items.length ? items.map((item,index) => <div className="vendor-flow-item" key={index}><strong><span>{Math.max(1, Number(item.quantity) || 1)}x</span> {clean(item.name) || "Item"}</strong><span>{money((Number(item.price) || 0) * Math.max(1, Number(item.quantity) || 1))}</span></div>) : <p className="vendor-notice-error">Item details are unavailable. Refresh before preparing.</p>}</div>
+                {clean(order.customer_note || order.passenger_note || order.note) ? <div className="vendor-flow-instructions"><strong>Customer note</strong><p>{clean(order.customer_note || order.passenger_note || order.note)}</p></div> : null}
+                {order.receipt_requested || order.request_vendor_receipt || clean(order.premium_packaging_label) ? <div className="vendor-flow-instructions"><strong>Include with the order</strong>{order.receipt_requested || order.request_vendor_receipt ? <p>Receipt requested</p> : null}{clean(order.premium_packaging_label) ? <p>Packaging: {clean(order.premium_packaging_label)}</p> : null}</div> : null}
+                <div className="vendor-flow-subtotal"><span>Items subtotal</span><strong>{money(order.items_subtotal ?? order.total_bill)}</strong></div>
+                {!isClosed(order) && (order.driver_id || order.driver_name) ? <div className="vendor-flow-driver"><div><span className="vendor-eyebrow">ASSIGNED DRIVER</span><strong>{clean(order.driver_name) || "Driver details updating"}</strong><span>{clean(order.driver_vehicle_type)}</span></div>{driverPhone ? <a className="vendor-button" href={driverPhone}>Call driver</a> : <span>Phone not available yet</span>}</div> : null}
+                {status === "vendor_pending" ? <div className="vendor-flow-actions"><button type="button" className="vendor-button vendor-button-primary" disabled={disabled || expired || !items.length} onClick={() => void updateOrder(order,"vendor_accepted")}>{savingId === id ? "Confirming..." : "Accept order"}</button><button type="button" className="vendor-button vendor-button-danger" disabled={disabled || expired} onClick={() => { setRejectOrder(order); setReason(REASONS[0]); setOtherReason(""); }}>Decline</button></div> : canMarkReady(order) ? <button type="button" className="vendor-button vendor-button-primary vendor-flow-ready" disabled={disabled || !items.length} onClick={() => void updateOrder(order,"pickup_ready")}>{savingId === id ? "Confirming..." : "Mark order ready"}</button> : null}
+                <details className="vendor-flow-details"><summary>Order details and contact</summary><p>Reference: {clean(order.booking_code) || id}</p><p>{clean(order.to_label || order.dropoff_label) || "Delivery pin saved for the driver"}</p>{customerPhone ? <a className="vendor-button" href={customerPhone}>Call customer</a> : null}{order.completed_at ? <p>Completed: {dateTime(order.completed_at)}</p> : null}</details>
+              </article>
+            );
+          })}
+        </section>}
+      </div>
+      {rejectOrder ? <dialog ref={rejectDialog} className="vendor-decline-dialog" onCancel={event => { event.preventDefault(); if (!savingId) setRejectOrder(null); }} aria-labelledby="vendor-decline-title"><h2 id="vendor-decline-title">Decline {shortOrderCode(rejectOrder)}?</h2><p>The customer will be informed. Choose the reason.</p><label htmlFor="vendor-decline-reason">Reason</label><select id="vendor-decline-reason" value={reason} onChange={event => setReason(event.target.value)} disabled={!!savingId}>{REASONS.map(value => <option key={value}>{value}</option>)}</select>{reason === "Other" ? <label>Describe the reason<input value={otherReason} onChange={event => setOtherReason(event.target.value)} maxLength={300} disabled={!!savingId} /></label> : null}{actionError ? <p role="alert">{actionError}</p> : null}{feed.stale ? <p role="status">Updating the order. Please wait before confirming.</p> : null}<div className="vendor-flow-actions"><button type="button" className="vendor-button" disabled={!!savingId} onClick={() => setRejectOrder(null)}>Keep order</button><button type="button" className="vendor-button vendor-button-danger" disabled={!!savingId || feed.stale || (reason === "Other" && !clean(otherReason))} onClick={() => void updateOrder(rejectOrder,"cancelled",reason === "Other" ? clean(otherReason) : reason)}>{savingId ? "Confirming..." : "Confirm decline"}</button></div></dialog> : null}
     </main>
   );
 }
