@@ -21,7 +21,10 @@ export default function TakeoutFareProposal({ order, lines, cashFirst, busy, err
   const audio = useRef<HTMLAudioElement | null>(null);
   const busyRef = useRef(busy);
   busyRef.current = busy;
-  const proposal = fareProposal(order, now);
+  // The component can wait for a quote without ticking. Use fresh time on its
+  // first render too, rather than the timestamp from when tracking was opened.
+  const currentNow = Math.max(now, Date.now());
+  const proposal = fareProposal(order, currentNow);
   const key = proposal?.key || "";
   const deadline = proposal?.deadline || 0;
 
@@ -70,7 +73,7 @@ export default function TakeoutFareProposal({ order, lines, cashFirst, busy, err
   }
 
   if (!proposal) return null;
-  const seconds = Math.max(0, Math.ceil((deadline - now) / 1000));
+  const seconds = Math.max(0, Math.ceil((deadline - currentNow) / 1000));
   const countdown = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
   return <>
     <aside className="jride-fare-dock" aria-label="Pending Takeout total">

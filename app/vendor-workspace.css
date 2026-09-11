@@ -269,7 +269,7 @@
 .vendor-orders-controls .vendor-order-tabs { gap: 4px; padding: 3px; border-radius: 11px; }
 .vendor-orders-controls .vendor-order-tabs button { padding: 6px; font-size: 15px; min-height: 44px; }
 .vendor-orders-refresh { padding: 8px; font-size: 13px; }
-.vendor-orders-freshness { margin: 4px 2px 6px; color: #b6c8d1; font-size: 13px; line-height: 1.4; }
+.vendor-orders-freshness { margin: 4px 2px 6px; color: #b6c8d1; font-size: 13px; line-height: 1.4; min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vendor-orders-freshness::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #76e8bc; margin-right: 6px; vertical-align: middle; }
 .vendor-orders-freshness.is-stale { color: #ffe3a4; }
 .vendor-orders-freshness.is-stale::before { background: #dfb960; }

@@ -406,6 +406,7 @@ export default function TakeoutTrackPage() {
       pricingStatus,
       vendorStatus,
       customerStatus,
+      driverStatus,
       progressStatus,
       progressLabel,
       vendorHasAccepted,
@@ -663,7 +664,13 @@ export default function TakeoutTrackPage() {
 
             {state.pricingStatus === "pricing_pending" && !state.isCancelled ? (
               <div className="rounded border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800">
-                {state.vendorHasAccepted ? "Store confirmed. Waiting for a nearby driver to provide the delivery quote." : "Your order has been sent. Please wait while the store confirms and a nearby driver becomes available."}
+                {state.assignedDriverId || state.driverName || state.driverPhone
+                  ? ([state.driverStatus, state.progressStatus, state.customerStatus].some(value => ["accepted", "driver_accepted", "driver_confirmed", "accepted_by_driver"].includes(value))
+                    ? "Your assigned driver is preparing the delivery quote."
+                    : "A driver has been assigned. Waiting for the driver to accept your order.")
+                  : state.vendorHasAccepted
+                    ? "Store confirmed. Looking for a nearby driver."
+                    : "Your order has been sent. Waiting for the store to confirm."}
               </div>
             ) : null}
 
