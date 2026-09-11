@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "crypto";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  verifyVendorSession,
   VENDOR_SESSION_COOKIE,
   vendorSessionCookieOptions,
 } from "@/lib/vendorSession";
@@ -14,7 +17,14 @@ function clearVendorSessionCookie(response: NextResponse) {
   });
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const token = req.cookies.get(VENDOR_SESSION_COOKIE)?.value;
+  if (token && verifyVendorSession(token)) {
+    try {
+      await supabaseAdmin().from("vendor_native_devices").delete()
+        .eq("session_hash", createHash("sha256").update(token).digest("hex"));
+    } catch { /* Always clear the browser cookie; native logout also revokes its device. */ }
+  }
   const response = NextResponse.json({
     ok: true,
   });

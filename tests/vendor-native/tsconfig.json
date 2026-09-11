@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "es2022"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "baseUrl": "../..",
+    "paths": {"@/*": ["./*"]},
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "../../app/api/vendor-native/**/*.ts",
+    "../../app/api/vendor/logout/route.ts",
+    "../../lib/vendorSession.ts",
+    "../../lib/supabaseAdmin.ts",
+    "../../supabase/functions/vendor-native-alerts/*.ts",
+    "deno.d.ts"
+  ]
+}

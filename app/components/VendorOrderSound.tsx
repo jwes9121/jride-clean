@@ -58,6 +58,7 @@ export function createVendorOrderSound() {
   }
 
   function play(forOrder: boolean) {
+    if (forOrder && navigator.userAgent.includes("JRideVendorPush/1") && document.visibilityState === "hidden") return;
     if (!active || !enabled || inFlight || (audio && !audio.paused)) return;
     const attempt = ++generation;
     nextRingAt = Date.now() + REPEAT_MS;
@@ -124,6 +125,10 @@ export function createVendorOrderSound() {
     try { window.localStorage.setItem(PREFERENCE_KEY, value ? "1" : "0"); } catch { /* Storage is optional. */ }
   }
 
+  function onVisibility() {
+    if (navigator.userAgent.includes("JRideVendorPush/1") && document.visibilityState === "hidden") stopPlayback();
+  }
+
   function onStorage(event: StorageEvent) {
     if (event.key !== null && event.key !== PREFERENCE_KEY) return;
     enabled = readPreference();
@@ -139,11 +144,13 @@ export function createVendorOrderSound() {
       if (!initialized) { initialized = true; enabled = readPreference(); }
       if (!enabled) publish("off");
       window.addEventListener("storage", onStorage);
+      document.addEventListener("visibilitychange", onVisibility);
       return () => {
         active = false;
         stopPlayback();
         queue = [];
         window.removeEventListener("storage", onStorage);
+        document.removeEventListener("visibilitychange", onVisibility);
       };
     },
     update,
@@ -183,3 +190,4 @@ export function VendorOrderSoundControls() {
     </div>
   );
 }
+
