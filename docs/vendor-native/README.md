@@ -1,6 +1,7 @@
 # Vendor background order alerts
 
-Status: source prepared; sender DISABLED; not deployed or verified on a phone.
+Status: Supabase backend installed with sender DISABLED; Firebase sender credential
+and Android build/device verification remain outstanding. See DEPLOYMENT.md.
 Firebase project: `jride-notifications`. Android package: `com.jride.vendor`.
 Web baseline: `b7d1db4747da19dd496325faf3626227bb022748`.
 
@@ -66,7 +67,8 @@ Activation: `update vendor_native_private.settings set enabled=true where id;`
 Stop dispatch: `update vendor_native_private.settings set enabled=false where id;`
 The scheduler checks this flag before issuing any request. Existing already-posted
 notifications expire at their supplied deadline. No production migration, schedule,
-server credential or sender activation was performed while preparing this change.
+server credential or sender activation was performed during the original source
+preparation. The later disabled backend installation is recorded in DEPLOYMENT.md.
 
 ## Verification on 2026-09-11
 
