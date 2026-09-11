@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import TakeoutFareProposal from "../../TakeoutFareProposal";
 import { fareProposal, expectedFare, mergeConfirmedOrder } from "../../fareProposal";
+import { passengerProgress } from "../../passengerProgress";
 
 type TakeoutOrder = {
   id?: string | null;
@@ -326,7 +327,7 @@ export default function TakeoutTrackPage() {
     const customerStatus = normText(order?.customer_status || "").toLowerCase();
     const terminal = [customerStatus, vendorStatus, normText(order?.status)].find(v => ["completed", "cancelled", "vendor_timeout"].includes(v));
     const workflow = vendorStatus && !["requested", "vendor_pending"].includes(vendorStatus) ? vendorStatus : "";
-    const progressStatus = terminal || workflow || customerStatus || vendorStatus;
+    const { progressStatus, vendorReady } = passengerProgress(order, terminal || workflow || customerStatus || vendorStatus);
     const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(vendorStatus);
     const passengerConfirmed = ["customer_confirmed", "confirmed"].includes(pricingStatus) || Boolean(order?.takeout_customer_confirmed_at);
     const progressLabels: Record<string, string> = {
@@ -339,6 +340,9 @@ export default function TakeoutTrackPage() {
       driver_accepted: "Driver accepted your order",
       driver_fee_proposed: "Delivery quote ready",
       customer_confirmed: "Passenger confirmed total",
+      arrived_customer_cash: "Driver at customer for payment",
+      cash_collected: "Driver proceeding to store",
+      vendor_bound: "Driver proceeding to store",
       rider_arrived_vendor: "Driver arrived at vendor",
       arrived_vendor: "Driver arrived at vendor",
       picked_up: "Order picked up",
@@ -346,10 +350,11 @@ export default function TakeoutTrackPage() {
       completed: "Order completed",
       cancelled: "Order cancelled",
       vendor_timeout: "Vendor did not respond in time",
+      expired: "Order expired",
     };
     const progressLabel = progressLabels[progressStatus] || (progressStatus ? progressStatus.replace(/_/g, " ") : "Waiting for update");
     const isCompleted = progressStatus === "completed";
-    const isCancelled = progressStatus === "cancelled" || progressStatus === "vendor_timeout";
+    const isCancelled = ["cancelled", "vendor_timeout", "expired"].includes(progressStatus);
     const foodSubtotal = toNum(order?.takeout_items_subtotal ?? order?.total_bill);
     const deliveryFee = toNum(order?.takeout_delivery_fee);
     const serviceFee = toNum(order?.takeout_service_fee ?? 15);
@@ -408,6 +413,7 @@ export default function TakeoutTrackPage() {
       customerStatus,
       driverStatus,
       progressStatus,
+      vendorReady,
       progressLabel,
       vendorHasAccepted,
       passengerConfirmed,
@@ -550,6 +556,12 @@ export default function TakeoutTrackPage() {
                 <span className="text-slate-800">Order progress</span>
                 <span className="font-semibold">{state.progressLabel}</span>
               </div>
+              {state.vendorReady && state.progressStatus !== "pickup_ready" ? (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-800">Vendor status</span>
+                  <span className="font-semibold">Ready for pickup</span>
+                </div>
+              ) : null}
               <div className="mt-1 flex justify-between gap-3">
                 <span className="text-slate-800">Food subtotal</span>
                 <span>{money(state.foodSubtotal)}</span>

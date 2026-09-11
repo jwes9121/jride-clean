@@ -48,6 +48,7 @@ function renderPassenger(order) {
   const Component = load('app/takeout/track/[bookingCode]/page.tsx', {
     react: seededReact(order), 'next/navigation': { useParams: () => ({ bookingCode: quote.booking_code }) },
     '../../fareProposal': fare, '../../TakeoutFareProposal': { default: () => null, __esModule: true },
+    '../../passengerProgress': load('app/takeout/passengerProgress.ts'),
   }).default;
   return renderToStaticMarkup(React.createElement(Component));
 }

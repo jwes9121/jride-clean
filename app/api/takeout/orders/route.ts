@@ -34,6 +34,7 @@ const TAKEOUT_ORDER_SELECT = [
   "vendor_id",
   "vendor_status",
   "customer_status",
+  "driver_status",
   "assigned_driver_id",
   "driver_id",
   "takeout_pricing_status",
