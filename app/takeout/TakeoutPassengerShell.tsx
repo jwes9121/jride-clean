@@ -83,7 +83,8 @@ export default function TakeoutPassengerShell({ children }: { children: React.Re
             <p>Choose a store, add items, and review your delivery.</p>
           </div>
           <nav aria-label="Takeout service navigation">
-            <Link href="/passenger">Home</Link>
+            {/* Home leaves Takeout; use a full page navigation. */}
+            <a href="/passenger">Home</a>
             <Link href="/takeout/orders">Orders</Link>
           </nav>
         </header>
