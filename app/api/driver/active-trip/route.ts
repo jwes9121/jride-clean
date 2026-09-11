@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { driverStepWhileVendorReady, takeoutVendorReadiness } from "@/lib/takeoutVendorReadiness";
 import {
   logTakeoutFeeProposalExpired,
   recordTakeoutExpiryLifecycleEvent,
@@ -91,7 +92,7 @@ function jrideTakeoutDriverStatus(row: any): string | null {
   if (raw === "requested" || raw === "pending") return "preparing";
   if (raw === "driver_accepted" || raw === "accepted_by_driver") return "driver_accepted";
   if (raw === "assigned" || raw === "accepted" || raw === "driver_assigned") return "driver_assigned";
-  if (raw === "pickup_ready") return "driver_assigned";
+  if (raw === "pickup_ready") return driverStepWhileVendorReady(row);
   if (raw === "arrived_vendor" || raw === "at_vendor") return "arrived_vendor";
   if (raw === "picked_up" || raw === "pickup_done") return "picked_up";
   if (raw === "delivering" || raw === "on_delivery") return "delivering";
@@ -121,6 +122,7 @@ function jrideIsTerminalTakeoutActiveTrip(row: any): boolean {
   const customerStatus = jrideActiveTripLower(row.customer_status ?? row.customerStatus);
   const takeoutStatus = jrideTakeoutDriverStatus(row);
   return (
+    ["completed", "cancelled", "canceled"].includes(jrideActiveTripLower(row.status)) ||
     vendorStatus === "completed" ||
     vendorStatus === "cancelled" ||
     customerStatus === "completed" ||
@@ -975,6 +977,8 @@ export async function GET(req: NextRequest) {
       service_type: isTakeoutBooking ? "takeout" : s((booking as any).service_type),
       serviceType: isTakeoutBooking ? "takeout" : s((booking as any).serviceType),
       takeout_status: takeoutDriverStatus,
+      driver_status: s((booking as any).driver_status),
+      ...(isTakeoutBooking ? takeoutVendorReadiness(booking) : {}),
       vendor_status: s((booking as any).vendor_status),
       customer_status: s((booking as any).customer_status),
       takeout_pricing_status: takeoutPricingStatusForDriver,

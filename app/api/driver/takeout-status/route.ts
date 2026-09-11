@@ -147,8 +147,18 @@ export async function POST(req: NextRequest) {
   }
 
   const current = normStatus((existing.data as any).vendor_status || "requested");
-  if (current === "completed" || current === "cancelled") {
+  const canonicalStatus = normStatus((existing.data as any).status);
+  if (["completed", "cancelled"].includes(current) || ["completed", "cancelled"].includes(canonicalStatus)) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED" });
+  }
+
+  const isPrePickupProgress = nextStatus === "cash_collected" || nextStatus === "rider_arrived_vendor";
+  if (isPrePickupProgress) {
+    const states = [current, normStatus((existing.data as any).driver_status), normStatus((existing.data as any).customer_status)];
+    if (states.some(value => ["picked_up", "delivering", "completed", "cancelled"].includes(value)) ||
+      (nextStatus === "cash_collected" && states.includes("rider_arrived_vendor"))) {
+      return json(409, { ok: false, error: "TAKEOUT_STEP_CHANGED", message: "This order has moved to a later step. Refresh the current trip." });
+    }
   }
 
   if (nextStatus === "driver_accepted") {
@@ -183,6 +193,13 @@ export async function POST(req: NextRequest) {
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
     updated_at: new Date().toISOString(),
   };
+
+  // Cash collection and arrival are driver steps, not a reversal of vendor
+  // readiness. Keep the vendor/customer ready signal until actual pickup.
+  if (isPrePickupProgress && current === "pickup_ready") {
+    delete patch.vendor_status;
+    delete patch.customer_status;
+  }
 
   if (nextStatus === "driver_accepted") {
     const feeProposalExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -232,16 +249,30 @@ export async function POST(req: NextRequest) {
     patch.driver_status = null;
   }
 
-  const up = await admin
+  let updateQuery = admin
     .from("bookings")
     .update(patch)
     .eq("id", (existing.data as any).id)
     .eq("service_type", "takeout")
+    .eq("assigned_driver_id", driverId);
+
+  if (isPrePickupProgress) {
+    // Reject stale writes, including Ready, pickup, cancellation, or reassignment
+    // arriving between our read and write. Do not touch the completion helper.
+    for (const field of ["status", "vendor_status", "customer_status", "driver_status", "driver_id"]) {
+      const value = (existing.data as any)[field];
+      updateQuery = value == null ? updateQuery.is(field, null) : updateQuery.eq(field, value);
+    }
+  }
+  const up = await updateQuery
     .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,updated_at")
-    .single();
+    .maybeSingle();
 
   if (up.error) {
     return json(500, { ok: false, error: "DB_ERROR", message: up.error.message });
+  }
+  if (!up.data) {
+    return json(409, { ok: false, error: "TAKEOUT_STEP_CHANGED", message: "The order changed while saving. Refresh the current trip and try again." });
   }
 
   const wallet_deduction = {
