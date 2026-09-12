@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AGRI_ALERT_REPEAT_MS, AGRI_ALERT_SCOPE, AGRI_ALERT_STALE_MS, AGRI_ALERT_WORKER,
   farmerOrderHref, pendingFarmerOrders, type PendingFarmerOrder } from "@/lib/agrimarket/browserAlerts";
 import styles from "./farmer.module.css";
+import PhoneAlertCheck from "./PhoneAlertCheck";
+import type { AlertDeviceState } from "@/lib/agrimarket/browserAlertDevice";
 
 type Feed = { orders: PendingFarmerOrder[]; offset: number; received: number; publicKey: string | null;
   pushAvailable: boolean; subscription: null | { active: boolean; last_test: null | { status: string; last_error: string | null } } };
@@ -56,19 +58,9 @@ export default function FarmerOrderAlerts() {
     return () => { mounted.current = false; audio.current?.pause(); audio.current = null; };
   }, []);
 
-  useEffect(() => {
-    let disposed = false;
-    const check = async () => {
-      try {
-        const registration = await navigator.serviceWorker?.getRegistration(AGRI_ALERT_SCOPE);
-        const owned = registration?.active?.scriptURL === new URL(AGRI_ALERT_WORKER, location.origin).href;
-        const subscription = owned ? await registration!.pushManager.getSubscription() : null;
-        if (!disposed) setBrowserSubscribed(Boolean(subscription));
-      } catch { if (!disposed) setBrowserSubscribed(false); }
-    };
-    void check();
-    window.addEventListener("focus", check);
-    return () => { disposed = true; window.removeEventListener("focus", check); };
+  const deviceState = useCallback((state: AlertDeviceState) => {
+    setBrowserSubscribed(state.worker === "ready" && state.subscription === "present");
+    setPermission(state.permission);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -203,7 +195,7 @@ export default function FarmerOrderAlerts() {
   async function testPush() {
     setBusy(true);
     try { await action({ action: "test", subscription_id: subscriptionId });
-      setMessage("Test queued. Lock the phone now. Allow up to 90 seconds. No order or driver dispatch was created."); void refresh(); }
+      setMessage(""); void refresh(); }
     catch (failure: any) { setMessage(failure.message); }
     finally { setBusy(false); }
   }
@@ -231,7 +223,7 @@ export default function FarmerOrderAlerts() {
 
   return <section className={styles.alertPanel} aria-label="AgriMarket order alerts">
     <strong>Order alerts</strong>
-    <p>Page sound: {sound ? "enabled" : "off"}. Background alerts: {registered ? "registered" : permission === "denied" ? "blocked by browser" : "not enabled"}.</p>
+    <p>Page sound: {sound ? "enabled" : "off"}. Background setup: {registered ? "registered; delivery unconfirmed" : permission === "denied" ? "blocked by browser" : "needs phone check"}.</p>
     <div className={styles.alertButtons}>
       <button type="button" onClick={() => void enableSound()}>{sound ? "Test sound" : "Enable sound"}</button>
       {sound && <button type="button" onClick={() => { setSound(false); audio.current?.pause(); save("AGRI_SOUND_V1:" + account, "off"); }}>Mute page sound</button>}
@@ -240,9 +232,12 @@ export default function FarmerOrderAlerts() {
       {registered && <button type="button" disabled={busy} onClick={() => void disablePush()}>Disable background alerts</button>}
     </div>
     <p className={styles.alertNote}>Background notification sound depends on your phone settings. Repeated page sound requires an active browser page.</p>
+    <PhoneAlertCheck key={subscriptionId} serverRegistered={Boolean(subscriptionId && feed.subscription?.active)} onState={deviceState} />
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error}</p>}
-    {lastTest && <p>Last background test: {lastTest.status === "sent" ? "accepted by the push service; confirm it arrived on your phone" : lastTest.status}.</p>}
+    {lastTest && <p>Last background test: {lastTest.status === "sent"
+      ? "accepted by the push service; phone delivery and sound are NOT confirmed"
+      : ["pending", "sending"].includes(lastTest.status) ? "queued. Lock the phone now and allow up to 90 seconds. No order or driver dispatch was created" : lastTest.status}.</p>}
     <dialog ref={dialog} className={styles.alertDialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="agri-incoming-title">
       <h2 id="agri-incoming-title">New AgriMarket order</h2>
       <p>{pending.length} order{pending.length === 1 ? "" : "s"} waiting for your response.</p>

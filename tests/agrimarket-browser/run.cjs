@@ -40,6 +40,52 @@ function harness({ allowed = true, config = { public_key: 'PUBLIC', private_key:
 }
 async function run() {
   const rules = load('lib/agrimarket/browserAlerts.ts');
+  const phone = load('lib/agrimarket/browserAlertDevice.ts');
+  const origin = 'https://app.jride.net';
+  const device = (registration, permission = 'granted') => ({ origin, secure: true, permission,
+    workers: { getRegistration: async () => registration } });
+  const farmerWorker = () => ({ scope: origin + rules.AGRI_ALERT_SCOPE,
+    active: { scriptURL: origin + rules.AGRI_ALERT_WORKER },
+    pushManager: { getSubscription: async () => validSub }, showNotification: async () => {} });
+  await test('phone check distinguishes missing permission, worker and subscription without mutating them', async () => {
+    const missing = await phone.inspectAlertDevice(device(undefined, 'default'));
+    assert.equal(missing.permission, 'default'); assert.equal(missing.worker, 'missing');
+    const worker = farmerWorker(); worker.pushManager.getSubscription = async () => null;
+    const noSub = await phone.inspectAlertDevice(device(worker));
+    assert.equal(noSub.worker, 'ready'); assert.equal(noSub.subscription, 'missing');
+  });
+  await test('phone check never reads or modifies the Takeout worker subscription', async () => {
+    const rootWorker = farmerWorker(); rootWorker.scope = origin + '/'; rootWorker.active.scriptURL = origin + '/sw.js';
+    rootWorker.pushManager.getSubscription = async () => { throw new Error('must not read root subscription'); };
+    const state = await phone.inspectAlertDevice(device(rootWorker));
+    assert.equal(state.worker, 'different'); assert.equal(state.subscription, 'unknown');
+    await assert.rejects(phone.testPhoneNotification(device(rootWorker)), /FARMER_WORKER_REQUIRED/);
+  });
+  await test('phone diagnostics report browser-read errors as unknown rather than disabled', async () => {
+    const unavailable = device(undefined); unavailable.workers.getRegistration = async () => { throw new Error('blocked'); };
+    assert.equal((await phone.inspectAlertDevice(unavailable)).worker, 'unavailable');
+    const worker = farmerWorker(); worker.pushManager.getSubscription = async () => { throw new Error('unavailable'); };
+    assert.equal((await phone.inspectAlertDevice(device(worker))).subscription, 'unavailable');
+  });
+  await test('phone readiness exposes no push endpoint or keys', async () => {
+    const state = await phone.inspectAlertDevice(device(farmerWorker()));
+    assert.equal(state.permission, 'granted'); assert.equal(state.worker, 'ready'); assert.equal(state.subscription, 'present');
+    assert(!JSON.stringify(state).includes('fcm.googleapis.com')); assert(!JSON.stringify(state).includes('p256dh'));
+  });
+  await test('immediate phone test requires existing permission and cannot create an order or subscription', async () => {
+    const worker = farmerWorker(); const shown = [];
+    worker.showNotification = async (...args) => shown.push(args);
+    await assert.rejects(phone.testPhoneNotification(device(worker, 'default')), /PHONE_PERMISSION_REQUIRED/);
+    await assert.rejects(phone.testPhoneNotification(device(worker, 'denied')), /PHONE_PERMISSION_REQUIRED/);
+    assert.equal(shown.length, 0);
+    await phone.testPhoneNotification(device(worker));
+    assert.equal(shown.length, 1); assert.equal(shown[0][0], 'AgriMarket phone test');
+    assert.equal(shown[0][1].tag, 'agrimarket-phone-test');
+  });
+  await test('rejected phone notification display propagates failure without a false success', async () => {
+    const worker = farmerWorker(); worker.showNotification = async () => { throw new Error('display denied'); };
+    await assert.rejects(phone.testPhoneNotification(device(worker)), /display denied/);
+  });
   await test('expired and invalid orders never enter the sound queue; deadline is not extended', () => {
     const rows = [{ order_code: 'AG-TEST', producer_confirm_expires_at: new Date(2000).toISOString() },
       { order_code: 'bad', producer_confirm_expires_at: new Date(8000).toISOString() }];
