@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient as createCookieSupabase } from "@/utils/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { readFarmerSession } from "@/lib/agrimarket/farmerSessionServer";
 
 export type PassengerAuthResult =
   | { ok: true; user: any }
@@ -214,6 +215,16 @@ function validProducerAccessCode(value: string): boolean {
 export async function requireAgrimarketProducer(req: NextRequest): Promise<ProducerAuthResult> {
   const accessCode = String(req.headers.get("x-jride-agrimarket-code") || "").trim().toUpperCase();
   const accessPin = String(req.headers.get("x-jride-agrimarket-pin") || "").trim();
+
+  if (!accessPin) {
+    try {
+      const session = await readFarmerSession(req, createServiceSupabase());
+      if (session) return { ok: true, accessCode: session.access_code, producer: session.producer };
+    } catch {
+      return { ok: false, response: jsonNoStore(503, { ok: false, error: "AGRIMARKET_PRODUCER_AUTH_FAILED",
+        message: "Farmer sign-in is temporarily unavailable." }) };
+    }
+  }
 
   if (!validProducerAccessCode(accessCode) || !/^[0-9]{6}$/.test(accessPin)) {
     return {

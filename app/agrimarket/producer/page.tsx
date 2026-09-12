@@ -1,7 +1,10 @@
 "use client";
 
+import { useFarmerSession } from "./useFarmerSession";
+import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
+
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, BadgePercent, CheckCheck, Clock3, PackageCheck, Sprout, Truck } from "lucide-react";
 import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from "./FarmerWorkspace";
 import styles from "./farmer.module.css";
@@ -64,8 +67,6 @@ type ProducerOrder = {
   items: OrderItem[];
 };
 
-const SESSION_ACCESS_CODE = "JRIDE_AGRIMARKET_ACCESS_CODE";
-const SESSION_PIN = "JRIDE_AGRIMARKET_ACCESS_PIN";
 const PREP_OPTIONS = [0, 10, 15, 20, 30, 45, 60, 90, 120];
 const HANDLING_TIERS = ["standard", "bulky", "live_single", "live_difficult"] as const;
 const WEIGHT_BANDS = [
@@ -81,15 +82,6 @@ function allowedHandlingTiers(minimum: string): string[] {
   return HANDLING_TIERS.slice(index);
 }
 
-function farmerHeaders(accessCode: string, pin: string, json = false): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "x-jride-agrimarket-code": accessCode.trim().toUpperCase(),
-    "x-jride-agrimarket-pin": pin.trim(),
-  };
-  if (json) headers["Content-Type"] = "application/json";
-  return headers;
-}
 
 function money(value: unknown): string {
   const n = Number(value || 0);
@@ -113,8 +105,10 @@ function titleCase(value: unknown): string {
 }
 
 export default function AgrimarketProducerPage() {
-  const [accessCode, setAccessCode] = useState("");
-  const [pin, setPin] = useState("");
+  const { accessCode, setAccessCode, pin, setPin, sessionCode, restoring, authError, signIn, signOut, invalidate } = useFarmerSession();
+  const accountRef = useRef(sessionCode);
+  accountRef.current = sessionCode;
+  const loadFlight = useRef("");
   const [connected, setConnected] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
@@ -135,31 +129,30 @@ export default function AgrimarketProducerPage() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedCode = window.sessionStorage.getItem(SESSION_ACCESS_CODE) || "";
-    const savedPin = window.sessionStorage.getItem(SESSION_PIN) || "";
-    setAccessCode(savedCode);
-    setPin(savedPin);
-    if (savedCode && savedPin) void loadOrders(savedCode, savedPin);
-  }, []);
+    if (sessionCode) void loadOrders(sessionCode);
+    else { setConnected(false); setOrders([]); }
+  }, [sessionCode]);
 
   useEffect(() => {
-    if (!connected || disabled) return;
-    const timer = window.setInterval(() => void loadOrders(accessCode, pin, true), 10000);
+    if (!connected || disabled || !sessionCode) return;
+    const timer = window.setInterval(() => void loadOrders(sessionCode, true), 10000);
     return () => window.clearInterval(timer);
-  }, [connected, disabled, accessCode, pin]);
+  }, [connected, disabled, sessionCode]);
 
-  async function loadOrders(code = accessCode, accessPin = pin, quiet = false) {
-    if (!code.trim() || !accessPin.trim()) return;
+  async function loadOrders(code = sessionCode, quiet = false) {
+    if (!code || loadFlight.current === code) return;
+    loadFlight.current = code;
     if (!quiet) setLoading(true);
     setError("");
     try {
-    const response = await fetch("/api/agrimarket/producer/orders", { cache: "no-store", headers: farmerHeaders(code, accessPin) });
+    const response = await fetch("/api/agrimarket/producer/orders", { cache: "no-store", headers: farmerSessionHeaders(code) });
     const payload = await response.json().catch(() => ({}));
+    if (accountRef.current !== code) return;
     if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
       setDisabled(true);
       setConnected(false);
     } else if (response.status === 401 || response.status === 403) {
+      invalidate();
       setConnected(false);
       setError(payload?.message || "Farmer credentials were not accepted.");
     } else if (!response.ok || payload?.ok === false) {
@@ -218,12 +211,11 @@ export default function AgrimarketProducerPage() {
         });
         return next;
       });
-      window.sessionStorage.setItem(SESSION_ACCESS_CODE, code.trim().toUpperCase());
-      window.sessionStorage.setItem(SESSION_PIN, accessPin.trim());
     }
     } catch {
       setError("We couldn’t refresh your orders. Check your connection and try again.");
     } finally {
+      if (loadFlight.current === code) loadFlight.current = "";
       if (!quiet) setLoading(false);
     }
   }
@@ -233,12 +225,12 @@ export default function AgrimarketProducerPage() {
     setError("");
     setMessage("");
     try {
-    const response = await fetch(path, { method: "POST", headers: farmerHeaders(accessCode, pin, true), body: JSON.stringify(body) });
+    const response = await fetch(path, { method: "POST", headers: farmerSessionHeaders(sessionCode, true), body: JSON.stringify(body) });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false) setError(payload?.message || payload?.error || "Unable to update this order.");
     else {
       setMessage("Order updated.");
-      await loadOrders(accessCode, pin, true);
+      await loadOrders(sessionCode, true);
     }
     } catch {
       setError("The update was interrupted. Refresh the order to check its latest status before trying again.");
@@ -310,8 +302,15 @@ export default function AgrimarketProducerPage() {
     return <FarmerUnavailable section="orders" />;
   }
 
+  if (sessionCode && !connected) {
+    return <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadOrders()} loading={loading || restoring}>
+      <p role="status">{loading ? "Loading your orders..." : "Your orders could not be loaded. Tap Refresh to try again."}</p>
+      <FarmerFeedback error={error || authError} />
+    </FarmerWorkspace>;
+  }
+
   if (!connected) {
-    return <FarmerLogin section="orders" accessCode={accessCode} pin={pin} onCodeChange={setAccessCode} onPinChange={setPin} onSubmit={() => void loadOrders()} loading={loading} error={error} />;
+    return <FarmerLogin section="orders" accessCode={accessCode} pin={pin} onCodeChange={setAccessCode} onPinChange={setPin} onSubmit={() => { setError(""); void signIn(); }} loading={loading || restoring} error={error || authError} />;
   }
 
   const needsReply = orders.filter((order) => order.status === "awaiting_producer");
@@ -321,7 +320,7 @@ export default function AgrimarketProducerPage() {
   const filters = [{ id: "all", label: "All orders", count: orders.length }, { id: "new", label: "Needs reply", count: needsReply.length }, { id: "progress", label: "In progress", count: inProgress.length }, { id: "harvest", label: "Scheduled", count: harvest.length }];
 
   return (
-    <FarmerWorkspace section="orders" onRefresh={() => void loadOrders()} loading={loading}>
+    <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadOrders()} loading={loading || restoring}>
       <section className={styles.hero} aria-labelledby="farmer-orders-title">
         <span className={styles.eyebrow}>A GOOD DAY STARTS AT YOUR FARM</span>
         <h1 id="farmer-orders-title">{needsReply.length ? "Your next order" : "Ready for your"}{" "}<br />{needsReply.length ? "is waiting." : "next order."}</h1>
@@ -333,7 +332,7 @@ export default function AgrimarketProducerPage() {
         <div className={styles.stat}><strong>{inProgress.length}</strong><span>In progress</span></div>
         <div className={styles.stat}><strong>{harvest.length}</strong><span>Scheduled</span></div>
       </div>
-      <FarmerFeedback error={error} message={message} />
+      <FarmerFeedback error={error || authError} message={message} />
       <div className={styles.sectionHeading}><h2>Your orders</h2><span>{loading ? "Refreshing…" : "Refreshes every 10 sec"}</span></div>
       <div className={styles.filters} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}<span className={styles.filterCount}>{item.count}</span></button>)}</div>
       <div className={!orders.length ? styles.dashboardGrid : undefined}>

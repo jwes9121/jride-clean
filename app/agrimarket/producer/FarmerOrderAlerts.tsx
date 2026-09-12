@@ -6,23 +6,18 @@ import { AGRI_ALERT_REPEAT_MS, AGRI_ALERT_SCOPE, AGRI_ALERT_STALE_MS, AGRI_ALERT
 import styles from "./farmer.module.css";
 import PhoneAlertCheck from "./PhoneAlertCheck";
 import type { AlertDeviceState } from "@/lib/agrimarket/browserAlertDevice";
+import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
+import { farmerPushSubscription } from "@/lib/agrimarket/browserPushRegistration";
 
 type Feed = { orders: PendingFarmerOrder[]; offset: number; received: number; publicKey: string | null;
   pushAvailable: boolean; subscription: null | { active: boolean; last_test: null | { status: string; last_error: string | null } } };
 const EMPTY: Feed = { orders: [], offset: 0, received: 0, publicKey: null, pushAvailable: false, subscription: null };
 
-function credentials() {
-  return { code: sessionStorage.getItem("JRIDE_AGRIMARKET_ACCESS_CODE") || "", pin: sessionStorage.getItem("JRIDE_AGRIMARKET_ACCESS_PIN") || "" };
-}
-function headers() {
-  const { code, pin } = credentials();
-  return { "Content-Type": "application/json", "x-jride-agrimarket-code": code, "x-jride-agrimarket-pin": pin };
-}
 function stored(key: string) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
 function save(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* Session still works. */ } }
 
-export default function FarmerOrderAlerts() {
-  const [account, setAccount] = useState("");
+export default function FarmerOrderAlerts({ accountCode }: { accountCode: string }) {
+  const account = accountCode;
   const [subscriptionId, setSubscriptionId] = useState("");
   const [browserSubscribed, setBrowserSubscribed] = useState(false);
   const [feed, setFeed] = useState<Feed>(EMPTY);
@@ -48,8 +43,7 @@ export default function FarmerOrderAlerts() {
 
   useEffect(() => {
     mounted.current = true;
-    const code = credentials().code;
-    setAccount(code);
+    const code = accountCode;
     setSubscriptionId(stored("AGRI_PUSH_V1:" + code));
     setSound(stored("AGRI_SOUND_V1:" + code) === "on");
     try { setSnoozeUntil(Number(sessionStorage.getItem("AGRI_SNOOZE_V1:" + code)) || 0); } catch { /* Optional preference. */ }
@@ -68,7 +62,7 @@ export default function FarmerOrderAlerts() {
     flight.current = true;
     try {
       const response = await fetch("/api/agrimarket/producer/alerts" + (subscriptionId ? "?subscription_id=" + subscriptionId : ""),
-        { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(8000) });
+        { headers: farmerSessionHeaders(account), cache: "no-store", signal: AbortSignal.timeout(8000) });
       const body = await response.json();
       if (!response.ok || !body.ok) {
         const authFailed = response.status === 401 || response.status === 403;
@@ -153,7 +147,7 @@ export default function FarmerOrderAlerts() {
     } catch { setSound(false); setMessage("Sound was blocked. Check this browser's sound permission and media volume."); }
   }
   async function action(body: object) {
-    const response = await fetch("/api/agrimarket/producer/alerts", { method: "POST", headers: headers(),
+    const response = await fetch("/api/agrimarket/producer/alerts", { method: "POST", headers: farmerSessionHeaders(account, true),
       body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.message || payload.error || "Alert setup failed.");
@@ -178,12 +172,8 @@ export default function FarmerOrderAlerts() {
         const changed = () => { if (worker.state === "activated") { clearTimeout(timeout); worker.removeEventListener("statechange", changed); resolve(); } };
         worker.addEventListener("statechange", changed); changed();
       });
-      let subscription = await registration.pushManager.getSubscription();
-      if (!subscription) {
-        const base64 = feed.publicKey.replace(/-/g, "+").replace(/_/g, "/");
-        const bytes = Uint8Array.from(atob(base64), character => character.charCodeAt(0));
-        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: bytes });
-      }
+      const subscription = await farmerPushSubscription(registration, location.origin, feed.publicKey,
+        feed.subscription?.last_test?.last_error === "SUBSCRIPTION_GONE");
       const result = await action({ action: "subscribe", subscription: subscription.toJSON() });
       setBrowserSubscribed(true);
       setSubscriptionId(result.subscription.id); save("AGRI_PUSH_V1:" + account, result.subscription.id);
@@ -227,7 +217,8 @@ export default function FarmerOrderAlerts() {
     <div className={styles.alertButtons}>
       <button type="button" onClick={() => void enableSound()}>{sound ? "Test sound" : "Enable sound"}</button>
       {sound && <button type="button" onClick={() => { setSound(false); audio.current?.pause(); save("AGRI_SOUND_V1:" + account, "off"); }}>Mute page sound</button>}
-      <button type="button" disabled={busy} onClick={() => void enablePush()}>{registered ? "Refresh alert registration" : "Enable background alerts"}</button>
+      <button type="button" disabled={busy} onClick={() => void enablePush()}>{feed.subscription?.last_test?.last_error === "SUBSCRIPTION_GONE"
+        ? "Repair background alerts" : registered ? "Refresh alert registration" : "Enable background alerts"}</button>
       <button type="button" disabled={busy || !registered} onClick={() => void testPush()}>Test background alert</button>
       {registered && <button type="button" disabled={busy} onClick={() => void disablePush()}>Disable background alerts</button>}
     </div>
@@ -235,7 +226,9 @@ export default function FarmerOrderAlerts() {
     <PhoneAlertCheck key={subscriptionId} serverRegistered={Boolean(subscriptionId && feed.subscription?.active)} onState={deviceState} />
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error}</p>}
-    {lastTest && <p>Last background test: {lastTest.status === "sent"
+    {lastTest && <p>Last background test: {lastTest.last_error === "SUBSCRIPTION_GONE"
+      ? "the push service rejected this browser registration. Tap Repair background alerts to request a new one"
+      : lastTest.status === "sent"
       ? "accepted by the push service; phone delivery and sound are NOT confirmed"
       : ["pending", "sending"].includes(lastTest.status) ? "queued. Lock the phone now and allow up to 90 seconds. No order or driver dispatch was created" : lastTest.status}.</p>}
     <dialog ref={dialog} className={styles.alertDialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="agri-incoming-title">
