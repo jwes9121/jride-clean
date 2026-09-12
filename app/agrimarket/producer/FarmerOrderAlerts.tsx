@@ -37,6 +37,7 @@ export default function FarmerOrderAlerts() {
   const feedRef = useRef(feed);
   const soundRef = useRef(sound);
   const flight = useRef(false);
+  const authStopped = useRef(false);
   const ringFlight = useRef(false);
   const soundTestUntil = useRef(0);
   const mounted = useRef(false);
@@ -71,7 +72,7 @@ export default function FarmerOrderAlerts() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!account || flight.current) return;
+    if (!account || flight.current || authStopped.current) return;
     flight.current = true;
     try {
       const response = await fetch("/api/agrimarket/producer/alerts" + (subscriptionId ? "?subscription_id=" + subscriptionId : ""),
@@ -79,7 +80,11 @@ export default function FarmerOrderAlerts() {
       const body = await response.json();
       if (!response.ok || !body.ok) {
         const authFailed = response.status === 401 || response.status === 403;
-        if (authFailed && mounted.current) setFeed(EMPTY);
+        if (authFailed) {
+          // A stale tab must not repeatedly submit an old PIN and lock the shared farmer login.
+          authStopped.current = true;
+          if (mounted.current) setFeed(EMPTY);
+        }
         throw new Error(authFailed ? "Sign in again to receive AgriMarket alerts." : "Order alerts are reconnecting. Keep checking Orders.");
       }
       if (!mounted.current) return;

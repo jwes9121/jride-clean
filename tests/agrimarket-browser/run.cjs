@@ -136,6 +136,8 @@ async function run() {
     assert.equal((ui.match(/serviceWorker\.register\(/g)||[]).length, 1);
     assert(ui.indexOf('serviceWorker.register(') > ui.indexOf('async function enablePush()'));
     assert(!ui.includes('setItem("JRIDE_AGRIMARKET_ACCESS_PIN"'));
+    assert(ui.includes('flight.current || authStopped.current'));
+    assert(ui.includes('authStopped.current = true;'));
     assert(ui.includes('AGRI_ALERT_STALE_MS')); assert(ui.includes('navigator.locks.request'));
     assert(!ui.includes('/api/vendor-push')); assert(!ui.includes('AGRIMARKET_PHONE_APPROVAL'));
   });
