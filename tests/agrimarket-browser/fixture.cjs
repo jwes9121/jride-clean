@@ -23,10 +23,13 @@ window.Audio = class extends NativeAudio {
 const modules = {};
 function require(name) {
   if (name === 'react') return React;
+  if (name === './browserAlerts') return modules['@/lib/agrimarket/browserAlerts'];
   if (name.endsWith('.css')) return { __esModule: true, default: new Proxy({}, {get: (_,name) => name}) };
   return modules[name];
 }
 { const exports = {}; ${compile('lib/agrimarket/browserAlerts.ts')}; modules['@/lib/agrimarket/browserAlerts']=exports; }
+{ const exports = {}; ${compile('lib/agrimarket/browserAlertDevice.ts')}; modules['@/lib/agrimarket/browserAlertDevice']=exports; }
+{ const exports = {}; ${compile('app/agrimarket/producer/PhoneAlertCheck.tsx')}; modules['./PhoneAlertCheck']=exports; }
 { const exports = {}; ${compile('app/agrimarket/producer/FarmerOrderAlerts.tsx')}; modules.component=exports.default; }
 ReactDOM.createRoot(document.querySelector('#root')).render(React.createElement(modules.component));
 async function scenario(name) { await fetch('/__fixture/'+name, {method:'POST'}); window.dispatchEvent(new Event('focus')); }
