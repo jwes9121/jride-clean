@@ -137,3 +137,15 @@
 @media (min-width: 760px) { .hero { padding: 34px 36px; } .hero h1 br { display: none; } .dashboardGrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 22px; align-items: start; } .stepsCard { margin-top: 0; } .productGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .productHeading h1 { font-size: 36px; } .stats { max-width: 100%; } .emptyCard { padding: 39px 25px; } }
 @media (max-width: 480px) { .headerInner { padding: 16px 18px; } .main { padding: 18px 17px 24px; } .navigation { margin-bottom: 20px; } .tabs { flex: 1; } .tab { flex: 1; padding: 0 13px; font-size: 12px; } .hero { padding: 25px 23px; border-radius: 22px; } .hero h1 { font-size: 30px; } .hero p { max-width: 245px; font-size: 12px; } .stat { padding: 0 15px; } .stat strong { font-size: 23px; } .stat span { font-size: 10px; } .stats { padding: 17px 0; } .formGrid { grid-template-columns: minmax(0, 1fr); } .createPanel { padding: 19px; } .loginCard { padding: 24px; } .orderCard { padding: 17px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
+.alertPanel { margin: 16px 0; padding: 16px; border: 1px solid #bbd6c6; border-radius: 16px; background: #f0faf3; color: #123d2c; }
+.alertPanel p { margin: 8px 0; font-size: 14px; line-height: 1.5; }
+.alertButtons { display: flex; flex-wrap: wrap; gap: 8px; }
+.alertButtons button, .alertDialog button, .alertDialog a { min-height: 44px; padding: 10px 14px; border: 1px solid #286c49; border-radius: 10px; background: #fff; color: #17452f; font: inherit; font-weight: 700; cursor: pointer; }
+.alertButtons button:disabled { opacity: .5; cursor: not-allowed; }
+.alertNote { color: #456456; }
+.alertDialog { position: fixed; inset: 0 0 auto; margin: max(16px, env(safe-area-inset-top)) auto; box-sizing: border-box; width: min(480px, calc(100% - 24px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border: 3px solid #eac45e; border-radius: 20px; background: #102b21; color: #f2fff7; }
+.alertDialog::backdrop { background: #07150dcc; }
+.alertDialog h2 { margin: 0 0 12px; color: #ffe299; font-size: 24px; }
+.alertOrder { padding: 14px 0; border-bottom: 1px solid #547260; margin-bottom: 12px; }
+.alertOrder a { display: inline-block; margin-top: 4px; background: #b9f0cf; text-decoration: none; }
+.alertPanel :focus-visible { outline: 3px solid #ba7c0d; outline-offset: 3px; }

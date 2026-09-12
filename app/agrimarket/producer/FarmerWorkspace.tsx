@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowLeft, ArrowUpRight, Check, ClipboardList, Leaf, LockKeyhole, Package, RefreshCw, Sprout } from "lucide-react";
 import styles from "./farmer.module.css";
+import FarmerOrderAlerts from "./FarmerOrderAlerts";
 
 export function FarmerWorkspace({ section, children, onRefresh, loading = false, guest = false }: {
   section: "orders" | "products";
@@ -31,6 +32,7 @@ export function FarmerWorkspace({ section, children, onRefresh, loading = false,
           </div>
           <button type="button" onClick={onRefresh} disabled={loading} className={styles.refresh} aria-label={loading ? "Refreshing" : `Refresh ${section}`}><RefreshCw size={18} className={loading ? styles.spinning : ""} /></button>
         </nav>}
+        {!guest && <FarmerOrderAlerts />}
         {children}
         <footer className={styles.footer}><Sprout size={15} /> Grown locally. Connected by JRide.</footer>
       </main>
