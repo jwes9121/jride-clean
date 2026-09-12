@@ -104,7 +104,7 @@ export async function GET(req: Request) {
 
   const passenger_id = auth.user.id;
 
-  const r = await auth.supabase
+  const r = await adminClient()
     .from("passenger_verification_requests")
     .select("*")
     .eq("passenger_id", passenger_id)
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = auth.supabase;
+    const supabase = adminClient();
     const passenger_id = auth.user.id;
     const idBucket = process.env.VERIFICATION_ID_BUCKET || "passenger-ids";
     const selfieBucket = process.env.VERIFICATION_SELFIE_BUCKET || "passenger-selfies";

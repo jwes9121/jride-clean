@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
@@ -5,9 +6,9 @@ export async function POST(req: Request) {
   try {
     const supabase = createClient();
 
-    const { data: auth } = await supabase.auth.getUser();
+    const { data: auth, error: authError } = await supabase.auth.getUser();
     const user = auth?.user;
-    if (!user) {
+    if (authError || !user) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     // Insert or update request
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin({ noStore: true })
       .from("passenger_verification_requests")
       .upsert(
         {

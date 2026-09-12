@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
@@ -163,7 +164,8 @@ export async function GET(req: Request) {
   const hour = manilaHour();
   const nightGate = hour >= 20 || hour < 5;
 
-  const v = await computeVerified(supabase as any, user);
+  const privateSupabase = supabaseAdmin({ noStore: true });
+  const v = await computeVerified(privateSupabase, user);
   const w = await computeWallet(supabase as any, user);
 
   // NOTE: /can-book is informational; it should not hard-block booking insert by itself.

@@ -425,10 +425,11 @@ async function getTokenUserAndVerified(
   }
 
   const user = data.user;
+  const privateSupabase = supabaseAdmin({ noStore: true });
   let verified = false;
 
   try {
-    const pv = await supabase
+    const pv = await privateSupabase
       .from("passenger_verifications")
       .select("status")
       .eq("user_id", user.id)
@@ -440,7 +441,7 @@ async function getTokenUserAndVerified(
 
   if (!verified) {
     try {
-      const pr = await supabase
+      const pr = await privateSupabase
         .from("passenger_verification_requests")
         .select("status")
         .eq("passenger_id", user.id)
@@ -469,7 +470,7 @@ async function getTokenUserAndVerified(
       ];
 
       for (const [col, val] of tries) {
-        const r = await supabase
+        const r = await privateSupabase
           .from("passengers")
           .select(selV)
           .eq(col, val)
@@ -991,7 +992,7 @@ const boundaryOverrideRequested =
     let promo: Record<string, any> | null = null;
 
     if (promoCode && deviceId && booking?.id && bookingCode) {
-      const ensureRes = await userSupabase.rpc("jride_promo_ensure_android_credit", {
+      const ensureRes = await supabaseAdmin({ noStore: true }).rpc("jride_promo_ensure_android_credit", {
         p_user_id: createdByUserId,
         p_device_id: deviceId,
         p_program_code: promoProgramCode,
@@ -1029,7 +1030,7 @@ const boundaryOverrideRequested =
           }
         }
 
-        const reserveRes = await userSupabase.rpc("jride_promo_reserve_for_booking", {
+        const reserveRes = await supabaseAdmin({ noStore: true }).rpc("jride_promo_reserve_for_booking", {
           p_user_id: createdByUserId,
           p_device_id: deviceId,
           p_booking_id: booking.id,

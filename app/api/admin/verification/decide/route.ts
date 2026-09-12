@@ -37,7 +37,7 @@ async function isRequesterAdmin(adminSb: any, userId: string, email: string) {
 
   try {
     const u = await adminSb.auth.admin.getUserById(userId);
-    const md: any = u?.data?.user?.user_metadata || {};
+    const md: any = u?.data?.user?.app_metadata || {};
     const role = String(md?.role || "").toLowerCase();
     if (md?.is_admin === true) return true;
     if (role === "admin") return true;

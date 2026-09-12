@@ -114,7 +114,7 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
     const userRes = await anon.auth.getUser(token);
     const user = userRes.data?.user || null;
 
-    if (!user) {
+    if (userRes.error || !user) {
       return {
         ok: false,
         response: jsonNoStore(401, {
@@ -126,7 +126,7 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
     }
 
     if (deviceId) {
-      const sessionRes = await anon.rpc("jride_passenger_validate_device_session", {
+      const sessionRes = await createServiceSupabase().rpc("jride_passenger_validate_device_session", {
         p_user_id: user.id,
         p_device_id: deviceId,
       });
@@ -162,7 +162,7 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
   const userRes = await cookieClient.auth.getUser();
   const user = userRes.data?.user || null;
 
-  if (!user) {
+  if (userRes.error || !user) {
     return {
       ok: false,
       response: jsonNoStore(401, {
