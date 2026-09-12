@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cancelPendingDutyChecksForOfflineDriver } from "@/lib/driver-duty-check/onlineGuard";
 import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
+import { INITIAL_DUTY_REVISION, dutyRevision, parseDutyOrdering, persistDriverDuty } from "@/lib/driver-duty-ordering";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,7 +16,7 @@ function envAny(names: string[]): string {
 }
 
 function json(status: number, obj: any) {
-  return NextResponse.json(obj, { status });
+  return NextResponse.json(obj, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 function norm(s: any): string {
@@ -1010,12 +1011,39 @@ async function triggerRetryAutoAssign(baseUrl: string, triggerReason: string) {
   }
 }
 
+// Read-only handshake for Android duty ordering v1. Authentication matches POST.
+export async function GET(req: NextRequest) {
+  try {
+    const supabaseUrl = envAny(["SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_URL"]);
+    const serviceRole = envAny(["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_ROLE"]);
+    if (!supabaseUrl || !serviceRole) return json(500, { ok: false, code: "SUPABASE_ENV_MISSING" });
+    const admin = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false, autoRefreshToken: false } });
+    const auth = await resolveDriverAuth(req, admin);
+    if (!auth.ok) return json(401, { ok: false, code: auth.code, message: auth.message });
+    const requested = text(new URL(req.url).searchParams.get("driver_id"));
+    const driverId = auth.authMode === "bearer" ? auth.driverId : requested;
+    if (!driverId || !dutyRevision(driverId)) return json(400, { ok: false, code: "INVALID_DRIVER_ID" });
+    if (requested && requested !== driverId) return json(403, { ok: false, code: "DRIVER_ID_MISMATCH" });
+    const { data, error } = await admin.from("driver_locations")
+      .select("driver_id,status,duty_revision").eq("driver_id", driverId).maybeSingle();
+    if (error) return json(503, { ok: false, code: "DUTY_STATE_UNAVAILABLE" });
+    const revision = data ? dutyRevision(data.duty_revision) : INITIAL_DUTY_REVISION;
+    if (!revision) return json(503, { ok: false, code: "DUTY_ORDERING_NOT_READY" });
+    return json(200, { ok: true, ordering_version: 1, driver_id: driverId,
+      duty_revision: revision, current_status: data?.status ?? null });
+  } catch {
+    return json(500, { ok: false, code: "DUTY_STATE_UNAVAILABLE" });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const traceStartedAt = new Date().toISOString();
   console.log("[DISPATCH_TRACE] ping:start", { at: traceStartedAt });
 
   try {
     const body = await req.json().catch(() => ({}));
+    const ordering = parseDutyOrdering(body);
+    if (ordering.invalid) return json(400, { ok: false, code: "DUTY_ORDERING_INVALID" });
 
     const bodyDriverId = text(body?.driver_id ?? body?.driverId);
     if (!bodyDriverId) return json(400, { ok: false, code: "MISSING_DRIVER_ID" });
@@ -1145,7 +1173,7 @@ export async function POST(req: NextRequest) {
 
     const { data: prevLoc, error: prevLocErr } = await supabase
       .from("driver_locations")
-      .select("id, status, lat, lng, updated_at, vehicle_type")
+      .select("id, status, lat, lng, updated_at, vehicle_type, duty_revision")
       .eq("driver_id", driverId)
       .maybeSingle();
 
@@ -1156,6 +1184,14 @@ export async function POST(req: NextRequest) {
         message: prevLocErr.message,
       });
     }
+
+    const observedRevision = prevLoc ? dutyRevision((prevLoc as any).duty_revision) : INITIAL_DUTY_REVISION;
+    if (!observedRevision) return json(503, { ok: false, code: "DUTY_ORDERING_NOT_READY" });
+    const expectedRevision = ordering.ordered ? ordering.expected! : observedRevision;
+    if (expectedRevision !== observedRevision) return json(409, { ok: false, code: "DUTY_REVISION_CONFLICT", driver_id: driverId });
+    const orderingResponse = (row: any) => ordering.ordered ? {
+      ordering_version: 1, duty_expected_revision: expectedRevision, duty_revision: row?.duty_revision,
+    } : {};
 
     const previousStatus = norm((prevLoc as any)?.status ?? "");
     const previousUpdatedAt = text((prevLoc as any)?.updated_at);
@@ -1197,11 +1233,12 @@ export async function POST(req: NextRequest) {
       // First-time driver pings may arrive before Android has a GPS fix.
       // Create a non-assignable presence row so LiveTrips can see the driver,
       // but do not mark the driver online until valid coordinates arrive.
+      const missingGpsStatus = status === "offline" ? "offline" : "gps_pending";
       const gpsPendingPayload: any = {
         driver_id: driverId,
         lat: 0,
         lng: 0,
-        status: "gps_pending",
+        status: missingGpsStatus,
         town: town || null,
         updated_at: nowIso,
         vehicle_type: vehicleType,
@@ -1211,9 +1248,9 @@ export async function POST(req: NextRequest) {
         gpsPendingPayload.id = (prevLoc as any).id;
       }
 
-      const { error: gpsPendingErr } = await supabase
-        .from("driver_locations")
-        .upsert(gpsPendingPayload, { onConflict: "driver_id", ignoreDuplicates: false });
+      const { data: gpsSaved, error: gpsPendingErr, conflict: gpsConflict } =
+        await persistDriverDuty(supabase, gpsPendingPayload, expectedRevision);
+      if (gpsConflict) return json(409, { ok: false, code: "DUTY_REVISION_CONFLICT", driver_id: driverId });
 
       if (gpsPendingErr) {
         return json(500, {
@@ -1225,15 +1262,25 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      if (missingGpsStatus === "offline") {
+        await cancelPendingDutyChecksForOfflineDriver(supabase, {
+          driverId, source: "driver_location_offline_ping",
+          deviceId: (lock as any).active_device_id || deviceId,
+          presence: { online: false, raw_status: "offline", updated_at: nowIso, age_seconds: 0, is_stale: false },
+        });
+        await syncDriverPresenceSession({ supabase, driverId, town, status: "offline", previousStatus, nowIso, deviceId });
+      }
+
       return json(200, {
         ok: true,
-        code: "GPS_PENDING",
+        ...orderingResponse(gpsSaved),
+        code: missingGpsStatus === "offline" ? "OFFLINE_CONFIRMED" : "GPS_PENDING",
         driver_id: driverId,
         auth_mode: authRes.authMode,
-        status: "gps_pending",
+        status: missingGpsStatus,
         previous_status: previousStatus || null,
         location_pending: true,
-        message: "Driver ping accepted but GPS coordinates are still pending.",
+        message: missingGpsStatus === "offline" ? "Offline confirmed. GPS is not required to go offline." : "Driver ping accepted but GPS coordinates are still pending.",
         town: town || null,
         claimed: !!(lock as any).claimed,
         active_device_id: (lock as any).active_device_id,
@@ -1274,9 +1321,9 @@ export async function POST(req: NextRequest) {
       upsertPayload.id = (prevLoc as any).id;
     }
 
-    const { error: upErr } = await supabase
-      .from("driver_locations")
-      .upsert(upsertPayload, { onConflict: "driver_id", ignoreDuplicates: false });
+    const { data: savedDuty, error: upErr, conflict } =
+      await persistDriverDuty(supabase, upsertPayload, expectedRevision);
+    if (conflict) return json(409, { ok: false, code: "DUTY_REVISION_CONFLICT", driver_id: driverId });
 
     if (upErr) {
       return json(500, {
@@ -1419,6 +1466,7 @@ export async function POST(req: NextRequest) {
 
     return json(200, {
       ok: true,
+      ...orderingResponse(savedDuty),
       driver_id: driverId,
       auth_mode: authRes.authMode,
       status,
