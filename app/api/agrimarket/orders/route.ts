@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { sendFarmerBrowserAlerts } from "@/lib/agrimarket/browserPushServer";
 import {
   AgrimarketRequestError,
   loadAgrimarketOrderContext,
@@ -271,6 +272,10 @@ export async function POST(req: NextRequest) {
     }
 
     const payload = orderPayload(readBackRes.data);
+    // Best effort immediate delivery; the independent cron recovers unsent jobs.
+    // A push outage must never turn a successfully created order into a checkout error.
+    try { await sendFarmerBrowserAlerts(admin, context.producer.id); }
+    catch { console.warn("AGRIMARKET_BROWSER_ALERT_DEFERRED"); }
     return jsonNoStore(201, {
       ok: true,
       idempotent_replay: false,

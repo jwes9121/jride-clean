@@ -352,7 +352,7 @@ export default function AgrimarketProducerPage() {
             const pendingProposal = order.pending_harvest_proposal;
             const activity = scheduledActivity(order.items);
             return (
-              <article key={order.order_code} className={styles.orderCard}>
+              <article id={`agri-order-${order.order_code}`} key={order.order_code} className={styles.orderCard}>
                 <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-xl font-bold">{scheduled ? scheduledTitle(order.items) : "Agrimarket Order"}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold">{order.status === "awaiting_harvest" ? "Reservation confirmed" : titleCase(order.status)}</span></div>
                 {scheduled ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} window</strong><br/>{formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}</div> : null}
                 <div className="mt-4 divide-y rounded-xl border">{order.items.map((item) => <div key={item.product_id} className="flex justify-between gap-3 p-3"><div><strong>{item.product_name}</strong><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
