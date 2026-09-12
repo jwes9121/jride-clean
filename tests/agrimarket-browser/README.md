@@ -39,7 +39,7 @@ Use its buttons to check sound, popup review/snooze, expiry, and stale-feed hand
 
 ## Deployment and rollback
 
-1. Apply `20260912202522_agrimarket_browser_alerts_v1.sql`. Configuration starts disabled.
+1. Apply `20260912204428_agrimarket_browser_alerts_v1.sql`. Configuration starts disabled.
 2. Generate a NEW VAPID key pair with the installed web-push package. Provision it only
    into `agrimarket_alerts_private.settings` through the authorized database administrator.
    Do not commit, log, or expose the private key; do not reuse native/Takeout credentials.
