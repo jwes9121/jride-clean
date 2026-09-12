@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
@@ -131,7 +132,7 @@ export async function POST(req: Request) {
     let promoCreditId = text((booking as any).promo_credit_id) || null;
 
     if (!promoAppliedAmount || !promoStatus || !promoProgramCode || !promoCreditId) {
-      const { data: reservedCredit } = await supabase
+      const { data: reservedCredit } = await supabaseAdmin({ noStore: true })
         .from("passenger_promo_credits")
         .select("id, credit_amount, program_code, status")
         .eq("reserved_booking_id", (booking as any).id)

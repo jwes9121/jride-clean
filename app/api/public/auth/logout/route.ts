@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
@@ -80,9 +81,9 @@ async function handle(req: NextRequest) {
     const anonSupabase = createAnonSupabase();
     const userRes = await anonSupabase.auth.getUser(token);
     const user = userRes.data?.user ?? null;
-    if (!user?.id) return res;
+    if (userRes.error || !user?.id) return res;
 
-    await anonSupabase.rpc("jride_passenger_sign_out_device", {
+    await supabaseAdmin({ noStore: true }).rpc("jride_passenger_sign_out_device", {
       p_user_id: user.id,
       p_device_id: deviceId,
     });

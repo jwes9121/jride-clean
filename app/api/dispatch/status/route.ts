@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { createClient } from "@supabase/supabase-js";
@@ -123,6 +124,15 @@ export async function POST(req: NextRequest) {
     const routeClient = createRouteHandlerClient({ cookies });
     const adminClient = getAdminClient(req);
     const supabase = adminClient ?? routeClient;
+    // Cookie clients must prove driver identity before using private settlement RPCs.
+    let authenticatedDriverId: string | null = null;
+    if (!adminClient) {
+      const { data, error } = await routeClient.auth.getUser();
+      if (error || !data?.user?.id) {
+        return NextResponse.json({ ok: false, error: "NOT_AUTHED" }, { status: 401 });
+      }
+      authenticatedDriverId = data.user.id;
+    }
 
     let query = supabase
       .from("bookings")
@@ -141,6 +151,11 @@ export async function POST(req: NextRequest) {
 
     if (error || !booking) {
       return NextResponse.json({ ok: false, error: "booking_not_found" }, { status: 404 });
+    }
+
+    if (authenticatedDriverId &&
+        authenticatedDriverId !== clean(booking.assigned_driver_id || booking.driver_id)) {
+      return NextResponse.json({ ok: false, error: "BOOKING_NOT_ASSIGNED_TO_DRIVER" }, { status: 403 });
     }
 
     const current = clean(booking.status).toLowerCase();
@@ -168,7 +183,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (nextStatus === "completed") {
-      const finalized = await finalizeTripSafe(supabase, {
+      const settlementClient = adminClient ?? supabaseAdmin({ noStore: true });
+      const finalized = await finalizeTripSafe(settlementClient, {
         bookingCode: booking.booking_code || bookingCode,
         bookingId: booking.id || bookingId,
         serviceType: booking.service_type,
@@ -181,7 +197,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const promoFinalized = await finalizePromoSafe(supabase, booking);
+      const promoFinalized = await finalizePromoSafe(settlementClient, booking);
       if (!promoFinalized.ok) {
         return NextResponse.json(
           {

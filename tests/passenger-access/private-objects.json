@@ -1,0 +1,40 @@
+{
+  "tables": [
+    "passenger_addresses",
+    "passenger_device_session_events",
+    "passenger_device_sessions",
+    "passenger_free_ride_audit",
+    "passenger_profiles",
+    "passenger_promo_allowlist",
+    "passenger_promo_credits",
+    "passenger_promo_event_log",
+    "passenger_promo_redemptions",
+    "passenger_verifications",
+    "passenger_verification_requests",
+    "password_reset_tokens"
+  ],
+  "views": [
+    "admin_free_ride_summary_v1",
+    "v_jride_android_first_ride_audit",
+    "v_passenger_active_device_sessions"
+  ],
+  "fns": [
+    "admin_approve_passenger(bigint,uuid)",
+    "admin_reject_passenger(bigint,uuid,text)",
+    "dispatcher_preapprove_passenger(bigint,uuid)",
+    "jride_passenger_claim_device_session(uuid,text,text,text,text)",
+    "jride_passenger_revoke_all_sessions(uuid,text)",
+    "jride_passenger_sign_out_device(uuid,text)",
+    "jride_passenger_validate_device_session(uuid,text)",
+    "jride_promo_ensure_android_credit(uuid,text,text)",
+    "jride_promo_expire_stale_reservations(text)",
+    "jride_promo_finalize_completed_booking(uuid,numeric,uuid,text,text)",
+    "jride_promo_get_status(uuid,text,text)",
+    "jride_promo_is_whitelisted(text,uuid,text)",
+    "jride_promo_mark_message_seen(uuid,text,text)",
+    "jride_promo_release_for_booking(uuid,text,text)",
+    "jride_promo_reserve_for_booking(uuid,text,uuid,text,text)",
+    "passenger_request_verification(uuid,text,text,text,text,text,text)",
+    "promo_try_use_free_ride(uuid,uuid,uuid)"
+  ]
+}

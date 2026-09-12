@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test:vendor-workflow": "node tests/vendor-workflow/run.cjs",
-    "test:driver-duty": "node tests/driver-duty/run.cjs"
+    "test:driver-duty": "node tests/driver-duty/run.cjs",
+    "test:passenger-access": "node tests/passenger-access/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

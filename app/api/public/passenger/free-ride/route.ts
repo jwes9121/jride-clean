@@ -1,15 +1,6 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-
-function truthy(v: any): boolean {
-  if (v === true) return true;
-  if (typeof v === "number") return v > 0;
-  if (typeof v === "string") {
-    const s = v.trim().toLowerCase();
-    return s !== "" && s !== "false" && s !== "0" && s !== "no";
-  }
-  return false;
-}
 
 export async function GET() {
   const supabase = createClient();
@@ -23,14 +14,13 @@ export async function GET() {
 
   const passenger_id = user.id;
 
-  const meta: any = (user as any)?.user_metadata || {};
-  const verified =
-    truthy(meta?.verified) ||
-    truthy(meta?.is_verified) ||
-    truthy(meta?.verification_tier) ||
-    truthy(meta?.night_allowed);
+  const { data: verification } = await supabaseAdmin({ noStore: true })
+    .from("passenger_verifications").select("status").eq("user_id", user.id).maybeSingle();
+  const verified = ["approved_admin", "approved", "verified"].includes(
+    String(verification?.status || "").trim().toLowerCase()
+  );
 
-  const r = await supabase
+  const r = await supabaseAdmin({ noStore: true })
     .from("passenger_free_ride_audit")
     .select("*")
     .eq("passenger_id", passenger_id)

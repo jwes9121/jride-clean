@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
@@ -58,7 +59,7 @@ async function getUserFromCookieOrBearer(
   if (token && deviceId) {
     const anonSupabase = createAnonSupabase();
     const bearerUserRes = await anonSupabase.auth.getUser(token);
-    if (bearerUserRes.data?.user) {
+    if (!bearerUserRes.error && bearerUserRes.data?.user) {
       return {
         user: bearerUserRes.data.user,
         authMode: "bearer",
@@ -84,7 +85,7 @@ async function getUserFromCookieOrBearer(
   // replace any stale legacy localStorage bearer token used by older JRide pages.
   const cookieSupabase = createClient();
   const cookieUserRes = await cookieSupabase.auth.getUser();
-  if (cookieUserRes.data?.user) {
+  if (!cookieUserRes.error && cookieUserRes.data?.user) {
     const cookieSessionRes = await cookieSupabase.auth.getSession();
     const session = cookieSessionRes.data?.session ?? null;
 
@@ -100,7 +101,7 @@ async function getUserFromCookieOrBearer(
   if (token) {
     const anonSupabase = createAnonSupabase();
     const bearerUserRes = await anonSupabase.auth.getUser(token);
-    if (bearerUserRes.data?.user) {
+    if (!bearerUserRes.error && bearerUserRes.data?.user) {
       return {
         user: bearerUserRes.data.user,
         authMode: "bearer",
@@ -212,11 +213,11 @@ export async function GET(req: NextRequest) {
     const role = meta.role ?? null;
 
     const deviceId = getDeviceId(req);
-    const anonSupabase = createAnonSupabase();
+    const privateSupabase = supabaseAdmin({ noStore: true });
 
     let deviceSession: any = null;
     if (authMode === "bearer" && deviceId) {
-      const validateRes = await anonSupabase.rpc("jride_passenger_validate_device_session", {
+      const validateRes = await privateSupabase.rpc("jride_passenger_validate_device_session", {
         p_user_id: user.id,
         p_device_id: deviceId,
       });
@@ -246,14 +247,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const verified = await computeVerified(anonSupabase, user);
+    const verified = await computeVerified(privateSupabase, user);
 
     let promo: any = null;
     if (deviceId) {
-      const promoRes = await anonSupabase.rpc("jride_promo_get_status", {
+      const promoRes = await privateSupabase.rpc("jride_promo_get_status", {
         p_user_id: user.id,
         p_device_id: deviceId,
-        p_is_verified: verified,
         p_program_code: "ANDROID_FIRST_RIDE_40",
       });
       if (!promoRes.error) {

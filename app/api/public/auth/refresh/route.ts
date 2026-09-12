@@ -1,3 +1,4 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
@@ -90,7 +91,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const validateRes = await supabase.rpc(
+    const validateRes = await supabaseAdmin({ noStore: true }).rpc(
       "jride_passenger_validate_device_session",
       {
         p_user_id: data.user.id,

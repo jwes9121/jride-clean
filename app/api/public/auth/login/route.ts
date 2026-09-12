@@ -1,6 +1,6 @@
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,28 +51,6 @@ function cleanAppVersion(raw: unknown): string | null {
 function cleanDeviceLabel(raw: unknown): string | null {
   const s = String(raw ?? "").trim();
   return s || null;
-}
-
-function createAnonSupabase() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    process.env.SUPABASE_URL ||
-    "";
-  const anonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.SUPABASE_ANON_KEY ||
-    "";
-
-  if (!url || !anonKey) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
-
-  return createSupabaseClient(url, anonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
 }
 
 async function computeVerified(supabase: any, user: any): Promise<boolean> {
@@ -203,7 +181,8 @@ export async function POST(req: NextRequest) {
       return bad("Missing authenticated user or access token.", 500);
     }
 
-    const rpcSupabase = createAnonSupabase();
+    // Authentication above determines the identity for all private data operations.
+    const rpcSupabase = supabaseAdmin({ noStore: true });
 
     let claim: any = null;
     let promoEnsure: any = null;
