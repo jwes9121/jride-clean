@@ -1,5 +1,8 @@
 "use client";
 
+import { useFarmerSession } from "../useFarmerSession";
+import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
+
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, Bird, Egg, Fish, Leaf, Package, Pause, Plus, Search, Sprout, Wheat, X } from "lucide-react";
 import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from "../FarmerWorkspace";
@@ -31,18 +34,7 @@ type Product = {
   photo_urls?: string[];
 };
 
-const SESSION_ACCESS_CODE = "JRIDE_AGRIMARKET_ACCESS_CODE";
-const SESSION_PIN = "JRIDE_AGRIMARKET_ACCESS_PIN";
 
-function farmerHeaders(accessCode: string, pin: string, json = false): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    "x-jride-agrimarket-code": accessCode.trim().toUpperCase(),
-    "x-jride-agrimarket-pin": pin.trim(),
-  };
-  if (json) headers["Content-Type"] = "application/json";
-  return headers;
-}
 
 function money(value: unknown): string {
   const n = Number(value || 0);
@@ -85,8 +77,10 @@ const initialForm = {
 };
 
 export default function AgrimarketProducerProductsPage() {
-  const [accessCode, setAccessCode] = useState("");
-  const [pin, setPin] = useState("");
+  const { accessCode, setAccessCode, pin, setPin, sessionCode, restoring, authError, signIn, signOut, invalidate } = useFarmerSession();
+  const accountRef = useRef(sessionCode);
+  accountRef.current = sessionCode;
+  const loadFlight = useRef("");
   const [connected, setConnected] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
@@ -119,7 +113,7 @@ export default function AgrimarketProducerProductsPage() {
     if (file) body.append("file", file);
     const response = await fetch("/api/agrimarket/producer/products/photo", {
       method: file ? "POST" : "DELETE",
-      headers: farmerHeaders(accessCode, pin, !file),
+      headers: farmerSessionHeaders(sessionCode, !file),
       body: file ? body : JSON.stringify({ product_id: productId }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -139,28 +133,27 @@ export default function AgrimarketProducerProductsPage() {
   }, [showCreate]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const savedCode = window.sessionStorage.getItem(SESSION_ACCESS_CODE) || "";
-    const savedPin = window.sessionStorage.getItem(SESSION_PIN) || "";
-    setAccessCode(savedCode);
-    setPin(savedPin);
-    if (savedCode && savedPin) void loadProducts(savedCode, savedPin);
-  }, []);
+    if (sessionCode) void loadProducts(sessionCode);
+    else { setConnected(false); setProducts([]); }
+  }, [sessionCode]);
 
-  async function loadProducts(code = accessCode, accessPin = pin) {
-    if (!code.trim() || !accessPin.trim()) return;
+  async function loadProducts(code = sessionCode) {
+    if (!code || loadFlight.current === code) return;
+    loadFlight.current = code;
     setLoading(true);
     setError("");
     try {
     const response = await fetch("/api/agrimarket/producer/products", {
       cache: "no-store",
-      headers: farmerHeaders(code, accessPin),
+      headers: farmerSessionHeaders(code),
     });
     const payload = await response.json().catch(() => ({}));
+    if (accountRef.current !== code) return;
     if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
       setDisabled(true);
       setConnected(false);
     } else if (response.status === 401 || response.status === 403) {
+      invalidate();
       setConnected(false);
       setError(payload?.message || "Farmer credentials were not accepted.");
     } else if (!response.ok || payload?.ok === false) {
@@ -172,12 +165,11 @@ export default function AgrimarketProducerProductsPage() {
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
       setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
       setConnected(true);
-      window.sessionStorage.setItem(SESSION_ACCESS_CODE, code.trim().toUpperCase());
-      window.sessionStorage.setItem(SESSION_PIN, accessPin.trim());
     }
     } catch {
       setError("We couldn’t refresh your products. Check your connection and try again.");
     } finally {
+      if (loadFlight.current === code) loadFlight.current = "";
       setLoading(false);
     }
   }
@@ -189,7 +181,7 @@ export default function AgrimarketProducerProductsPage() {
     try {
     const response = await fetch("/api/agrimarket/producer/products", {
       method: "POST",
-      headers: farmerHeaders(accessCode, pin, true),
+      headers: farmerSessionHeaders(sessionCode, true),
       body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => ({}));
@@ -240,8 +232,15 @@ export default function AgrimarketProducerProductsPage() {
     return <FarmerUnavailable section="products" />;
   }
 
+  if (sessionCode && !connected) {
+    return <FarmerWorkspace section="products" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadProducts()} loading={loading || restoring}>
+      <p role="status">{loading ? "Loading your products..." : "Your products could not be loaded. Tap Refresh to try again."}</p>
+      <FarmerFeedback error={error || authError} />
+    </FarmerWorkspace>;
+  }
+
   if (!connected) {
-    return <FarmerLogin section="products" accessCode={accessCode} pin={pin} onCodeChange={setAccessCode} onPinChange={setPin} onSubmit={() => void loadProducts()} loading={loading} error={error} />;
+    return <FarmerLogin section="products" accessCode={accessCode} pin={pin} onCodeChange={setAccessCode} onPinChange={setPin} onSubmit={() => { setError(""); void signIn(); }} loading={loading || restoring} error={error || authError} />;
   }
 
   const activeCount = products.filter((product) => product.is_active).length;
@@ -253,7 +252,7 @@ export default function AgrimarketProducerProductsPage() {
   const groupNames: Record<string, string> = { produce: "Fresh produce", grain: "Rice & grain", eggs: "Eggs", aquatic: "Fish & seafood", poultry: "Poultry", livestock: "Livestock", meat: "Fresh meat", other_agri: "Farm products" };
 
   return (
-    <FarmerWorkspace section="products" onRefresh={() => void loadProducts()} loading={loading || Boolean(busy)}>
+    <FarmerWorkspace section="products" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadProducts()} loading={loading || restoring || Boolean(busy)}>
         <div className={styles.productHeading}>
           <div><span className={styles.eyebrow}>YOUR PRIVATE VENDOR SPACE</span><h1 className="break-words">{vendorName || "Your farm shelf."}</h1><p>Your products, photos and stock, together in one place.</p></div>
           <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
@@ -264,9 +263,9 @@ export default function AgrimarketProducerProductsPage() {
           <p className="mt-2 text-xs text-slate-600">Hidden from passengers. Visible to you, Admin and the driver assigned to your order.</p>
         </form>
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#edf1e3] p-5"><div><h2 className="font-semibold">Planning to butcher livestock?</h2><p className="mt-1 text-sm text-slate-600">Add a date, meat cuts and a price per kilo for each part.</p></div><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
-        {showButchering && <ButcheringForm accessCode={accessCode} headers={farmerHeaders(accessCode, pin, true)} onClose={() => setShowButchering(false)} onSaved={async count => { setShowButchering(false); setMessage(`Butchering schedule saved with ${count} meat ${count === 1 ? "cut" : "cuts"}.`); await loadProducts(); }} />}
+        {showButchering && <ButcheringForm accessCode={accessCode} headers={farmerSessionHeaders(sessionCode, true)} onClose={() => setShowButchering(false)} onSaved={async count => { setShowButchering(false); setMessage(`Butchering schedule saved with ${count} meat ${count === 1 ? "cut" : "cuts"}.`); await loadProducts(); }} />}
         <div className={styles.stats} aria-label="Product overview"><div className={styles.stat}><strong>{products.length}</strong><span>Total products</span></div><div className={styles.stat}><strong>{activeCount}</strong><span>Active listings</span></div><div className={styles.stat}><strong>{products.length - activeCount}</strong><span>Paused listings</span></div></div>
-        <FarmerFeedback error={showCreate ? undefined : error} message={message} />
+        <FarmerFeedback error={authError || (showCreate ? undefined : error)} message={message} />
 
         {showCreate && <section ref={createPanel} id="new-product" className={styles.createPanel}>
           <div className={styles.sectionHeading}><div><h2>A new addition to your farm.</h2><p>Add the product details, then check its pickup needs.</p></div><button type="button" className={styles.quietButton} aria-label="Close add product" onClick={() => setShowCreate(false)}><X size={20} /></button></div>

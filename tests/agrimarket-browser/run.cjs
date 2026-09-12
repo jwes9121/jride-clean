@@ -6,7 +6,7 @@ const ts = require('typescript');
 const root = path.resolve(__dirname, '../..');
 let passed = 0;
 async function test(name, run) { await run(); passed++; console.log('PASS ' + name); }
-function load(file, mocks = {}, env = {}) {
+function load(file, mocks = {}, env = {}, globals = {}) {
   const filename = path.join(root, file);
   const module = { exports: {} };
   const source = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
@@ -14,12 +14,12 @@ function load(file, mocks = {}, env = {}) {
   }).outputText;
   const resolve = name => {
     if (name in mocks) return mocks[name];
-    if (name.startsWith('@/')) return load(name.slice(2) + '.ts', mocks, env);
-    if (name.startsWith('.')) return load(path.posix.join(path.posix.dirname(file), name) + '.ts', mocks, env);
+    if (name.startsWith('@/')) return load(name.slice(2) + '.ts', mocks, env, globals);
+    if (name.startsWith('.')) return load(path.posix.join(path.posix.dirname(file), name) + '.ts', mocks, env, globals);
     return require(name);
   };
   vm.runInNewContext(source, { module, exports: module.exports, require: resolve, process: { env },
-    Buffer, URL, Headers, Date, console, setTimeout, clearTimeout, AbortSignal }, { filename });
+    Buffer, URL, Headers, Date, console, setTimeout, clearTimeout, AbortSignal, atob, Uint8Array, ...globals }, { filename });
   return module.exports;
 }
 const validSub = { endpoint: 'https://fcm.googleapis.com/fcm/send/test-only', keys: { p256dh: 'B' + 'A'.repeat(86), auth: 'A'.repeat(22) } };
@@ -186,6 +186,133 @@ async function run() {
     assert(ui.includes('authStopped.current = true;'));
     assert(ui.includes('AGRI_ALERT_STALE_MS')); assert(ui.includes('navigator.locks.request'));
     assert(!ui.includes('/api/vendor-push')); assert(!ui.includes('AGRIMARKET_PHONE_APPROVAL'));
+  });
+  const registrationRules = load('lib/agrimarket/browserPushRegistration.ts');
+  const publicKey = Buffer.from([1,2,3]).toString('base64url');
+  function pushHarness(keepDead = false) {
+    const events = []; const worker = farmerWorker();
+    const fresh = { endpoint: 'fresh', options: {applicationServerKey: new Uint8Array([1,2,3]).buffer} };
+    let sub = { endpoint: 'dead', options: fresh.options, unsubscribe: async () => { events.push('unsubscribe'); if (!keepDead) sub = null; return true; } };
+    worker.pushManager = { getSubscription: async () => sub,
+      subscribe: async () => { events.push('subscribe'); return fresh; } };
+    return { worker, events };
+  }
+  await test('expired push endpoint is removed before requesting a fresh subscription', async () => {
+    const h = pushHarness();
+    assert.equal((await registrationRules.farmerPushSubscription(h.worker, origin, publicKey, true)).endpoint, 'fresh');
+    assert.deepEqual(h.events, ['unsubscribe','subscribe']);
+  });
+  await test('valid push endpoint is preserved and root Takeout worker is never changed', async () => {
+    const h = pushHarness();
+    assert.equal((await registrationRules.farmerPushSubscription(h.worker, origin, publicKey, false)).endpoint, 'dead');
+    assert.deepEqual(h.events, []);
+    h.worker.scope = origin + '/';
+    await assert.rejects(registrationRules.farmerPushSubscription(h.worker, origin, publicKey, true), /not ready/);
+    assert.deepEqual(h.events, []);
+  });
+  await test('failed push removal cannot be reported as repaired', async () => {
+    const h = pushHarness(true);
+    await assert.rejects(registrationRules.farmerPushSubscription(h.worker, origin, publicKey, true), /could not be repaired/);
+    assert.deepEqual(h.events, ['unsubscribe']);
+  });
+  await test('push key rotation replaces an incompatible subscription', async () => {
+    const h = pushHarness();
+    await registrationRules.farmerPushSubscription(h.worker, origin, Buffer.from([4,5,6]).toString('base64url'), false);
+    assert.deepEqual(h.events, ['unsubscribe','subscribe']);
+  });
+  const sessions = load('lib/agrimarket/farmerSessionServer.ts');
+  const token = 'a'.repeat(64);
+  function sessionReq(method = 'GET', code = '', originValue = origin) {
+    return { method, nextUrl: new URL(origin + '/api/agrimarket/producer/session'),
+      cookies: { get: name => name === sessions.FARMER_SESSION_COOKIE ? {value:token} : undefined },
+      headers: new Headers({ origin:originValue, 'x-jride-agrimarket-session':'1', 'x-jride-agrimarket-code':code }) };
+  }
+  await test('persistent farmer cookie is opaque, HttpOnly, secure and scoped to farmer APIs', () => {
+    const issued = sessions.newFarmerSessionToken(); assert.match(issued, /^[a-f0-9]{64}$/); assert.notEqual(issued, sessions.newFarmerSessionToken());
+    const settings = []; sessions.setFarmerSessionCookie({cookies:{set:(...args)=>settings.push(args)}}, issued);
+    const [name,value,options] = settings[0]; assert.equal(name,sessions.FARMER_SESSION_COOKIE); assert.equal(value,issued);
+    assert.equal(options.httpOnly,true); assert.equal(options.secure,true); assert.equal(options.sameSite,'strict');
+    assert.equal(options.path,'/api/agrimarket/producer'); assert.equal(options.maxAge,2592000);
+    assert.notEqual(sessions.farmerSessionHash(issued),issued);
+  });
+  await test('cookie authentication rejects cross-origin requests and changed farm tabs', async () => {
+    const db={rpc:async()=>({data:{access_code:'AGF-FARM0001',producer:{id:owner}}})};
+    assert.equal(sessions.farmerSessionRequestAllowed(sessionReq('POST','', 'https://evil.test')),false);
+    const noOrigin=sessionReq('POST');noOrigin.headers.delete('origin');
+    assert.equal(sessions.farmerSessionRequestAllowed(noOrigin),false);
+    const noHeader=sessionReq();noHeader.headers.delete('x-jride-agrimarket-session');
+    assert.equal(await sessions.readFarmerSession(noHeader,db),null);
+    assert.equal(await sessions.readFarmerSession(sessionReq('GET','AGF-OTHER001'),db),null);
+    assert.equal((await sessions.readFarmerSession(sessionReq('GET','AGF-FARM0001'),db)).producer.id,owner);
+  });
+  await test('cookie authentication reports unavailable database without treating it as invalid login', async () => {
+    await assert.rejects(sessions.readFarmerSession(sessionReq(),{rpc:async()=>({error:Error('down')})}), /UNAVAILABLE/);
+    assert.equal(await sessions.readFarmerSession(sessionReq(),{rpc:async()=>({data:null})}),null);
+  });
+  function clientHarness(responses, initial={}) {
+    const values=new Map(Object.entries(initial)),calls=[];
+    const storage={getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};
+    const client=load('lib/agrimarket/farmerSessionClient.ts',{}, {}, {sessionStorage:storage,localStorage:storage,
+      fetch:async(url,options)=>{calls.push({url,...options});const result=responses.shift();if(result instanceof Error)throw result;
+        return {ok:result.status===200,status:result.status,json:async()=>result.body};}});
+    return {client,calls,values};
+  }
+  await test('a reopened browser restores via cookie without saved PIN or login POST', async () => {
+    const h=clientHarness([{status:200,body:{ok:true,access_code:'AGF-FARM0001'}}]);
+    assert.equal(await h.client.restoreFarmerSession(),'AGF-FARM0001');assert.equal(h.calls.length,1);assert.equal(h.calls[0].method,'GET');
+    assert.equal(h.calls[0].credentials,'same-origin');assert.equal(h.values.has('JRIDE_AGRIMARKET_ACCESS_PIN'),false);
+  });
+  await test('an old signed-in tab upgrades once and removes its saved PIN', async () => {
+    const h=clientHarness([{status:401,body:{}},{status:200,body:{ok:true,access_code:'AGF-FARM0001'}}],
+      {JRIDE_AGRIMARKET_ACCESS_CODE:'AGF-FARM0001',JRIDE_AGRIMARKET_ACCESS_PIN:'123456'});
+    assert.equal(await h.client.restoreFarmerSession(),'AGF-FARM0001');assert.equal(h.calls[1].method,'POST');
+    assert.equal(h.values.has('JRIDE_AGRIMARKET_ACCESS_PIN'),false);
+    assert(!('x-jride-agrimarket-pin' in h.client.farmerSessionHeaders('AGF-FARM0001',true)));
+  });
+  await test('failed old-PIN upgrade is not retried and outages do not resubmit PINs', async () => {
+    const initial={JRIDE_AGRIMARKET_ACCESS_CODE:'AGF-FARM0001',JRIDE_AGRIMARKET_ACCESS_PIN:'123456'};
+    const h=clientHarness([{status:401,body:{}},{status:401,body:{}},{status:401,body:{}}],initial);
+    await assert.rejects(h.client.restoreFarmerSession());assert.equal(await h.client.restoreFarmerSession(),'');
+    assert.equal(h.calls.filter(c=>c.method==='POST').length,1);
+    const outage=clientHarness([{status:503,body:{}}],initial);await assert.rejects(outage.client.restoreFarmerSession());
+    assert.equal(outage.calls.length,1);assert.equal(outage.values.get('JRIDE_AGRIMARKET_ACCESS_PIN'),'123456');
+  });
+  await test('sign-out waits for server revocation and clears only this farmer registration hint', async () => {
+    const initial={'AGRI_PUSH_V1:AGF-FARM0001':'46b235e6-caca-4294-95e8-dab2cd30ccf1',takeout:'keep'};
+    const h=clientHarness([{status:200,body:{ok:true}}],initial);await h.client.signOutFarmer('AGF-FARM0001');
+    assert.equal(h.calls[0].method,'DELETE');assert(h.calls[0].url.includes('subscription_id='));
+    assert.equal(h.values.get('takeout'),'keep');assert.equal(h.values.has('AGRI_PUSH_V1:AGF-FARM0001'),false);
+    const failed=clientHarness([{status:503,body:{}}],initial);await assert.rejects(failed.client.signOutFarmer('AGF-FARM0001'));
+    assert.equal(failed.values.get('AGRI_PUSH_V1:AGF-FARM0001'),initial['AGRI_PUSH_V1:AGF-FARM0001']);
+  });
+  function sessionApiHarness({result=null,error=null}={}) {
+    const calls=[];
+    const response=(status,body)=>({status,body,cookies:{set:(...args)=>calls.push({cookie:args})}});
+    const db={rpc:async(name,args)=>{calls.push({name,args});return {data:result,error};}};
+    const api=load('app/api/agrimarket/producer/session/route.ts',{'../../_lib/server':{
+      createServiceSupabase:()=>db,jsonNoStore:response,agrimarketFarmerPortalEnabled:()=>true}});
+    const req=(method,body={},site=origin)=>({...sessionReq(method,'',site),text:async()=>JSON.stringify(body)});
+    return {api,req,calls};
+  }
+  await test('session login issues a cookie after verification and returns no token or PIN in JSON', async()=>{
+    const h=sessionApiHarness({result:{access_code:'AGF-FARM0001'}});
+    const response=await h.api.POST(h.req('POST',{access_code:'AGF-FARM0001',pin:'123456'}));
+    assert.equal(response.status,200);assert.deepEqual(Object.keys(response.body).sort(),['access_code','ok']);
+    const login=h.calls.find(c=>c.name==='agrimarket_farmer_session_login_v1');assert.match(login.args.p_token_hash,/^[a-f0-9]{64}$/);
+    const cookie=h.calls.find(c=>c.cookie).cookie;assert.notEqual(cookie[1],login.args.p_token_hash);assert.equal(cookie[2].httpOnly,true);
+    assert(!JSON.stringify(response.body).includes('123456'));
+  });
+  await test('session login rejects origin spoofing and invalid credentials without issuing a cookie', async()=>{
+    const h=sessionApiHarness();assert.equal((await h.api.POST(h.req('POST',{access_code:'AGF-FARM0001',pin:'123456'},'https://evil.test'))).status,403);
+    assert.equal(h.calls.length,0);
+    assert.equal((await h.api.POST(h.req('POST',{access_code:'AGF-FARM0001',pin:'123456'}))).status,401);
+    assert(!h.calls.some(c=>c.cookie));
+  });
+  await test('session logout clears cookie only after successful server revocation', async()=>{
+    const h=sessionApiHarness();assert.equal((await h.api.DELETE(h.req('DELETE'))).status,200);
+    assert.equal(h.calls[0].name,'agrimarket_farmer_session_logout_v1');assert.equal(h.calls[1].cookie[2].maxAge,0);
+    const failed=sessionApiHarness({error:Error('private database detail')});const response=await failed.api.DELETE(failed.req('DELETE'));
+    assert.equal(response.status,503);assert(!failed.calls.some(c=>c.cookie));assert(!JSON.stringify(response.body).includes('private database'));
   });
   console.log(`${passed} AgriMarket browser alert test groups passed.`);
 }

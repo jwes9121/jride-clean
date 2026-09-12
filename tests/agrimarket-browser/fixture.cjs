@@ -13,8 +13,6 @@ function compile(file) {
   }).outputText;
 }
 const script = `
-sessionStorage.setItem('JRIDE_AGRIMARKET_ACCESS_CODE','LOCAL-FIXTURE');
-sessionStorage.setItem('JRIDE_AGRIMARKET_ACCESS_PIN','NOT-A-REAL-PIN');
 const NativeAudio = window.Audio;
 window.Audio = class extends NativeAudio {
   constructor(...args) { super(...args); for (const event of ['playing','pause','ended','error'])
@@ -23,15 +21,18 @@ window.Audio = class extends NativeAudio {
 const modules = {};
 function require(name) {
   if (name === 'react') return React;
+  if (name === './browserAlertDevice') return modules['@/lib/agrimarket/browserAlertDevice'];
   if (name === './browserAlerts') return modules['@/lib/agrimarket/browserAlerts'];
   if (name.endsWith('.css')) return { __esModule: true, default: new Proxy({}, {get: (_,name) => name}) };
   return modules[name];
 }
 { const exports = {}; ${compile('lib/agrimarket/browserAlerts.ts')}; modules['@/lib/agrimarket/browserAlerts']=exports; }
 { const exports = {}; ${compile('lib/agrimarket/browserAlertDevice.ts')}; modules['@/lib/agrimarket/browserAlertDevice']=exports; }
+{ const exports = {}; ${compile('lib/agrimarket/browserPushRegistration.ts')}; modules['@/lib/agrimarket/browserPushRegistration']=exports; }
+{ const exports = {}; ${compile('lib/agrimarket/farmerSessionClient.ts')}; modules['@/lib/agrimarket/farmerSessionClient']=exports; }
 { const exports = {}; ${compile('app/agrimarket/producer/PhoneAlertCheck.tsx')}; modules['./PhoneAlertCheck']=exports; }
 { const exports = {}; ${compile('app/agrimarket/producer/FarmerOrderAlerts.tsx')}; modules.component=exports.default; }
-ReactDOM.createRoot(document.querySelector('#root')).render(React.createElement(modules.component));
+ReactDOM.createRoot(document.querySelector('#root')).render(React.createElement(modules.component, {accountCode:'AGF-FIXTURE01'}));
 async function scenario(name) { await fetch('/__fixture/'+name, {method:'POST'}); window.dispatchEvent(new Event('focus')); }
 document.querySelector('#order').onclick=()=>scenario('order');
 document.querySelector('#expire').onclick=()=>scenario('expire');
