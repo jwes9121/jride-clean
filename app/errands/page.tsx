@@ -6,6 +6,7 @@ import ErrandLiveMap from "./ErrandLiveMap";
 import ErrandLocationField, {
   type ErrandLocationValue,
 } from "./ErrandLocationField";
+import { preparePassengerSession, signOutPassenger } from "@/lib/passenger/browserSession";
 
 const TOKEN_KEY = "jride_access_token";
 const PASSENGER_TOKEN_KEY = "jride_passenger_token";
@@ -336,6 +337,7 @@ export default function ErrandPage() {
   const authed = eligibility?.authed === true;
   const verified = eligibility?.verified === true;
   const profileName = clean(eligibility?.profile_name);
+  const eligibilityFailed = Boolean(clean(eligibility?.error));
 
   const cargoKg = numberOrNull(cargoWeight);
   const cargoTooHeavy = cargoKg != null && cargoKg > 100;
@@ -369,21 +371,27 @@ export default function ErrandPage() {
   const refreshEligibility = React.useCallback(async () => {
     setEligibilityLoading(true);
     try {
+      await preparePassengerSession();
       const { response, json } = await getAuthJson(
         "/api/passenger/errand/eligibility"
       );
 
-      if (response.status === 401 || json?.authed === false) {
-        setEligibility({ enabled: false, authed: false, verified: false });
+      if (json?.authed === false) {
+        setEligibility({
+          enabled: json?.enabled === true,
+          authed: false,
+          verified: false,
+          verification_status: null,
+        });
         return;
       }
 
       if (!response.ok || json?.ok === false) {
         setEligibility({
-          enabled: false,
-          authed: false,
+          enabled: json?.enabled === true,
+          authed: json?.authed === true,
           verified: false,
-          error: clean(json?.error),
+          error: clean(json?.error) || "ERRAND_ELIGIBILITY_READ_FAILED",
           message: clean(json?.message) || `HTTP ${response.status}`,
         });
         return;
@@ -646,6 +654,11 @@ export default function ErrandPage() {
     }
   }
 
+  async function handleSignOut() {
+    await signOutPassenger();
+    window.location.replace("/passenger-login");
+  }
+
   function dismissReceipt() {
     const id = clean(receipt?.booking_id);
     if (id) {
@@ -663,13 +676,13 @@ export default function ErrandPage() {
     return <LoadingScreen label="Checking your JRide Errand access..." />;
   }
 
-  if (!enabled) {
+  if (eligibilityFailed) {
     return (
       <GateScreen
-        title="Errand is temporarily unavailable"
-        message="Please try again later or contact JRide support."
-        action="Back to Passenger"
-        onAction={() => router.push("/passenger")}
+        title="Unable to check Errand access"
+        message={clean(eligibility?.message) || "Please retry the access check."}
+        action="Retry"
+        onAction={() => void refreshEligibility()}
       />
     );
   }
@@ -678,13 +691,24 @@ export default function ErrandPage() {
     return (
       <GateScreen
         title="Sign in to use Errand"
-        message="Your session is no longer active. Sign in before starting or continuing a transaction."
+        message="Sign in before starting or continuing a transaction."
         action="Passenger Sign In"
         onAction={() =>
           router.push(
             "/passenger-login?callbackUrl=" + encodeURIComponent("/errands")
           )
         }
+      />
+    );
+  }
+
+  if (!enabled) {
+    return (
+      <GateScreen
+        title="Errand is temporarily unavailable"
+        message="Please try again later or contact JRide support."
+        action="Back to Passenger"
+        onAction={() => router.push("/passenger")}
       />
     );
   }
@@ -761,6 +785,7 @@ export default function ErrandPage() {
       notice={notice}
       bookingBusy={bookingBusy}
       onBackToPassenger={() => router.push("/passenger")}
+      onSignOut={handleSignOut}
       onPrevious={goBack}
       onNext={goNext}
       onSubmit={submitErrand}
@@ -800,6 +825,7 @@ function NewErrandFlow(props: {
   notice: string;
   bookingBusy: boolean;
   onBackToPassenger: () => void;
+  onSignOut: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSubmit: () => void;
@@ -836,6 +862,7 @@ function NewErrandFlow(props: {
     notice,
     bookingBusy,
     onBackToPassenger,
+    onSignOut,
     onPrevious,
     onNext,
     onSubmit,
@@ -897,8 +924,9 @@ function NewErrandFlow(props: {
         </header>
 
         <div className="px-4 py-5">
-          <div className="mb-4 rounded-2xl bg-[#162228] px-4 py-3 text-xs text-[#B6C7D3] ring-1 ring-[#36536A]">
-            Passenger: <span className="font-bold text-[#F3F6FA]">{profileName}</span>
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#162228] px-4 py-3 text-xs text-[#B6C7D3] ring-1 ring-[#36536A]">
+            <span>Passenger: <span className="font-bold text-[#F3F6FA]">{profileName}</span></span>
+            <button type="button" onClick={onSignOut} className="rounded-lg border border-white/20 px-2.5 py-1.5 font-bold text-[#A7F3D0]">Sign out</button>
           </div>
 
           {notice ? (

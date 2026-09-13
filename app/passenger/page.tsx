@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { passengerLoginHref, signOutPassenger } from "@/lib/passenger/browserSession";
 
 export default function PassengerDashboardPage() {
   const router = useRouter();
@@ -87,8 +88,8 @@ export default function PassengerDashboardPage() {
 
   void freeRideStatus;
 
-  function gotoLogin() {
-    router.push("/passenger-login");
+  function gotoLogin(callbackPath = "/passenger") {
+    router.push(passengerLoginHref(callbackPath));
   }
 
   function goVerify() {
@@ -116,9 +117,7 @@ export default function PassengerDashboardPage() {
               type="button"
               className="ml-2 rounded border px-3 py-1 text-xs hover:bg-gray-50"
               onClick={async () => {
-                try {
-                  await fetch("/api/public/auth/logout", { method: "POST", cache: "no-store" });
-                } catch {}
+                await signOutPassenger();
                 window.location.replace("/passenger-login");
               }}
             >
@@ -175,7 +174,7 @@ export default function PassengerDashboardPage() {
 
           <button
             type="button"
-            onClick={() => (authed ? router.push("/takeout") : gotoLogin())}
+            onClick={() => (authed ? router.push("/takeout") : gotoLogin("/takeout"))}
             className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3"
           >
             <div className="font-semibold">Takeout</div>
@@ -184,7 +183,7 @@ export default function PassengerDashboardPage() {
 
           <button
             type="button"
-            onClick={() => (authed ? router.push("/errands") : gotoLogin())}
+            onClick={() => (authed ? router.push("/errands") : gotoLogin("/errands"))}
             className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3"
           >
             <div className="font-semibold">Errands</div>
@@ -194,7 +193,7 @@ export default function PassengerDashboardPage() {
           {agrimarketEnabled ? (
             <button
               type="button"
-              onClick={() => (authed ? router.push("/agrimarket") : gotoLogin())}
+              onClick={() => (authed ? router.push("/agrimarket") : gotoLogin("/agrimarket"))}
               className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3"
             >
               <div className="font-semibold text-emerald-900">Agrimarket</div>
@@ -206,7 +205,7 @@ export default function PassengerDashboardPage() {
         <div className="mt-5 flex gap-3">
           <button
             type="button"
-            onClick={() => (authed ? router.push("/ride") : gotoLogin())}
+            onClick={() => (authed ? router.push("/ride") : gotoLogin("/ride"))}
             disabled={loading}
             className={
               "rounded-xl px-5 py-2 font-semibold text-white " +
