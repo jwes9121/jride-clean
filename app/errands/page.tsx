@@ -6,7 +6,7 @@ import ErrandLiveMap from "./ErrandLiveMap";
 import ErrandLocationField, {
   type ErrandLocationValue,
 } from "./ErrandLocationField";
-import { preparePassengerSession } from "@/lib/passenger/browserSession";
+import { preparePassengerSession, signOutPassenger } from "@/lib/passenger/browserSession";
 
 const TOKEN_KEY = "jride_access_token";
 const PASSENGER_TOKEN_KEY = "jride_passenger_token";
@@ -654,6 +654,11 @@ export default function ErrandPage() {
     }
   }
 
+  async function handleSignOut() {
+    await signOutPassenger();
+    window.location.replace("/passenger-login");
+  }
+
   function dismissReceipt() {
     const id = clean(receipt?.booking_id);
     if (id) {
@@ -780,6 +785,7 @@ export default function ErrandPage() {
       notice={notice}
       bookingBusy={bookingBusy}
       onBackToPassenger={() => router.push("/passenger")}
+      onSignOut={handleSignOut}
       onPrevious={goBack}
       onNext={goNext}
       onSubmit={submitErrand}
@@ -819,6 +825,7 @@ function NewErrandFlow(props: {
   notice: string;
   bookingBusy: boolean;
   onBackToPassenger: () => void;
+  onSignOut: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSubmit: () => void;
@@ -855,6 +862,7 @@ function NewErrandFlow(props: {
     notice,
     bookingBusy,
     onBackToPassenger,
+    onSignOut,
     onPrevious,
     onNext,
     onSubmit,
@@ -916,8 +924,9 @@ function NewErrandFlow(props: {
         </header>
 
         <div className="px-4 py-5">
-          <div className="mb-4 rounded-2xl bg-[#162228] px-4 py-3 text-xs text-[#B6C7D3] ring-1 ring-[#36536A]">
-            Passenger: <span className="font-bold text-[#F3F6FA]">{profileName}</span>
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#162228] px-4 py-3 text-xs text-[#B6C7D3] ring-1 ring-[#36536A]">
+            <span>Passenger: <span className="font-bold text-[#F3F6FA]">{profileName}</span></span>
+            <button type="button" onClick={onSignOut} className="rounded-lg border border-white/20 px-2.5 py-1.5 font-bold text-[#A7F3D0]">Sign out</button>
           </div>
 
           {notice ? (
