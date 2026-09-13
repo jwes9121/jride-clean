@@ -4,6 +4,13 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductPhoto } from "./ProductPhoto";
 import { scheduledTitle } from "@/lib/agrimarket/schedule";
+import {
+  passengerAuthHeaders,
+  passengerLoginHref,
+  preparePassengerSession,
+  signOutPassenger,
+  type PassengerSession,
+} from "@/lib/passenger/browserSession";
 
 type AddressRow = {
   id: string;
@@ -58,22 +65,7 @@ type ProductRow = {
 type CartLine = { product: ProductRow; quantity: number };
 
 function authHeaders(json = false): Record<string, string> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (json) headers["Content-Type"] = "application/json";
-  if (typeof window === "undefined") return headers;
-  const token =
-    window.localStorage.getItem("jride_passenger_token") ||
-    window.localStorage.getItem("jride_access_token") ||
-    window.sessionStorage.getItem("jride_passenger_token") ||
-    window.sessionStorage.getItem("jride_access_token") ||
-    "";
-  const deviceId =
-    window.localStorage.getItem("jride_native_device_id") ||
-    window.sessionStorage.getItem("jride_native_device_id") ||
-    "";
-  if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
-  if (deviceId.trim()) headers["x-device-id"] = deviceId.trim();
-  return headers;
+  return passengerAuthHeaders(json);
 }
 
 function money(value: unknown): string {
@@ -91,6 +83,10 @@ function formatDate(value: unknown): string {
 
 function titleCase(value: unknown): string {
   return String(value || "").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function isDemoProductName(value: unknown): boolean {
+  return /^DEMO(?:\s|[-:])/i.test(String(value || "").trim());
 }
 
 function exactRoadDistance(value: unknown): string {
@@ -129,35 +125,48 @@ export default function AgrimarketPage() {
   const [disabled, setDisabled] = useState(false);
   const [error, setError] = useState("");
   const [cartMessage, setCartMessage] = useState("");
+  const [session, setSession] = useState<PassengerSession | null>(null);
 
   useEffect(() => { void initialize(); }, []);
 
   async function initialize() {
     setLoading(true);
     setError("");
-    const statusRes = await fetch("/api/agrimarket/status", { cache: "no-store" });
-    const status = await statusRes.json().catch(() => ({}));
-    if (!status?.enabled) {
-      setDisabled(true);
-      setLoading(false);
-      return;
-    }
+    setDisabled(false);
+    try {
+      const currentSession = await preparePassengerSession();
+      setSession(currentSession);
+      if (currentSession.error || currentSession.authed !== true) return;
 
-    const addressRes = await fetch("/api/agrimarket/addresses", { cache: "no-store", headers: authHeaders() });
-    const addressPayload = await addressRes.json().catch(() => ({}));
-    if (!addressRes.ok || addressPayload?.ok === false) {
-      setError(addressPayload?.message || addressPayload?.error || "Unable to load delivery addresses.");
+      const statusRes = await fetch("/api/agrimarket/status", { cache: "no-store" });
+      const status = await statusRes.json().catch(() => ({}));
+      if (!status?.enabled) {
+        setDisabled(true);
+        return;
+      }
+
+      const addressRes = await fetch("/api/agrimarket/addresses", { cache: "no-store", headers: authHeaders() });
+      const addressPayload = await addressRes.json().catch(() => ({}));
+      if (addressRes.status === 401) {
+        setSession({ ...currentSession, authed: false });
+        return;
+      }
+      if (!addressRes.ok || addressPayload?.ok === false) {
+        setError(addressPayload?.message || addressPayload?.error || "Unable to load delivery addresses.");
+        return;
+      }
+      const rows: AddressRow[] = Array.isArray(addressPayload?.addresses) ? addressPayload.addresses : [];
+      setAddresses(rows);
+      const selected = rows.find((row) => row.is_primary && row.has_valid_pin) || rows.find((row) => row.has_valid_pin);
+      if (selected) {
+        setAddressId(selected.id);
+        await loadCatalog(selected.id);
+      }
+    } catch (error: any) {
+      setError(String(error?.message || "Unable to load Agrimarket."));
+    } finally {
       setLoading(false);
-      return;
     }
-    const rows: AddressRow[] = Array.isArray(addressPayload?.addresses) ? addressPayload.addresses : [];
-    setAddresses(rows);
-    const selected = rows.find((row) => row.is_primary && row.has_valid_pin) || rows.find((row) => row.has_valid_pin);
-    if (selected) {
-      setAddressId(selected.id);
-      await loadCatalog(selected.id);
-    }
-    setLoading(false);
   }
 
   async function loadCatalog(nextAddressId: string) {
@@ -183,7 +192,12 @@ export default function AgrimarketPage() {
       setError(payload?.message || payload?.error || "Unable to load Agrimarket products.");
       return;
     }
-    const town = String(payload?.address?.town || "").trim();
+    if (response.status === 401) {
+    setSession((current) => (current ? { ...current, authed: false } : { authed: false }));
+    setProducts([]);
+    return;
+  }
+  const town = String(payload?.address?.town || "").trim();
     setDeliveryTown(town || null);
     setDeliveryTownResolved(payload?.address?.town_resolution === "resolved" && Boolean(town));
     setProducts(Array.isArray(payload?.products) ? payload.products : []);
@@ -458,6 +472,44 @@ export default function AgrimarketPage() {
     }
   }
 
+  if (loading && !session) {
+    return (
+      <main className="min-h-screen bg-emerald-50 px-4 py-10">
+        <div className="mx-auto max-w-xl rounded-3xl bg-white p-8 text-center shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p>
+          <p className="mt-3 text-slate-600">Checking your passenger session...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!loading && session?.error) {
+    return (
+      <main className="min-h-screen bg-emerald-50 px-4 py-10">
+        <div className="mx-auto max-w-xl rounded-3xl bg-white p-8 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p>
+          <h1 className="mt-2 text-3xl font-bold">Unable to check your passenger session</h1>
+          <p className="mt-3 text-slate-600">{session.message || "Please try again."}</p>
+          <button type="button" onClick={() => void initialize()} className="mt-5 rounded-xl bg-emerald-700 px-5 py-3 font-semibold text-white">Retry</button>
+        </div>
+      </main>
+    );
+  }
+
+  if (!loading && session && session.authed !== true) {
+    return (
+      <main className="min-h-screen bg-emerald-50 px-4 py-10">
+        <div className="mx-auto max-w-xl rounded-3xl bg-white p-8 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p>
+          <h1 className="mt-2 text-3xl font-bold">Sign in to shop Agrimarket</h1>
+          <p className="mt-3 text-slate-600">Your passenger account is required to view delivery addresses, add products, and place an order.</p>
+          <Link href={passengerLoginHref("/agrimarket")} className="mt-5 inline-flex rounded-xl bg-emerald-700 px-5 py-3 font-semibold text-white">Passenger Sign In</Link>
+          <Link href="/passenger" className="ml-2 mt-5 inline-flex rounded-xl border border-emerald-700 px-5 py-3 font-semibold text-emerald-800">Passenger home</Link>
+        </div>
+      </main>
+    );
+  }
+
   if (disabled) {
     return <main className="min-h-screen bg-emerald-50 px-4 py-10"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8 shadow-sm"><h1 className="text-3xl font-bold">Agrimarket is still in pre-launch</h1><p className="mt-3 text-slate-600">The marketplace will appear here when JRide enables it.</p><Link href="/passenger" className="mt-5 inline-flex rounded-xl bg-emerald-700 px-5 py-3 font-semibold text-white">Back to Passenger</Link></div></main>;
   }
@@ -467,7 +519,7 @@ export default function AgrimarketPage() {
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div><p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p><h1 className="text-3xl font-bold">Buy directly from local farmers</h1><p className="mt-1 text-sm text-slate-600">Farmer identities and exact pickup locations stay protected. Seller town and exact routed distance are shown so you can compare delivery options.</p></div>
-          <div className="flex gap-2"><Link href="/agrimarket/order" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Track order</Link><Link href="/passenger" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Passenger home</Link></div>
+          <div className="flex flex-wrap items-center justify-end gap-2"><span className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold">{session?.user?.full_name || session?.user?.name || session?.user?.email || "Signed in"}</span><Link href="/agrimarket/order" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Track order</Link><Link href="/passenger" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Passenger home</Link><button type="button" onClick={async () => { await signOutPassenger(); window.location.replace("/passenger"); }} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Sign out</button></div>
         </header>
 
         {error ? <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
@@ -572,7 +624,7 @@ export default function AgrimarketPage() {
               {!loading && visibleProducts.map((product) => (
                 <article key={product.id} className="rounded-2xl border bg-white p-4 shadow-sm">
                   <ProductPhoto url={product.photo_urls?.[0]} name={product.name} className="mb-4" />
-                  <div className="flex items-start justify-between gap-2"><div><p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p><h2 className="mt-1 text-xl font-bold">{product.name}</h2><p className="mt-1 text-xs text-slate-500">{product.producer_town || "Town unavailable"}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{exactRoadDistance(product.road_distance_km)}</span></div>
+                  <div className="flex items-start justify-between gap-2"><div><div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase text-emerald-700">{product.producer_alias}</p>{isDemoProductName(product.name) ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-800">Demo listing</span> : null}</div><h2 className="mt-1 text-xl font-bold">{product.name}</h2><p className="mt-1 text-xs text-slate-500">{product.producer_town || "Town unavailable"}</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-xs">{exactRoadDistance(product.road_distance_km)}</span></div>
                   <p className="mt-2 text-sm text-slate-600">{product.description || `${titleCase(product.condition)} - ${titleCase(product.cargo_class)}`}</p>
                   <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} reservable</span></div>
                   {comparisonHint(product) ? <p className="mt-2 text-xs font-semibold text-emerald-700">{comparisonHint(product)}</p> : null}
