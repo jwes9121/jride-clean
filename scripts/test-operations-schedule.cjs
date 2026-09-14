@@ -26,6 +26,18 @@ test('cannot claim an owned duty', () => assert.throws(() => apply(claimed, acto
 test('Primary and Backup cannot be same person', () => assert.throws(() => apply(claimed, actors[0], 'claim', { day: '2026-10-01', duty: 'backup' }), /different people/));
 test('Core and Evening may share an employee', () => assert.equal(apply(claimed, actors[0], 'claim', { day: '2026-10-01', duty: 'evening' }).slots['2026-10-01/evening'].owner, 'coordinator-1'));
 test('future release and bawi', () => { const s = apply(claimed, actors[0], 'release', { day: '2026-10-01', duty: 'primary' }); assert.equal(s.slots['2026-10-01/primary'].owner, null); assert.equal(apply(s, actors[0], 'claim', { day: '2026-10-02', duty: 'backup' }).slots['2026-10-02/backup'].owner, 'coordinator-1'); });
+test('employee can atomically switch a duty and close its coverage request', () => {
+  const requested = apply(claimed, actors[0], 'coverage', { day: '2026-10-01', duty: 'primary', note: 'Side work conflict' });
+  const switched = apply(requested, actors[0], 'switch', { day: '2026-10-01', duty: 'primary', targetDay: '2026-10-02', targetDuty: 'primary', note: 'Changed schedule for coverage' });
+  assert.deepEqual(switched.slots['2026-10-01/primary'], { owner: null, coverage: false });
+  assert.deepEqual(switched.slots['2026-10-02/primary'], { owner: 'coordinator-1', coverage: false });
+});
+test('employee cannot switch another employee duty and Admin can clear with a reason', () => {
+  assert.throws(() => apply(claimed, actors[1], 'switch', { day: '2026-10-01', duty: 'primary', targetDay: '2026-10-02', targetDuty: 'primary', note: 'Not my assignment' }), /duty owner/);
+  assert.throws(() => apply(claimed, admin, 'clear', { day: '2026-10-01', duty: 'primary' }), /reason/);
+  const cleared = apply(claimed, admin, 'clear', { day: '2026-10-01', duty: 'primary', note: 'Remove duplicate assignment' });
+  assert.deepEqual(cleared.slots['2026-10-01/primary'], { owner: null, coverage: false });
+});
 test('release is rejected exactly 24 hours before start', () => assert.throws(() => apply(claimed, actors[0], 'release', { day: '2026-10-01', duty: 'primary' }, new Date('2026-09-30T02:00Z')), /Within 24/));
 test('coverage retains owner until accepted and cannot be accepted twice', () => { const s = apply(claimed, actors[0], 'coverage', { day: '2026-10-01', duty: 'primary', note: 'Vendor visit' }); assert.equal(s.slots['2026-10-01/primary'].owner, 'coordinator-1'); const t = apply(s, actors[1], 'accept', { day: '2026-10-01', duty: 'primary' }); assert.deepEqual(t.slots['2026-10-01/primary'], { owner: 'coordinator-2', coverage: false }); assert.throws(() => apply(t, actors[2], 'accept', { day: '2026-10-01', duty: 'primary' }), /no longer available/); });
 test('backup cannot take Primary without replacement for Backup', () => { let s = apply(claimed, actors[1], 'claim', { day: '2026-10-01', duty: 'backup' }); s = apply(s, actors[0], 'coverage', { day: '2026-10-01', duty: 'primary', note: 'Need cover' }); assert.throws(() => apply(s, actors[1], 'accept', { day: '2026-10-01', duty: 'primary' }), /different people/); });
