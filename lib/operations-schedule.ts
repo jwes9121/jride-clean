@@ -238,6 +238,19 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
           check(!createsPrimaryEveningWholeDay(s, me, targetDay, targetDuty) || validReason(note), "This replacement gives you both Core Primary and Evening on the same day. Add a reason and retry.");
           s.slots[key] = { owner: null, coverage: false };
           s.slots[destinationKey] = { owner: me, coverage: false };
+        } else if (action === "handoff") {
+          check(!admin, "Only an employee can hand off their own duty.");
+          const targetEmployee = text(input.targetEmployee);
+          check(targetEmployee && targetEmployee !== me && s.employees.some(e => e.id === targetEmployee), "Choose another coordinator.");
+          check(slot.owner === me, "Only the duty owner can hand off this schedule.");
+          check(validReason(note), "Add a brief reason for a same-day handoff.");
+          check(s.rests[day] !== targetEmployee, "The coworker is on a rest day.");
+          check(!eventsOn(s, day).some(event => event.participants.includes(targetEmployee) && eventBlocksDuty(event, duty)), "This handoff conflicts with the coworker's event assignment.");
+          const targetCount = weeklyDutyCountLocal(s, targetEmployee, weekStart(day), duty);
+          const targetLimit = weeklyDutyTargetLocal(s, targetEmployee, weekStart(day), duty);
+          check(targetCount < targetLimit || validReason(note), "The coworker has reached the weekly duty target. Add a reason for this exception.");
+          check(!createsPrimaryEveningWholeDay(s, targetEmployee, day, duty) || validReason(note), "This handoff gives the coworker both Core Primary and Evening on the same day. Add a reason and retry.");
+          s.slots[key] = { owner: targetEmployee, coverage: false };
         } else if (action === "claim" || action === "accept" || action === "override") {
           if (action === "claim") check(!slot.owner, "Someone already owns this duty. Refresh the schedule.");
           if (action === "accept") check(slot.coverage && slot.owner && slot.owner !== target, "This coverage request is no longer available to you.");
