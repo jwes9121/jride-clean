@@ -118,13 +118,13 @@ export default function OperationsSchedule() {
     const onRest = s.rests[selection.day] === employee.id;
     const otherDuty: Duty = selection.duty === "primary" ? "evening" : "primary";
     const hasOtherShift = getSlot(s, selection.day, otherDuty).owner === employee.id;
-    const eligible = !onRest && !hasOtherShift && (current < required || currentDayAdminCorrection);
+    const eligible = !onRest && !hasOtherShift && (current < required || (admin && selection.day === today));
     const status = onRest
       ? "rest day"
       : hasOtherShift
         ? "already has the other shift"
         : current >= required
-          ? currentDayAdminCorrection ? `target complete ${current}/${required} - correction allowed` : `target complete ${current}/${required}`
+          ? (admin && selection.day === today) ? `target complete ${current}/${required} - correction allowed` : `target complete ${current}/${required}`
           : `${current}/${required} this week`;
     return { employee, current, required, eligible, status };
   }) : [];
