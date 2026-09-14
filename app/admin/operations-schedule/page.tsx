@@ -10,6 +10,7 @@ import ShiftReportPanel from "./ShiftReportPanel";
 
 type Event = { id: number; version: number; actor: string; action: string; note: string; day: string; duty: string; created_at: string; changes: { before: Schedule; after: Schedule } };
 type Data = { onboarding?: boolean; version: number; state: Schedule; actor: Actor; approved: string[]; drivers: Driver[]; events: Event[]; serverTime: string };
+type Recommendation = { employee: Employee; remaining: number; exception: boolean; reason: string };
 const labels = { primary: "Core Primary", backup: "Core Backup", evening: "Evening Monitor" };
 const times = { primary: "10:00 AM - 3:00 PM", backup: "10:00 AM - 3:00 PM", evening: "3:00 PM - 7:00 PM" };
 const displayDay = (d: string) => new Date(d + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -136,35 +137,135 @@ export default function OperationsSchedule() {
   const adminFillNote = note.trim() || "Admin assigned unfilled schedule";
   const selectedAdminFill = adminFillOptions.find(item => item.employee.id === target);
   const adminExceptionNeedsReason = Boolean(selectedAdminFill?.exception);
-  const recommendEmployee = (day: string, duty: Duty) => {
-    if (!s || !s.employees.length) return null;
-    const week = weekStart(day);
-    const dayOffset = Math.floor((new Date(day + "T00:00:00Z").getTime() - new Date(LAUNCH_DATE + "T00:00:00Z").getTime()) / 86400000);
-    const preferredIndex = ((dayOffset + DUTIES.indexOf(duty)) % s.employees.length + s.employees.length) % s.employees.length;
-    const otherDuty: Duty = duty === "primary" ? "evening" : "primary";
-    const candidates = s.employees.map((employee, index) => {
-      const count = weeklyDutyCount(s, employee.id, week, duty);
-      const targetCount = weeklyDutyTarget(s, employee.id, week, duty);
-      const onRest = s.rests[day] === employee.id;
-      const conflicts = eventsOn(s, day).some(event => event.participants.includes(employee.id) && eventBlocksDuty(event, duty));
-      const hasOtherShift = getSlot(s, day, otherDuty).owner === employee.id;
-      const distance = (index - preferredIndex + s.employees.length) % s.employees.length;
-      return { employee, remaining: targetCount - count, onRest, conflicts, hasOtherShift, distance };
+  const recommendationsForWeek = (week: string) => {
+    const plan = new Map<string, Recommendation>();
+    if (!s || !s.employees.length) return plan;
+
+    const weekDays = Array.from({ length: 7 }, (_, i) => addDays(week, i));
+    const countBy = new Map<string, Record<Duty, number>>();
+    s.employees.forEach(employee => countBy.set(employee.id, { primary: 0, evening: 0 }));
+    weekDays.forEach(day => DUTIES.forEach(duty => {
+      const owner = getSlot(s, day, duty).owner;
+      if (owner && countBy.has(owner)) countBy.get(owner)![duty] += 1;
+    }));
+
+    const slotKey = (day: string, duty: Duty) => `${day}/${duty}`;
+    const preferredIndex = (day: string, duty: Duty) => {
+      const dayOffset = Math.floor((new Date(day + "T00:00:00Z").getTime() - new Date(LAUNCH_DATE + "T00:00:00Z").getTime()) / 86400000);
+      return ((dayOffset + DUTIES.indexOf(duty)) % s.employees.length + s.employees.length) % s.employees.length;
+    };
+    const projectedOwners = new Map<string, string>();
+    const ownerAt = (day: string, duty: Duty) => projectedOwners.get(slotKey(day, duty)) || getSlot(s, day, duty).owner;
+    const openSlots = weekDays
+      .flatMap(day => DUTIES.map(duty => ({ day, duty })))
+      .filter(({ day, duty }) => {
+        if (getSlot(s, day, duty).owner) return false;
+        const ended = new Date(`${day}T${duty === "evening" ? "19" : "15"}:00:00+08:00`).getTime() <= now.getTime();
+        return !ended;
+      });
+
+    const normalCandidates = ({ day, duty }: { day: string; duty: Duty }) => {
+      const otherDuty: Duty = duty === "primary" ? "evening" : "primary";
+      return s.employees.map((employee, index) => {
+        const count = countBy.get(employee.id)![duty];
+        const targetCount = weeklyDutyTarget(s, employee.id, week, duty);
+        const remaining = targetCount - count;
+        const onRest = s.rests[day] === employee.id;
+        const conflicts = eventsOn(s, day).some(event => event.participants.includes(employee.id) && eventBlocksDuty(event, duty));
+        const hasOtherShift = ownerAt(day, otherDuty) === employee.id;
+        const distance = (index - preferredIndex(day, duty) + s.employees.length) % s.employees.length;
+        return { employee, remaining, onRest, conflicts, hasOtherShift, distance };
+      }).filter(item => item.remaining > 0 && !item.onRest && !item.conflicts && !item.hasOtherShift)
+        .sort((a, b) => a.distance - b.distance || b.remaining - a.remaining);
+    };
+
+    const orderedSlots = openSlots.slice().sort((a, b) =>
+      normalCandidates(a).length - normalCandidates(b).length ||
+      a.day.localeCompare(b.day) ||
+      DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty)
+    );
+    let best: { assigned: number; score: number; assignments: Map<string, Recommendation> } = { assigned: -1, score: Number.POSITIVE_INFINITY, assignments: new Map() };
+    let explored = 0;
+    const search = (index: number, score: number, assignments: Map<string, Recommendation>) => {
+      explored += 1;
+      if (explored > 250000) return;
+      if (best.assigned === orderedSlots.length && score >= best.score) return;
+      if (assignments.size + orderedSlots.length - index < best.assigned) return;
+      if (index >= orderedSlots.length) {
+        if (assignments.size > best.assigned || assignments.size === best.assigned && score < best.score) {
+          best = { assigned: assignments.size, score, assignments: new Map(assignments) };
+        }
+        return;
+      }
+
+      const slot = orderedSlots[index];
+      const candidates = normalCandidates(slot);
+      for (const candidate of candidates) {
+        const count = countBy.get(candidate.employee.id)!;
+        count[slot.duty] += 1;
+        projectedOwners.set(slotKey(slot.day, slot.duty), candidate.employee.id);
+        const nextAssignments = new Map(assignments);
+        nextAssignments.set(slotKey(slot.day, slot.duty), {
+          employee: candidate.employee,
+          remaining: Math.max(0, candidate.remaining - 1),
+          exception: false,
+          reason: "",
+        });
+        search(index + 1, score + candidate.distance, nextAssignments);
+        projectedOwners.delete(slotKey(slot.day, slot.duty));
+        count[slot.duty] -= 1;
+      }
+      search(index + 1, score + 1000, assignments);
+    };
+    search(0, 0, new Map());
+
+    const projectedCounts = new Map<string, Record<Duty, number>>();
+    s.employees.forEach(employee => projectedCounts.set(employee.id, { ...countBy.get(employee.id)! }));
+    const projectedFromBest = new Map<string, string>();
+    best.assignments.forEach((recommendation, key) => {
+      projectedFromBest.set(key, recommendation.employee.id);
+      projectedCounts.get(recommendation.employee.id)![key.endsWith("/evening") ? "evening" : "primary"] += 1;
+      plan.set(key, recommendation);
     });
-    const regular = candidates
-      .filter(item => item.remaining > 0 && !item.onRest && !item.conflicts && !item.hasOtherShift)
-      .sort((a, b) => a.distance - b.distance || b.remaining - a.remaining);
-    if (regular[0]) return { ...regular[0], exception: false, reason: "" };
-    const exception = candidates
-      .filter(item => !item.onRest && !item.conflicts)
-      .sort((a, b) => Number(b.remaining > 0) - Number(a.remaining > 0) || Number(a.hasOtherShift) - Number(b.hasOtherShift) || a.distance - b.distance || b.remaining - a.remaining)[0];
-    if (!exception) return null;
-    const reasons = [
-      exception.hasOtherShift ? `already has ${labels[otherDuty]}` : "",
-      exception.remaining <= 0 ? `weekly ${labels[duty]} target met` : "",
-    ].filter(Boolean);
-    return { ...exception, exception: true, reason: reasons.join("; ") || "no regular target slot" };
+    const ownerAfterPlan = (day: string, duty: Duty) => projectedFromBest.get(slotKey(day, duty)) || getSlot(s, day, duty).owner;
+
+    for (const slot of openSlots.sort((a, b) => a.day.localeCompare(b.day) || DUTIES.indexOf(a.duty) - DUTIES.indexOf(b.duty))) {
+      const key = slotKey(slot.day, slot.duty);
+      if (plan.has(key)) continue;
+      const otherDuty: Duty = slot.duty === "primary" ? "evening" : "primary";
+      const candidates = s.employees.map((employee, index) => {
+        const count = projectedCounts.get(employee.id)![slot.duty];
+        const targetCount = weeklyDutyTarget(s, employee.id, week, slot.duty);
+        const remaining = targetCount - count;
+        const onRest = s.rests[slot.day] === employee.id;
+        const conflicts = eventsOn(s, slot.day).some(event => event.participants.includes(employee.id) && eventBlocksDuty(event, slot.duty));
+        const hasOtherShift = ownerAfterPlan(slot.day, otherDuty) === employee.id;
+        const distance = (index - preferredIndex(slot.day, slot.duty) + s.employees.length) % s.employees.length;
+        return { employee, remaining, onRest, conflicts, hasOtherShift, distance };
+      });
+      const regular = candidates
+        .filter(item => item.remaining > 0 && !item.onRest && !item.conflicts && !item.hasOtherShift)
+        .sort((a, b) => a.distance - b.distance || b.remaining - a.remaining)[0];
+      const choice = regular || candidates
+        .filter(item => !item.onRest && !item.conflicts)
+        .sort((a, b) => Number(b.remaining > 0) - Number(a.remaining > 0) || Number(a.hasOtherShift) - Number(b.hasOtherShift) || a.distance - b.distance || b.remaining - a.remaining)[0];
+      if (!choice) continue;
+      const reasons = [
+        choice.hasOtherShift ? `already has ${labels[otherDuty]}` : "",
+        choice.remaining <= 0 ? `weekly ${labels[slot.duty]} target met` : "",
+      ].filter(Boolean);
+      plan.set(key, {
+        employee: choice.employee,
+        remaining: Math.max(0, choice.remaining - 1),
+        exception: !regular,
+        reason: reasons.join("; ") || "no regular target slot",
+      });
+      projectedCounts.get(choice.employee.id)![slot.duty] += 1;
+      projectedFromBest.set(key, choice.employee.id);
+    }
+    return plan;
   };
+  const recommendationPlan = s ? recommendationsForWeek(start) : new Map<string, Recommendation>();
   const weekGuidance = s
     ? s.employees.filter(employee => admin || employee.id === me).map(employee => {
       const needs = DUTIES.map(duty => {
@@ -192,7 +293,7 @@ export default function OperationsSchedule() {
           <section className={styles.weekbar}><div className={styles.weekNav}><button disabled={week === 0} onClick={() => { setWeek(week - 1); setSelection(null); }}>Previous week</button><button className={isCurrentWeek ? styles.currentWeek : ""} disabled={isCurrentWeek} onClick={goCurrentWeek}>Current week</button></div><h2>{displayDay(visibleDays[0] || start)} - {displayDay(addDays(start, 6))}</h2><button disabled={week >= weeks.length - 1} onClick={() => { setWeek(week + 1); setSelection(null); }}>Next week</button></section>
           <section className={styles.restTotals}>{s.employees.map(e => <div key={e.id}><strong>{e.name}</strong><span>{restCount(s, e.id, start)}/2 rest days</span><small>{e.area}</small></div>)}</section>
           <section className={styles.restTotals}>{weekGuidance.map(item => <div key={item.employee.id}><strong>{item.employee.name}</strong><span>{item.needs.length ? "Needs another schedule" : "Weekly targets met"}</span><small>{item.needs.length ? item.needs.map(need => `${labels[need.duty]}: ${need.remaining} more`).join(" / ") : "No additional duty needed this week"}</small></div>)}</section>
-          <div className={styles.notice}>Open slots show a rotating recommendation. If no regular candidate can take a slot, Admin sees an exception option with a required reason.</div>
+          <div className={styles.notice}>Recommendations are planned as one weekly rotation. They honor saved duties first, then balance the remaining open slots against each employee&apos;s weekly targets.</div>
           {selection && selectedSlot && <div className={styles.editor} ref={editRef} tabIndex={-1}><div className={styles.editorTitle}><h2>{displayDay(selection.day)} / {labels[selection.duty]}</h2><button onClick={() => setSelection(null)}>Close</button></div><p>{times[selection.duty]} - Current owner: <strong>{ownerName(selectedSlot.owner)}</strong></p>
             {selectedSlot.coverage && <p className={styles.warning}>Coverage requested. {ownerName(selectedSlot.owner)} remains responsible until someone accepts.</p>}
             <label htmlFor="change-note">Reason for change (required when switching, transferring a duty, requesting coverage, or using Admin override)</label><input id="change-note" value={note} maxLength={500} onChange={e => setNote(e.target.value)} placeholder="Example: Schedule swap; covering this shift" />
@@ -204,7 +305,7 @@ export default function OperationsSchedule() {
               <label htmlFor="override-person">Admin reassignment</label><select id="override-person" value={target} onChange={e => setTarget(e.target.value)}><option value="">Choose replacement</option>{s.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}<option value={"admin:" + data.actor.email}>Me (Admin)</option></select><button disabled={busy || !target || !note.trim()} onClick={() => act("override", { ...selection, employee: target })}>Override owner</button><button disabled={busy || !note.trim()} onClick={() => { if (window.confirm("Clear this assignment and make the slot available?")) act("clear", selection); }}>Clear assignment</button><small>Replacing or clearing an existing owner requires your reason and remains in assignment history.</small>
             </>}</div>}
           </div>}
-          <div className={styles.calendar}>{visibleDays.map(day => <section key={day} className={`${styles.day} ${!day.startsWith(month) ? styles.boundary : ""}`}><header><span>{new Date(day + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}</span><h3>{displayDay(day)}</h3>{day === today && <small>Today</small>}{!day.startsWith(month) && <small>Shared boundary week</small>}</header>{eventsOn(s, day).map(e => <button key={e.id} className={styles.notice} onClick={() => setTab("events")}><strong>{e.title}</strong><br />{e.start} - {e.end}<br />{e.participants.map(id => ownerName(id)).join(", ")}</button>)}{DUTIES.map(duty => { const slot = getSlot(s, day, duty); const ended = new Date(`${day}T${duty === "evening" ? "19" : "15"}:00:00+08:00`) <= now; const employeeMe = s.employees.some(e => e.id === me); const quotaFull = !admin && employeeMe && weeklyDutyCount(s, me, weekStart(day), duty) >= weeklyDutyTarget(s, me, weekStart(day), duty); const adminCanCorrectToday = admin && day === today; const recommendation = !slot.owner && !ended ? recommendEmployee(day, duty) : null; return <button key={duty} disabled={busy || (ended && !adminCanCorrectToday) || s.months[month] === undefined || (!slot.owner && quotaFull)} className={`${styles.slot} ${slot.owner ? styles.claimed : styles.open} ${slot.coverage ? styles.coverage : ""}`} onClick={() => { setSelection({ day, duty }); setNote(""); setTarget(""); setSwitchTarget(""); setHandoffTarget(""); }}><span>{labels[duty]}</span><small>{duty === "evening" ? "3 PM - 7 PM" : "10 AM - 3 PM"}</small><strong>{slot.owner ? ownerName(slot.owner) : recommendation ? (recommendation.exception ? `Admin review: ${recommendation.employee.name}` : `Recommended: ${recommendation.employee.name}`) : "Available"}</strong><small>{slot.coverage ? "Coverage needed" : ended ? adminCanCorrectToday ? "Ended - Admin correction" : "Ended" : !slot.owner ? recommendation ? (recommendation.exception ? `Needs Admin exception: ${recommendation.reason}` : `${recommendation.employee.name} needs ${recommendation.remaining} more ${labels[duty]} this week`) : quotaFull ? "Your weekly target is complete" : admin ? "Open - Admin may assign" : "Grab / bawi" : slot.owner === me ? "Your duty - manage" : "Taken - view assignment"}</small></button>; })}<div className={styles.rest}><strong>{s.rests[day] ? "Designated rest day" : "Rest-day selection"}</strong><span>{s.rests[day] ? ownerName(s.rests[day]) : "No designated rest day"}</span><small>No shift is not automatically counted as a rest day.</small>{day > today && s.months[month] !== undefined && <>{(!s.rests[day] || s.rests[day] === me) && s.employees.some(e => e.id === me) && <button disabled={busy} onClick={() => act(s.rests[day] === me ? "unrest" : "rest", { day })}>{s.rests[day] === me ? "Remove my rest day" : "Choose my rest day"}</button>}{admin && <select aria-label={`Set rest day for ${day}`} value="" disabled={busy} onChange={e => { if (e.target.value) act(s.rests[day] ? "unrest" : "rest", { day, employee: e.target.value, note: "Admin planned rest day adjustment" }); }}><option value="">Admin: manage rest</option>{s.rests[day] ? <option value={s.rests[day]}>Remove {ownerName(s.rests[day])}</option> : s.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>}</>}</div></section>)}</div>
+          <div className={styles.calendar}>{visibleDays.map(day => <section key={day} className={`${styles.day} ${!day.startsWith(month) ? styles.boundary : ""}`}><header><span>{new Date(day + "T00:00:00Z").toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" })}</span><h3>{displayDay(day)}</h3>{day === today && <small>Today</small>}{!day.startsWith(month) && <small>Shared boundary week</small>}</header>{eventsOn(s, day).map(e => <button key={e.id} className={styles.notice} onClick={() => setTab("events")}><strong>{e.title}</strong><br />{e.start} - {e.end}<br />{e.participants.map(id => ownerName(id)).join(", ")}</button>)}{DUTIES.map(duty => { const slot = getSlot(s, day, duty); const ended = new Date(`${day}T${duty === "evening" ? "19" : "15"}:00:00+08:00`) <= now; const employeeMe = s.employees.some(e => e.id === me); const quotaFull = !admin && employeeMe && weeklyDutyCount(s, me, weekStart(day), duty) >= weeklyDutyTarget(s, me, weekStart(day), duty); const adminCanCorrectToday = admin && day === today; const recommendation = !slot.owner && !ended ? recommendationPlan.get(`${day}/${duty}`) || null : null; return <button key={duty} disabled={busy || (ended && !adminCanCorrectToday) || s.months[month] === undefined || (!slot.owner && quotaFull)} className={`${styles.slot} ${slot.owner ? styles.claimed : styles.open} ${slot.coverage ? styles.coverage : ""}`} onClick={() => { setSelection({ day, duty }); setNote(""); setTarget(""); setSwitchTarget(""); setHandoffTarget(""); }}><span>{labels[duty]}</span><small>{duty === "evening" ? "3 PM - 7 PM" : "10 AM - 3 PM"}</small><strong>{slot.owner ? ownerName(slot.owner) : recommendation ? (recommendation.exception ? `Admin review: ${recommendation.employee.name}` : `Recommended: ${recommendation.employee.name}`) : "Available"}</strong><small>{slot.coverage ? "Coverage needed" : ended ? adminCanCorrectToday ? "Ended - Admin correction" : "Ended" : !slot.owner ? recommendation ? (recommendation.exception ? `Needs Admin exception: ${recommendation.reason}` : `${recommendation.employee.name} needs ${recommendation.remaining} more ${labels[duty]} this week`) : quotaFull ? "Your weekly target is complete" : admin ? "Open - Admin may assign" : "Grab / bawi" : slot.owner === me ? "Your duty - manage" : "Taken - view assignment"}</small></button>; })}<div className={styles.rest}><strong>{s.rests[day] ? "Designated rest day" : "Rest-day selection"}</strong><span>{s.rests[day] ? ownerName(s.rests[day]) : "No designated rest day"}</span><small>No shift is not automatically counted as a rest day.</small>{day > today && s.months[month] !== undefined && <>{(!s.rests[day] || s.rests[day] === me) && s.employees.some(e => e.id === me) && <button disabled={busy} onClick={() => act(s.rests[day] === me ? "unrest" : "rest", { day })}>{s.rests[day] === me ? "Remove my rest day" : "Choose my rest day"}</button>}{admin && <select aria-label={`Set rest day for ${day}`} value="" disabled={busy} onChange={e => { if (e.target.value) act(s.rests[day] ? "unrest" : "rest", { day, employee: e.target.value, note: "Admin planned rest day adjustment" }); }}><option value="">Admin: manage rest</option>{s.rests[day] ? <option value={s.rests[day]}>Remove {ownerName(s.rests[day])}</option> : s.employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}</select>}</>}</div></section>)}</div>
           <details className={styles.panel}><summary>Planning checks ({checks.length})</summary><p>Each Monday-Sunday week needs exactly two rest days per coordinator, including dates outside the selected month. Only one person may rest on a date. Primary and Evening are the only required monitoring duties. Changes return a finalized month to Planning.</p>{checks.length ? <ul>{checks.map(c => <li key={c}>{c}</li>)}</ul> : <p>All monthly duties and weekly rest-day requirements are complete.</p>}</details>
         </>}
         {tab === "tasks" && s && <section className={styles.panel}><h2>Tasks from Admin</h2><p>Open tasks stay visible until the assigned employee confirms completion. Personal vendor visits should include who was met, what was completed, and anything still pending.</p>
