@@ -193,7 +193,32 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
         check(DUTIES.includes(duty), "Choose a valid duty.");
         check(endTime(day, duty) > now.getTime(), "This duty has ended.");
         const key = slotKey(day, duty), slot = getSlot(s, day, duty);
-        if (action === "claim" || action === "accept" || action === "override") {
+        if (action === "clear") {
+          check(admin, "Only Admin can clear an assignment.");
+          check(validReason(note), "Admin clearing an assignment requires a reason of at least 8 characters.");
+          check(slot.owner, "This duty is already available.");
+          s.slots[key] = { owner: null, coverage: false };
+        } else if (action === "switch") {
+          check(!admin, "Only an employee can switch their own duty.");
+          const targetDay = text(input.targetDay), targetDuty = text(input.targetDuty) as Duty;
+          check(validDay(targetDay) && DUTIES.includes(targetDuty), "Choose a valid replacement slot.");
+          check(targetDay >= localDate(now), "Past schedules cannot be changed.");
+          check(Object.keys(s.months).some(m => monthDays(m).includes(targetDay)), "Admin must open the replacement month first.");
+          check(endTime(targetDay, targetDuty) > now.getTime(), "The replacement duty has ended.");
+          const source = getSlot(s, day, duty), destinationKey = slotKey(targetDay, targetDuty), destination = getSlot(s, targetDay, targetDuty);
+          check(source.owner === me, "Only the duty owner can change this schedule.");
+          check(!source.coverage, "Cancel the coverage request before changing this duty.");
+          check(day !== targetDay || duty !== targetDuty, "Choose a different replacement slot.");
+          check(!destination.owner, "That replacement slot is already taken. Refresh the schedule.");
+          check(s.rests[targetDay] !== me, "You cannot take a duty on your rest day.");
+          check(!eventsOn(s, targetDay).some(event => event.participants.includes(me) && eventBlocksDuty(event, targetDuty)), "This replacement conflicts with your event assignment.");
+          const targetCount = weeklyDutyCount(s, me, weekStart(targetDay), targetDuty);
+          check(targetCount < weeklyDutyTarget(s, me, weekStart(targetDay), targetDuty), "That replacement would exceed your weekly duty target.");
+          check(validReason(note), "Add a brief reason for changing your schedule.");
+          check(!createsPrimaryEveningWholeDay(s, me, targetDay, targetDuty) || validReason(note), "This replacement gives you both Core Primary and Evening on the same day. Add a reason and retry.");
+          s.slots[key] = { owner: null, coverage: false };
+          s.slots[destinationKey] = { owner: me, coverage: false };
+        } else if (action === "claim" || action === "accept" || action === "override") {
           if (action === "claim") check(!slot.owner, "Someone already owns this duty. Refresh the schedule.");
           if (action === "accept") check(slot.coverage && slot.owner && slot.owner !== target, "This coverage request is no longer available to you.");
           check(s.rests[day] !== target, "You cannot take a duty on your rest day.");
