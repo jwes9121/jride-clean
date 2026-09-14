@@ -116,7 +116,8 @@ export async function POST(request: NextRequest) {
         const destination = getSlot(state, targetDay, targetDuty);
         if (source.owner !== employee.id) return guide("You can only change a duty that belongs to you.", "NOT_YOUR_DUTY", 403);
         if (destination.owner) return guide("That replacement slot was just taken. Refresh and choose another available slot.", "SLOT_TAKEN", 409);
-        const count = weeklyDutyCount(state, employee.id, weekStart(targetDay), targetDuty);
+        const sameDutyWeek = targetDuty === duty && weekStart(targetDay) === weekStart(day);
+        const count = weeklyDutyCount(state, employee.id, weekStart(targetDay), targetDuty) - (sameDutyWeek ? 1 : 0);
         if (count >= weeklyDutyTarget(state, employee.id, weekStart(targetDay), targetDuty)) {
           return guide("That replacement would exceed your weekly duty target.", "DUTY_TARGET_REACHED");
         }
