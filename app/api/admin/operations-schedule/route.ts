@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 function json(body: unknown, status = 200) { return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } }); }
 function guide(error: string, code: string, status = 422) { return json({ error, code, guide: true }, status); }
 function approved() { return (process.env.JRIDE_DISPATCHER_EMAILS || process.env.DISPATCHER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean); }
-const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "switch", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
+const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "switch", "handoff", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
 const DUTY_ACTIONS = new Set(["claim", "accept"]);
 const DUTIES = new Set<Duty>(["primary", "evening"]);
 function validReason(value: unknown) { return typeof value === "string" && value.trim().length >= 8; }
@@ -103,6 +103,23 @@ export async function POST(request: NextRequest) {
         }
         if (createsPrimaryEveningWholeDay(state, employee.id, day, duty) && !validReason(input.note)) {
           return guide("This would give you both Core Primary 10 AM-3 PM and Evening 3 PM-7 PM on the same day. If this is required because of a swap or other valid exception, enter the reason first and retry.", "WHOLE_DAY_REASON_REQUIRED");
+        }
+      } else if (action === "handoff") {
+        const day = String(input.day || "");
+        const duty = String(input.duty || "") as Duty;
+        const targetEmployee = String(input.targetEmployee || "");
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty) || !state.employees.some(item => item.id === targetEmployee) || targetEmployee === employee.id) {
+          return guide("Choose another coordinator for this handoff.", "INVALID_HANDOFF", 400);
+        }
+        const slot = getSlot(state, day, duty);
+        if (slot.owner !== employee.id) return guide("You can only hand off a duty that belongs to you.", "NOT_YOUR_DUTY", 403);
+        if (!validReason(input.note)) return guide("Add a reason of at least 8 characters for a same-day handoff.", "HANDOFF_REASON_REQUIRED");
+        if (state.rests[day] === targetEmployee) return guide("That coordinator is on a rest day.", "DUTY_ON_REST");
+        if (eventsOn(state, day).some(event => event.participants.includes(targetEmployee) && eventBlocksDuty(event, duty))) {
+          return guide("This handoff conflicts with the coworker's event assignment.", "EVENT_CONFLICT");
+        }
+        if (createsPrimaryEveningWholeDay(state, targetEmployee, day, duty) && !validReason(input.note)) {
+          return guide("This handoff gives the coworker both Core Primary and Evening on the same day. Add a reason and retry.", "WHOLE_DAY_REASON_REQUIRED");
         }
       } else if (action === "switch") {
         const day = String(input.day || "");
