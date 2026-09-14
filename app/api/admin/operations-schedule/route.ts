@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
       if (DUTY_ACTIONS.has(action)) {
         const day = String(input.day || "");
         const duty = String(input.duty || "") as Duty;
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid Primary or Evening duty slot.", "INVALID_SLOT", 400);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid Primary or Evening duty slot.", "INVALID_SLOT", 400);
         const slot = getSlot(state, day, duty);
         if (action === "claim" && slot.owner) {
           return guide(`${DUTY_LABELS[duty]} on ${day} is already taken by ${ownerName(state, slot.owner)}. Choose a slot still marked Available.`, "SLOT_TAKEN", 409);
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
         const day = String(input.day || "");
         const duty = String(input.duty || "") as Duty;
         const targetEmployee = String(input.targetEmployee || "");
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty) || !state.employees.some(item => item.id === targetEmployee) || targetEmployee === employee.id) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty) || !state.employees.some(item => item.id === targetEmployee) || targetEmployee === employee.id) {
           return guide("Choose another coordinator for this handoff.", "INVALID_HANDOFF", 400);
         }
         const slot = getSlot(state, day, duty);
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
         const duty = String(input.duty || "") as Duty;
         const targetDay = String(input.targetDay || "");
         const targetDuty = String(input.targetDuty || "") as Duty;
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(targetDay) || !DUTIES.has(targetDuty)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty) || !/^\d{4}-\d{2}-\d{2}$/.test(targetDay) || !DUTIES.has(targetDuty)) {
           return guide("Choose a valid current duty and an available replacement slot.", "INVALID_SWITCH", 400);
         }
         const source = getSlot(state, day, duty);
