@@ -207,7 +207,6 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
           check(endTime(targetDay, targetDuty) > now.getTime(), "The replacement duty has ended.");
           const source = getSlot(s, day, duty), destinationKey = slotKey(targetDay, targetDuty), destination = getSlot(s, targetDay, targetDuty);
           check(source.owner === me, "Only the duty owner can change this schedule.");
-          check(!source.coverage, "Cancel the coverage request before changing this duty.");
           check(day !== targetDay || duty !== targetDuty, "Choose a different replacement slot.");
           check(!destination.owner, "That replacement slot is already taken. Refresh the schedule.");
           check(s.rests[targetDay] !== me, "You cannot take a duty on your rest day.");
