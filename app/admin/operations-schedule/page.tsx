@@ -103,7 +103,8 @@ export default function OperationsSchedule() {
         const ended = new Date(`${item.day}T${item.duty === "evening" ? "19" : "15"}:00:00+08:00`) <= now;
         if (ended || s.rests[item.day] === me) return false;
         if (eventsOn(s, item.day).some(event => event.participants.includes(me) && eventBlocksDuty(event, item.duty))) return false;
-        const count = weeklyDutyCount(s, me, weekStart(item.day), item.duty);
+        const sameDutyWeek = item.duty === selection.duty && weekStart(item.day) === weekStart(selection.day);
+        const count = weeklyDutyCount(s, me, weekStart(item.day), item.duty) - (sameDutyWeek ? 1 : 0);
         return count < weeklyDutyTarget(s, me, weekStart(item.day), item.duty);
       })
     : [];
