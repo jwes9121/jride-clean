@@ -230,7 +230,8 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
           check(!destination.owner, "That replacement slot is already taken. Refresh the schedule.");
           check(s.rests[targetDay] !== me, "You cannot take a duty on your rest day.");
           check(!eventsOn(s, targetDay).some(event => event.participants.includes(me) && eventBlocksDuty(event, targetDuty)), "This replacement conflicts with your event assignment.");
-          const sameDutyWeek = targetDuty === duty && weekStart(targetDay) === weekStart(day);\n          const targetCount = weeklyDutyCountLocal(s, me, weekStart(targetDay), targetDuty) - (sameDutyWeek ? 1 : 0);
+          const sameDutyWeek = targetDuty === duty && weekStart(targetDay) === weekStart(day);
+          const targetCount = weeklyDutyCountLocal(s, me, weekStart(targetDay), targetDuty) - (sameDutyWeek ? 1 : 0);
           check(targetCount < weeklyDutyTargetLocal(s, me, weekStart(targetDay), targetDuty), "That replacement would exceed your weekly duty target.");
           check(validReason(note), "Add a brief reason for changing your schedule.");
           check(!createsPrimaryEveningWholeDay(s, me, targetDay, targetDuty) || validReason(note), "This replacement gives you both Core Primary and Evening on the same day. Add a reason and retry.");
