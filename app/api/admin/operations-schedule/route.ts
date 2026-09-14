@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { changeSchedule, effectiveSchedule, emptySchedule, getSlot, weekStart, type Driver, type Duty, type Schedule } from "@/lib/operations-schedule";
+import { changeSchedule, effectiveSchedule, emptySchedule, eventBlocksDuty, eventsOn, getSlot, weekStart, type Driver, type Duty, type Schedule } from "@/lib/operations-schedule";
 import {
   DUTY_LABELS,
   createsPrimaryEveningWholeDay,
@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 function json(body: unknown, status = 200) { return NextResponse.json(body, { status, headers: { "Cache-Control": "no-store" } }); }
 function guide(error: string, code: string, status = 422) { return json({ error, code, guide: true }, status); }
 function approved() { return (process.env.JRIDE_DISPATCHER_EMAILS || process.env.DISPATCHER_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean); }
-const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
+const EMPLOYEE_SCHEDULE_ACTIONS = new Set(["claim", "accept", "switch", "release", "coverage", "cancel_coverage", "rest", "unrest"]);
 const DUTY_ACTIONS = new Set(["claim", "accept"]);
 const DUTIES = new Set<Duty>(["primary", "evening"]);
 function validReason(value: unknown) { return typeof value === "string" && value.trim().length >= 8; }
@@ -87,12 +87,14 @@ export async function POST(request: NextRequest) {
       if (DUTY_ACTIONS.has(action)) {
         const day = String(input.day || "");
         const duty = String(input.duty || "") as Duty;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid Primary or Evening duty slot.", "INVALID_SLOT", 400);
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty)) return guide("Choose a valid Primary or Evening duty slot.", "INVALID_SLOT", 400);
         const slot = getSlot(state, day, duty);
         if (action === "claim" && slot.owner) {
           return guide(`${DUTY_LABELS[duty]} on ${day} is already taken by ${ownerName(state, slot.owner)}. Choose a slot still marked Available.`, "SLOT_TAKEN", 409);
         }
-
+        if (action === "accept" && (!slot.coverage || !slot.owner || slot.owner === employee.id)) {
+          return guide("This coverage request is no longer available to you.", "COVERAGE_TAKEN", 409);
+        }
         const week = weekStart(day);
         const count = weeklyDutyCount(state, employee.id, week, duty);
         const target = weeklyDutyTarget(state, employee.id, week, duty);
@@ -101,6 +103,30 @@ export async function POST(request: NextRequest) {
         }
         if (createsPrimaryEveningWholeDay(state, employee.id, day, duty) && !validReason(input.note)) {
           return guide("This would give you both Core Primary 10 AM-3 PM and Evening 3 PM-7 PM on the same day. If this is required because of a swap or other valid exception, enter the reason first and retry.", "WHOLE_DAY_REASON_REQUIRED");
+        }
+      } else if (action === "switch") {
+        const day = String(input.day || "");
+        const duty = String(input.duty || "") as Duty;
+        const targetDay = String(input.targetDay || "");
+        const targetDuty = String(input.targetDuty || "") as Duty;
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day) || !DUTIES.has(duty) || !/^\\d{4}-\\d{2}-\\d{2}$/.test(targetDay) || !DUTIES.has(targetDuty)) {
+          return guide("Choose a valid current duty and an available replacement slot.", "INVALID_SWITCH", 400);
+        }
+        const source = getSlot(state, day, duty);
+        const destination = getSlot(state, targetDay, targetDuty);
+        if (source.owner !== employee.id) return guide("You can only change a duty that belongs to you.", "NOT_YOUR_DUTY", 403);
+        if (source.coverage) return guide("Cancel the coverage request before changing this duty.", "COVERAGE_ACTIVE");
+        if (destination.owner) return guide("That replacement slot was just taken. Refresh and choose another available slot.", "SLOT_TAKEN", 409);
+        const count = weeklyDutyCount(state, employee.id, weekStart(targetDay), targetDuty);
+        if (count >= weeklyDutyTarget(state, employee.id, weekStart(targetDay), targetDuty)) {
+          return guide("That replacement would exceed your weekly duty target.", "DUTY_TARGET_REACHED");
+        }
+        if (state.rests[targetDay] === employee.id) return guide("You cannot take a duty on your rest day.", "DUTY_ON_REST");
+        if (eventsOn(state, targetDay).some(event => event.participants.includes(employee.id) && eventBlocksDuty(event, targetDuty))) {
+          return guide("That replacement conflicts with your event assignment.", "EVENT_CONFLICT");
+        }
+        if (createsPrimaryEveningWholeDay(state, employee.id, targetDay, targetDuty) && !validReason(input.note)) {
+          return guide("This replacement gives you both Core Primary and Evening on the same day. Add a reason and retry.", "WHOLE_DAY_REASON_REQUIRED");
         }
       }
     }
