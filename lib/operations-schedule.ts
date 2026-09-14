@@ -75,6 +75,26 @@ export function issues(s: Schedule, month: string) {
 }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
+function createsPrimaryEveningWholeDay(s: Schedule, employee: string, day: string, duty: Duty) { return duty === "primary" ? getSlot(s, day, "evening").owner === employee : getSlot(s, day, "primary").owner === employee; }
+function validReason(value: unknown) { return text(value).length >= 8; }
+function weeklyDutyCountLocal(s: Schedule, employee: string, week: string, duty: Duty) {
+  return Array.from({ length: 7 }, (_, i) => getSlot(s, addDays(week, i), duty).owner === employee).filter(Boolean).length;
+}
+function weeklyDutyTargetLocal(s: Schedule, employee: string, week: string, duty: Duty) {
+  if (!s.employees.length) return 2;
+  const totalSlots = Array.from({ length: 7 }, (_, i) => addDays(week, i)).filter(day => day >= LAUNCH_DATE).length;
+  const base = Math.floor(totalSlots / s.employees.length);
+  const extraSlots = totalSlots % s.employees.length;
+  if (!extraSlots) return base;
+  const employeeIndex = s.employees.findIndex(e => e.id === employee);
+  if (employeeIndex < 0) return base;
+  const launchWeek = weekStart(LAUNCH_DATE);
+  const weekIndex = Math.floor((new Date(week + "T00:00:00Z").getTime() - new Date(launchWeek + "T00:00:00Z").getTime()) / (7 * 86400000));
+  const dutyOffset = DUTIES.indexOf(duty);
+  const rotationStart = ((weekIndex + dutyOffset) % s.employees.length + s.employees.length) % s.employees.length;
+  const getsExtra = Array.from({ length: extraSlots }, (_, i) => (rotationStart + i) % s.employees.length).includes(employeeIndex);
+  return base + (getsExtra ? 1 : 0);
+}
 function validDay(day: string) { return /^\d{4}-\d{2}-\d{2}$/.test(day) && !isNaN(Date.parse(day)) && dateKey(new Date(day)) === day; }
 function startTime(day: string, duty: Duty) { return new Date(`${day}T${duty === "evening" ? "15" : "10"}:00:00+08:00`).getTime(); }
 function endTime(day: string, duty: Duty) { return new Date(`${day}T${duty === "evening" ? "19" : "15"}:00:00+08:00`).getTime(); }
@@ -193,7 +213,32 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
         check(DUTIES.includes(duty), "Choose a valid duty.");
         check(endTime(day, duty) > now.getTime(), "This duty has ended.");
         const key = slotKey(day, duty), slot = getSlot(s, day, duty);
-        if (action === "claim" || action === "accept" || action === "override") {
+        if (action === "clear") {
+          check(admin, "Only Admin can clear an assignment.");
+          check(validReason(note), "Admin clearing an assignment requires a reason of at least 8 characters.");
+          check(slot.owner, "This duty is already available.");
+          s.slots[key] = { owner: null, coverage: false };
+        } else if (action === "switch") {
+          check(!admin, "Only an employee can switch their own duty.");
+          const targetDay = text(input.targetDay), targetDuty = text(input.targetDuty) as Duty;
+          check(validDay(targetDay) && DUTIES.includes(targetDuty), "Choose a valid replacement slot.");
+          check(targetDay >= localDate(now), "Past schedules cannot be changed.");
+          check(Object.keys(s.months).some(m => monthDays(m).includes(targetDay)), "Admin must open the replacement month first.");
+          check(endTime(targetDay, targetDuty) > now.getTime(), "The replacement duty has ended.");
+          const source = getSlot(s, day, duty), destinationKey = slotKey(targetDay, targetDuty), destination = getSlot(s, targetDay, targetDuty);
+          check(source.owner === me, "Only the duty owner can change this schedule.");
+          check(day !== targetDay || duty !== targetDuty, "Choose a different replacement slot.");
+          check(!destination.owner, "That replacement slot is already taken. Refresh the schedule.");
+          check(s.rests[targetDay] !== me, "You cannot take a duty on your rest day.");
+          check(!eventsOn(s, targetDay).some(event => event.participants.includes(me) && eventBlocksDuty(event, targetDuty)), "This replacement conflicts with your event assignment.");
+          const sameDutyWeek = targetDuty === duty && weekStart(targetDay) === weekStart(day);
+          const targetCount = weeklyDutyCountLocal(s, me, weekStart(targetDay), targetDuty) - (sameDutyWeek ? 1 : 0);
+          check(targetCount < weeklyDutyTargetLocal(s, me, weekStart(targetDay), targetDuty), "That replacement would exceed your weekly duty target.");
+          check(validReason(note), "Add a brief reason for changing your schedule.");
+          check(!createsPrimaryEveningWholeDay(s, me, targetDay, targetDuty) || validReason(note), "This replacement gives you both Core Primary and Evening on the same day. Add a reason and retry.");
+          s.slots[key] = { owner: null, coverage: false };
+          s.slots[destinationKey] = { owner: me, coverage: false };
+        } else if (action === "claim" || action === "accept" || action === "override") {
           if (action === "claim") check(!slot.owner, "Someone already owns this duty. Refresh the schedule.");
           if (action === "accept") check(slot.coverage && slot.owner && slot.owner !== target, "This coverage request is no longer available to you.");
           check(s.rests[day] !== target, "You cannot take a duty on your rest day.");
