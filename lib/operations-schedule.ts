@@ -75,6 +75,7 @@ export function issues(s: Schedule, month: string) {
 }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
+function createsPrimaryEveningWholeDay(s: Schedule, employee: string, day: string, duty: Duty) { return duty === "primary" ? getSlot(s, day, "evening").owner === employee : getSlot(s, day, "primary").owner === employee; }
 function validReason(value: unknown) { return text(value).length >= 8; }
 function weeklyDutyCountLocal(s: Schedule, employee: string, week: string, duty: Duty) {
   return Array.from({ length: 7 }, (_, i) => getSlot(s, addDays(week, i), duty).owner === employee).filter(Boolean).length;
