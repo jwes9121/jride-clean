@@ -190,10 +190,11 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
       s.teams = teams;
     } else {
       const day = text(input.day), duty = text(input.duty) as Duty;
+      const sameDayAdminCorrection = admin && day === localDate(now) && (action === "override" || action === "clear");
       check(validDay(day), "Choose a valid date.");
       check(day >= LAUNCH_DATE, "Operations begin September 8, 2026.");
       check(Object.keys(s.months).some(m => monthDays(m).includes(day)), "Admin must open this planning month first.");
-      check(day >= localDate(now), "Past schedules cannot be changed.");
+      check(day >= localDate(now) || sameDayAdminCorrection, "Past schedules cannot be changed.");
       const target = admin && text(input.employee) ? text(input.employee) : me;
       check(s.employees.some(e => e.id === target) || target === "admin:" + actor.email && admin, "Choose a coordinator or yourself as Admin.");
       const override = action === "override" || action === "override_rest";
@@ -211,7 +212,7 @@ export function changeSchedule(current: Schedule, actor: Actor, input: Record<st
         }
       } else {
         check(DUTIES.includes(duty), "Choose a valid duty.");
-        check(endTime(day, duty) > now.getTime(), "This duty has ended.");
+        check(endTime(day, duty) > now.getTime() || sameDayAdminCorrection, "This duty has ended.");
         const key = slotKey(day, duty), slot = getSlot(s, day, duty);
         if (action === "clear") {
           check(admin, "Only Admin can clear an assignment.");
