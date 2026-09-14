@@ -75,6 +75,7 @@ export function issues(s: Schedule, month: string) {
 }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 function text(value: unknown) { return typeof value === "string" ? value.trim() : ""; }
+function validReason(value: unknown) { return text(value).length >= 8; }
 function validDay(day: string) { return /^\d{4}-\d{2}-\d{2}$/.test(day) && !isNaN(Date.parse(day)) && dateKey(new Date(day)) === day; }
 function startTime(day: string, duty: Duty) { return new Date(`${day}T${duty === "evening" ? "15" : "10"}:00:00+08:00`).getTime(); }
 function endTime(day: string, duty: Duty) { return new Date(`${day}T${duty === "evening" ? "19" : "15"}:00:00+08:00`).getTime(); }
