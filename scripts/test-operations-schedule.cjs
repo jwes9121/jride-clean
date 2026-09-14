@@ -32,6 +32,16 @@ test('employee can atomically switch a duty and close its coverage request', () 
   assert.deepEqual(switched.slots['2026-10-01/primary'], { owner: null, coverage: false });
   assert.deepEqual(switched.slots['2026-10-02/primary'], { owner: 'coordinator-1', coverage: false });
 });
+
+test('employee can hand off a same-day duty directly to another coordinator', () => {
+  const handedOff = apply(claimed, actors[0], 'handoff', {
+    day: '2026-10-01',
+    duty: 'primary',
+    targetEmployee: 'coordinator-2',
+    note: 'Same-day shift handoff'
+  });
+  assert.deepEqual(handedOff.slots['2026-10-01/primary'], { owner: 'coordinator-2', coverage: false });
+});
 test('employee cannot switch another employee duty and Admin can clear with a reason', () => {
   assert.throws(() => apply(claimed, actors[1], 'switch', { day: '2026-10-01', duty: 'primary', targetDay: '2026-10-02', targetDuty: 'primary', note: 'Not my assignment' }), /duty owner/);
   assert.throws(() => apply(claimed, admin, 'clear', { day: '2026-10-01', duty: 'primary' }), /reason/);
