@@ -2461,3 +2461,133 @@ export default function LiveTripsClient() {
                           <div><span className="text-slate-500">Settled at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.wallet_settled_at)}</span></div>
                           <div><span className="text-slate-500">Platform cut:</span> <span className="font-medium">{formatMoney(ws.amount != null ? Math.abs(Number(ws.amount)) : ticketInspector.booking?.company_cut)}</span></div>
                           <div><span className="text-slate-500">Reason:</span> <span className="font-medium">{labelOrDash(ws.reason)}</span></div>
+                          <div><span className="text-slate-500">Balance after:</span> <span className="font-medium">{formatMoney(ws.balanceAfter)}</span></div>
+                          <div><span className="text-slate-500">Settlement ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_id)}</span></div>
+                          <div><span className="text-slate-500">Hash:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_hash)}</span></div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                    <div className="mb-2 font-semibold">Timers</div>
+                    <div className="space-y-1 text-sm">
+                      <div><span className="text-slate-500">Assigned at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.assigned_at)}</span></div>
+                      <div><span className="text-slate-500">Driver accept expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.driver_accept_expires_at || ticketInspector.booking?.takeout_driver_accept_expires_at)}</span></div>
+                      <div><span className="text-slate-500">Fee expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.takeout_fee_expires_at || ticketInspector.booking?.takeout_fee_proposal_expires_at)}</span></div>
+                      <div><span className="text-slate-500">Completed:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.completed_at)}</span></div>
+                    </div>
+                  </div>
+                </div>
+              ) : ticketInspectorTab === "journey" ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-slate-900">What Happened</div>
+                        <div className="text-xs text-slate-500">Plain chronological explanation generated from confirmed timeline records.</div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {buildJourneyRows(ticketInspector).map((row, idx) => (
+                        <div key={String(row.label) + String(idx)} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[1.3fr_1fr_0.7fr_1fr]">
+                          <div>
+                            <div className="font-semibold text-slate-800">{row.label}</div>
+                            {row.note ? <div className="text-xs text-slate-500">{row.note}</div> : null}
+                          </div>
+                          <div><span className="text-slate-500">At:</span> <span className="font-medium">{formatPHDateTime(row.at)}</span></div>
+                          <div><span className="text-slate-500">Delta:</span> <span className="font-medium">{labelOrDash(row.delta)}</span></div>
+                          <div><span className="text-slate-500">Source:</span> <span className="font-medium">{labelOrDash(row.source)}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="mb-3">
+                      <div className="font-semibold text-slate-900">Timer Analysis</div>
+                      <div className="text-xs text-slate-500">PASS/FAIL is computed from confirmed booking timer fields and timeline milestones.</div>
+                    </div>
+                    <div className="space-y-2">
+                      {buildTimerRows(ticketInspector).map((row, idx) => (
+                        <div key={String(row.name) + String(idx)} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="font-semibold text-slate-800">{row.name}</div>
+                            <span className={["rounded-full border px-2 py-0.5 text-[11px] font-semibold", timerBadgeClass(row.result)].join(" ")}>{row.result}</span>
+                          </div>
+                          <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
+                            <div>Window: <span className="font-medium">{labelOrDash(row.window)}</span></div>
+                            <div>Started: <span className="font-medium">{formatPHDateTime(row.started)}</span></div>
+                            <div>Deadline: <span className="font-medium">{formatPHDateTime(row.deadline)}</span></div>
+                            <div>Met at: <span className="font-medium">{formatPHDateTime(row.metAt)}</span></div>
+                          </div>
+                          <div className="mt-2 text-xs text-slate-700">{row.detail}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : ticketInspectorTab === "timeline" ? (
+                <div className="space-y-2">
+                  {(ticketInspector.timeline || []).length === 0 ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No timeline rows returned.</div>
+                  ) : (ticketInspector.timeline || []).map((row, idx) => (
+                    <div key={String(row.at || "") + String(idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 flex h-8 min-w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
+                            {timelineIcon(row)}
+                          </div>
+                          <div>
+                            <div className="font-semibold">{timelineTitle(row)}</div>
+                            {row.source === "driver_wallet_transactions" ? (
+                              <div className="mt-1 text-xs text-slate-600">
+                                <span className="font-medium">{formatMoney(Math.abs(Number(row.evidence?.amount ?? 0)))}</span>
+                                <span> deducted</span>
+                                {row.evidence?.balance_after != null ? <span> - Balance after {formatMoney(row.evidence.balance_after)}</span> : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-500">{formatPHDateTime(row.at)}</div>
+                      </div>
+                      <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
+                        <div>Source: <span className="font-medium">{labelOrDash(row.source)}</span></div>
+                        <div>Actor: <span className="font-medium break-all">{labelOrDash(row.actor)}</span></div>
+                        <div>From: <span className="font-medium">{labelOrDash(row.from_status)}</span></div>
+                        <div>To: <span className="font-medium">{labelOrDash(row.to_status)}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : ticketInspectorTab === "diagnostics" ? (
+                <div className="space-y-2">
+                  {(ticketInspector.diagnostics || []).length === 0 ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">No diagnostics returned by the rule engine.</div>
+                  ) : (ticketInspector.diagnostics || []).map((d, idx) => (
+                    <div key={String(d.code || idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600">{labelOrDash(d.severity)}</span>
+                        <span className="font-semibold">{labelOrDash(d.code)}</span>
+                      </div>
+                      <div className="mt-1 text-slate-700">{labelOrDash(d.message)}</div>
+                      {(d.evidence || []).length ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
+                          {(d.evidence || []).map((ev, evIdx) => <li key={String(evIdx)}>{String(ev)}</li>)}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <pre className="max-h-[75vh] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
+                  {JSON.stringify(ticketInspector.raw || ticketInspector, null, 2)}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
