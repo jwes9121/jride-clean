@@ -276,6 +276,31 @@ function labelOrDash(v?: any) {
   return s ? s : "--";
 }
 
+function normalizedTownKey(v: any): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function isOfficialServiceTown(
+  town: any,
+  officialTownKeys: Set<string>
+): boolean {
+  const key = normalizedTownKey(town);
+  return Boolean(key) && officialTownKeys.size > 0 && officialTownKeys.has(key);
+}
+
+function driverTownLabel(
+  town: any,
+  officialTownKeys: Set<string>
+): string {
+  const raw = String(town ?? "").trim();
+  if (!raw) return "--";
+  if (officialTownKeys.size === 0) return raw + " (service zones unavailable)";
+  if (!isOfficialServiceTown(raw, officialTownKeys)) {
+    return raw + " (outside service area)";
+  }
+  return raw;
+}
+
 function formatMoney(v?: any) {
   if (v == null || v === "") return "--";
   const n = Number(v);
@@ -1075,18 +1100,23 @@ export default function LiveTripsClient() {
     };
   }, [allTrips, drivers]);
 
-  const townOptions = useMemo(() => {
+  const officialTownKeys = useMemo(() => {
     const set = new Set<string>();
-    for (const t of allTrips) {
-      const town = String(t.town || t.zone || "").trim();
-      if (town) set.add(town);
+    for (const zone of zones) {
+      const town = String(zone.zone_name || "").trim();
+      if (town) set.add(normalizedTownKey(town));
     }
-    for (const d of drivers) {
-      const town = String(d.town || "").trim();
-      if (town) set.add(town);
+    return set;
+  }, [zones]);
+
+  const townOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const zone of zones) {
+      const town = String(zone.zone_name || "").trim();
+      if (town) names.set(normalizedTownKey(town), town);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allTrips, drivers]);
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [zones]);
 
   const queryNeedle = searchQuery.trim().toLowerCase();
 
@@ -1200,13 +1230,22 @@ export default function LiveTripsClient() {
 
   useEffect(() => {
     if (!selectedManualDriver) return;
-    if (selectedManualDriver.assign_eligible) return;
+    if (
+      selectedManualDriver.assign_eligible &&
+      isOfficialServiceTown(selectedManualDriver.town, officialTownKeys)
+    ) {
+      return;
+    }
     setManualDriverId("");
-  }, [selectedManualDriver]);
+  }, [selectedManualDriver, officialTownKeys]);
 
   const eligibleDrivers = useMemo(() => {
-    return drivers.filter((d) => Boolean(d.assign_eligible));
-  }, [drivers]);
+    return drivers.filter(
+      (d) =>
+        Boolean(d.assign_eligible) &&
+        isOfficialServiceTown(d.town, officialTownKeys)
+    );
+  }, [drivers, officialTownKeys]);
 
   const driverRows = useMemo(() => {
   return drivers
@@ -1584,8 +1623,8 @@ export default function LiveTripsClient() {
             </div>
             <div className="text-xs text-slate-500">
               {viewMode === "drivers"
-                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point."
-                : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup."}
+                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point. Outside-area locations are labeled and excluded from normal assignment."
+                : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup. The town filter uses official service zones only."}
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(280px,1fr),200px,auto]">
@@ -1845,7 +1884,7 @@ export default function LiveTripsClient() {
                             <div>{labelOrDash(d.plate_number)}</div>
                             <div className="text-[10px] text-slate-500">{labelOrDash(d.vehicle_type)}</div>
                           </td>
-                          <td className="p-2">{labelOrDash(d.town)}</td>
+                          <td className="p-2">{driverTownLabel(d.town, officialTownKeys)}</td>
                           <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
                           <td className="p-2">
                             {trip ? (
@@ -2080,8 +2119,21 @@ export default function LiveTripsClient() {
                   <option value="">Select eligible driver</option>
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const isEligible = Boolean(d.assign_eligible);
-                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "") + (isEligible ? "" : " - NOT ELIGIBLE")).trim();
+                    const inServiceArea = isOfficialServiceTown(d.town, officialTownKeys);
+                    const isEligible = Boolean(d.assign_eligible) && inServiceArea;
+                    const areaLabel =
+                      officialTownKeys.size === 0
+                        ? " - SERVICE ZONES UNAVAILABLE"
+                        : inServiceArea
+                        ? ""
+                        : " - OUTSIDE SERVICE AREA";
+                    const label = (
+                      (d.name || "Driver") +
+                      (d.town ? " - " + d.town : "") +
+                      ((d as any).effective_status ? " - " + (d as any).effective_status : "") +
+                      areaLabel +
+                      (isEligible ? "" : " - NOT ELIGIBLE")
+                    ).trim();
 
                     return (
                       <option key={id || String(idx)} value={id} disabled={!isEligible}>
@@ -2093,9 +2145,20 @@ export default function LiveTripsClient() {
 
                 <button
                   className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-                  disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
+                  disabled={
+                    !selectedTrip?.booking_code ||
+                    !manualDriverId ||
+                    !selectedManualDriver?.assign_eligible ||
+                    !isOfficialServiceTown(selectedManualDriver?.town, officialTownKeys)
+                  }
                   onClick={() => {
-                    if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
+                    if (
+                      !selectedTrip?.booking_code ||
+                      !selectedManualDriver?.assign_eligible ||
+                      !isOfficialServiceTown(selectedManualDriver?.town, officialTownKeys)
+                    ) {
+                      return;
+                    }
                     assignDriver(selectedTrip.booking_code, manualDriverId, manualAssignRequiresEmergency).catch((err) => setLastAction(String(err?.message || err)));
                   }}
                 >
@@ -2118,7 +2181,7 @@ export default function LiveTripsClient() {
                   <div>
                     Trip town: <span className="font-semibold">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span>
                     {" | "}
-                    Driver town: <span className="font-semibold">{labelOrDash(selectedManualDriver.town)}</span>
+                    Driver town: <span className="font-semibold">{driverTownLabel(selectedManualDriver.town, officialTownKeys)}</span>
                     {manualAssignRequiresEmergency ? " | Cross-town will use emergency mode." : " | Same-town standard assign."}
                   </div>
                 ) : null}
