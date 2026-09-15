@@ -276,6 +276,31 @@ function labelOrDash(v?: any) {
   return s ? s : "--";
 }
 
+function normalizedTownKey(v: any): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+function isOfficialServiceTown(
+  town: any,
+  officialTownKeys: Set<string>
+): boolean {
+  const key = normalizedTownKey(town);
+  return Boolean(key) && officialTownKeys.size > 0 && officialTownKeys.has(key);
+}
+
+function driverTownLabel(
+  town: any,
+  officialTownKeys: Set<string>
+): string {
+  const raw = String(town ?? "").trim();
+  if (!raw) return "--";
+  if (officialTownKeys.size === 0) return raw + " (service zones unavailable)";
+  if (!isOfficialServiceTown(raw, officialTownKeys)) {
+    return raw + " (outside service area)";
+  }
+  return raw;
+}
+
 function formatMoney(v?: any) {
   if (v == null || v === "") return "--";
   const n = Number(v);
@@ -1075,18 +1100,23 @@ export default function LiveTripsClient() {
     };
   }, [allTrips, drivers]);
 
-  const townOptions = useMemo(() => {
+  const officialTownKeys = useMemo(() => {
     const set = new Set<string>();
-    for (const t of allTrips) {
-      const town = String(t.town || t.zone || "").trim();
-      if (town) set.add(town);
+    for (const zone of zones) {
+      const town = String(zone.zone_name || "").trim();
+      if (town) set.add(normalizedTownKey(town));
     }
-    for (const d of drivers) {
-      const town = String(d.town || "").trim();
-      if (town) set.add(town);
+    return set;
+  }, [zones]);
+
+  const townOptions = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const zone of zones) {
+      const town = String(zone.zone_name || "").trim();
+      if (town) names.set(normalizedTownKey(town), town);
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allTrips, drivers]);
+    return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
+  }, [zones]);
 
   const queryNeedle = searchQuery.trim().toLowerCase();
 
@@ -1200,13 +1230,22 @@ export default function LiveTripsClient() {
 
   useEffect(() => {
     if (!selectedManualDriver) return;
-    if (selectedManualDriver.assign_eligible) return;
+    if (
+      selectedManualDriver.assign_eligible &&
+      isOfficialServiceTown(selectedManualDriver.town, officialTownKeys)
+    ) {
+      return;
+    }
     setManualDriverId("");
-  }, [selectedManualDriver]);
+  }, [selectedManualDriver, officialTownKeys]);
 
   const eligibleDrivers = useMemo(() => {
-    return drivers.filter((d) => Boolean(d.assign_eligible));
-  }, [drivers]);
+    return drivers.filter(
+      (d) =>
+        Boolean(d.assign_eligible) &&
+        isOfficialServiceTown(d.town, officialTownKeys)
+    );
+  }, [drivers, officialTownKeys]);
 
   const driverRows = useMemo(() => {
   return drivers
@@ -1584,8 +1623,8 @@ export default function LiveTripsClient() {
             </div>
             <div className="text-xs text-slate-500">
               {viewMode === "drivers"
-                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point."
-                : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup."}
+                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point. Outside-area locations are labeled and excluded from normal assignment."
+                : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup. The town filter uses official service zones only."}
             </div>
           </div>
           <div className="grid gap-3 md:grid-cols-[minmax(280px,1fr),200px,auto]">
@@ -1845,7 +1884,7 @@ export default function LiveTripsClient() {
                             <div>{labelOrDash(d.plate_number)}</div>
                             <div className="text-[10px] text-slate-500">{labelOrDash(d.vehicle_type)}</div>
                           </td>
-                          <td className="p-2">{labelOrDash(d.town)}</td>
+                          <td className="p-2">{driverTownLabel(d.town, officialTownKeys)}</td>
                           <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
                           <td className="p-2">
                             {trip ? (
@@ -2080,8 +2119,21 @@ export default function LiveTripsClient() {
                   <option value="">Select eligible driver</option>
                   {drivers.map((d, idx) => {
                     const id = String(d.driver_id || "");
-                    const isEligible = Boolean(d.assign_eligible);
-                    const label = ((d.name || "Driver") + (d.town ? " - " + d.town : "") + ((d as any).effective_status ? " - " + (d as any).effective_status : "") + (isEligible ? "" : " - NOT ELIGIBLE")).trim();
+                    const inServiceArea = isOfficialServiceTown(d.town, officialTownKeys);
+                    const isEligible = Boolean(d.assign_eligible) && inServiceArea;
+                    const areaLabel =
+                      officialTownKeys.size === 0
+                        ? " - SERVICE ZONES UNAVAILABLE"
+                        : inServiceArea
+                        ? ""
+                        : " - OUTSIDE SERVICE AREA";
+                    const label = (
+                      (d.name || "Driver") +
+                      (d.town ? " - " + d.town : "") +
+                      ((d as any).effective_status ? " - " + (d as any).effective_status : "") +
+                      areaLabel +
+                      (isEligible ? "" : " - NOT ELIGIBLE")
+                    ).trim();
 
                     return (
                       <option key={id || String(idx)} value={id} disabled={!isEligible}>
@@ -2093,9 +2145,20 @@ export default function LiveTripsClient() {
 
                 <button
                   className="rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-                  disabled={!selectedTrip?.booking_code || !manualDriverId || !selectedManualDriver?.assign_eligible}
+                  disabled={
+                    !selectedTrip?.booking_code ||
+                    !manualDriverId ||
+                    !selectedManualDriver?.assign_eligible ||
+                    !isOfficialServiceTown(selectedManualDriver?.town, officialTownKeys)
+                  }
                   onClick={() => {
-                    if (!selectedTrip?.booking_code || !selectedManualDriver?.assign_eligible) return;
+                    if (
+                      !selectedTrip?.booking_code ||
+                      !selectedManualDriver?.assign_eligible ||
+                      !isOfficialServiceTown(selectedManualDriver?.town, officialTownKeys)
+                    ) {
+                      return;
+                    }
                     assignDriver(selectedTrip.booking_code, manualDriverId, manualAssignRequiresEmergency).catch((err) => setLastAction(String(err?.message || err)));
                   }}
                 >
@@ -2118,7 +2181,7 @@ export default function LiveTripsClient() {
                   <div>
                     Trip town: <span className="font-semibold">{labelOrDash(selectedTrip.town || selectedTrip.zone)}</span>
                     {" | "}
-                    Driver town: <span className="font-semibold">{labelOrDash(selectedManualDriver.town)}</span>
+                    Driver town: <span className="font-semibold">{driverTownLabel(selectedManualDriver.town, officialTownKeys)}</span>
                     {manualAssignRequiresEmergency ? " | Cross-town will use emergency mode." : " | Same-town standard assign."}
                   </div>
                 ) : null}
@@ -2398,133 +2461,3 @@ export default function LiveTripsClient() {
                           <div><span className="text-slate-500">Settled at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.wallet_settled_at)}</span></div>
                           <div><span className="text-slate-500">Platform cut:</span> <span className="font-medium">{formatMoney(ws.amount != null ? Math.abs(Number(ws.amount)) : ticketInspector.booking?.company_cut)}</span></div>
                           <div><span className="text-slate-500">Reason:</span> <span className="font-medium">{labelOrDash(ws.reason)}</span></div>
-                          <div><span className="text-slate-500">Balance after:</span> <span className="font-medium">{formatMoney(ws.balanceAfter)}</span></div>
-                          <div><span className="text-slate-500">Settlement ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_id)}</span></div>
-                          <div><span className="text-slate-500">Hash:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.wallet_settlement_hash)}</span></div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="mb-2 font-semibold">Timers</div>
-                    <div className="space-y-1 text-sm">
-                      <div><span className="text-slate-500">Assigned at:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.assigned_at)}</span></div>
-                      <div><span className="text-slate-500">Driver accept expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.driver_accept_expires_at || ticketInspector.booking?.takeout_driver_accept_expires_at)}</span></div>
-                      <div><span className="text-slate-500">Fee expires:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.takeout_fee_expires_at || ticketInspector.booking?.takeout_fee_proposal_expires_at)}</span></div>
-                      <div><span className="text-slate-500">Completed:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.completed_at)}</span></div>
-                    </div>
-                  </div>
-                </div>
-              ) : ticketInspectorTab === "journey" ? (
-                <div className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2">
-                      <div>
-                        <div className="font-semibold text-slate-900">What Happened</div>
-                        <div className="text-xs text-slate-500">Plain chronological explanation generated from confirmed timeline records.</div>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {buildJourneyRows(ticketInspector).map((row, idx) => (
-                        <div key={String(row.label) + String(idx)} className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[1.3fr_1fr_0.7fr_1fr]">
-                          <div>
-                            <div className="font-semibold text-slate-800">{row.label}</div>
-                            {row.note ? <div className="text-xs text-slate-500">{row.note}</div> : null}
-                          </div>
-                          <div><span className="text-slate-500">At:</span> <span className="font-medium">{formatPHDateTime(row.at)}</span></div>
-                          <div><span className="text-slate-500">Delta:</span> <span className="font-medium">{labelOrDash(row.delta)}</span></div>
-                          <div><span className="text-slate-500">Source:</span> <span className="font-medium">{labelOrDash(row.source)}</span></div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="mb-3">
-                      <div className="font-semibold text-slate-900">Timer Analysis</div>
-                      <div className="text-xs text-slate-500">PASS/FAIL is computed from confirmed booking timer fields and timeline milestones.</div>
-                    </div>
-                    <div className="space-y-2">
-                      {buildTimerRows(ticketInspector).map((row, idx) => (
-                        <div key={String(row.name) + String(idx)} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="font-semibold text-slate-800">{row.name}</div>
-                            <span className={["rounded-full border px-2 py-0.5 text-[11px] font-semibold", timerBadgeClass(row.result)].join(" ")}>{row.result}</span>
-                          </div>
-                          <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
-                            <div>Window: <span className="font-medium">{labelOrDash(row.window)}</span></div>
-                            <div>Started: <span className="font-medium">{formatPHDateTime(row.started)}</span></div>
-                            <div>Deadline: <span className="font-medium">{formatPHDateTime(row.deadline)}</span></div>
-                            <div>Met at: <span className="font-medium">{formatPHDateTime(row.metAt)}</span></div>
-                          </div>
-                          <div className="mt-2 text-xs text-slate-700">{row.detail}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ) : ticketInspectorTab === "timeline" ? (
-                <div className="space-y-2">
-                  {(ticketInspector.timeline || []).length === 0 ? (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No timeline rows returned.</div>
-                  ) : (ticketInspector.timeline || []).map((row, idx) => (
-                    <div key={String(row.at || "") + String(idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5 flex h-8 min-w-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 px-2 text-[10px] font-semibold text-slate-600">
-                            {timelineIcon(row)}
-                          </div>
-                          <div>
-                            <div className="font-semibold">{timelineTitle(row)}</div>
-                            {row.source === "driver_wallet_transactions" ? (
-                              <div className="mt-1 text-xs text-slate-600">
-                                <span className="font-medium">{formatMoney(Math.abs(Number(row.evidence?.amount ?? 0)))}</span>
-                                <span> deducted</span>
-                                {row.evidence?.balance_after != null ? <span> - Balance after {formatMoney(row.evidence.balance_after)}</span> : null}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="text-xs text-slate-500">{formatPHDateTime(row.at)}</div>
-                      </div>
-                      <div className="mt-2 grid gap-1 text-xs text-slate-600 md:grid-cols-4">
-                        <div>Source: <span className="font-medium">{labelOrDash(row.source)}</span></div>
-                        <div>Actor: <span className="font-medium break-all">{labelOrDash(row.actor)}</span></div>
-                        <div>From: <span className="font-medium">{labelOrDash(row.from_status)}</span></div>
-                        <div>To: <span className="font-medium">{labelOrDash(row.to_status)}</span></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : ticketInspectorTab === "diagnostics" ? (
-                <div className="space-y-2">
-                  {(ticketInspector.diagnostics || []).length === 0 ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">No diagnostics returned by the rule engine.</div>
-                  ) : (ticketInspector.diagnostics || []).map((d, idx) => (
-                    <div key={String(d.code || idx)} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold uppercase text-slate-600">{labelOrDash(d.severity)}</span>
-                        <span className="font-semibold">{labelOrDash(d.code)}</span>
-                      </div>
-                      <div className="mt-1 text-slate-700">{labelOrDash(d.message)}</div>
-                      {(d.evidence || []).length ? (
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-500">
-                          {(d.evidence || []).map((ev, evIdx) => <li key={String(evIdx)}>{String(ev)}</li>)}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <pre className="max-h-[75vh] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 p-4 text-xs text-slate-100">
-                  {JSON.stringify(ticketInspector.raw || ticketInspector, null, 2)}
-                </pre>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
