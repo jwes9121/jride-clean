@@ -67,6 +67,7 @@ export default function VendorLoginPage() {
   const [selectedTown, setSelectedTown] = useState("");
   const [selectedVendorKey, setSelectedVendorKey] = useState("");
   const [pin, setPin] = useState("");
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState("Checking saved vendor session...");
@@ -217,6 +218,7 @@ export default function VendorLoginPage() {
         body: JSON.stringify({
           selected_vendor_id: selectedKey,
           access_pin: accessPin,
+          keep_signed_in: keepSignedIn,
         }),
       });
 
@@ -351,6 +353,33 @@ export default function VendorLoginPage() {
                     </span>
                   </label>
 
+                  <label className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
+                    <input
+                      type="checkbox"
+                      checked={keepSignedIn}
+                      onChange={(e) => setKeepSignedIn(e.target.checked)}
+                      disabled={verifying}
+                      className="mt-1 h-4 w-4 shrink-0"
+                    />
+                    <span>
+                      <span className="block font-semibold">
+                        Keep me signed in on this device for up to 30 days
+                      </span>
+                      <span className="mt-1 block text-xs text-emerald-800">
+                        Recommended for the store phone. Your PIN is used only to authenticate and is not saved on this device.
+                      </span>
+                    </span>
+                  </label>
+
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <strong>Important:</strong> Keep your 6-digit vendor PIN in a safe place. A saved sign-in lasts up to 30 days and may need to be renewed afterward, after Sign Out, after clearing app data, or on another phone. JRide never saves your PIN on this device.
+                    {!keepSignedIn ? (
+                      <div className="mt-2 text-xs text-amber-800">
+                        The 30-day sign-in is off. This login is not stored as a persistent 30-day session and its secure server session expires within 12 hours.
+                      </div>
+                    ) : null}
+                  </div>
+
                   {selectedVendor ? (
                     <div className="rounded-xl border bg-slate-50 p-3 text-sm">
                       <div className="font-semibold">Selected vendor</div>
@@ -380,8 +409,10 @@ export default function VendorLoginPage() {
 
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>A valid saved secure session opens the vendor portal automatically.</li>
+            <li>Keep me signed in is enabled by default for the store phone and lasts up to 30 days.</li>
             <li>If the secure session expires or is cleared, choose the vendor and enter the 6-digit access code again.</li>
             <li>The long vendor UUID is no longer required on the login screen.</li>
+            <li>JRide never stores the 6-digit PIN in local or session storage.</li>
             <li>Explicit Sign Out still clears access on that device.</li>
             <li>JRide can still disable vendor access from the onboarding registry.</li>
           </ul>
