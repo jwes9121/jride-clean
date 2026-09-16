@@ -25,7 +25,7 @@ export async function loadErrandBundleByBookingId(bookingId: string) {
   const bookingRes = await admin
     .from("bookings")
     .select(
-      "id,booking_code,passenger_name,created_by_user_id,service_type,status,town,from_label,to_label,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,driver_id,assigned_driver_id,driver_to_pickup_km,pickup_distance_fee,base_fee,distance_fare,waiting_minutes,waiting_fee,stop_count,extra_stop_fee,elevation_surcharge,heavy_load_fee,total_errand_fare,company_cut,driver_payout,created_at,updated_at"
+      "id,booking_code,passenger_name,created_by_user_id,service_type,status,town,from_label,to_label,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,driver_id,assigned_driver_id,driver_to_pickup_km,pickup_distance_fee,base_fee,distance_fare,waiting_minutes,waiting_fee,stop_count,extra_stop_fee,elevation_surcharge,heavy_load_fee,total_errand_fare,company_cut,driver_payout,night_rate_mode,night_rate_hour_ph,created_at,updated_at"
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -225,6 +225,32 @@ export function errandFareBreakdown(
     ? Math.max(configuredBaseFare, pickupDistanceFee)
     : configuredBaseFare + pickupDistanceFee;
   const distanceFare = num(booking?.distance_fare);
+  const rawNightRateMode = text(booking?.night_rate_mode).toLowerCase();
+  const nightRateMode = ["regular", "double", "plus_100"].includes(
+    rawNightRateMode
+  )
+    ? rawNightRateMode
+    : null;
+  const nightRateHourValue = booking?.night_rate_hour_ph;
+  const rawNightRateHour =
+    nightRateHourValue === null ||
+    nightRateHourValue === undefined ||
+    nightRateHourValue === ""
+      ? null
+      : Number(nightRateHourValue);
+  const nightRateHourPh =
+    rawNightRateHour != null && Number.isFinite(rawNightRateHour)
+      ? Math.floor(rawNightRateHour)
+      : null;
+  const nightRateEligibleSubtotal = Number(
+    (configuredBaseFare + distanceFare).toFixed(2)
+  );
+  const nightRateAdjustment =
+    nightRateMode === "double"
+      ? nightRateEligibleSubtotal
+      : nightRateMode === "plus_100"
+        ? 100
+        : 0;
   const extraStopFee = num(booking?.extra_stop_fee);
   const storedWaitingFee = num(booking?.waiting_fee);
   const elevationSurcharge = num(booking?.elevation_surcharge);
@@ -281,6 +307,7 @@ export function errandFareBreakdown(
     (
       approachFee +
       distanceFare +
+      nightRateAdjustment +
       extraStopFee +
       liveWaitingFee +
       elevationSurcharge +
@@ -307,6 +334,20 @@ export function errandFareBreakdown(
     base_absorbed_into_pickup:
       usesAbsorbedApproachPricing && pickupDistanceFee > configuredBaseFare,
     distance_fare: distanceFare,
+    night_rate_mode: nightRateMode,
+    night_rate_hour_ph: nightRateHourPh,
+    night_rate_eligible_subtotal: nightRateEligibleSubtotal,
+    night_rate_adjustment: nightRateAdjustment,
+    night_rate: {
+      policy_applied: nightRateMode !== null,
+      active: nightRateAdjustment > 0,
+      mode: nightRateMode,
+      hour_ph: nightRateHourPh,
+      eligible_base_fare: configuredBaseFare,
+      eligible_route_distance_fare: distanceFare,
+      eligible_subtotal: nightRateEligibleSubtotal,
+      adjustment: nightRateAdjustment,
+    },
     extra_stop_fee: extraStopFee,
     waiting_fee: liveWaitingFee,
     stored_waiting_fee: storedWaitingFee,
