@@ -45,6 +45,33 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = supabaseAdmin();
+  const matchingExpiryRes = await admin.rpc("expire_errand_matching_windows_v1", {
+    p_now: null,
+    p_limit: 200,
+  });
+
+  if (matchingExpiryRes.error) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ERRAND_MATCHING_EXPIRY_SWEEP_FAILED",
+        message: matchingExpiryRes.error.message,
+      },
+      { status: 500, headers: noStore() }
+    );
+  }
+
+  const matchingExpiredRows = Array.isArray(matchingExpiryRes.data)
+    ? matchingExpiryRes.data
+    : [];
+
+  if (matchingExpiredRows.length > 0) {
+    console.log(
+      "[JRIDE_ERRAND_MATCHING_WINDOW_EXPIRED]",
+      JSON.stringify({ expired: matchingExpiredRows.length, rows: matchingExpiredRows })
+    );
+  }
+
   const nowIso = new Date().toISOString();
 
   const { data, error } = await admin
@@ -64,6 +91,7 @@ export async function GET(req: NextRequest) {
         ok: false,
         error: "ERRAND_OFFER_EXPIRY_SCAN_FAILED",
         message: error.message,
+        matching_window_expired: matchingExpiredRows.length,
       },
       { status: 500, headers: noStore() }
     );
@@ -140,6 +168,8 @@ export async function GET(req: NextRequest) {
     {
       ok: errors.length === 0,
       generated_at: nowIso,
+      matching_window_expired: matchingExpiredRows.length,
+      matching_window_rows: matchingExpiredRows,
       scanned: rows.length,
       expired: expiredCount,
       reassigned: reassignedCount,
