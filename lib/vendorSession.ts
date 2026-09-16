@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
 export const VENDOR_SESSION_COOKIE = "jr_vendor_session";
 
 const VENDOR_SESSION_MAX_AGE_SECONDS =
-  Number(process.env.VENDOR_SESSION_MAX_AGE_SECONDS || "") || 8 * 60 * 60;
+  Number(process.env.VENDOR_SESSION_MAX_AGE_SECONDS || "") || 30 * 24 * 60 * 60;
 
 const LOGIN_ALLOWED_STATUSES = new Set([
   "pilot",
