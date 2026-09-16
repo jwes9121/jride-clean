@@ -22,6 +22,10 @@ type Receipt = {
   base_fare?: number | null;
   pickup_distance_fee?: number | null;
   distance_fare?: number | null;
+  night_rate_mode?: string | null;
+  night_rate_hour_ph?: number | null;
+  night_rate_eligible_subtotal?: number | null;
+  night_rate_adjustment?: number | null;
   extra_stop_fee?: number | null;
   waiting_minutes?: number | null;
   waiting_fee?: number | null;
@@ -40,6 +44,13 @@ function numberOrZero(value: unknown): number {
 
 function money(value: unknown): string {
   return `PHP ${Math.round(numberOrZero(value)).toLocaleString("en-PH")}`;
+}
+
+function nightRateDescription(modeRaw: unknown): string {
+  const mode = clean(modeRaw).toLowerCase();
+  if (mode === "double") return "Base + route doubled";
+  if (mode === "plus_100") return "PHP 100 added to Base + route";
+  return "";
 }
 
 function getToken(): string {
@@ -223,6 +234,8 @@ export default function ErrandStickyFare() {
     const startingFare = numberOrZero(receipt.starting_fare);
     const finalFare = numberOrZero(receipt.final_fare);
     const added = Math.max(finalFare - startingFare, 0);
+    const receiptNightRate = numberOrZero(receipt.night_rate_adjustment);
+    const receiptNightDescription = nightRateDescription(receipt.night_rate_mode);
 
     return (
       <div className="fixed inset-x-0 bottom-0 z-[120] px-3 pb-3 sm:px-4 sm:pb-4">
@@ -248,9 +261,18 @@ export default function ErrandStickyFare() {
           <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <ReceiptMetric label="Starting fare" value={money(startingFare)} />
             <ReceiptMetric label="Final fare" value={money(finalFare)} strong />
+            {receiptNightRate > 0 ? (
+              <ReceiptMetric label="Night rate" value={`+${money(receiptNightRate)}`} />
+            ) : null}
             <ReceiptMetric label="Waiting" value={money(receipt.waiting_fee)} />
             <ReceiptMetric label="Added after confirmation" value={money(added)} />
           </div>
+
+          {receiptNightRate > 0 ? (
+            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Night rate: {receiptNightDescription}. Pickup and other Errand adjustments were not multiplied.
+            </div>
+          ) : null}
 
           <div className="mt-3 text-xs text-slate-500">
             Waiting time: {Math.max(0, Math.round(numberOrZero(receipt.waiting_minutes)))} min total.
@@ -277,6 +299,8 @@ export default function ErrandStickyFare() {
   const startingFare = numberOrZero(job?.starting_fare_at_confirmation || currentFare);
   const waitingRunning = waiting?.running === true;
   const chargeable = numberOrZero(waiting?.chargeable_started_blocks) > 0;
+  const nightRateAdjustment = numberOrZero(fare?.night_rate_adjustment);
+  const nightDescription = nightRateDescription(fare?.night_rate_mode);
 
   let waitingText = "No waiting charge now";
   if (waitingRunning && freeRemainingSeconds > 60) {
@@ -336,6 +360,12 @@ export default function ErrandStickyFare() {
             </div>
           </>
         )}
+
+        {nightRateAdjustment > 0 ? (
+          <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+            Night rate: +{money(nightRateAdjustment)}. {nightDescription}. Pickup and other Errand adjustments are unchanged.
+          </div>
+        ) : null}
 
         {message ? <div className="mt-2 text-xs font-medium text-slate-700">{message}</div> : null}
       </div>
