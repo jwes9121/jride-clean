@@ -7,6 +7,11 @@ export const VENDOR_SESSION_COOKIE = "jr_vendor_session";
 const VENDOR_SESSION_MAX_AGE_SECONDS =
   Number(process.env.VENDOR_SESSION_MAX_AGE_SECONDS || "") || 30 * 24 * 60 * 60;
 
+const VENDOR_SESSION_TRANSIENT_MAX_AGE_SECONDS = Math.min(
+  12 * 60 * 60,
+  VENDOR_SESSION_MAX_AGE_SECONDS
+);
+
 const LOGIN_ALLOWED_STATUSES = new Set([
   "pilot",
   "pilot_lagawe",
@@ -30,17 +35,30 @@ export type VendorSessionCookieOptions = {
   secure: boolean;
   sameSite: "lax";
   path: "/";
-  maxAge: number;
+  maxAge?: number;
 };
 
-export function vendorSessionCookieOptions(): VendorSessionCookieOptions {
-  return {
+export function vendorSessionMaxAgeSeconds(keepSignedIn = true): number {
+  return keepSignedIn
+    ? VENDOR_SESSION_MAX_AGE_SECONDS
+    : VENDOR_SESSION_TRANSIENT_MAX_AGE_SECONDS;
+}
+
+export function vendorSessionCookieOptions(
+  keepSignedIn = true
+): VendorSessionCookieOptions {
+  const options: VendorSessionCookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: VENDOR_SESSION_MAX_AGE_SECONDS,
   };
+
+  if (keepSignedIn) {
+    options.maxAge = VENDOR_SESSION_MAX_AGE_SECONDS;
+  }
+
+  return options;
 }
 
 export type RequireVendorSessionResult =
@@ -101,19 +119,23 @@ function isValidPayload(value: unknown): value is VendorSessionPayload {
   );
 }
 
-export function signVendorSession(vendorId: string): string {
+export function signVendorSession(
+  vendorId: string,
+  maxAgeSeconds = VENDOR_SESSION_MAX_AGE_SECONDS
+): string {
   const normalizedVendorId = String(vendorId || "").trim();
 
   if (!normalizedVendorId) {
     throw new Error("vendorId is required");
   }
 
+  const normalizedMaxAgeSeconds = Math.max(60, Math.floor(maxAgeSeconds));
   const issuedAt = Math.floor(Date.now() / 1000);
 
   const payload: VendorSessionPayload = {
     v: normalizedVendorId,
     iat: issuedAt,
-    exp: issuedAt + VENDOR_SESSION_MAX_AGE_SECONDS,
+    exp: issuedAt + normalizedMaxAgeSeconds,
   };
 
   const body = encodeBase64Url(JSON.stringify(payload));
@@ -190,12 +212,14 @@ async function loadAuthenticatedVendor(
     .eq("vendor_id", vendorId)
     .limit(1)
     .maybeSingle();
-if (error || !data) {
+
+  if (error || !data) {
     return null;
   }
 
   const status = String(data.status || "").trim().toLowerCase();
-if (!LOGIN_ALLOWED_STATUSES.has(status)) {
+
+  if (!LOGIN_ALLOWED_STATUSES.has(status)) {
     return null;
   }
 
