@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
+  requireVendorSession,
   signVendorSession,
   VENDOR_SESSION_COOKIE,
   vendorSessionCookieOptions,
@@ -43,7 +44,7 @@ function publicVendor(row: any) {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const admin = getAdmin();
 
   if (!admin) {
@@ -55,6 +56,22 @@ export async function GET() {
   }
 
   try {
+    const session = await requireVendorSession(req, admin);
+
+    if (session.ok) {
+      return json(200, {
+        ok: true,
+        authenticated: true,
+        vendor_id: session.vendor.vendorId,
+        vendor: {
+          vendor_id: session.vendor.vendorId,
+          vendor_name: session.vendor.vendorName,
+          display_name: session.vendor.vendorName,
+          town: session.vendor.town,
+        },
+      });
+    }
+
     const q = await admin
       .from("vendor_onboarding_credentials")
       .select("vendor_id,vendor_name,town,phone,status")
@@ -68,6 +85,7 @@ export async function GET() {
 
     return json(200, {
       ok: true,
+      authenticated: false,
       vendors: (Array.isArray(q.data) ? q.data : []).map(publicVendor),
     });
   } catch (e: any) {
@@ -91,31 +109,14 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as any));
-  const selectedVendorId = clean(body?.selected_vendor_id || body?.selectedVendorId);
-  const vendorId = clean(body?.vendor_id || body?.vendorId);
+  const vendorId = clean(body?.selected_vendor_id || body?.selectedVendorId);
   const accessPin = clean(body?.access_pin || body?.pin || body?.vendor_access_pin);
-
-  if (!selectedVendorId) {
-    return json(400, {
-      ok: false,
-      error: "MISSING_SELECTED_VENDOR",
-      message: "Select your vendor name first.",
-    });
-  }
 
   if (!vendorId) {
     return json(400, {
       ok: false,
-      error: "MISSING_VENDOR_ID",
-      message: "Enter your vendor UUID.",
-    });
-  }
-
-  if (selectedVendorId !== vendorId) {
-    return json(401, {
-      ok: false,
-      error: "VENDOR_MISMATCH",
-      message: "Selected vendor and entered UUID do not match.",
+      error: "MISSING_SELECTED_VENDOR",
+      message: "Select your vendor name first.",
     });
   }
 
