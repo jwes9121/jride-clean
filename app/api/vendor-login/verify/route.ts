@@ -5,6 +5,7 @@ import {
   signVendorSession,
   VENDOR_SESSION_COOKIE,
   vendorSessionCookieOptions,
+  vendorSessionMaxAgeSeconds,
 } from "@/lib/vendorSession";
 
 export const dynamic = "force-dynamic";
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({} as any));
   const vendorId = clean(body?.selected_vendor_id || body?.selectedVendorId);
   const accessPin = clean(body?.access_pin || body?.pin || body?.vendor_access_pin);
+  const keepSignedIn = body?.keep_signed_in !== false && body?.keepSignedIn !== false;
 
   if (!vendorId) {
     return json(400, {
@@ -168,16 +170,18 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const sessionMaxAgeSeconds = vendorSessionMaxAgeSeconds(keepSignedIn);
     const res = NextResponse.json({
       ok: true,
       vendor_id: clean(row.vendor_id),
       vendor: publicVendor(row),
+      keep_signed_in: keepSignedIn,
     });
 
     res.cookies.set(
       VENDOR_SESSION_COOKIE,
-      signVendorSession(clean(row.vendor_id)),
-      vendorSessionCookieOptions()
+      signVendorSession(clean(row.vendor_id), sessionMaxAgeSeconds),
+      vendorSessionCookieOptions(keepSignedIn)
     );
 
     return res;
