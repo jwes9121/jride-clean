@@ -231,10 +231,17 @@ export function errandFareBreakdown(
   )
     ? rawNightRateMode
     : null;
-  const rawNightRateHour = Number(booking?.night_rate_hour_ph);
-  const nightRateHourPh = Number.isFinite(rawNightRateHour)
-    ? Math.floor(rawNightRateHour)
-    : null;
+  const nightRateHourValue = booking?.night_rate_hour_ph;
+  const rawNightRateHour =
+    nightRateHourValue === null ||
+    nightRateHourValue === undefined ||
+    nightRateHourValue === ""
+      ? null
+      : Number(nightRateHourValue);
+  const nightRateHourPh =
+    rawNightRateHour != null && Number.isFinite(rawNightRateHour)
+      ? Math.floor(rawNightRateHour)
+      : null;
   const nightRateEligibleSubtotal = Number(
     (configuredBaseFare + distanceFare).toFixed(2)
   );
