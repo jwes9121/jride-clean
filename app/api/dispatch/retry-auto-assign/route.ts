@@ -10,6 +10,37 @@ function text(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+async function expireStaleErrandMatchingWindows() {
+  const admin = supabaseAdmin();
+  const expiry = await admin.rpc("expire_errand_matching_windows_v1", {
+    p_now: null,
+    p_limit: 200,
+  });
+
+  if (expiry.error) {
+    return {
+      ok: false,
+      expired: 0,
+      error: "ERRAND_MATCHING_EXPIRY_FAILED",
+      message: expiry.error.message,
+    };
+  }
+
+  const rows = Array.isArray(expiry.data) ? expiry.data : [];
+  if (rows.length > 0) {
+    console.log(
+      "[JRIDE_ERRAND_MATCHING_WINDOW_EXPIRED]",
+      JSON.stringify({ expired: rows.length, rows })
+    );
+  }
+
+  return {
+    ok: true,
+    expired: rows.length,
+    rows,
+  };
+}
+
 async function retryWaitingErrands() {
   const admin = supabaseAdmin();
   const now = new Date();
@@ -107,6 +138,14 @@ async function retryWaitingErrands() {
 export async function POST(req: NextRequest) {
   try {
     const origin = new URL(req.url).origin;
+    const errandExpiry = await expireStaleErrandMatchingWindows();
+
+    if (errandExpiry.ok === false) {
+      return NextResponse.json(
+        { ok: false, errand_matching_expiry: errandExpiry },
+        { status: 500 }
+      );
+    }
 
     const [genericResponse, errandRetry] = await Promise.all([
       fetch(new URL("/api/dispatch/auto-assign", origin), {
@@ -126,6 +165,7 @@ export async function POST(req: NextRequest) {
         ok,
         status: genericResponse.status,
         result: genericJson,
+        errand_matching_expiry: errandExpiry,
         errand_retry: errandRetry,
       },
       { status: ok ? 200 : genericResponse.ok ? 500 : genericResponse.status }
