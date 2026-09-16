@@ -188,6 +188,13 @@ const LIVETRIPS_DISPATCH_STATUSES = [
   ...LIVETRIPS_ACTIVE_STATUSES,
 ];
 
+const JRIDE_COVERED_TOWN_KEYS = new Set([
+  "lamut",
+  "lagawe",
+  "hingyon",
+  "banaue",
+]);
+
 function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
@@ -1623,7 +1630,7 @@ export default function LiveTripsClient() {
             </div>
             <div className="text-xs text-slate-500">
               {viewMode === "drivers"
-                ? "Search the loaded driver roster by name, phone, plate, driver ID, town, or active trip. Select Locate to zoom to the latest GPS point. Outside-area locations are labeled and excluded from normal assignment."
+                ? "Home Town is the Ride service town. Current Town is the latest resolved driver location. JRide Area currently covers Lamut, Lagawe, Hingyon, and Banaue for Takeout, Errand, and AgriMarket. Ride also requires Current Town to match Home Town."
                 : "Filters only the trips already loaded in the selected tab. Use Operations Search above for global lookup. The town filter uses official service zones only."}
             </div>
           </div>
@@ -1834,18 +1841,20 @@ export default function LiveTripsClient() {
 
           {viewMode === "drivers" ? (
             <div className="overflow-auto" style={{ maxHeight: 420 }}>
-              <table className="w-full text-sm">
+              <table className="min-w-[1280px] w-full text-sm">
                 <thead className="sticky top-0 border-b border-slate-200 bg-white/95 backdrop-blur">
                   <tr className="text-left">
                     <th className="p-2">Driver</th>
                     <th className="p-2">Phone</th>
                     <th className="p-2">Plate / Vehicle</th>
-                    <th className="p-2">Town</th>
+                    <th className="p-2">Home Town (Ride)</th>
+                    <th className="p-2">Current Town</th>
+                    <th className="p-2">JRide Area</th>
                     <th className="p-2">Status</th>
                     <th className="p-2">Trips</th>
                     <th className="p-2">Last Ping (PHT)</th>
                     <th className="p-2">Seen Ago</th>
-                    <th className="p-2">Eligible</th>
+                    <th className="p-2">Ride</th>
                     <th className="p-2">Stale</th>
                     <th className="p-2">Map</th>
                   </tr>
@@ -1853,7 +1862,7 @@ export default function LiveTripsClient() {
                 <tbody>
                   {filteredDriverRows.length === 0 ? (
                     <tr>
-                      <td className="p-3 text-gray-600" colSpan={11}>
+                      <td className="p-3 text-gray-600" colSpan={13}>
                         No drivers in this view.
                       </td>
                     </tr>
@@ -1862,6 +1871,19 @@ export default function LiveTripsClient() {
                       const d = row.driver;
                       const trip = row.activeTrip;
                       const isSel = selectedDriverId === String(d.driver_id || "");
+                      const homeTown = String(d.home_town || "").trim();
+                      const currentTown = String(d.current_town || d.town || "").trim();
+                      const inJrideCoverage =
+                        Boolean(currentTown) &&
+                        JRIDE_COVERED_TOWN_KEYS.has(normalizedTownKey(currentTown));
+                      const sameRideTown =
+                        Boolean(homeTown) &&
+                        Boolean(currentTown) &&
+                        normalizedTownKey(homeTown) === normalizedTownKey(currentTown);
+                      const rideEligible =
+                        Boolean(d.assign_eligible) &&
+                        inJrideCoverage &&
+                        sameRideTown;
 
                       return (
                         <tr
@@ -1884,7 +1906,22 @@ export default function LiveTripsClient() {
                             <div>{labelOrDash(d.plate_number)}</div>
                             <div className="text-[10px] text-slate-500">{labelOrDash(d.vehicle_type)}</div>
                           </td>
-                          <td className="p-2">{driverTownLabel(d.town, officialTownKeys)}</td>
+                          <td className="p-2">{labelOrDash(homeTown)}</td>
+                          <td className="p-2">
+                            <div>{labelOrDash(currentTown)}</div>
+                            <div className="text-[10px] uppercase text-slate-500">
+                              {labelOrDash(d.town_source).replace(/_/g, " ")}
+                            </div>
+                          </td>
+                          <td className="p-2">
+                            {!currentTown ? (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">UNKNOWN</span>
+                            ) : inJrideCoverage ? (
+                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">IN AREA</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE</span>
+                            )}
+                          </td>
                           <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
                           <td className="p-2">
                             {trip ? (
@@ -1898,9 +1935,17 @@ export default function LiveTripsClient() {
                           <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
                           <td className={["p-2", seenAgoTone(d.age_seconds)].join(" ")}>{formatLastSeen(d.age_seconds)}</td>
                           <td className="p-2">
-                            {(d as any).assign_eligible
-                              ? <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">READY</span>
-                              : <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">BLOCKED</span>}
+                            {rideEligible ? (
+                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">READY</span>
+                            ) : !currentTown || !homeTown ? (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">TOWN UNKNOWN</span>
+                            ) : !inJrideCoverage ? (
+                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE JRIDE</span>
+                            ) : !sameRideTown ? (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">OUTSIDE HOME TOWN</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">BLOCKED</span>
+                            )}
                           </td>
                           <td className="p-2">
                             {(d as any).is_stale
