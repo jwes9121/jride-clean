@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/errand-matching-window/run.cjs && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:errand-matching-window": "node tests/errand-matching-window/run.cjs",
     "test:vendor-workflow": "node tests/vendor-workflow/run.cjs",
     "test:driver-duty": "node tests/driver-duty/run.cjs",
     "test:passenger-access": "node tests/passenger-access/run.cjs",
