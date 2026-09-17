@@ -1,4 +1,13 @@
 import { scheduledActivity } from "@/lib/agrimarket/schedule";
+import {
+  RIDE_PICKUP_BLOCK_KM,
+  RIDE_PICKUP_FREE_KM,
+  RIDE_PICKUP_NORMAL_MAX_FEE,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+  RIDE_PICKUP_TIER_ONE_END_KM,
+  RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+  RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+} from "@/lib/pricing/pickupFee";
 import { NextRequest } from "next/server";
 import {
   AgrimarketRequestError,
@@ -21,7 +30,6 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 const AGRIMARKET_CASH_FIRST_THRESHOLD = 500;
-const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = 10;
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
@@ -96,7 +104,7 @@ export async function POST(req: NextRequest) {
       admin
         .from("agrimarket_pricing_settings")
         .select(
-          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee,driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
+          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee"
         )
         .eq("id", 1)
         .eq("is_active", true)
@@ -129,14 +137,23 @@ export async function POST(req: NextRequest) {
     const estimateExceedsV1Limit =
       context.estimatedCargoWeightKg != null &&
       context.estimatedCargoWeightKg > num(pricing.heavy_load_exact_tier4_max_kg);
+    const baseDeliveryFee = Number(quote.base_delivery_fee || 0);
     const driverApproachPolicy = {
+      rule: "agrimarket_errand_pickup_parity_v1",
       status: "pending_driver_assignment",
       current_fee: 0,
-      first_km_free: num(pricing.driver_approach_free_km),
-      fee_per_started_km: num(pricing.driver_approach_fee_per_started_km),
-      normal_assignment_max_km: AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM,
-      normal_max_fee: num(pricing.driver_approach_fee_cap),
+      first_km_free: RIDE_PICKUP_FREE_KM,
+      block_km: RIDE_PICKUP_BLOCK_KM,
+      tier_one_end_km: RIDE_PICKUP_TIER_ONE_END_KM,
+      tier_one_fee_per_block: RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+      tier_two_fee_per_block: RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+      normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
+      raw_pickup_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
+      normal_max_fee: Math.max(0, RIDE_PICKUP_NORMAL_MAX_FEE - baseDeliveryFee),
+      max_approach_charge: RIDE_PICKUP_NORMAL_MAX_FEE,
+      base_delivery_fee_credit: baseDeliveryFee,
       distance_basis: "driver_approach_road_route",
+      charging_unit: "started_half_km_blocks_with_delivery_base_credit",
       first_pickup: cashCollectionRequired ? "customer" : "farmer",
     };
 

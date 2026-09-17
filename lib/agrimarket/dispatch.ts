@@ -1,11 +1,21 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { PICKUP_ACCESS_COLUMNS, pickupAccessError } from "./pickupAccess";
 import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
+import {
+  computeRidePickupFee,
+  RIDE_PICKUP_BLOCK_KM,
+  RIDE_PICKUP_FREE_KM,
+  RIDE_PICKUP_NORMAL_MAX_FEE,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+  RIDE_PICKUP_TIER_ONE_END_KM,
+  RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+  RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+} from "@/lib/pricing/pickupFee";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
 const DRIVER_REOFFER_COOLDOWN_SECONDS = 1800;
-const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = 10;
+const AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM = RIDE_PICKUP_NORMAL_MAX_KM;
 const ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
 const ACTIVE_BOOKING_STATUSES = [
   "assigned",
@@ -56,37 +66,6 @@ function effectiveMinWallet(value: unknown): number {
 
 function isUniqueViolation(error: any): boolean {
   return text(error?.code) === "23505" || lower(error?.message).includes("duplicate key");
-}
-
-function computeAgrimarketApproachFee(input: {
-  distanceKm: number;
-  freeKm: number;
-  feePerStartedKm: number;
-  feeCap: number;
-}): number {
-  const distanceKm = Number(input.distanceKm.toFixed(3));
-  const freeKm = Number(input.freeKm.toFixed(3));
-
-  if (
-    !Number.isFinite(distanceKm) ||
-    distanceKm < 0 ||
-    !Number.isFinite(freeKm) ||
-    freeKm < 0 ||
-    !Number.isFinite(input.feePerStartedKm) ||
-    input.feePerStartedKm < 0 ||
-    !Number.isFinite(input.feeCap) ||
-    input.feeCap < 0
-  ) {
-    throw new RangeError("AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID");
-  }
-
-  if (distanceKm <= freeKm) return 0;
-
-  const chargeableKm = Math.max(0, distanceKm - freeKm);
-  const startedKm = Math.max(0, Math.ceil(chargeableKm - 1e-9));
-  return Number(
-    Math.min(input.feeCap, startedKm * input.feePerStartedKm).toFixed(2)
-  );
 }
 
 export type AgrimarketDispatchResult = {
@@ -221,9 +200,7 @@ export async function offerAgrimarketDriver(input: {
 
   const approachSettingsRes = await admin
     .from("agrimarket_pricing_settings")
-    .select(
-      "driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
-    )
+    .select("base_delivery_fee")
     .eq("id", 1)
     .eq("is_active", true)
     .limit(1)
@@ -237,24 +214,11 @@ export async function offerAgrimarketDriver(input: {
     };
   }
 
-  const approachFreeKm = numberOrNull(
-    (approachSettingsRes.data as any).driver_approach_free_km
-  );
-  const approachFeePerStartedKm = numberOrNull(
-    (approachSettingsRes.data as any).driver_approach_fee_per_started_km
-  );
-  const approachFeeCap = numberOrNull(
-    (approachSettingsRes.data as any).driver_approach_fee_cap
+  const approachBaseDeliveryFee = numberOrNull(
+    (approachSettingsRes.data as any).base_delivery_fee
   );
 
-  if (
-    approachFreeKm == null ||
-    approachFreeKm < 0 ||
-    approachFeePerStartedKm == null ||
-    approachFeePerStartedKm < 0 ||
-    approachFeeCap == null ||
-    approachFeeCap < 0
-  ) {
+  if (approachBaseDeliveryFee == null || approachBaseDeliveryFee < 0) {
     return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID" };
   }
 
@@ -576,12 +540,8 @@ export async function offerAgrimarketDriver(input: {
     return { ok: false, error: "AGRIMARKET_DRIVER_APPROACH_DISTANCE_UNAVAILABLE" };
   }
 
-  const pickupFee = computeAgrimarketApproachFee({
-    distanceKm: driverApproachDistanceKm,
-    freeKm: approachFreeKm,
-    feePerStartedKm: approachFeePerStartedKm,
-    feeCap: approachFeeCap,
-  });
+  const rawPickupFee = computeRidePickupFee(driverApproachDistanceKm);
+  const pickupFee = Math.max(0, rawPickupFee - approachBaseDeliveryFee);
 
   const offerRank =
     priorOffers.reduce(
@@ -671,10 +631,15 @@ export async function offerAgrimarketDriver(input: {
       driver_approach_max_assignment_km: AGRIMARKET_DRIVER_APPROACH_MAX_ASSIGNMENT_KM,
       retry_after_timeout: Boolean(priorOffer),
       reoffer_cooldown_seconds: DRIVER_REOFFER_COOLDOWN_SECONDS,
-      driver_approach_fee_rule: "agrimarket_driver_approach_v1",
-      driver_approach_free_km: approachFreeKm,
-      driver_approach_fee_per_started_km: approachFeePerStartedKm,
-      driver_approach_fee_cap: approachFeeCap,
+      driver_approach_fee_rule: "agrimarket_errand_pickup_parity_v1",
+      driver_approach_free_km: RIDE_PICKUP_FREE_KM,
+      driver_approach_block_km: RIDE_PICKUP_BLOCK_KM,
+      driver_approach_tier_one_end_km: RIDE_PICKUP_TIER_ONE_END_KM,
+      driver_approach_tier_one_fee_per_block: RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+      driver_approach_tier_two_fee_per_block: RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+      driver_approach_raw_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
+      driver_approach_base_delivery_fee_credit: approachBaseDeliveryFee,
+      driver_approach_raw_pickup_fee: rawPickupFee,
       pickup_distance_fee: storedPickupFee,
       eta_seconds_to_first_pickup: etaToFirstPickup,
       eta_seconds_to_farmer: etaToFarmer,
