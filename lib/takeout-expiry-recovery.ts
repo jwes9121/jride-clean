@@ -168,8 +168,8 @@ export async function resetExpiredTakeoutFeeProposal(
     .in("status", ["assigned", "accepted"])
     .eq("assigned_driver_id", expiredDriverId)
     .is("takeout_customer_confirmed_at", null)
-    .is("takeout_fee_proposed_at", null)
-    .is("takeout_delivery_fee", null)
+    .not("takeout_fee_proposed_at", "is", null)
+    .not("takeout_delivery_fee", "is", null)
     .lte("driver_fee_proposal_expires_at", nowIso);
 
   resetQuery = bookingCode
