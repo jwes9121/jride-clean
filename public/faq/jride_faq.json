@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "entries": [
     {
       "role": "passenger",
@@ -1062,7 +1062,61 @@
         "tl": "Ipadala ang report sa official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIsama ang booking code, screenshot ng trip details kung available, at maikling factual na paliwanag ng nangyari. Independent na rerepasuhin ng JRide ang booking records at impormasyon mula sa magkabilang panig bago magdesisyon kung anong action ang angkop. Huwag i-post sa publiko ang private information ng passenger.",
         "ilo": "Ipatulod ti report iti official JRide Facebook Page:\nhttps://www.facebook.com/profile.php?id=61581391520307\n\nIkabil ti booking code, screenshot ti trip details no adda, ken ababa ken factual a pannakailawlawag ti napasamak. Independent a repasuen ti JRide dagiti booking records ken impormasyon manipud kadagiti dua a partido sakbay a mangikeddeng iti maitutop nga action. Saan nga ipablaak iti publiko ti private information ti passenger."
       }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "AgriMarket",
+        "tl": "AgriMarket",
+        "ilo": "AgriMarket"
+      },
+      "question": {
+        "en": "How is the AgriMarket delivery charge calculated?",
+        "tl": "Paano kinukuwenta ang AgriMarket delivery charge?",
+        "ilo": "Kasano a makompyut ti AgriMarket delivery charge?"
+      },
+      "answer": {
+        "en": "AgriMarket delivery is PHP 40 base delivery fee plus PHP 20 per routed kilometer from the farmer pickup to the customer delivery location. JRide calculates the road-route distance and the distance amount in the system. The Driver Approach Fee is separate and is finalized only after an actual driver is assigned.",
+        "tl": "Ang AgriMarket delivery ay PHP 40 base delivery fee plus PHP 20 bawat routed kilometer mula farmer pickup hanggang customer delivery location. JRide ang nagkakalkula ng road-route distance at distance amount sa system. Hiwalay ang Driver Approach Fee at fina-finalize lamang ito kapag may aktuwal nang assigned driver.",
+        "ilo": "Ti AgriMarket delivery ket PHP 40 a base delivery fee plus PHP 20 kada routed kilometer manipud farmer pickup agingga customer delivery location. Ti JRide ti mangkalkula iti road-route distance ken distance amount iti system. Sabali ti Driver Approach Fee ken ma-finalize laeng no adda aktuwal nga assigned driver."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "AgriMarket",
+        "tl": "AgriMarket",
+        "ilo": "AgriMarket"
+      },
+      "question": {
+        "en": "How is the AgriMarket Driver Approach Fee calculated?",
+        "tl": "Paano kinukuwenta ang AgriMarket Driver Approach Fee?",
+        "ilo": "Kasano a makompyut ti AgriMarket Driver Approach Fee?"
+      },
+      "answer": {
+        "en": "JRide uses the applicable road-route approach distance for the assigned driver, not straight-line distance. The first 1.5 km has no raw pickup charge. From over 1.5 km through 6.5 km, the raw pickup charge increases by PHP 20 for each started 0.5 km block. From over 6.5 km through 10 km, it increases by PHP 10 for each started 0.5 km block. The normal raw pickup maximum is PHP 270. The existing PHP 40 delivery base is credited against the raw pickup amount, so only the amount above PHP 40 becomes an additional Driver Approach surcharge. More than 10 km is outside normal assignment. Example: at 3.692 km, the raw pickup amount is PHP 100, the PHP 40 base is credited, and the additional Driver Approach surcharge is PHP 60.",
+        "tl": "Gamit ng JRide ang applicable road-route approach distance ng assigned driver, hindi straight-line distance. Walang raw pickup charge sa unang 1.5 km. Lampas 1.5 km hanggang 6.5 km, tumataas ang raw pickup charge ng PHP 20 sa bawat nagsimulang 0.5 km block. Lampas 6.5 km hanggang 10 km, tumataas ito ng PHP 10 sa bawat nagsimulang 0.5 km block. Ang normal raw pickup maximum ay PHP 270. Kino-credit ang kasalukuyang PHP 40 delivery base laban sa raw pickup amount, kaya ang lampas lamang sa PHP 40 ang nagiging additional Driver Approach surcharge. Lampas 10 km ay hindi normal assignment. Halimbawa: sa 3.692 km, PHP 100 ang raw pickup amount, kino-credit ang PHP 40 base, kaya PHP 60 ang additional Driver Approach surcharge.",
+        "ilo": "Usaren ti JRide ti applicable road-route approach distance ti assigned driver, saan a straight-line distance. Awan raw pickup charge iti umuna a 1.5 km. No lumabes iti 1.5 km agingga 6.5 km, mainayon ti PHP 20 iti raw pickup charge kada nagsimula a 0.5 km block. No lumabes iti 6.5 km agingga 10 km, mainayon ti PHP 10 kada nagsimula a 0.5 km block. Ti normal raw pickup maximum ket PHP 270. Ma-credit ti agdama a PHP 40 delivery base iti raw pickup amount, isu a ti laeng lumabes iti PHP 40 ti agbalin nga additional Driver Approach surcharge. Nasurok 10 km ket saan a normal assignment. Kas pagarigan: iti 3.692 km, PHP 100 ti raw pickup amount, ma-credit ti PHP 40 base, ket PHP 60 ti additional Driver Approach surcharge."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "AgriMarket",
+        "tl": "AgriMarket",
+        "ilo": "AgriMarket"
+      },
+      "question": {
+        "en": "How are my AgriMarket delivery earnings calculated?",
+        "tl": "Paano kinukuwenta ang AgriMarket delivery earnings ko?",
+        "ilo": "Kasano a makompyut ti AgriMarket delivery earnings ko?"
+      },
+      "answer": {
+        "en": "The AgriMarket driver delivery payout is the delivery fee plus the additional pickup-distance fee, minus the PHP 20 delivery company cut, then plus any applicable Heavy Load Fee and Special Handling Fee. The pickup-distance fee used for payout is only the additional amount after the PHP 40 delivery-base credit, so the base is not counted twice. The product marketplace fee is settled separately and is not part of the driver delivery payout.",
+        "tl": "Ang AgriMarket driver delivery payout ay delivery fee plus additional pickup-distance fee, minus PHP 20 delivery company cut, pagkatapos ay plus ang applicable Heavy Load Fee at Special Handling Fee. Ang pickup-distance fee na ginagamit sa payout ay additional amount lamang pagkatapos ng PHP 40 delivery-base credit, kaya hindi nadodoble ang base. Hiwalay ang settlement ng product marketplace fee at hindi ito bahagi ng driver delivery payout.",
+        "ilo": "Ti AgriMarket driver delivery payout ket delivery fee plus additional pickup-distance fee, minus PHP 20 delivery company cut, kalpasanna plus dagiti applicable Heavy Load Fee ken Special Handling Fee. Ti pickup-distance fee a maus-usar iti payout ket ti additional amount laeng kalpasan ti PHP 40 delivery-base credit, isu a saan a mamindua ti base. Sabali ti settlement ti product marketplace fee ken saan daytoy a paset ti driver delivery payout."
+      }
     }
   ],
-  "generated_note": "JRide Help & FAQ v6. Adds clickable external web/email links, Advance Booking 30-minute passenger fare response, Proposed Fare rationale, consultation/permit/convenience-fee information, official channels, jobs, custom software services, event technology services, and Apple/Windows browser access."
+  "generated_note": "JRide Help & FAQ v7. Retains v6 content and adds AgriMarket delivery pricing, Errand-parity Driver Approach pricing with the PHP 40 delivery-base credit, and AgriMarket driver delivery earnings."
 }
