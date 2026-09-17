@@ -27,7 +27,7 @@ function extractExpiryFunction(sql) {
 }
 
 function normalize(sql) {
-  return sql.replace(/[ \t]+$/gm, '').trim();
+  return sql.replace(/\s+/g, ' ').trim();
 }
 
 const baseline = extractExpiryFunction(read(baselinePath));
