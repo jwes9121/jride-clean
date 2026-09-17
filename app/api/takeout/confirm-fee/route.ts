@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
       return json(409, {
         ok: false,
         error: "TAKEOUT_FEE_PROPOSAL_EXPIRED",
-        message: "Delivery fee proposal expired. Please wait for a new proposal.",
+        message: "Delivery fee proposal expired. This order is cancelled; please create a new Takeout order.",
       });
     }
 
