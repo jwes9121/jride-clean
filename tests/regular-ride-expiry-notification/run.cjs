@@ -9,7 +9,7 @@ const baselinePath = path.join(
 );
 const migrationPath = path.join(
   root,
-  'supabase/migrations/20260917125500_regular_ride_fare_timeout_driver_notification_v1.sql',
+  'supabase/migrations/20260917125444_regular_ride_fare_timeout_driver_notification_v1.sql',
 );
 
 function read(filePath) {
