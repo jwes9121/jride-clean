@@ -29,15 +29,26 @@ function load(file) {
 function makeDb(initialRow) {
   const row = { ...initialRow };
   const rpcCalls = [];
+  const notifications = [];
   let writes = 0;
 
   return {
     row,
     rpcCalls,
+    notifications,
     get writes() {
       return writes;
     },
     from(table) {
+      if (table === 'driver_notifications') {
+        return {
+          async insert(value) {
+            notifications.push({ ...value });
+            return { data: null, error: null };
+          },
+        };
+      }
+
       assert.equal(table, 'bookings');
       let patch = null;
       const checks = [];
@@ -124,6 +135,18 @@ function booking(overrides = {}) {
   };
 }
 
+function cancelParams(row, overrides = {}) {
+  return {
+    bookingId: row.id,
+    bookingCode: row.booking_code,
+    expiredDriverId: row.assigned_driver_id,
+    expectedTakeoutFeeProposedAt: proposedAt,
+    expectedTakeoutFeeExpiresAt: expiredAt,
+    expectedDriverFeeProposalExpiresAt: expiredAt,
+    ...overrides,
+  };
+}
+
 (async () => {
   let passed = 0;
   async function test(name, fn) {
@@ -136,11 +159,7 @@ function booking(overrides = {}) {
     const db = makeDb(booking());
     const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
       db,
-      {
-        bookingId: db.row.id,
-        bookingCode: db.row.booking_code,
-        expiredDriverId: db.row.assigned_driver_id,
-      },
+      cancelParams(db.row),
     );
 
     assert.equal(result.didCancel, true);
@@ -153,7 +172,7 @@ function booking(overrides = {}) {
     assert.equal(db.row.driver_id, null);
     assert.equal(
       db.row.cancel_reason,
-      'passenger_fare_confirmation_timeout',
+      'Booking cancelled because the proposed fare was not confirmed within 5 minutes. Please book again.',
     );
     assert.equal(db.row.takeout_pricing_status, 'expired');
     assert.equal(db.row.takeout_fee_proposed_at, proposedAt);
@@ -181,11 +200,7 @@ function booking(overrides = {}) {
       const db = makeDb(row);
       const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
         db,
-        {
-          bookingId: db.row.id,
-          bookingCode: db.row.booking_code,
-          expiredDriverId: '22222222-2222-4222-8222-222222222222',
-        },
+        cancelParams(db.row),
       );
       assert.equal(result.didCancel, false);
       assert.equal(db.writes, 0);
@@ -194,14 +209,60 @@ function booking(overrides = {}) {
     const differentDriver = makeDb(booking());
     const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
       differentDriver,
-      {
-        bookingId: differentDriver.row.id,
-        bookingCode: differentDriver.row.booking_code,
+      cancelParams(differentDriver.row, {
         expiredDriverId: '33333333-3333-4333-8333-333333333333',
-      },
+      }),
     );
     assert.equal(result.didCancel, false);
     assert.equal(differentDriver.writes, 0);
+  });
+
+  await test('stale sweep cannot cancel a replacement proposal for the same booking', async () => {
+    const replacementProposedAt = '2020-01-01T00:01:00.000Z';
+    const replacementExpiresAt = '2020-01-01T00:06:00.000Z';
+    const db = makeDb(
+      booking({
+        takeout_fee_proposed_at: replacementProposedAt,
+        takeout_fee_expires_at: replacementExpiresAt,
+        driver_fee_proposal_expires_at: replacementExpiresAt,
+      }),
+    );
+
+    const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
+      db,
+      cancelParams(db.row),
+    );
+
+    assert.equal(result.didCancel, false);
+    assert.equal(db.writes, 0);
+    assert.equal(db.row.takeout_fee_proposed_at, replacementProposedAt);
+    assert.equal(db.row.status, 'accepted');
+  });
+
+  await test('expired pricing marker remains cancellable but only for the exact proposal', async () => {
+    const db = makeDb(booking({ takeout_pricing_status: 'expired' }));
+    const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
+      db,
+      cancelParams(db.row),
+    );
+    assert.equal(result.didCancel, true);
+    assert.equal(db.writes, 1);
+  });
+
+  await test('driver receives a timeout notification only after cancellation path calls notifier', async () => {
+    const db = makeDb(booking());
+    const result = await timeout.notifyTakeoutFareTimeoutDriver(db, {
+      expiredDriverId: db.row.assigned_driver_id,
+      bookingCode: db.row.booking_code,
+    });
+
+    assert.equal(result.sent, true);
+    assert.equal(result.error, null);
+    assert.equal(db.notifications.length, 1);
+    assert.equal(db.notifications[0].driver_id, db.row.assigned_driver_id);
+    assert.equal(db.notifications[0].type, 'fare_confirmation_timeout');
+    assert.match(db.notifications[0].message, /cancelled/);
+    assert.match(db.notifications[0].message, /5 minutes/);
   });
 
   await test('lifecycle audit identifies passenger timeout and explicitly forbids reassignment penalty', async () => {
@@ -241,6 +302,10 @@ function booking(overrides = {}) {
     assert(cron.includes('driver_accept_expired_cron_sweep'));
     assert(cron.includes('triggerTakeoutFeeProposalReassign'));
     assert(feeSection.includes('cancelExpiredTakeoutPassengerFareConfirmation'));
+    assert(feeSection.includes('notifyTakeoutFareTimeoutDriver'));
+    assert(feeSection.includes('expectedTakeoutFeeProposedAt'));
+    assert(feeSection.includes('expectedTakeoutFeeExpiresAt'));
+    assert(feeSection.includes('expectedDriverFeeProposalExpiresAt'));
     assert(!feeSection.includes('resetExpiredTakeoutFeeProposal'));
     assert(!feeSection.includes('fee_proposal_expired_cron_sweep'));
     assert(!feeSection.includes('triggerTakeoutFeeProposalReassign('));
