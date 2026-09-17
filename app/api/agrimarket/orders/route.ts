@@ -1,4 +1,13 @@
 import { NextRequest } from "next/server";
+import {
+  RIDE_PICKUP_BLOCK_KM,
+  RIDE_PICKUP_FREE_KM,
+  RIDE_PICKUP_NORMAL_MAX_FEE,
+  RIDE_PICKUP_NORMAL_MAX_KM,
+  RIDE_PICKUP_TIER_ONE_END_KM,
+  RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+  RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+} from "@/lib/pricing/pickupFee";
 import { sendFarmerBrowserAlerts } from "@/lib/agrimarket/browserPushServer";
 import {
   AgrimarketRequestError,
@@ -48,9 +57,7 @@ function requestId(req: NextRequest, body: any): string {
 async function loadDriverApproachPolicy(admin: any) {
   const settingsRes = await admin
     .from("agrimarket_pricing_settings")
-    .select(
-      "driver_approach_free_km,driver_approach_fee_per_started_km,driver_approach_fee_cap"
-    )
+    .select("base_delivery_fee")
     .eq("id", 1)
     .eq("is_active", true)
     .limit(1)
@@ -64,20 +71,8 @@ async function loadDriverApproachPolicy(admin: any) {
     );
   }
 
-  const freeKm = Number((settingsRes.data as any).driver_approach_free_km);
-  const feePerStartedKm = Number(
-    (settingsRes.data as any).driver_approach_fee_per_started_km
-  );
-  const feeCap = Number((settingsRes.data as any).driver_approach_fee_cap);
-
-  if (
-    !Number.isFinite(freeKm) ||
-    freeKm < 0 ||
-    !Number.isFinite(feePerStartedKm) ||
-    feePerStartedKm < 0 ||
-    !Number.isFinite(feeCap) ||
-    feeCap < 0
-  ) {
+  const baseDeliveryFee = Number((settingsRes.data as any).base_delivery_fee);
+  if (!Number.isFinite(baseDeliveryFee) || baseDeliveryFee < 0) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_DRIVER_APPROACH_SETTINGS_INVALID",
       500,
@@ -86,15 +81,21 @@ async function loadDriverApproachPolicy(admin: any) {
   }
 
   return {
-    rule: "agrimarket_driver_approach_v1",
-    free_km: freeKm,
-    fee_per_started_km: feePerStartedKm,
-    fee_cap: feeCap,
+    rule: "agrimarket_errand_pickup_parity_v1",
+    first_km_free: RIDE_PICKUP_FREE_KM,
+    block_km: RIDE_PICKUP_BLOCK_KM,
+    tier_one_end_km: RIDE_PICKUP_TIER_ONE_END_KM,
+    tier_one_fee_per_block: RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
+    tier_two_fee_per_block: RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
+    normal_assignment_max_km: RIDE_PICKUP_NORMAL_MAX_KM,
+    raw_pickup_max_fee: RIDE_PICKUP_NORMAL_MAX_FEE,
+    normal_max_fee: Math.max(0, RIDE_PICKUP_NORMAL_MAX_FEE - baseDeliveryFee),
+    max_approach_charge: RIDE_PICKUP_NORMAL_MAX_FEE,
+    base_delivery_fee_credit: baseDeliveryFee,
     distance_basis: "assigned_driver_to_farmer_road_route",
-    charging_unit: "started_km_above_free_distance",
+    charging_unit: "started_half_km_blocks_with_delivery_base_credit",
   };
 }
-
 function rpcFailureStatus(message: string): number {
   if (message.includes("NOT_FOUND")) return 404;
   if (
