@@ -16,7 +16,9 @@ function noStore() {
 
 // Vercel automatically sends Authorization: Bearer <CRON_SECRET> when
 // invoking a scheduled route, per Vercel's documented cron-security
-// pattern (https://vercel.com/docs/cron-jobs/manage/vercel-cron-jobs#securing-cron-jobs).
+// pattern (https://vercel.com/docs/cron-jobs/manage-cron-jobs). Missing
+// or unset CRON_SECRET fails closed (never authorizes) rather than
+// skipping the check.
 function isAuthorizedCronRequest(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET || "";
   if (!secret) return false;
@@ -276,7 +278,7 @@ export async function GET(req: NextRequest) {
 
   console.log("[takeout-expiry-recovery] cron completed", {
     generatedAt: nowIso,
-    expiredCandidates: driverAcceptRows.length + rows.length,
+    expiredCandidates: rows.length,
     resetBookings: resetCount,
     reassigned: reassignedCount,
     errors: errors.length,
