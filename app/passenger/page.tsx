@@ -12,6 +12,7 @@ export default function PassengerDashboardPage() {
   const [loading, setLoading] = React.useState(true);
   const [authed, setAuthed] = React.useState(false);
   const [verified, setVerified] = React.useState(false);
+  const [verificationStatus, setVerificationStatus] = React.useState("");
   const [nightAllowed, setNightAllowed] = React.useState(false);
   const [agrimarketEnabled, setAgrimarketEnabled] = React.useState(false);
 
@@ -39,9 +40,11 @@ export default function PassengerDashboardPage() {
           const cr = await fetch("/api/public/passenger/can-book", { cache: "no-store" });
           const cj = await cr.json();
           setVerified(!!cj?.verified);
+          setVerificationStatus(String(cj?.verification_status || "").toLowerCase().trim());
           setNightAllowed(!cj?.nightGate || !!cj?.verified);
         } catch {
           setVerified(false);
+          setVerificationStatus("");
           setNightAllowed(false);
         }
 
@@ -77,6 +80,7 @@ export default function PassengerDashboardPage() {
       } catch {
         if (!alive) return;
         setAuthed(false);
+        setVerificationStatus("");
         setAgrimarketEnabled(false);
       } finally {
         if (!alive) return;
@@ -87,6 +91,8 @@ export default function PassengerDashboardPage() {
   }, []);
 
   void freeRideStatus;
+
+  const verificationDeclined = verificationStatus === "rejected";
 
   function gotoLogin(callbackPath = "/passenger") {
     router.push(passengerLoginHref(callbackPath));
@@ -133,12 +139,20 @@ export default function PassengerDashboardPage() {
           </div>
         ) : null}
 
+        {authed && verificationDeclined ? (
+          <div className="mt-3 rounded-xl border border-red-300 bg-red-50 px-3 py-3 text-red-900">
+            <div className="font-semibold">Verification declined - resubmission required</div>
+            <div className="mt-1 text-xs opacity-90">Open Verification to see the decline reason, follow the guidance, and resend your corrected name, ID, and selfie.</div>
+            <button type="button" onClick={goVerify} className="mt-3 rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600">Review and resubmit</button>
+          </div>
+        ) : null}
+
         {authed ? (
           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-slate-800">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="font-semibold">
-                  {verified ? "Account verified" : (nightAllowed ? "Verification recommended" : "Verification required (night booking)")}
+                  {verified ? "Account verified" : verificationDeclined ? "Verification declined" : (nightAllowed ? "Verification recommended" : "Verification required (night booking)")}
                 </div>
                 <div className="opacity-80 text-xs mt-1">
                   Verified: {String(verified)} | Night allowed: {String(nightAllowed)}
@@ -156,72 +170,36 @@ export default function PassengerDashboardPage() {
                   (verified ? "bg-black/5 text-black/40 cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-500")
                 }
               >
-                {verified ? "Verified" : "Verify account"}
+                {verified ? "Verified" : verificationDeclined ? "Resubmit verification" : "Verify account"}
               </button>
             </div>
           </div>
         ) : null}
 
         <div className={"grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 " + (agrimarketEnabled ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
-          <button
-            type="button"
-            onClick={goBookRide}
-            className="text-left rounded-xl border border-blue-500 bg-blue-500/10 px-4 py-3"
-          >
-            <div className="font-semibold">Book Ride</div>
-            <div className="text-sm opacity-70">Go to ride booking</div>
+          <button type="button" onClick={goBookRide} className="text-left rounded-xl border border-blue-500 bg-blue-500/10 px-4 py-3">
+            <div className="font-semibold">Book Ride</div><div className="text-sm opacity-70">Go to ride booking</div>
           </button>
-
-          <button
-            type="button"
-            onClick={() => (authed ? router.push("/takeout") : gotoLogin("/takeout"))}
-            className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3"
-          >
-            <div className="font-semibold">Takeout</div>
-            <div className="text-sm opacity-70">Food delivery (pilot)</div>
+          <button type="button" onClick={() => (authed ? router.push("/takeout") : gotoLogin("/takeout"))} className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3">
+            <div className="font-semibold">Takeout</div><div className="text-sm opacity-70">Food delivery (pilot)</div>
           </button>
-
-          <button
-            type="button"
-            onClick={() => (authed ? router.push("/errands") : gotoLogin("/errands"))}
-            className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3"
-          >
-            <div className="font-semibold">Errands</div>
-            <div className="text-sm opacity-70">Pabili / padala (pilot)</div>
+          <button type="button" onClick={() => (authed ? router.push("/errands") : gotoLogin("/errands"))} className="text-left rounded-xl border border-black/10 bg-white hover:bg-black/5 px-4 py-3">
+            <div className="font-semibold">Errands</div><div className="text-sm opacity-70">Pabili / padala (pilot)</div>
           </button>
-
           {agrimarketEnabled ? (
-            <button
-              type="button"
-              onClick={() => (authed ? router.push("/agrimarket") : gotoLogin("/agrimarket"))}
-              className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3"
-            >
-              <div className="font-semibold text-emerald-900">Agrimarket</div>
-              <div className="text-sm text-emerald-800/70">Buy from local farmers</div>
+            <button type="button" onClick={() => (authed ? router.push("/agrimarket") : gotoLogin("/agrimarket"))} className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3">
+              <div className="font-semibold text-emerald-900">Agrimarket</div><div className="text-sm text-emerald-800/70">Buy from local farmers</div>
             </button>
           ) : null}
         </div>
 
         <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => (authed ? router.push("/ride") : gotoLogin("/ride"))}
-            disabled={loading}
-            className={
-              "rounded-xl px-5 py-2 font-semibold text-white " +
-              (loading ? "bg-blue-600/60 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500")
-            }
-          >
+          <button type="button" onClick={() => (authed ? router.push("/ride") : gotoLogin("/ride"))} disabled={loading} className={"rounded-xl px-5 py-2 font-semibold text-white " + (loading ? "bg-blue-600/60 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-500")}>
             {loading ? "Loading..." : authed ? "Continue" : "Sign in to continue"}
           </button>
-
           {authed && !verified ? (
-            <button
-              type="button"
-              onClick={goVerify}
-              className="rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-5 py-2 font-semibold"
-            >
-              Verify now
+            <button type="button" onClick={goVerify} className="rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50 px-5 py-2 font-semibold">
+              {verificationDeclined ? "Fix verification" : "Verify now"}
             </button>
           ) : null}
         </div>
