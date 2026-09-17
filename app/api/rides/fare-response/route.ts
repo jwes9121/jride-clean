@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerSupabase } from "@/utils/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
+const PASSENGER_FARE_REJECTED_CANCEL_REASON =
+  "Passenger declined the fare proposal. Please book again if you still need a ride.";
+
 function text(v: unknown): string {
   return String(v ?? "").trim();
 }
@@ -54,42 +57,71 @@ function noStoreHeaders() {
   };
 }
 
-async function retryAutoAssign(req: NextRequest, rejectedDriverId: string, bookingId: string) {
-  if (!rejectedDriverId) {
-    return { attempted: false, skipped: true, reason: "NO_REJECTED_DRIVER_ID" };
+async function releaseRejectedFarePromo(
+  serviceSupabase: any,
+  bookingId: string,
+  passengerId: string
+) {
+  try {
+    const { data, error } = await serviceSupabase.rpc(
+      "jride_promo_release_for_booking",
+      {
+        p_booking_id: bookingId,
+        p_customer_id: passengerId,
+        p_reason: "passenger_fare_rejected",
+      }
+    );
+
+    if (error) {
+      console.error(
+        "[JRIDE_REGULAR_RIDE_FARE_REJECT_PROMO_RELEASE_FAILED]",
+        JSON.stringify({ bookingId, passengerId, error: error.message })
+      );
+      return;
+    }
+
+    if (data && typeof data === "object" && data.ok === false) {
+      console.error(
+        "[JRIDE_REGULAR_RIDE_FARE_REJECT_PROMO_RELEASE_FAILED]",
+        JSON.stringify({ bookingId, passengerId, result: data })
+      );
+    }
+  } catch (e: any) {
+    console.error(
+      "[JRIDE_REGULAR_RIDE_FARE_REJECT_PROMO_RELEASE_FAILED]",
+      JSON.stringify({ bookingId, passengerId, error: String(e?.message ?? e) })
+    );
   }
+}
+
+async function notifyRejectedFareDriver(
+  serviceSupabase: any,
+  driverId: string,
+  bookingCode: string
+) {
+  if (!driverId) return;
 
   try {
-    const autoAssignUrl = new URL("/api/dispatch/auto-assign", req.url);
-    const autoAssignRes = await fetch(autoAssignUrl, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        mode: "single",
-        bookingId,
-        trigger_reason: "fare_rejected_exclude_driver",
-        exclude_driver_ids: [rejectedDriverId],
-      }),
-      cache: "no-store",
+    const label = bookingCode ? ` ${bookingCode}` : "";
+    const { error } = await serviceSupabase.from("driver_notifications").insert({
+      driver_id: driverId,
+      type: "fare_declined",
+      message:
+        `Ride booking${label} was cancelled because the passenger declined the fare proposal. ` +
+        "You may accept another booking.",
     });
 
-    const payload = await autoAssignRes.json().catch(() => null);
-    return {
-      attempted: true,
-      ok: autoAssignRes.ok,
-      status: autoAssignRes.status,
-      excluded_driver_ids: [rejectedDriverId],
-      result: payload,
-    };
+    if (error) {
+      console.error(
+        "[JRIDE_REGULAR_RIDE_FARE_REJECT_DRIVER_NOTIFICATION_FAILED]",
+        JSON.stringify({ bookingCode, driverId, error: error.message })
+      );
+    }
   } catch (e: any) {
-    return {
-      attempted: true,
-      ok: false,
-      excluded_driver_ids: [rejectedDriverId],
-      error: String(e?.message ?? e),
-    };
+    console.error(
+      "[JRIDE_REGULAR_RIDE_FARE_REJECT_DRIVER_NOTIFICATION_FAILED]",
+      JSON.stringify({ bookingCode, driverId, error: String(e?.message ?? e) })
+    );
   }
 }
 
@@ -223,16 +255,17 @@ export async function POST(req: NextRequest) {
           }
         : {
             passenger_fare_response: "rejected",
-            status: "searching",
+            status: "cancelled",
+            cancel_reason: PASSENGER_FARE_REJECTED_CANCEL_REASON,
             driver_id: null,
             assigned_driver_id: null,
+            driver_status: null,
             assigned_at: null,
-            last_expired_driver_id: rejectedDriverId,
+            driver_accept_expires_at: null,
             driver_fee_proposal_expires_at: null,
-            proposed_fare: null,
-            verified_fare: null,
-            driver_to_pickup_km: null,
-            pickup_distance_fee: null,
+            ride_reassignment_pending: false,
+            ride_reassignment_queued_at: null,
+            ride_reassignment_next_attempt_at: null,
             updated_at: nowIso,
           };
 
@@ -251,7 +284,7 @@ export async function POST(req: NextRequest) {
       : updateQuery.is("assigned_driver_id", null);
 
     const { data: updatedRows, error: updateError } = await updateQuery
-      .select("id, booking_code, status, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
+      .select("id, booking_code, status, cancel_reason, passenger_fare_response, driver_id, assigned_driver_id, updated_at")
       .limit(1);
 
     if (updateError) {
@@ -276,9 +309,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const reassignResult = action === "rejected"
-      ? await retryAutoAssign(req, rejectedDriverId, String(updated.id))
-      : null;
+    if (action === "rejected") {
+      await releaseRejectedFarePromo(
+        serviceSupabase,
+        String(updated.id),
+        user.id
+      );
+      await notifyRejectedFareDriver(
+        serviceSupabase,
+        rejectedDriverId,
+        text(updated?.booking_code || (booking as any).booking_code)
+      );
+    }
 
     return NextResponse.json(
       {
@@ -286,12 +328,20 @@ export async function POST(req: NextRequest) {
         booking_id: text(updated?.id || (booking as any).id),
         booking_code: text(updated?.booking_code || (booking as any).booking_code),
         status: text(updated?.status || updatePayload.status),
+        cancel_reason: text(updated?.cancel_reason || "") || null,
         passenger_fare_response: text(updated?.passenger_fare_response || action),
         driver_id: updated?.driver_id ?? null,
         assigned_driver_id: updated?.assigned_driver_id ?? null,
         updated_at: updated?.updated_at ?? nowIso,
         rejected_driver_id: action === "rejected" ? rejectedDriverId || null : null,
-        reassign: reassignResult,
+        reassign:
+          action === "rejected"
+            ? {
+                attempted: false,
+                skipped: true,
+                reason: "PASSENGER_DECLINED_FARE_BOOKING_CANCELLED",
+              }
+            : null,
       },
       { status: 200, headers: noStoreHeaders() }
     );
@@ -302,5 +352,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-
-
