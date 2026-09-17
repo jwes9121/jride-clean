@@ -1,6 +1,9 @@
 export const TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON =
   "passenger_fare_confirmation_timeout";
 
+export const TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_MESSAGE =
+  "Booking cancelled because the proposed fare was not confirmed within 5 minutes. Please book again.";
+
 export type TakeoutPassengerFareTimeoutCancelResult = {
   didCancel: boolean;
   bookingId: string | null;
@@ -8,26 +11,51 @@ export type TakeoutPassengerFareTimeoutCancelResult = {
   error: string | null;
 };
 
-// Cancels only an expired, unconfirmed TakeOut fee proposal.
-// Proposal amounts/timestamps are intentionally preserved for audit.
+export type TakeoutFareTimeoutDriverNotificationResult = {
+  sent: boolean;
+  error: string | null;
+};
+
+// Cancels only the exact expired, unconfirmed TakeOut fee proposal that the
+// caller inspected. Proposal amounts/timestamps are intentionally preserved
+// for audit. Exact proposal identity guards prevent a stale cron read from
+// cancelling a newer proposal created for the same booking.
 export async function cancelExpiredTakeoutPassengerFareConfirmation(
   serviceSupabase: any,
   params: {
     bookingId?: string | null;
     bookingCode?: string | null;
     expiredDriverId: string;
+    expectedTakeoutFeeProposedAt: string;
+    expectedTakeoutFeeExpiresAt: string;
+    expectedDriverFeeProposalExpiresAt: string;
   }
 ): Promise<TakeoutPassengerFareTimeoutCancelResult> {
   const bookingId = String(params.bookingId || "").trim() || null;
   const bookingCode = String(params.bookingCode || "").trim() || null;
   const expiredDriverId = String(params.expiredDriverId || "").trim();
+  const expectedTakeoutFeeProposedAt = String(
+    params.expectedTakeoutFeeProposedAt || ""
+  ).trim();
+  const expectedTakeoutFeeExpiresAt = String(
+    params.expectedTakeoutFeeExpiresAt || ""
+  ).trim();
+  const expectedDriverFeeProposalExpiresAt = String(
+    params.expectedDriverFeeProposalExpiresAt || ""
+  ).trim();
 
-  if ((!bookingId && !bookingCode) || !expiredDriverId) {
+  if (
+    (!bookingId && !bookingCode) ||
+    !expiredDriverId ||
+    !expectedTakeoutFeeProposedAt ||
+    !expectedTakeoutFeeExpiresAt ||
+    !expectedDriverFeeProposalExpiresAt
+  ) {
     return {
       didCancel: false,
       bookingId,
       bookingCode,
-      error: "MISSING_BOOKING_OR_DRIVER_ID",
+      error: "MISSING_BOOKING_DRIVER_OR_PROPOSAL_IDENTITY",
     };
   }
 
@@ -46,7 +74,7 @@ export async function cancelExpiredTakeoutPassengerFareConfirmation(
       driver_accept_expires_at: null,
       takeout_driver_accept_expires_at: null,
       takeout_pricing_status: "expired",
-      cancel_reason: TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON,
+      cancel_reason: TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_MESSAGE,
       last_expired_driver_id: expiredDriverId,
       updated_at: nowIso,
       // Preserve the fee proposal, its owner, and both proposal deadlines.
@@ -55,12 +83,17 @@ export async function cancelExpiredTakeoutPassengerFareConfirmation(
     .eq("service_type", "takeout")
     .in("status", ["assigned", "accepted"])
     .eq("assigned_driver_id", expiredDriverId)
+    .eq("takeout_fee_proposed_by_driver_id", expiredDriverId)
+    .in("takeout_pricing_status", ["driver_fee_proposed", "expired"])
     .is("takeout_customer_confirmed_at", null)
-    .not("takeout_fee_proposed_at", "is", null)
+    .eq("takeout_fee_proposed_at", expectedTakeoutFeeProposedAt)
     .not("takeout_delivery_fee", "is", null)
-    .not("takeout_fee_expires_at", "is", null)
+    .eq("takeout_fee_expires_at", expectedTakeoutFeeExpiresAt)
     .lte("takeout_fee_expires_at", nowIso)
-    .not("driver_fee_proposal_expires_at", "is", null)
+    .eq(
+      "driver_fee_proposal_expires_at",
+      expectedDriverFeeProposalExpiresAt
+    )
     .lte("driver_fee_proposal_expires_at", nowIso);
 
   cancelQuery = bookingCode
@@ -89,6 +122,38 @@ export async function cancelExpiredTakeoutPassengerFareConfirmation(
     bookingCode: String(row?.booking_code || bookingCode || "") || null,
     error: null,
   };
+}
+
+export async function notifyTakeoutFareTimeoutDriver(
+  serviceSupabase: any,
+  params: {
+    expiredDriverId: string;
+    bookingCode: string | null;
+  }
+): Promise<TakeoutFareTimeoutDriverNotificationResult> {
+  const expiredDriverId = String(params.expiredDriverId || "").trim();
+  const bookingCode = String(params.bookingCode || "").trim();
+
+  if (!expiredDriverId) {
+    return { sent: false, error: "MISSING_DRIVER_ID" };
+  }
+
+  const label = bookingCode ? ` ${bookingCode}` : "";
+  const notificationRes = await serviceSupabase
+    .from("driver_notifications")
+    .insert({
+      driver_id: expiredDriverId,
+      type: "fare_confirmation_timeout",
+      message:
+        `Takeout booking${label} was cancelled because the passenger did not ` +
+        "confirm the proposed fare within 5 minutes. You may accept another booking.",
+    });
+
+  if (notificationRes.error) {
+    return { sent: false, error: notificationRes.error.message };
+  }
+
+  return { sent: true, error: null };
 }
 
 export async function recordTakeoutPassengerFareTimeoutLifecycleEvent(
