@@ -9,6 +9,7 @@ import {
   TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON,
   cancelExpiredTakeoutPassengerFareConfirmation,
   logTakeoutPassengerFareConfirmationTimeout,
+  notifyTakeoutFareTimeoutDriver,
   recordTakeoutPassengerFareTimeoutLifecycleEvent,
 } from "@/lib/takeout-passenger-fare-timeout";
 
@@ -36,6 +37,7 @@ type CandidateRow = {
   created_by_user_id: string | null;
   status: string | null;
   assigned_driver_id: string | null;
+  takeout_fee_proposed_at: string | null;
   takeout_fee_expires_at: string | null;
   driver_fee_proposal_expires_at: string | null;
   town: string | null;
@@ -68,6 +70,7 @@ export async function GET(req: NextRequest) {
   let driverAcceptResetCount = 0;
   let driverAcceptReassignedCount = 0;
   let feeProposalCancelledCount = 0;
+  let feeProposalDriverNotifiedCount = 0;
 
   const {
     data: driverAcceptCandidateRows,
@@ -99,28 +102,24 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const driverAcceptRows =
-    (driverAcceptCandidateRows ?? []) as any[];
+  const driverAcceptRows = (driverAcceptCandidateRows ?? []) as any[];
 
   for (const row of driverAcceptRows) {
     const bookingId = String(row?.id || "");
-    const bookingCode =
-      row?.booking_code ? String(row.booking_code) : null;
-    const expiredDriverId =
-      String(row?.assigned_driver_id || "");
+    const bookingCode = row?.booking_code ? String(row.booking_code) : null;
+    const expiredDriverId = String(row?.assigned_driver_id || "");
 
     if (!bookingId || !expiredDriverId) continue;
 
     try {
-      const resetResult =
-        await resetExpiredTakeoutDriverAcceptance(
-          supabase,
-          {
-            bookingId,
-            bookingCode,
-            expiredDriverId,
-          }
-        );
+      const resetResult = await resetExpiredTakeoutDriverAcceptance(
+        supabase,
+        {
+          bookingId,
+          bookingCode,
+          expiredDriverId,
+        }
+      );
 
       if (resetResult.error) {
         errors.push({
@@ -138,16 +137,14 @@ export async function GET(req: NextRequest) {
       driverAcceptResetCount += 1;
       resetCount += 1;
 
-      const reassignResult =
-        await triggerTakeoutFeeProposalReassign(
-          req,
-          resetResult.bookingId,
-          expiredDriverId,
-          "driver_accept_expired_cron_sweep"
-        );
+      const reassignResult = await triggerTakeoutFeeProposalReassign(
+        req,
+        resetResult.bookingId,
+        expiredDriverId,
+        "driver_accept_expired_cron_sweep"
+      );
 
-      const reassignmentSuccess =
-        !!reassignResult.payload?.assigned;
+      const reassignmentSuccess = !!reassignResult.payload?.assigned;
 
       if (reassignmentSuccess) {
         driverAcceptReassignedCount += 1;
@@ -194,17 +191,17 @@ export async function GET(req: NextRequest) {
   const { data: candidateRows, error: scanError } = await supabase
     .from("bookings")
     .select(
-      "id,booking_code,created_by_user_id,status,assigned_driver_id,takeout_fee_expires_at,driver_fee_proposal_expires_at,town"
+      "id,booking_code,created_by_user_id,status,assigned_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,driver_fee_proposal_expires_at,town"
     )
     .eq("service_type", "takeout")
     .in("status", ["assigned", "accepted"])
     .not("assigned_driver_id", "is", null)
+    .not("takeout_fee_proposed_at", "is", null)
     .not("takeout_fee_expires_at", "is", null)
     .lte("takeout_fee_expires_at", nowIso)
     .not("driver_fee_proposal_expires_at", "is", null)
     .lte("driver_fee_proposal_expires_at", nowIso)
     .is("takeout_customer_confirmed_at", null)
-    .not("takeout_fee_proposed_at", "is", null)
     .not("takeout_delivery_fee", "is", null)
     .limit(50);
 
@@ -225,8 +222,25 @@ export async function GET(req: NextRequest) {
     const bookingId = String(row.id || "");
     const bookingCode = row.booking_code ? String(row.booking_code) : null;
     const expiredDriverId = String(row.assigned_driver_id || "");
+    const expectedTakeoutFeeProposedAt = String(
+      row.takeout_fee_proposed_at || ""
+    );
+    const expectedTakeoutFeeExpiresAt = String(
+      row.takeout_fee_expires_at || ""
+    );
+    const expectedDriverFeeProposalExpiresAt = String(
+      row.driver_fee_proposal_expires_at || ""
+    );
 
-    if (!bookingId || !expiredDriverId) continue;
+    if (
+      !bookingId ||
+      !expiredDriverId ||
+      !expectedTakeoutFeeProposedAt ||
+      !expectedTakeoutFeeExpiresAt ||
+      !expectedDriverFeeProposalExpiresAt
+    ) {
+      continue;
+    }
 
     try {
       const cancelResult =
@@ -234,6 +248,9 @@ export async function GET(req: NextRequest) {
           bookingId,
           bookingCode,
           expiredDriverId,
+          expectedTakeoutFeeProposedAt,
+          expectedTakeoutFeeExpiresAt,
+          expectedDriverFeeProposalExpiresAt,
         });
 
       if (cancelResult.error) {
@@ -254,13 +271,33 @@ export async function GET(req: NextRequest) {
         expiredDriverId,
         townRaw: row.town ? String(row.town) : null,
         statusBefore: String(row.status || "unknown"),
-        expiresAt: row.takeout_fee_expires_at,
+        expiresAt: expectedTakeoutFeeExpiresAt,
       });
+
+      const driverNotification = await notifyTakeoutFareTimeoutDriver(
+        supabase,
+        {
+          expiredDriverId,
+          bookingCode: cancelResult.bookingCode,
+        }
+      );
+
+      if (driverNotification.sent) {
+        feeProposalDriverNotifiedCount += 1;
+      } else {
+        errors.push({
+          bookingId,
+          bookingCode,
+          error:
+            driverNotification.error ||
+            "TAKEOUT_FARE_TIMEOUT_DRIVER_NOTIFICATION_FAILED",
+        });
+      }
 
       logTakeoutPassengerFareConfirmationTimeout({
         bookingCode: cancelResult.bookingCode,
         expiredDriverId,
-        expiredAt: row.takeout_fee_expires_at,
+        expiredAt: expectedTakeoutFeeExpiresAt,
         cancelled: true,
         reason: TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON,
       });
@@ -281,6 +318,7 @@ export async function GET(req: NextRequest) {
     driverAcceptReassigned: driverAcceptReassignedCount,
     feeProposalExpiredCandidates: rows.length,
     feeProposalCancelled: feeProposalCancelledCount,
+    feeProposalDriverNotified: feeProposalDriverNotifiedCount,
     resetBookings: resetCount,
     reassigned: reassignedCount,
     errors: errors.length,
@@ -288,21 +326,19 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(
     {
-      ok: true,
+      ok: errors.length === 0,
       generatedAt: nowIso,
-      expiredCandidates:
-        driverAcceptRows.length + rows.length,
-      driverAcceptExpiredCandidates:
-        driverAcceptRows.length,
+      expiredCandidates: driverAcceptRows.length + rows.length,
+      driverAcceptExpiredCandidates: driverAcceptRows.length,
       driverAcceptReset: driverAcceptResetCount,
-      driverAcceptReassigned:
-        driverAcceptReassignedCount,
+      driverAcceptReassigned: driverAcceptReassignedCount,
       feeProposalExpiredCandidates: rows.length,
       feeProposalCancelled: feeProposalCancelledCount,
+      feeProposalDriverNotified: feeProposalDriverNotifiedCount,
       resetBookings: resetCount,
       reassigned: reassignedCount,
       errors,
     },
-    { status: 200, headers: noStore() }
+    { status: errors.length > 0 ? 500 : 200, headers: noStore() }
   );
 }
