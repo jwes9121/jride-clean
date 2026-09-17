@@ -1,6 +1,7 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { validatePassengerVerificationName } from "@/lib/passengerVerificationName";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const passenger_id = body?.passenger_id ? String(body.passenger_id) : "";
     const decision = body?.decision ? String(body.decision) : "";
-    const admin_notes = body?.admin_notes ? String(body.admin_notes) : null;
+    const admin_notes = body?.admin_notes ? String(body.admin_notes).trim() : "";
 
     if (!passenger_id) {
       return NextResponse.json({ ok: false, error: "Missing passenger_id" }, { status: 400 });
@@ -81,16 +82,62 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Forbidden (admin only)." }, { status: 403 });
     }
 
-    const nextStatus = decision === "approve" ? "approved" : "rejected";
+    if (decision === "reject" && !admin_notes) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "A decline reason is required so the passenger knows what to correct before resubmitting.",
+          code: "DECLINE_REASON_REQUIRED",
+        },
+        { status: 400 }
+      );
+    }
 
     const admin = supabaseAdmin();
+
+    const current = await admin
+      .from("passenger_verification_requests")
+      .select("passenger_id,full_name,status")
+      .eq("passenger_id", passenger_id)
+      .maybeSingle();
+
+    if (current.error) {
+      return NextResponse.json({ ok: false, error: current.error.message }, { status: 500 });
+    }
+    if (!current.data) {
+      return NextResponse.json({ ok: false, error: "Verification request not found." }, { status: 404 });
+    }
+    if (!(["submitted", "pending_admin"] as string[]).includes(String(current.data.status || ""))) {
+      return NextResponse.json(
+        { ok: false, error: "Verification request is no longer pending review." },
+        { status: 409 }
+      );
+    }
+
+    if (decision === "approve") {
+      const nameValidation = validatePassengerVerificationName(current.data.full_name);
+      if (!nameValidation.valid) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: nameValidation.error,
+            code: "PASSENGER_NAME_INVALID",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    const nextStatus = decision === "approve" ? "approved" : "rejected";
+    const reviewedAt = nowIso();
+
     const upd = await admin
       .from("passenger_verification_requests")
       .update({
         status: nextStatus,
-        reviewed_at: nowIso(),
+        reviewed_at: reviewedAt,
         reviewed_by: authz.requesterEmail,
-        admin_notes,
+        admin_notes: admin_notes || null,
       })
       .eq("passenger_id", passenger_id)
       .in("status", ["submitted", "pending_admin"])
@@ -101,18 +148,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: upd.error.message }, { status: 500 });
     }
 
-    if (decision === "approve") {
-      const u = await admin.auth.admin.updateUserById(passenger_id, {
-        user_metadata: { verified: true, night_allowed: true },
-      });
+    const metadata =
+      decision === "approve"
+        ? { verified: true, night_allowed: true }
+        : { verified: false, night_allowed: false };
 
-      if (u.error) {
-        return NextResponse.json({
-          ok: true,
-          row: upd.data,
-          warning: "Approved, but failed to update user metadata: " + String(u.error.message || "error"),
-        });
-      }
+    const u = await admin.auth.admin.updateUserById(passenger_id, {
+      user_metadata: metadata,
+    });
+
+    if (u.error) {
+      return NextResponse.json({
+        ok: true,
+        row: upd.data,
+        warning:
+          (decision === "approve" ? "Approved" : "Declined") +
+          ", but failed to update user metadata: " +
+          String(u.error.message || "error"),
+      });
     }
 
     return NextResponse.json({ ok: true, row: upd.data }, { status: 200 });
@@ -120,4 +173,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
-

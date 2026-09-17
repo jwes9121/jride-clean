@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createAdmin, createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { validatePassengerVerificationName } from "@/lib/passengerVerificationName";
 
 export const dynamic = "force-dynamic";
 
@@ -171,6 +172,15 @@ export async function POST(req: Request) {
         full_name = String(fd.get("full_name") || fd.get("fullName") || fd.get("fullname") || "").trim();
         town = String(fd.get("town") || fd.get("Town") || "").trim();
 
+        const nameValidation = validatePassengerVerificationName(full_name);
+        if (!nameValidation.valid) {
+          return NextResponse.json(
+            { ok: false, error: nameValidation.error, code: "PASSENGER_NAME_INVALID" },
+            { status: 400 }
+          );
+        }
+        full_name = nameValidation.normalized;
+
         const idFrontAny = fd.get("id_front");
         const selfieAny = fd.get("selfie_with_id");
 
@@ -197,9 +207,14 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!full_name) {
-      return NextResponse.json({ ok: false, error: "Full name required" }, { status: 400 });
+    const nameValidation = validatePassengerVerificationName(full_name);
+    if (!nameValidation.valid) {
+      return NextResponse.json(
+        { ok: false, error: nameValidation.error, code: "PASSENGER_NAME_INVALID" },
+        { status: 400 }
+      );
     }
+    full_name = nameValidation.normalized;
 
     if (!town) {
       return NextResponse.json({ ok: false, error: "Town required" }, { status: 400 });
