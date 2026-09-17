@@ -57,6 +57,10 @@ function getBearerToken(req: NextRequest): string | null {
   return token || null;
 }
 
+function getDeviceId(req: NextRequest): string {
+  return text(req.headers.get("x-device-id"));
+}
+
 function phoneFromAuthEmail(email: string | null): string | null {
   if (!email) return null;
   const match = /^p_(\d+)@phone\.jride\.local$/i.exec(email);
@@ -64,21 +68,83 @@ function phoneFromAuthEmail(email: string | null): string | null {
   return match[1].startsWith("63") ? `+${match[1]}` : match[1];
 }
 
-async function getTakeoutRequestUser(req: NextRequest, admin: any): Promise<any | null> {
+type TakeoutRequestUserResult =
+  | { ok: true; user: any }
+  | { ok: false; status: number; error: string; message: string };
+
+async function getTakeoutRequestUser(
+  req: NextRequest,
+  admin: any,
+): Promise<TakeoutRequestUserResult> {
   const token = getBearerToken(req);
-  if (token) {
+  const deviceId = getDeviceId(req);
+
+  // Android/native requests send both bearer token and device id. The bearer
+  // identity is authoritative and must not fall back to a browser cookie when
+  // the native token or device session is invalid.
+  if (token && deviceId) {
     const bearer = await admin.auth.getUser(token).catch(() => null as any);
-    if (bearer?.data?.user) return bearer.data.user;
+    const user = bearer?.data?.user || null;
+    if (bearer?.error || !user) {
+      return {
+        ok: false,
+        status: 401,
+        error: "TAKEOUT_DECLINE_AUTH_REQUIRED",
+        message: "Sign in again before declining the delivery fare.",
+      };
+    }
+
+    const deviceSession = await admin.rpc("jride_passenger_validate_device_session", {
+      p_user_id: user.id,
+      p_device_id: deviceId,
+    });
+
+    if (deviceSession.error) {
+      return {
+        ok: false,
+        status: 503,
+        error: "TAKEOUT_DECLINE_DEVICE_SESSION_VALIDATE_FAILED",
+        message: deviceSession.error.message,
+      };
+    }
+
+    if (!(deviceSession.data as any)?.ok) {
+      return {
+        ok: false,
+        status: 401,
+        error: text((deviceSession.data as any)?.error) || "ACCOUNT_ACTIVE_ON_ANOTHER_DEVICE",
+        message: "This passenger session is no longer active on this device.",
+      };
+    }
+
+    return { ok: true, user };
   }
 
+  // Browser requests keep their existing cookie-session behavior.
   try {
     const cookieClient = createRouteHandlerClient({ cookies });
     const cookieUser = await cookieClient.auth.getUser();
-    if (cookieUser?.data?.user) return cookieUser.data.user;
+    if (cookieUser?.data?.user) return { ok: true, user: cookieUser.data.user };
   } catch {}
 
+  // Legacy browser pages may still carry only the passenger bearer token.
+  if (token) {
+    const bearer = await admin.auth.getUser(token).catch(() => null as any);
+    if (bearer?.data?.user) return { ok: true, user: bearer.data.user };
+  }
+
+  // Preserve the pre-existing browser NextAuth fallback. Native requests with a
+  // bearer + device id have already returned above and can never reach it.
   const nextSession = await auth().catch(() => null as any);
-  return (nextSession as any)?.user || null;
+  const nextUser = (nextSession as any)?.user || null;
+  if (nextUser) return { ok: true, user: nextUser };
+
+  return {
+    ok: false,
+    status: 401,
+    error: "TAKEOUT_DECLINE_AUTH_REQUIRED",
+    message: "Sign in before declining the delivery fare.",
+  };
 }
 
 async function resolvePassengerId(admin: any, requestUser: any): Promise<string | null> {
@@ -178,17 +244,17 @@ function outcomeResponse(result: any) {
 export async function POST(req: NextRequest) {
   try {
     const serviceSupabase = createServiceSupabase();
-    const requestUser = await getTakeoutRequestUser(req, serviceSupabase);
+    const authResult = await getTakeoutRequestUser(req, serviceSupabase);
 
-    if (!requestUser) {
-      return json(401, {
+    if (!authResult.ok) {
+      return json(authResult.status, {
         ok: false,
-        error: "TAKEOUT_DECLINE_AUTH_REQUIRED",
-        message: "Sign in before declining the delivery fare.",
+        error: authResult.error,
+        message: authResult.message,
       });
     }
 
-    const passengerId = await resolvePassengerId(serviceSupabase, requestUser);
+    const passengerId = await resolvePassengerId(serviceSupabase, authResult.user);
     if (!passengerId) {
       return json(401, {
         ok: false,

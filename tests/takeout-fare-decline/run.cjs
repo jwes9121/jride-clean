@@ -32,6 +32,39 @@ check("decline endpoint requires authenticated passenger identity", () => {
   assert(!route.includes("body?.user_id") && !route.includes("body?.userId"), "request body must not choose the passenger identity");
 });
 
+check("native bearer plus device id is authoritative and validated", () => {
+  const nativeAt = route.indexOf("if (token && deviceId)");
+  const cookieAt = route.indexOf("createRouteHandlerClient({ cookies })");
+  assert(nativeAt >= 0, "missing authoritative native bearer/device branch");
+  assert(cookieAt > nativeAt, "browser cookie lookup must happen only after the native branch");
+  const nativeBlock = route.slice(nativeAt, cookieAt);
+  assert(nativeBlock.includes("admin.auth.getUser(token)"), "native bearer is not validated");
+  assert(nativeBlock.includes("jride_passenger_validate_device_session"), "native device-session RPC is missing");
+  assert(nativeBlock.includes("TAKEOUT_DECLINE_DEVICE_SESSION_VALIDATE_FAILED"), "device-session storage failure is not explicit");
+  assert(nativeBlock.includes("ACCOUNT_ACTIVE_ON_ANOTHER_DEVICE"), "inactive native device session is not rejected");
+  assert(nativeBlock.includes("return { ok: true, user }"), "valid native session does not return before browser fallbacks");
+});
+
+check("invalid native identity cannot fall back to browser auth", () => {
+  const nativeAt = route.indexOf("if (token && deviceId)");
+  const cookieAt = route.indexOf("createRouteHandlerClient({ cookies })");
+  const nativeBlock = route.slice(nativeAt, cookieAt);
+  const invalidBearerAt = nativeBlock.indexOf("bearer?.error || !user");
+  const inactiveDeviceAt = nativeBlock.indexOf("!(deviceSession.data as any)?.ok");
+  assert(invalidBearerAt >= 0 && nativeBlock.indexOf("status: 401", invalidBearerAt) > invalidBearerAt, "invalid native bearer must return 401");
+  assert(inactiveDeviceAt >= 0 && nativeBlock.indexOf("status: 401", inactiveDeviceAt) > inactiveDeviceAt, "invalid native device session must return 401");
+  assert(!nativeBlock.includes("createRouteHandlerClient") && !nativeBlock.includes("auth().catch"), "native branch must not reach browser cookie or NextAuth fallback");
+});
+
+check("browser cookie and legacy bearer-only decline sessions remain supported", () => {
+  const cookieAt = route.indexOf("createRouteHandlerClient({ cookies })");
+  const legacyBearerAt = route.indexOf("Legacy browser pages may still carry only the passenger bearer token");
+  const nextAuthAt = route.indexOf("const nextSession = await auth().catch");
+  assert(cookieAt >= 0, "browser cookie session support missing");
+  assert(legacyBearerAt > cookieAt, "legacy browser bearer fallback missing or ordered incorrectly");
+  assert(nextAuthAt > legacyBearerAt, "existing browser NextAuth fallback was not preserved");
+});
+
 check("decline endpoint requires the exact displayed proposal", () => {
   for (const token of ["expected?.proposed_at", "expected?.expires_at", "expected?.driver_id", "expected?.total"]) {
     assert(route.includes(token), "missing proposal identity token: " + token);
@@ -92,12 +125,14 @@ check("retry after the same successful decline is idempotent", () => {
   assert(idempotentAt > 0 && idempotentAt < notificationAt, "idempotent terminal return must happen before notification insert");
 });
 
-check("passenger UI exposes an explicit protected decline action", () => {
+check("passenger UI sends bearer and native device identity for decline", () => {
   assert(component.includes("Decline and cancel order"), "explicit decline button missing");
   assert(component.includes("cancel the entire Takeout order and release the driver"), "destructive confirmation warning missing");
   assert(component.includes('action: "decline"'), "decline action payload missing");
   assert(component.includes("expected_proposal: expectedFare(order)"), "UI does not bind decline to displayed proposal");
   assert(component.includes("jride_passenger_token"), "passenger bearer auth header source missing");
+  assert(component.includes("jride_native_device_id"), "native passenger device id source missing");
+  assert(component.includes('headers["x-device-id"]'), "native passenger device header missing");
 });
 
 check("prebuild runs Takeout decline regression checks", () => {
