@@ -128,6 +128,24 @@ function secondsUntil(value: any): number | null {
   return Math.max(0, Math.ceil((t - Date.now()) / 1000));
 }
 
+function currentPassengerAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (typeof window === "undefined") return headers;
+
+  const token =
+    window.localStorage.getItem("jride_passenger_token") ||
+    window.localStorage.getItem("jride_access_token") ||
+    "";
+  const nativeDeviceId =
+    window.localStorage.getItem("jride_native_device_id") ||
+    window.sessionStorage.getItem("jride_native_device_id") ||
+    "";
+
+  if (token.trim()) headers.Authorization = `Bearer ${token.trim()}`;
+  if (nativeDeviceId.trim()) headers["x-device-id"] = nativeDeviceId.trim();
+  return headers;
+}
+
 async function getJson(url: string) {
   const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
   const j = await res.json().catch(() => ({}));
@@ -140,7 +158,10 @@ async function getJson(url: string) {
 async function postJson(url: string, body: any) {
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...currentPassengerAuthHeaders(),
+    },
     body: JSON.stringify(body),
   });
   const j = await res.json().catch(() => ({}));
@@ -217,7 +238,6 @@ export default function TakeoutTrackPage() {
       if (sequence === readSequence.current) setBusy(false);
     }
   }
-
   async function confirmTakeoutFee() {
     if (!order || confirming.current || !fareProposal(order)) return;
     const orderId = normText(order.id);
@@ -839,7 +859,6 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
-
 
 
 
