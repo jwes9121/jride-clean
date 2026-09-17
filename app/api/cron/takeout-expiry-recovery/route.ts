@@ -195,8 +195,8 @@ export async function GET(req: NextRequest) {
     .not("driver_fee_proposal_expires_at", "is", null)
     .lte("driver_fee_proposal_expires_at", nowIso)
     .is("takeout_customer_confirmed_at", null)
-    .is("takeout_fee_proposed_at", null)
-    .is("takeout_delivery_fee", null)
+    .not("takeout_fee_proposed_at", "is", null)
+    .not("takeout_delivery_fee", "is", null)
     .limit(50);
 
   if (scanError) {
