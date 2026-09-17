@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "../../../../../auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -69,24 +69,36 @@ export async function GET() {
     }
 
     const admin = supabaseAdmin();
+    const selectColumns =
+      "passenger_id,full_name,town,status,submitted_at,reviewed_at,reviewed_by,admin_notes,id_front_path,selfie_with_id_path";
 
-    const sub = await admin
-      .from("passenger_verification_requests")
-      .select("passenger_id,full_name,town,status,submitted_at,reviewed_at,reviewed_by,admin_notes,id_front_path,selfie_with_id_path")
-      .eq("status", "submitted")
-      .order("submitted_at", { ascending: false });
-
-    const pad = await admin
-      .from("passenger_verification_requests")
-      .select("passenger_id,full_name,town,status,submitted_at,reviewed_at,reviewed_by,admin_notes,id_front_path,selfie_with_id_path")
-      .eq("status", "pending_admin")
-      .order("submitted_at", { ascending: false });
+    const [sub, pad, rejected] = await Promise.all([
+      admin
+        .from("passenger_verification_requests")
+        .select(selectColumns)
+        .eq("status", "submitted")
+        .order("submitted_at", { ascending: false }),
+      admin
+        .from("passenger_verification_requests")
+        .select(selectColumns)
+        .eq("status", "pending_admin")
+        .order("submitted_at", { ascending: false }),
+      admin
+        .from("passenger_verification_requests")
+        .select(selectColumns)
+        .eq("status", "rejected")
+        .order("reviewed_at", { ascending: false })
+        .limit(200),
+    ]);
 
     if (sub.error) {
       return NextResponse.json({ ok: false, error: sub.error.message }, { status: 500 });
     }
     if (pad.error) {
       return NextResponse.json({ ok: false, error: pad.error.message }, { status: 500 });
+    }
+    if (rejected.error) {
+      return NextResponse.json({ ok: false, error: rejected.error.message }, { status: 500 });
     }
 
     const storage = admin.storage;
@@ -108,16 +120,19 @@ export async function GET() {
 
     const submitted = await enrich(Array.isArray(sub.data) ? sub.data : []);
     const pending_admin = await enrich(Array.isArray(pad.data) ? pad.data : []);
+    const declined = await enrich(Array.isArray(rejected.data) ? rejected.data : []);
 
     return NextResponse.json({
       ok: true,
       counts: {
         submitted: submitted.length,
         pending_admin: pending_admin.length,
+        declined: declined.length,
       },
       rows: {
         submitted,
         pending_admin,
+        declined,
       },
       auth_debug: {
         requester_email: authz.requesterEmail,
@@ -129,4 +144,3 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: String(e?.message || e) }, { status: 500 });
   }
 }
-
