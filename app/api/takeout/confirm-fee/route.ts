@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { createClient as createCookieSupabase } from "@/utils/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,6 +23,10 @@ function json(status: number, payload: any) {
   });
 }
 
+function isUuid(value: unknown): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text(value));
+}
+
 function createServiceSupabase() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "";
@@ -30,12 +35,110 @@ function createServiceSupabase() {
     throw new Error("Missing Supabase service configuration.");
   }
 
-  return createClient(url, key, {
+  return createServiceClient(url, key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
+}
+
+function getBearerToken(req: NextRequest): string | null {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7).trim();
+  return token || null;
+}
+
+function getDeviceId(req: NextRequest): string {
+  return text(req.headers.get("x-device-id"));
+}
+
+type PassengerAuthResult =
+  | { ok: true; passengerId: string }
+  | { ok: false; status: number; error: string; message: string };
+
+async function resolvePassengerAuth(
+  req: NextRequest,
+  serviceSupabase: any,
+): Promise<PassengerAuthResult> {
+  const token = getBearerToken(req);
+  const deviceId = getDeviceId(req);
+
+  // Android/native requests send both bearer token and device id. The bearer
+  // identity is authoritative for that request and must never fall back to a
+  // browser cookie if the native session is invalid.
+  if (token && deviceId) {
+    const bearer = await serviceSupabase.auth.getUser(token).catch(() => null as any);
+    const user = bearer?.data?.user || null;
+    if (bearer?.error || !user || !isUuid(user.id)) {
+      return {
+        ok: false,
+        status: 401,
+        error: "TAKEOUT_CONFIRM_AUTH_REQUIRED",
+        message: "Sign in again before confirming the delivery fare.",
+      };
+    }
+
+    const deviceSession = await serviceSupabase.rpc(
+      "jride_passenger_validate_device_session",
+      {
+        p_user_id: user.id,
+        p_device_id: deviceId,
+      },
+    );
+
+    if (deviceSession.error) {
+      return {
+        ok: false,
+        status: 503,
+        error: "TAKEOUT_CONFIRM_DEVICE_SESSION_VALIDATE_FAILED",
+        message: deviceSession.error.message,
+      };
+    }
+
+    if (!(deviceSession.data as any)?.ok) {
+      return {
+        ok: false,
+        status: 401,
+        error:
+          text((deviceSession.data as any)?.error) ||
+          "ACCOUNT_ACTIVE_ON_ANOTHER_DEVICE",
+        message: "This passenger session is no longer active on this device.",
+      };
+    }
+
+    return { ok: true, passengerId: String(user.id) };
+  }
+
+  // Browser sessions are validated from the Supabase SSR cookie. This mirrors
+  // the canonical passenger-session route and allows an expired access token to
+  // be refreshed by the cookie client before confirmation.
+  try {
+    const cookieSupabase = createCookieSupabase();
+    const cookieUser = await cookieSupabase.auth.getUser();
+    const user = cookieUser?.data?.user || null;
+    if (!cookieUser?.error && user && isUuid(user.id)) {
+      return { ok: true, passengerId: String(user.id) };
+    }
+  } catch {}
+
+  // Browser pages that still carry the legacy localStorage bearer token remain
+  // supported when no native device id is present.
+  if (token) {
+    const bearer = await serviceSupabase.auth.getUser(token).catch(() => null as any);
+    const user = bearer?.data?.user || null;
+    if (!bearer?.error && user && isUuid(user.id)) {
+      return { ok: true, passengerId: String(user.id) };
+    }
+  }
+
+  return {
+    ok: false,
+    status: 401,
+    error: "TAKEOUT_CONFIRM_AUTH_REQUIRED",
+    message: "Sign in before confirming the delivery fare.",
+  };
 }
 
 function isExpired(value: any): boolean {
@@ -49,6 +152,16 @@ function isExpired(value: any): boolean {
 export async function POST(req: NextRequest) {
   try {
     const serviceSupabase = createServiceSupabase();
+    const passengerAuth = await resolvePassengerAuth(req, serviceSupabase);
+    if (!passengerAuth.ok) {
+      return json(passengerAuth.status, {
+        ok: false,
+        error: passengerAuth.error,
+        message: passengerAuth.message,
+      });
+    }
+    const passengerId = passengerAuth.passengerId;
+
     const body = await req.json().catch(() => ({}));
 
     const orderId = text(
@@ -84,7 +197,7 @@ export async function POST(req: NextRequest) {
     let q = serviceSupabase
       .from("bookings")
       .select(
-        "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+        "id,booking_code,service_type,created_by_user_id,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
       )
       .eq("service_type", "takeout")
       .limit(1);
@@ -108,6 +221,14 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: "TAKEOUT_ORDER_NOT_FOUND",
         message: "Takeout order not found.",
+      });
+    }
+
+    if (text(order.created_by_user_id) !== passengerId) {
+      return json(403, {
+        ok: false,
+        error: "TAKEOUT_CONFIRM_FORBIDDEN",
+        message: "This Takeout order does not belong to the signed-in passenger.",
       });
     }
 
@@ -179,6 +300,7 @@ export async function POST(req: NextRequest) {
         .update({ takeout_pricing_status: "expired" })
         .eq("id", order.id)
         .eq("service_type", "takeout")
+        .eq("created_by_user_id", passengerId)
         .eq("takeout_pricing_status", "driver_fee_proposed")
         .eq("takeout_fee_expires_at", order.takeout_fee_expires_at);
 
@@ -216,6 +338,7 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
+      .eq("created_by_user_id", passengerId)
       .eq("takeout_pricing_status", "driver_fee_proposed")
       .eq("takeout_fee_expires_at", order.takeout_fee_expires_at)
       .gt("takeout_fee_expires_at", nowIso)
@@ -285,7 +408,7 @@ export async function POST(req: NextRequest) {
     return json(200, {
       ok: true,
       order: updateRes.data,
-      guard: "takeout_confirm_fee_v3_no_already_assigned_block",
+      guard: "takeout_confirm_fee_v4_passenger_ownership",
     });
   } catch (err: any) {
     return json(500, {
