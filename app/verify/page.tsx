@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  PASSENGER_VERIFICATION_NAME_GUIDANCE,
+  validatePassengerVerificationName,
+} from "@/lib/passengerVerificationName";
 
 type VerifyRequest = {
   passenger_id?: string;
@@ -17,6 +21,15 @@ type VerifyRequest = {
 
 function s(v: any) {
   return String(v ?? "");
+}
+
+function statusLabel(value: string) {
+  if (value === "rejected") return "Declined";
+  if (value === "pending_admin") return "Pending Admin Review";
+  if (value === "submitted") return "Submitted";
+  if (value === "approved") return "Approved";
+  if (value === "not_submitted") return "Not submitted";
+  return value || "Unknown";
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 120000) {
@@ -137,9 +150,15 @@ export default function VerifyPage() {
     if (userId) refresh();
   }, [userId, refresh]);
 
+  const nameValidation = useMemo(
+    () => validatePassengerVerificationName(fullName),
+    [fullName]
+  );
+  const isDeclined = status === "rejected";
+
   const canSubmit = useMemo(() => {
-    return !!userId && !!fullName.trim() && !!town.trim() && !!idFrontFile && !!selfieFile && !loading;
-  }, [userId, fullName, town, idFrontFile, selfieFile, loading]);
+    return !!userId && nameValidation.valid && !!town.trim() && !!idFrontFile && !!selfieFile && !loading;
+  }, [userId, nameValidation.valid, town, idFrontFile, selfieFile, loading]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -149,7 +168,8 @@ export default function VerifyPage() {
 
     try {
       if (!userId) throw new Error("User session missing.");
-      if (!fullName.trim()) throw new Error("Full name required.");
+      const checkedName = validatePassengerVerificationName(fullName);
+      if (!checkedName.valid) throw new Error(checkedName.error || "Invalid full name.");
       if (!town.trim()) throw new Error("Town required.");
       if (!idFrontFile) throw new Error("ID front photo required.");
       if (!selfieFile) throw new Error("Selfie holding ID required.");
@@ -164,7 +184,7 @@ export default function VerifyPage() {
       );
 
       const fd = new FormData();
-      fd.append("full_name", fullName.trim());
+      fd.append("full_name", checkedName.normalized);
       fd.append("town", town.trim());
       fd.append("id_front", shrunkIdFront);
       fd.append("selfie_with_id", shrunkSelfie);
@@ -190,23 +210,12 @@ export default function VerifyPage() {
       if (!res.ok || !j?.ok) {
         const parts: string[] = [];
 
-        if (!res.ok) {
-          parts.push("HTTP " + String(res.status));
-        }
-
-        if (j?.error) {
-          parts.push(String(j.error));
-        } else if (j?.message) {
-          parts.push(String(j.message));
-        } else if (rawText) {
-          parts.push(rawText);
-        } else {
-          parts.push("Empty or non-JSON response from verification API");
-        }
-
-        if (j?.hint) {
-          parts.push("Hint: " + String(j.hint));
-        }
+        if (!res.ok) parts.push("HTTP " + String(res.status));
+        if (j?.error) parts.push(String(j.error));
+        else if (j?.message) parts.push(String(j.message));
+        else if (rawText) parts.push(rawText);
+        else parts.push("Empty or non-JSON response from verification API");
+        if (j?.hint) parts.push("Hint: " + String(j.hint));
 
         setError(parts.join(" | "));
         setMessage("");
@@ -214,14 +223,13 @@ export default function VerifyPage() {
       }
 
       setMessage(String(j?.message || "Submitted. Please wait for review."));
+      setIdFrontFile(null);
+      setSelfieFile(null);
       await refresh();
     } catch (e: any) {
       const msg = s(e?.message || "");
-      if (msg.toLowerCase().includes("aborted")) {
-        setError("Submit timed out. Please try again.");
-      } else {
-        setError(msg || "Submit failed.");
-      }
+      if (msg.toLowerCase().includes("aborted")) setError("Submit timed out. Please try again.");
+      else setError(msg || "Submit failed.");
       setMessage("");
     } finally {
       setLoading(false);
@@ -247,33 +255,49 @@ export default function VerifyPage() {
 
       <div className="mb-4 rounded border bg-white p-4">
         <div className="text-sm text-gray-700">User ID (UUID)</div>
-        <div className="mt-1 text-2xl font-semibold tracking-wide">{userId || "-"}</div>
+        <div className="mt-1 break-all text-sm font-semibold">{userId || "-"}</div>
         <div className="mt-4 text-sm">
-          Current status: <span className="font-semibold">{status || "unknown"}</span>
+          Current status: <span className="font-semibold">{statusLabel(status)}</span>
         </div>
       </div>
 
-      {error ? (
-        <div className="mb-4 rounded border border-red-200 bg-red-50 p-4 text-red-700">
-          {error}
+      {isDeclined ? (
+        <div className="mb-4 rounded border border-red-300 bg-red-50 p-4 text-red-900">
+          <div className="font-bold">Verification declined - please correct and resend</div>
+          <div className="mt-2 text-sm">
+            Reason: {reqData?.admin_notes?.trim() || "No specific decline reason was recorded for this older review."}
+          </div>
+          <div className="mt-2 text-sm">{PASSENGER_VERIFICATION_NAME_GUIDANCE}</div>
+          <div className="mt-1 text-sm">Make sure the entered name matches the name shown on the submitted valid ID, then upload the corrected ID and selfie again.</div>
         </div>
+      ) : null}
+
+      {error ? (
+        <div className="mb-4 rounded border border-red-200 bg-red-50 p-4 text-red-700">{error}</div>
       ) : null}
 
       {message ? (
-        <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-4 text-blue-700">
-          {message}
-        </div>
+        <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-4 text-blue-700">{message}</div>
       ) : null}
 
       <form onSubmit={onSubmit} className="rounded border bg-white p-4">
+        <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <div className="font-semibold">Name format</div>
+          <div className="mt-1">{PASSENGER_VERIFICATION_NAME_GUIDANCE}</div>
+          <div className="mt-1">Single names and first-name/last-name initials are not accepted.</div>
+        </div>
+
         <div className="mb-4">
           <label className="mb-2 block text-sm font-medium">Full name</label>
           <input
             className="w-full rounded border px-3 py-2"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            placeholder="Full name"
+            placeholder="First name and last name"
           />
+          {fullName.trim() && !nameValidation.valid ? (
+            <div className="mt-2 text-sm text-red-600">{nameValidation.error}</div>
+          ) : null}
         </div>
 
         <div className="mb-4">
@@ -293,11 +317,7 @@ export default function VerifyPage() {
             accept="image/*"
             onChange={(e) => setIdFrontFile(e.target.files?.[0] || null)}
           />
-          {idFrontFile ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Original size: {Math.round(idFrontFile.size / 1024)} KB
-            </div>
-          ) : null}
+          {idFrontFile ? <div className="mt-2 text-xs text-gray-500">Original size: {Math.round(idFrontFile.size / 1024)} KB</div> : null}
         </div>
 
         <div className="mb-4">
@@ -307,11 +327,7 @@ export default function VerifyPage() {
             accept="image/*"
             onChange={(e) => setSelfieFile(e.target.files?.[0] || null)}
           />
-          {selfieFile ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Original size: {Math.round(selfieFile.size / 1024)} KB
-            </div>
-          ) : null}
+          {selfieFile ? <div className="mt-2 text-xs text-gray-500">Original size: {Math.round(selfieFile.size / 1024)} KB</div> : null}
         </div>
 
         <button
@@ -319,7 +335,7 @@ export default function VerifyPage() {
           className="rounded bg-black px-5 py-3 text-white disabled:opacity-50"
           disabled={!canSubmit}
         >
-          {loading ? "Submitting..." : "Submit for verification"}
+          {loading ? "Submitting..." : isDeclined ? "Resubmit for verification" : "Submit for verification"}
         </button>
       </form>
     </div>
