@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
-  logTakeoutFeeProposalExpired,
   recordTakeoutExpiryLifecycleEvent,
   resetExpiredTakeoutDriverAcceptance,
-  resetExpiredTakeoutFeeProposal,
   triggerTakeoutFeeProposalReassign,
 } from "@/lib/takeout-expiry-recovery";
+import {
+  TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON,
+  cancelExpiredTakeoutPassengerFareConfirmation,
+  logTakeoutPassengerFareConfirmationTimeout,
+  recordTakeoutPassengerFareTimeoutLifecycleEvent,
+} from "@/lib/takeout-passenger-fare-timeout";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +33,10 @@ function isAuthorizedCronRequest(req: NextRequest): boolean {
 type CandidateRow = {
   id: string;
   booking_code: string | null;
+  created_by_user_id: string | null;
   status: string | null;
   assigned_driver_id: string | null;
+  takeout_fee_expires_at: string | null;
   driver_fee_proposal_expires_at: string | null;
   town: string | null;
 };
@@ -61,6 +67,7 @@ export async function GET(req: NextRequest) {
   let reassignedCount = 0;
   let driverAcceptResetCount = 0;
   let driverAcceptReassignedCount = 0;
+  let feeProposalCancelledCount = 0;
 
   const {
     data: driverAcceptCandidateRows,
@@ -187,11 +194,13 @@ export async function GET(req: NextRequest) {
   const { data: candidateRows, error: scanError } = await supabase
     .from("bookings")
     .select(
-      "id,booking_code,status,assigned_driver_id,driver_fee_proposal_expires_at,town"
+      "id,booking_code,created_by_user_id,status,assigned_driver_id,takeout_fee_expires_at,driver_fee_proposal_expires_at,town"
     )
     .eq("service_type", "takeout")
     .in("status", ["assigned", "accepted"])
     .not("assigned_driver_id", "is", null)
+    .not("takeout_fee_expires_at", "is", null)
+    .lte("takeout_fee_expires_at", nowIso)
     .not("driver_fee_proposal_expires_at", "is", null)
     .lte("driver_fee_proposal_expires_at", nowIso)
     .is("takeout_customer_confirmed_at", null)
@@ -220,52 +229,40 @@ export async function GET(req: NextRequest) {
     if (!bookingId || !expiredDriverId) continue;
 
     try {
-      const resetResult = await resetExpiredTakeoutFeeProposal(supabase, {
-        bookingId,
-        bookingCode,
-        expiredDriverId,
-      });
+      const cancelResult =
+        await cancelExpiredTakeoutPassengerFareConfirmation(supabase, {
+          bookingId,
+          bookingCode,
+          expiredDriverId,
+        });
 
-      if (resetResult.error) {
-        errors.push({ bookingId, bookingCode, error: resetResult.error });
+      if (cancelResult.error) {
+        errors.push({ bookingId, bookingCode, error: cancelResult.error });
         continue;
       }
 
-      if (!resetResult.didReset || !resetResult.bookingId) continue;
+      if (!cancelResult.didCancel || !cancelResult.bookingId) continue;
 
-      resetCount += 1;
+      feeProposalCancelledCount += 1;
 
-      const reassignResult = await triggerTakeoutFeeProposalReassign(
-        req,
-        resetResult.bookingId,
-        expiredDriverId,
-        "fee_proposal_expired_cron_sweep"
-      );
-      const reassignmentSuccess = !!reassignResult.payload?.assigned;
-
-      if (reassignmentSuccess) reassignedCount += 1;
-
-      await recordTakeoutExpiryLifecycleEvent(supabase, {
-        bookingId: resetResult.bookingId,
-        bookingCode: resetResult.bookingCode,
+      await recordTakeoutPassengerFareTimeoutLifecycleEvent(supabase, {
+        bookingId: cancelResult.bookingId,
+        bookingCode: cancelResult.bookingCode,
+        passengerId: row.created_by_user_id
+          ? String(row.created_by_user_id)
+          : null,
         expiredDriverId,
         townRaw: row.town ? String(row.town) : null,
-        reason: "fee_proposal_expired_cron_sweep",
-        reassignmentAttempted: reassignResult.attempted,
-        reassignmentSuccess,
-        dispatchStatus: reassignResult.status,
         statusBefore: String(row.status || "unknown"),
+        expiresAt: row.takeout_fee_expires_at,
       });
 
-      logTakeoutFeeProposalExpired({
-        bookingCode: resetResult.bookingCode,
+      logTakeoutPassengerFareConfirmationTimeout({
+        bookingCode: cancelResult.bookingCode,
         expiredDriverId,
-        expiredAt: row.driver_fee_proposal_expires_at,
-        reset: true,
-        reassigned: reassignmentSuccess,
-        newDriverId: null,
-        dispatchPayload: reassignResult.payload,
-        reason: "fee_proposal_expired_cron_sweep",
+        expiredAt: row.takeout_fee_expires_at,
+        cancelled: true,
+        reason: TAKEOUT_PASSENGER_FARE_CONFIRMATION_TIMEOUT_REASON,
       });
     } catch (err: any) {
       errors.push({
@@ -278,7 +275,12 @@ export async function GET(req: NextRequest) {
 
   console.log("[takeout-expiry-recovery] cron completed", {
     generatedAt: nowIso,
-    expiredCandidates: rows.length,
+    expiredCandidates: driverAcceptRows.length + rows.length,
+    driverAcceptExpiredCandidates: driverAcceptRows.length,
+    driverAcceptReset: driverAcceptResetCount,
+    driverAcceptReassigned: driverAcceptReassignedCount,
+    feeProposalExpiredCandidates: rows.length,
+    feeProposalCancelled: feeProposalCancelledCount,
     resetBookings: resetCount,
     reassigned: reassignedCount,
     errors: errors.length,
@@ -296,6 +298,7 @@ export async function GET(req: NextRequest) {
       driverAcceptReassigned:
         driverAcceptReassignedCount,
       feeProposalExpiredCandidates: rows.length,
+      feeProposalCancelled: feeProposalCancelledCount,
       resetBookings: resetCount,
       reassigned: reassignedCount,
       errors,
