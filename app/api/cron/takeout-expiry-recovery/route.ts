@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
   } = await supabase
     .from("bookings")
     .select(
-      "id,booking_code,status,assigned_driver_id,last_expired_driver_id,driver_accept_expires_at,town,driver_status"
+      "id,booking_code,status,assigned_driver_id,last_expired_driver_id,takeout_auto_dispatch_exhausted,driver_accept_expires_at,town,driver_status"
     )
     .eq("service_type", "takeout")
     .eq("status", "assigned")
@@ -116,7 +116,10 @@ export async function GET(req: NextRequest) {
     const previousExpiredDriverId = String(
       row?.last_expired_driver_id || ""
     ).trim();
+    const alreadyAutoDispatchExhausted =
+      row?.takeout_auto_dispatch_exhausted === true;
     const reachedUniqueOfferLimit =
+      alreadyAutoDispatchExhausted ||
       reachedTakeoutUniqueDriverOfferLimit(
         previousExpiredDriverId,
         expiredDriverId
@@ -195,8 +198,11 @@ export async function GET(req: NextRequest) {
             bookingCode: resetResult.bookingCode,
             expiredDriverId,
             previousExpiredDriverId,
+            alreadyAutoDispatchExhausted,
             expiredAt: row?.driver_accept_expires_at || null,
-            reason: "two_unique_driver_accept_windows_expired",
+            reason: alreadyAutoDispatchExhausted
+              ? "manual_recovery_driver_accept_window_expired_after_auto_dispatch_exhausted"
+              : "two_unique_driver_accept_windows_expired",
           })
         );
         continue;
