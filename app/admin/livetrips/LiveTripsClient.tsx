@@ -56,6 +56,10 @@ type TripRow = {
   dropoff_lat?: number | null;
   dropoff_lng?: number | null;
   status?: string | null;
+  service_type?: string | null;
+  vendor_status?: string | null;
+  customer_status?: string | null;
+  takeout_auto_dispatch_exhausted?: boolean | null;
   zone?: string | null;
   town?: string | null;
   driver_id?: string | null;
@@ -709,13 +713,19 @@ function tripRowTone(t: TripRow): string {
 }
 
 function normalizeTripRow(t: any): TripRow {
+  const serviceType = normStatus(t?.service_type);
+  const displayStatus =
+    serviceType === "takeout"
+      ? normStatus(t?.customer_status || t?.vendor_status || t?.status || "requested")
+      : normStatus(t?.status || "requested");
+
   return {
     ...t,
     booking_code: t?.booking_code ?? t?.bookingCode ?? null,
     pickup_label: t?.pickup_label ?? t?.from_label ?? t?.fromLabel ?? null,
     dropoff_label: t?.dropoff_label ?? t?.to_label ?? t?.toLabel ?? null,
     zone: t?.zone ?? t?.town ?? t?.zone_name ?? null,
-    status: t?.status ?? "requested",
+    status: displayStatus || "requested",
   };
 }
 
