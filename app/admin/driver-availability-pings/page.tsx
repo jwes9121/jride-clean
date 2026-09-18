@@ -24,27 +24,6 @@ type DriverOption = {
   capability_freshness_seconds: number;
 };
 
-type DriverContact = {
-  driver_id: string;
-  driver_name: string;
-  callsign: string | null;
-  municipality: string | null;
-  vehicle_type: string | null;
-  phone: string | null;
-  driver_status: string | null;
-};
-
-type VendorContact = {
-  vendor_id: string;
-  vendor_name: string;
-  contact_name: string | null;
-  town: string | null;
-  phone: string | null;
-  accepting_orders: boolean;
-  credential_status: string | null;
-  suspended_until: string | null;
-};
-
 type DashboardRow = {
   id: string;
   driver_id: string;
@@ -204,8 +183,6 @@ function Card({
 export default function DriverAvailabilityPingsPage() {
   const [rows, setRows] = React.useState<DashboardRow[]>([]);
   const [drivers, setDrivers] = React.useState<DriverOption[]>([]);
-  const [driverContacts, setDriverContacts] = React.useState<DriverContact[]>([]);
-  const [vendors, setVendors] = React.useState<VendorContact[]>([]);
   const [summary, setSummary] = React.useState<Summary>(EMPTY_SUMMARY);
   const [towns, setTowns] = React.useState<string[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -213,7 +190,6 @@ export default function DriverAvailabilityPingsPage() {
   const [message, setMessage] = React.useState("");
   const [successMessage, setSuccessMessage] = React.useState("");
   const [search, setSearch] = React.useState("");
-  const [contactSearch, setContactSearch] = React.useState("");
   const [status, setStatus] = React.useState("");
   const [town, setTown] = React.useState("");
   const [fromDate, setFromDate] = React.useState("");
@@ -231,39 +207,6 @@ export default function DriverAvailabilityPingsPage() {
 
   const selectedDriver =
     drivers.find((item) => item.driver_id === selectedDriverId) || null;
-
-  const filteredDriverContacts = React.useMemo(() => {
-    const query = contactSearch.trim().toLowerCase();
-    if (!query) return driverContacts;
-
-    return driverContacts.filter((driver) =>
-      [
-        driver.driver_name,
-        driver.callsign,
-        driver.municipality,
-        driver.vehicle_type,
-        driver.phone,
-      ]
-        .map((value) => String(value || "").toLowerCase())
-        .some((value) => value.includes(query))
-    );
-  }, [contactSearch, driverContacts]);
-
-  const filteredVendors = React.useMemo(() => {
-    const query = contactSearch.trim().toLowerCase();
-    if (!query) return vendors;
-
-    return vendors.filter((vendor) =>
-      [
-        vendor.vendor_name,
-        vendor.contact_name,
-        vendor.town,
-        vendor.phone,
-      ]
-        .map((value) => String(value || "").toLowerCase())
-        .some((value) => value.includes(query))
-    );
-  }, [contactSearch, vendors]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -298,17 +241,11 @@ export default function DriverAvailabilityPingsPage() {
 
       setRows(Array.isArray(result.rows) ? result.rows : []);
       setDrivers(Array.isArray(result.drivers) ? result.drivers : []);
-      setDriverContacts(
-        Array.isArray(result.driver_contacts) ? result.driver_contacts : []
-      );
-      setVendors(Array.isArray(result.vendors) ? result.vendors : []);
       setSummary(result.summary || EMPTY_SUMMARY);
       setTowns(Array.isArray(result.towns) ? result.towns : []);
     } catch (error: any) {
       setRows([]);
       setDrivers([]);
-      setDriverContacts([]);
-      setVendors([]);
       setSummary(EMPTY_SUMMARY);
       setMessage(error?.message || "Failed to load Duty Check data.");
     } finally {
@@ -503,136 +440,6 @@ export default function DriverAvailabilityPingsPage() {
             {successMessage}
           </div>
         ) : null}
-
-        <section className="mt-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 p-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-slate-950">
-                  Driver and Vendor Contact Directory
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Contact numbers available to authorized admin and dispatcher staff.
-                  Missing numbers are shown explicitly and are not guessed.
-                </p>
-              </div>
-              <label className="w-full sm:w-80">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Search contacts
-                </span>
-                <input
-                  value={contactSearch}
-                  onChange={(event) => setContactSearch(event.target.value)}
-                  placeholder="Name, town, vehicle, or phone"
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="grid gap-4 p-4 xl:grid-cols-2">
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="font-semibold text-slate-900">Drivers</div>
-                <div className="text-xs text-slate-500">
-                  {filteredDriverContacts.length} shown
-                </div>
-              </div>
-              <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
-                {filteredDriverContacts.length > 0 ? (
-                  filteredDriverContacts.map((driver) => (
-                    <div
-                      key={driver.driver_id}
-                      className="flex items-start justify-between gap-3 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-slate-950">
-                          {driver.driver_name}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {driver.municipality || "No town"}
-                          {driver.vehicle_type
-                            ? " - " + driver.vehicle_type
-                            : ""}
-                          {driver.callsign
-                            ? " - Callsign: " + driver.callsign
-                            : ""}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right text-sm">
-                        {driver.phone ? (
-                          <a
-                            href={"tel:" + driver.phone}
-                            className="font-semibold text-sky-700 hover:underline"
-                          >
-                            {driver.phone}
-                          </a>
-                        ) : (
-                          <span className="text-xs font-medium text-rose-700">
-                            No number recorded
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-5 text-center text-sm text-slate-500">
-                    No drivers match this search.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2">
-                <div className="font-semibold text-slate-900">Vendors</div>
-                <div className="text-xs text-slate-500">
-                  {filteredVendors.length} shown
-                </div>
-              </div>
-              <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-100">
-                {filteredVendors.length > 0 ? (
-                  filteredVendors.map((vendor) => (
-                    <div
-                      key={vendor.vendor_id}
-                      className="flex items-start justify-between gap-3 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-slate-950">
-                          {vendor.vendor_name}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {vendor.town || "No town"}
-                          {vendor.contact_name
-                            ? " - Contact: " + vendor.contact_name
-                            : ""}
-                        </div>
-                      </div>
-                      <div className="shrink-0 text-right text-sm">
-                        {vendor.phone ? (
-                          <a
-                            href={"tel:" + vendor.phone}
-                            className="font-semibold text-sky-700 hover:underline"
-                          >
-                            {vendor.phone}
-                          </a>
-                        ) : (
-                          <span className="text-xs font-medium text-rose-700">
-                            No number recorded
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-5 text-center text-sm text-slate-500">
-                    No vendors match this search.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
 
         <section className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
           <div className="text-xs font-semibold uppercase tracking-widest text-amber-800">
