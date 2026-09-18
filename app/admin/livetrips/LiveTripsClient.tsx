@@ -886,6 +886,7 @@ export default function LiveTripsClient({
 
 
   const tableRef = useRef<HTMLDivElement | null>(null);
+  const driverMapRef = useRef<HTMLDivElement | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshAllRef = useRef<((source?: string) => Promise<void>) | null>(null);
   const supabaseRef = useRef<SupabaseClient | null>(null);
@@ -1411,6 +1412,12 @@ export default function LiveTripsClient({
         "Located driver " +
           (String(selected?.name || "").trim() || normalizedDriverId)
       );
+      setTimeout(() => {
+        driverMapRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 0);
     }
 
     if (typeof window !== "undefined") {
@@ -2088,7 +2095,10 @@ export default function LiveTripsClient({
               </table>
               </div>
 
-              <div className="border-t border-slate-200 bg-slate-50/60 p-3">
+              <div
+                ref={driverMapRef}
+                className="scroll-mt-4 border-t border-slate-200 bg-slate-50/60 p-3"
+              >
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <div className="font-semibold text-slate-900">Driver Map</div>
@@ -2100,7 +2110,7 @@ export default function LiveTripsClient({
                     {selectedDriverId ? "Selected driver highlighted" : "Select a driver from the list"}
                   </div>
                 </div>
-                <div className="overflow-hidden rounded-lg border bg-white">
+                <div className="h-[520px] min-h-[420px] overflow-hidden rounded-lg border bg-white">
                   <LiveTripsMap
                     trips={mapTrips as any}
                     drivers={drivers as any}

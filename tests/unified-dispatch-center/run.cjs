@@ -85,6 +85,10 @@ test("LiveTrips driver list stays usable without a wide side-scroll layout", () 
   assert(client.includes("Live driver positions for the current town filter."));
   assert(client.includes('viewMode !== "drivers" ? ('));
   assert(client.includes("selectedDriverId={selectedDriverId}"));
+  assert(client.includes("const driverMapRef = useRef<HTMLDivElement | null>(null)"));
+  assert(client.includes("ref={driverMapRef}"));
+  assert(client.includes('className="h-[520px] min-h-[420px] overflow-hidden rounded-lg border bg-white"'));
+  assert(client.includes("driverMapRef.current?.scrollIntoView"));
 });
 
 test("overdue Takeout vendor-pending rows leave normal Dispatch and surface as problems", () => {
