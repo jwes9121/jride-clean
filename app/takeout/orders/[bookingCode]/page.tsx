@@ -57,6 +57,7 @@ type PageProps = {
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending confirmation",
   accepted: "Order accepted",
+  driver_unavailable: "No driver currently available - JRide Operations notified",
   preparing: "Preparing your order",
   ready_for_pickup: "Ready for pickup",
   picked_up: "On the way",
@@ -107,6 +108,9 @@ function normalizeStatus(order: Order | null): string {
     case "accepted":
     case "order_accepted":
       return "accepted";
+
+    case "driver_unavailable":
+      return "driver_unavailable";
 
     case "preparing":
     case "preparing_order":
@@ -285,6 +289,9 @@ export default function TakeoutOrderStatusPage({ params }: PageProps) {
   }, [normalizedStatus, bookingCode, router]);
 
   const currentStepIndex = useMemo(() => {
+    if (normalizedStatus === "driver_unavailable") {
+      return STATUS_ORDER.indexOf("accepted");
+    }
     const idx = STATUS_ORDER.indexOf(normalizedStatus);
     if (idx === -1) return 0;
     return idx;
