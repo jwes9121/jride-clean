@@ -17,7 +17,8 @@
     "test:takeout-expiry-recovery": "node tests/takeout-expiry-recovery/run.cjs",
     "test:regular-ride-fare-response": "node tests/regular-ride-fare-response/run.cjs",
     "test:regular-ride-expiry-notification": "node tests/regular-ride-expiry-notification/run.cjs",
-    "test:unified-dispatch-center": "node tests/unified-dispatch-center/run.cjs",\n    "test:operations-orientation-notes": "node tests/operations-orientation-notes/run.cjs"
+    "test:unified-dispatch-center": "node tests/unified-dispatch-center/run.cjs",
+    "test:operations-orientation-notes": "node tests/operations-orientation-notes/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
