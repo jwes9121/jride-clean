@@ -109,6 +109,7 @@ function makeDb(initialRow) {
 }
 
 const timeout = load('lib/takeout-passenger-fare-timeout.ts');
+const recovery = load('lib/takeout-expiry-recovery.ts');
 const expiredAt = '2020-01-01T00:00:00.000Z';
 const proposedAt = '2019-12-31T23:55:00.000Z';
 
@@ -287,6 +288,54 @@ function cancelParams(row, overrides = {}) {
     assert.equal(call.args.p_meta.timeout_owner, 'passenger');
     assert.equal(call.args.p_meta.driver_penalty, false);
     assert.equal(call.args.p_meta.reassign, false);
+  });
+
+  await test('Takeout driver offer cap counts two different expired drivers but not the same driver twice', () => {
+    const driverA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const driverB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    assert.equal(
+      recovery.reachedTakeoutUniqueDriverOfferLimit(null, driverA),
+      false,
+    );
+    assert.equal(
+      recovery.reachedTakeoutUniqueDriverOfferLimit(driverA, driverA),
+      false,
+    );
+    assert.equal(
+      recovery.reachedTakeoutUniqueDriverOfferLimit(driverA, driverB),
+      true,
+    );
+  });
+
+  await test('Takeout dispatch keeps five-minute driver windows and blocks exhausted automatic reassignment', () => {
+    const cron = fs.readFileSync(
+      path.join(root, 'app/api/cron/takeout-expiry-recovery/route.ts'),
+      'utf8',
+    );
+    const autoAssign = fs.readFileSync(
+      path.join(root, 'app/api/dispatch/auto-assign/route.ts'),
+      'utf8',
+    );
+    const manualAssign = fs.readFileSync(
+      path.join(root, 'app/api/dispatch/assign/route.ts'),
+      'utf8',
+    );
+
+    assert(cron.includes('markDriverUnavailable: reachedUniqueOfferLimit'));
+    assert(cron.includes('two_unique_driver_accept_windows_expired'));
+    assert(cron.includes('no_second_unique_driver_available'));
+    assert(cron.includes('openTakeoutDriverUnavailableOperationsCase'));
+    assert(autoAssign.includes('TAKEOUT_DRIVER_UNAVAILABLE_STATUS'));
+    assert(autoAssign.includes('TAKEOUT_DRIVER_UNAVAILABLE'));
+    assert(
+      autoAssign.includes(
+        'takeout_pricing_status.is.null,takeout_pricing_status.neq.driver_unavailable',
+      ),
+    );
+    assert(autoAssign.includes('new Date(Date.now() + 5 * 60 * 1000)'));
+    assert(manualAssign.includes('const TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS = 300'));
+    assert(manualAssign.includes('updatePayload.takeout_pricing_status = "waiting_driver_accept"'));
   });
 
   await test('cron keeps driver-accept expiry reassignment but never reassigns an expired passenger quote', () => {
