@@ -211,14 +211,9 @@ export default function AdminControlCenter() {
           <div className="text-sm font-semibold mb-2">Operations</div>
           <div className="grid gap-4 md:grid-cols-3">
             <Tile
-              title="LiveTrips"
-              desc="Live map + active trips monitoring."
+              title="Dispatch Center"
+              desc="Single workspace for Ride, Takeout, Advance Booking, Errand, and AgriMarket."
               href="/admin/livetrips"
-            />
-            <Tile
-              title="Dispatch"
-              desc="Manual assign & trip actions dashboard."
-              href="/admin/dispatch"
             />
             <Tile
               title="Ride Rescue Mode"
