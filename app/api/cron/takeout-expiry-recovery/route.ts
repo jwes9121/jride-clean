@@ -186,6 +186,7 @@ export async function GET(req: NextRequest) {
           previousExpiredDriverId,
           townRaw: row?.town ? String(row.town) : null,
           reason: "two_unique_driver_accept_windows_expired",
+          operationsAlerted: !operationsCase.error,
         });
 
         console.log(
@@ -253,6 +254,7 @@ export async function GET(req: NextRequest) {
             previousExpiredDriverId: null,
             townRaw: row?.town ? String(row.town) : null,
             reason: "no_second_unique_driver_available",
+            operationsAlerted: !operationsCase.error,
           });
         }
       }
