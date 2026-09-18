@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs && node tests/unified-dispatch-center/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -16,7 +16,8 @@
     "test:takeout-fare-decline": "node tests/takeout-fare-decline/run.cjs",
     "test:takeout-expiry-recovery": "node tests/takeout-expiry-recovery/run.cjs",
     "test:regular-ride-fare-response": "node tests/regular-ride-fare-response/run.cjs",
-    "test:regular-ride-expiry-notification": "node tests/regular-ride-expiry-notification/run.cjs"
+    "test:regular-ride-expiry-notification": "node tests/regular-ride-expiry-notification/run.cjs",
+    "test:unified-dispatch-center": "node tests/unified-dispatch-center/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
