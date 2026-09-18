@@ -175,17 +175,30 @@ const LIVETRIPS_PENDING_STATUSES = [
   "requested",
   "searching",
   "assigned",
-  "driver_assigned",
-  "driver_unavailable",
   "accepted",
   "fare_proposed",
   "ready",
+  "vendor_pending",
+  "vendor_accepted",
+  "driver_assigned",
+  "driver_accepted",
+  "driver_fee_proposed",
+  "customer_confirmed",
+  "preparing",
+  "pickup_ready",
+  "driver_unavailable",
 ];
 
 const LIVETRIPS_ACTIVE_STATUSES = [
   "on_the_way",
   "arrived",
   "on_trip",
+  "cash_collected",
+  "vendor_bound",
+  "rider_arrived_vendor",
+  "arrived_vendor",
+  "picked_up",
+  "delivering",
 ];
 
 const LIVETRIPS_DISPATCH_STATUSES = [
@@ -682,9 +695,9 @@ function textOrEmpty(v?: any): string {
 
 function statusPillClass(status: string): string {
   if (status === "driver_unavailable") return "border-rose-300 bg-rose-50 text-rose-800";
-  if (["requested", "searching"].includes(status)) return "border-amber-300 bg-amber-50 text-amber-800";
-  if (["assigned", "accepted", "fare_proposed", "ready"].includes(status)) return "border-blue-300 bg-blue-50 text-blue-800";
-  if (["on_the_way", "arrived", "on_trip"].includes(status)) return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (["requested", "searching", "vendor_pending", "vendor_accepted"].includes(status)) return "border-amber-300 bg-amber-50 text-amber-800";
+  if (["assigned", "accepted", "fare_proposed", "ready", "driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready"].includes(status)) return "border-blue-300 bg-blue-50 text-blue-800";
+  if (["on_the_way", "arrived", "on_trip", "cash_collected", "vendor_bound", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering"].includes(status)) return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (["completed"].includes(status)) return "border-slate-300 bg-slate-50 text-slate-700";
   if (["cancelled"].includes(status)) return "border-rose-300 bg-rose-50 text-rose-700";
   return "border-slate-200 bg-white text-slate-700";
@@ -707,8 +720,8 @@ function driverRowTone(d: DriverRow): string {
 function tripRowTone(t: TripRow): string {
   if (computeIsProblem(t)) return "bg-rose-50/60";
   const s = normStatus(t.status);
-  if (["searching", "requested"].includes(s)) return "bg-amber-50/50";
-  if (["assigned", "accepted", "fare_proposed", "ready"].includes(s)) return "bg-blue-50/40";
+  if (["searching", "requested", "vendor_pending", "vendor_accepted"].includes(s)) return "bg-amber-50/50";
+  if (["assigned", "accepted", "fare_proposed", "ready", "driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready"].includes(s)) return "bg-blue-50/40";
   return "";
 }
 
