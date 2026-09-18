@@ -168,6 +168,8 @@ const STUCK_THRESHOLDS_MIN = {
   on_trip: 25,
 };
 
+const TAKEOUT_VENDOR_PENDING_MAX_AGE_MS = 5 * 60 * 1000;
+
 const POLL_MS_FOREGROUND = 5000;
 const POLL_MS_BACKGROUND = 15000;
 
@@ -287,11 +289,23 @@ function isActiveTripStatus(s: string) {
   return LIVETRIPS_DISPATCH_STATUSES.includes(s);
 }
 
+function isOverdueTakeoutVendorPending(t: TripRow, now = Date.now()): boolean {
+  if (normStatus(t.service_type) !== "takeout") return false;
+  if (normStatus(t.status) !== "vendor_pending") return false;
+  if (textOrEmpty(t.assigned_driver_id) || textOrEmpty(t.driver_id)) return false;
+
+  const createdAt = Date.parse(String(t.created_at || ""));
+  if (!Number.isFinite(createdAt)) return false;
+
+  return now - createdAt >= TAKEOUT_VENDOR_PENDING_MAX_AGE_MS;
+}
+
 function computeIsProblem(t: TripRow): boolean {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
 
   const isStuck =
+    isOverdueTakeoutVendorPending(t) ||
     s === "driver_unavailable" ||
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
@@ -704,6 +718,7 @@ function tripPriorityReason(t: TripRow): string | null {
   const s = normStatus(t.status);
   const mins = minutesSince(t.updated_at || t.created_at || null);
   if (computeIsProblem(t)) {
+    if (isOverdueTakeoutVendorPending(t)) return "VENDOR TIMEOUT OVERDUE";
     if (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) return "STUCK > 15m";
     if (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip) return "STUCK > 25m";
     const hasPickup = Number.isFinite(t.pickup_lat as any) && Number.isFinite(t.pickup_lng as any);
@@ -1134,9 +1149,10 @@ export default function LiveTripsClient({
       if (s === "completed") c.completed++;
       if (s === "cancelled") c.cancelled++;
 
-      if (LIVETRIPS_PENDING_STATUSES.includes(s)) c.pending++;
+      const overdueVendorPending = isOverdueTakeoutVendorPending(t);
+      if (LIVETRIPS_PENDING_STATUSES.includes(s) && !overdueVendorPending) c.pending++;
       if (LIVETRIPS_ACTIVE_STATUSES.includes(s)) c.active++;
-      if (LIVETRIPS_DISPATCH_STATUSES.includes(s)) c.dispatch++;
+      if (LIVETRIPS_DISPATCH_STATUSES.includes(s) && !overdueVendorPending) c.dispatch++;
 
       if (computeIsProblem(t)) c.problem++;
     }
@@ -1199,9 +1215,17 @@ export default function LiveTripsClient({
     if (f === "all") {
       out = serviceTrips.slice();
     } else if (f === "dispatch") {
-      out = serviceTrips.filter((t) => LIVETRIPS_DISPATCH_STATUSES.includes(normStatus(t.status)));
+      out = serviceTrips.filter(
+        (t) =>
+          LIVETRIPS_DISPATCH_STATUSES.includes(normStatus(t.status)) &&
+          !isOverdueTakeoutVendorPending(t)
+      );
     } else if (f === "pending") {
-      out = serviceTrips.filter((t) => LIVETRIPS_PENDING_STATUSES.includes(normStatus(t.status)));
+      out = serviceTrips.filter(
+        (t) =>
+          LIVETRIPS_PENDING_STATUSES.includes(normStatus(t.status)) &&
+          !isOverdueTakeoutVendorPending(t)
+      );
     } else if (f === "active") {
       out = serviceTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status)));
     } else if (f === "problem") {
@@ -1891,7 +1915,13 @@ export default function LiveTripsClient({
         ))}
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.05fr,0.95fr]" ref={tableRef}>
+      <div
+        className={[
+          "mt-5 grid grid-cols-1 gap-5",
+          viewMode === "drivers" ? "" : "xl:grid-cols-[1.05fr,0.95fr]",
+        ].join(" ")}
+        ref={tableRef}
+      >
         <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 p-4">
             <div className="font-semibold">
@@ -1913,29 +1943,23 @@ export default function LiveTripsClient({
           </div>
 
           {viewMode === "drivers" ? (
-            <div className="overflow-auto" style={{ maxHeight: 420 }}>
-              <table className="min-w-[1280px] w-full text-sm">
+            <div className="overflow-auto" style={{ maxHeight: 520 }}>
+              <table className="min-w-[900px] w-full text-sm">
                 <thead className="sticky top-0 border-b border-slate-200 bg-white/95 backdrop-blur">
                   <tr className="text-left">
                     <th className="p-2">Driver</th>
-                    <th className="p-2">Phone</th>
-                    <th className="p-2">Plate / Vehicle</th>
-                    <th className="p-2">Home Town (Ride)</th>
-                    <th className="p-2">Current Town</th>
-                    <th className="p-2">JRide Area</th>
-                    <th className="p-2">Status</th>
-                    <th className="p-2">Trips</th>
-                    <th className="p-2">Last Ping (PHT)</th>
-                    <th className="p-2">Seen Ago</th>
-                    <th className="p-2">Ride</th>
-                    <th className="p-2">Stale</th>
+                    <th className="p-2">Vehicle</th>
+                    <th className="p-2">Towns</th>
+                    <th className="p-2">Coverage / Ride</th>
+                    <th className="p-2">Status / Freshness</th>
+                    <th className="p-2">Trip / Last Ping</th>
                     <th className="p-2">Map</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDriverRows.length === 0 ? (
                     <tr>
-                      <td className="p-3 text-gray-600" colSpan={13}>
+                      <td className="p-3 text-gray-600" colSpan={7}>
                         No drivers in this view.
                       </td>
                     </tr>
@@ -1968,64 +1992,79 @@ export default function LiveTripsClient({
                             isSel ? "ring-1 ring-inset ring-blue-300" : "",
                           ].join(" ")}
                         >
-                          <td className="p-2">
+                          <td className="p-2 align-top">
                             <div className="font-medium">{labelOrDash(d.name)}</div>
-                            <div className="font-mono text-[10px] text-slate-400">
+                            <div className="mt-0.5 text-xs text-slate-600">{labelOrDash(d.phone)}</div>
+                            <div className="mt-0.5 max-w-[230px] truncate font-mono text-[10px] text-slate-400" title={String(d.driver_id || "")}>
                               {d.callsign ? d.callsign + " / " : ""}{d.driver_id}
                             </div>
                           </td>
-                          <td className="p-2">{labelOrDash(d.phone)}</td>
-                          <td className="p-2">
+                          <td className="p-2 align-top">
                             <div>{labelOrDash(d.plate_number)}</div>
                             <div className="text-[10px] text-slate-500">{labelOrDash(d.vehicle_type)}</div>
                           </td>
-                          <td className="p-2">{labelOrDash(homeTown)}</td>
-                          <td className="p-2">
-                            <div>{labelOrDash(currentTown)}</div>
+                          <td className="p-2 align-top">
+                            <div><span className="text-[10px] uppercase text-slate-400">Home</span> {labelOrDash(homeTown)}</div>
+                            <div><span className="text-[10px] uppercase text-slate-400">Current</span> {labelOrDash(currentTown)}</div>
                             <div className="text-[10px] uppercase text-slate-500">
                               {labelOrDash(d.town_source).replace(/_/g, " ")}
                             </div>
                           </td>
-                          <td className="p-2">
-                            {!currentTown ? (
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">UNKNOWN</span>
-                            ) : inJrideCoverage ? (
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">IN AREA</span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE</span>
-                            )}
+                          <td className="p-2 align-top">
+                            <div>
+                              {!currentTown ? (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">UNKNOWN</span>
+                              ) : inJrideCoverage ? (
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">IN AREA</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE</span>
+                              )}
+                            </div>
+                            <div className="mt-1">
+                              {rideEligible ? (
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">RIDE READY</span>
+                              ) : !currentTown || !homeTown ? (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">TOWN UNKNOWN</span>
+                              ) : !inJrideCoverage ? (
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE JRIDE</span>
+                              ) : !sameRideTown ? (
+                                <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">OUTSIDE HOME TOWN</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">RIDE BLOCKED</span>
+                              )}
+                            </div>
                           </td>
-                          <td className="p-2"><span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>{labelOrDash((d as any).effective_status ?? d.status)}</span></td>
-                          <td className="p-2">
-                            {trip ? (
-                              <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                                {labelOrDash(trip.booking_code)} / {labelOrDash(trip.status)}
+                          <td className="p-2 align-top">
+                            <div>
+                              <span className={["inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium", statusPillClass(normStatus((d as any).effective_status ?? d.status))].join(" ")}>
+                                {labelOrDash((d as any).effective_status ?? d.status)}
                               </span>
+                            </div>
+                            <div className="mt-1">
+                              {(d as any).is_stale ? (
+                                <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">STALE</span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">FRESH</span>
+                              )}
+                            </div>
+                            <div className={["mt-1 text-xs", seenAgoTone(d.age_seconds)].join(" ")}>
+                              Seen {formatLastSeen(d.age_seconds)}
+                            </div>
+                          </td>
+                          <td className="p-2 align-top">
+                            {trip ? (
+                              <div>
+                                <div className="font-medium">{labelOrDash(trip.booking_code)}</div>
+                                <div className="text-xs text-slate-500">{labelOrDash(trip.status)}</div>
+                              </div>
                             ) : (
                               <span className="text-gray-500">No active trip</span>
                             )}
+                            <div className="mt-1 text-[11px] text-slate-500">
+                              Last ping: {labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}
+                            </div>
                           </td>
-                          <td className="p-2">{labelOrDash((d as any).updated_at_ph || formatLastSeen(d.age_seconds))}</td>
-                          <td className={["p-2", seenAgoTone(d.age_seconds)].join(" ")}>{formatLastSeen(d.age_seconds)}</td>
-                          <td className="p-2">
-                            {rideEligible ? (
-                              <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">READY</span>
-                            ) : !currentTown || !homeTown ? (
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">TOWN UNKNOWN</span>
-                            ) : !inJrideCoverage ? (
-                              <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">OUTSIDE JRIDE</span>
-                            ) : !sameRideTown ? (
-                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">OUTSIDE HOME TOWN</span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-500">BLOCKED</span>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            {(d as any).is_stale
-                              ? <span className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">STALE</span>
-                              : <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">FRESH</span>}
-                          </td>
-                          <td className="p-2">
+                          <td className="p-2 align-top">
                             <button
                               type="button"
                               aria-pressed={isSel}
