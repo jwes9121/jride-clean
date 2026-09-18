@@ -191,7 +191,13 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED", message: "Closed takeout orders cannot be assigned" });
   }
 
-  const vendorAcceptedForAssignment = new Set(["vendor_accepted", "preparing", "pickup_ready", "driver_assigned"]);
+  const vendorAcceptedForAssignment = new Set([
+    "vendor_accepted",
+    "preparing",
+    "pickup_ready",
+    "driver_assigned",
+    "driver_unavailable",
+  ]);
   if (!vendorAcceptedForAssignment.has(currentStatus)) {
     return json(409, {
       ok: false,
@@ -252,6 +258,9 @@ export async function POST(req: NextRequest) {
     vendor_status: "driver_assigned",
     customer_status: "driver_assigned",
     driver_status: "driver_assigned",
+    takeout_pricing_status: "waiting_driver_accept",
+    // The durable takeout_auto_dispatch_exhausted flag is intentionally
+    // preserved. Manual recovery must not restart the automatic cycle.
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
     updated_at: nowIso,
   };
