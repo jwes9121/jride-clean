@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
   const existingQuery = admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_status,customer_status,status,assigned_driver_id")
+    .select("id,booking_code,service_type,vendor_status,customer_status,status,assigned_driver_id,takeout_pricing_status,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -187,6 +187,10 @@ export async function POST(req: NextRequest) {
   }
 
   const currentStatus = normStatus((existing.data as any).vendor_status || (existing.data as any).customer_status || (existing.data as any).status || "requested");
+  const preserveAutoDispatchExhausted =
+    (existing.data as any).takeout_auto_dispatch_exhausted === true ||
+    currentStatus === "driver_unavailable" ||
+    normStatus((existing.data as any).takeout_pricing_status) === "driver_unavailable";
   if (currentStatus === "completed" || currentStatus === "cancelled") {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED", message: "Closed takeout orders cannot be assigned" });
   }
@@ -259,8 +263,11 @@ export async function POST(req: NextRequest) {
     customer_status: "driver_assigned",
     driver_status: "driver_assigned",
     takeout_pricing_status: "waiting_driver_accept",
-    // The durable takeout_auto_dispatch_exhausted flag is intentionally
-    // preserved. Manual recovery must not restart the automatic cycle.
+    takeout_auto_dispatch_exhausted: preserveAutoDispatchExhausted,
+    takeout_auto_dispatch_exhausted_at: preserveAutoDispatchExhausted
+      ? (existing.data as any).takeout_auto_dispatch_exhausted_at || nowIso
+      : null,
+    // Manual recovery must not restart the automatic cycle.
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
     updated_at: nowIso,
   };
