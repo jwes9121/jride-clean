@@ -31,6 +31,8 @@ test("Dispatch Center exposes all five service tabs from one URL", () => {
   }
   assert(page.includes('"/admin/livetrips"'));
   assert(page.includes('"/admin/livetrips?service=" + tab.key'));
+  assert(page.includes("<RideDispatchPanel"));
+  assert(page.includes("<TakeoutDispatchPanel"));
   assert(page.includes("<AdvanceBookingDispatchPanel"));
   assert(page.includes("<AgrimarketDispatchGate"));
   assert(page.includes("<LiveTripsClient serviceFilter={liveTripsFilter}"));
@@ -43,6 +45,22 @@ test("LiveTrips service filter uses production booking service types", () => {
   assert(client.includes('return serviceType === serviceFilter'));
   assert(client.includes('serviceFilter?: LiveTripsServiceFilter'));
   assert(client.includes("const serviceTrips = useMemo"));
+});
+
+
+test("Ride and Takeout tabs preserve their specialized dispatch controls", () => {
+  const ride = read("app/admin/livetrips/components/RideDispatchPanel.tsx");
+  const takeout = read("app/admin/livetrips/components/TakeoutDispatchPanel.tsx");
+
+  assert(ride.includes('fetch("/api/admin/ride-dispatch?filter=all"'));
+  assert(ride.includes('postJson("/api/dispatch/assign"'));
+  assert(ride.includes("eligibleDrivers"));
+
+  assert(takeout.includes('fetch("/api/admin/takeout-dispatch?filter=all"'));
+  assert(takeout.includes('"/api/admin/takeout-dispatch/assign"'));
+  assert(takeout.includes('"driver_unavailable"'));
+  assert(takeout.includes("takeout_auto_dispatch_exhausted"));
+  assert(takeout.includes("NEXT_ACTIONS"));
 });
 
 test("Advance Booking keeps its existing dispatcher API inside the unified center", () => {
@@ -94,4 +112,4 @@ test("staff navigation advertises one primary dispatch destination", () => {
   assert(!controlCenter.includes('href="/admin/dispatch"'));
 });
 
-console.log("5 unified Dispatch Center regression groups passed.");
+console.log("6 unified Dispatch Center regression groups passed.");
