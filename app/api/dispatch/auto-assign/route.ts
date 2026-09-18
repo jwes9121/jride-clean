@@ -46,6 +46,8 @@ type BookingRow = {
   service_type?: string | null;
   vendor_status?: string | null;
   takeout_pricing_status?: string | null;
+  takeout_auto_dispatch_exhausted?: boolean | null;
+  takeout_auto_dispatch_exhausted_at?: string | null;
   takeout_items_subtotal?: number | string | null;
 };
 const REQUEST_SEARCH_EXPIRY_SECONDS = 300; // JRIDE_SEARCHING_EXPIRE_5MIN_V1
@@ -138,10 +140,13 @@ function isAssignableAutoAssignState(booking: BookingRow): boolean {
   const serviceType = norm(booking?.service_type);
   const vendorStatus = norm(booking?.vendor_status);
   const takeoutPricingStatus = norm(booking?.takeout_pricing_status);
+  const takeoutAutoDispatchExhausted =
+    booking?.takeout_auto_dispatch_exhausted === true;
 
   if (
     serviceType === "takeout" &&
-    takeoutPricingStatus === TAKEOUT_DRIVER_UNAVAILABLE_STATUS
+    (takeoutAutoDispatchExhausted ||
+      takeoutPricingStatus === TAKEOUT_DRIVER_UNAVAILABLE_STATUS)
   ) {
     return false;
   }
@@ -273,7 +278,10 @@ async function cleanupExpiredTakeoutDriverAssignment(
   if (!expiredDriverId) return booking;
 
   const previousExpiredDriverId = text(booking.last_expired_driver_id);
+  const alreadyAutoDispatchExhausted =
+    booking.takeout_auto_dispatch_exhausted === true;
   const reachedUniqueOfferLimit =
+    alreadyAutoDispatchExhausted ||
     reachedTakeoutUniqueDriverOfferLimit(
       previousExpiredDriverId,
       expiredDriverId
@@ -302,6 +310,10 @@ async function cleanupExpiredTakeoutDriverAssignment(
       takeout_pricing_status: reachedUniqueOfferLimit
         ? TAKEOUT_DRIVER_UNAVAILABLE_STATUS
         : null,
+      takeout_auto_dispatch_exhausted: reachedUniqueOfferLimit,
+      takeout_auto_dispatch_exhausted_at: reachedUniqueOfferLimit
+        ? nowIso
+        : null,
       last_expired_driver_id: expiredDriverId,
       updated_at: nowIso,
     })
@@ -309,7 +321,7 @@ async function cleanupExpiredTakeoutDriverAssignment(
     .eq("service_type", "takeout")
     .eq("status", "assigned")
     .lt("driver_accept_expires_at", nowIso)
-    .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
+    .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_auto_dispatch_exhausted, takeout_auto_dispatch_exhausted_at, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id")
     .single();
 
   if (error || !data) {
@@ -350,6 +362,7 @@ async function cleanupExpiredTakeoutDriverAssignment(
     booking_code: booking.booking_code,
     expired_driver_id: expiredDriverId,
     previous_expired_driver_id: previousExpiredDriverId || null,
+    already_auto_dispatch_exhausted: alreadyAutoDispatchExhausted,
     driver_unavailable: reachedUniqueOfferLimit,
     route_plan: cashFirst ? "customer_cash_first" : "vendor_first",
   });
@@ -437,8 +450,9 @@ async function matchSingle(
 
   if (
     isTakeoutBooking &&
-    norm(booking?.takeout_pricing_status) ===
-      TAKEOUT_DRIVER_UNAVAILABLE_STATUS
+    (booking?.takeout_auto_dispatch_exhausted === true ||
+      norm(booking?.takeout_pricing_status) ===
+        TAKEOUT_DRIVER_UNAVAILABLE_STATUS)
   ) {
     return {
       assigned: false,
@@ -874,9 +888,13 @@ async function matchSingle(
     .is("assigned_driver_id", null);
 
   if (isTakeoutBooking) {
-    updateQuery = updateQuery.or(
-      "takeout_pricing_status.is.null,takeout_pricing_status.neq.driver_unavailable"
-    );
+    updateQuery = updateQuery
+      .or(
+        "takeout_pricing_status.is.null,takeout_pricing_status.neq.driver_unavailable"
+      )
+      .or(
+        "takeout_auto_dispatch_exhausted.is.null,takeout_auto_dispatch_exhausted.eq.false"
+      );
   }
 
   if (booking.ride_reassignment_pending === true) {
@@ -939,9 +957,10 @@ export async function POST(req: Request) {
 
      const { data: bookings, error } = await supabase
         .from("bookings")
-        .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
+        .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_auto_dispatch_exhausted, takeout_auto_dispatch_exhausted_at, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
         .or("status.eq.searching,and(service_type.eq.takeout,status.eq.requested,vendor_status.eq.vendor_accepted)")
         .or("takeout_pricing_status.is.null,takeout_pricing_status.neq.driver_unavailable")
+        .or("takeout_auto_dispatch_exhausted.is.null,takeout_auto_dispatch_exhausted.eq.false")
         .is("driver_id", null)
         .order("created_at", { ascending: true })
         .limit(SCAN_LIMIT);
@@ -1083,7 +1102,7 @@ if (
 
         const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
+      .select("id, booking_code, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng, town, status, driver_id, assigned_driver_id, is_emergency, service_type, vendor_status, takeout_pricing_status, takeout_auto_dispatch_exhausted, takeout_auto_dispatch_exhausted_at, takeout_items_subtotal, passenger_fare_response, last_expired_driver_id, ride_reassignment_pending, ride_reassignment_queued_at")
       .eq("id", bookingId)
       .single();
 
