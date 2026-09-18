@@ -68,6 +68,10 @@ export async function resetExpiredTakeoutDriverAcceptance(
       takeout_pricing_status: markDriverUnavailable
         ? TAKEOUT_DRIVER_UNAVAILABLE_STATUS
         : null,
+      takeout_auto_dispatch_exhausted: markDriverUnavailable,
+      takeout_auto_dispatch_exhausted_at: markDriverUnavailable
+        ? nowIso
+        : null,
       takeout_delivery_fee: null,
       takeout_service_fee: null,
       takeout_total_payable: null,
@@ -161,6 +165,8 @@ export async function markTakeoutDriverUnavailable(
       customer_status: TAKEOUT_DRIVER_UNAVAILABLE_STATUS,
       driver_status: null,
       takeout_pricing_status: TAKEOUT_DRIVER_UNAVAILABLE_STATUS,
+      takeout_auto_dispatch_exhausted: true,
+      takeout_auto_dispatch_exhausted_at: nowIso,
       updated_at: nowIso,
     })
     .eq("id", bookingId)
