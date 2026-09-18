@@ -101,6 +101,7 @@ function isAssignableDriver(row: any) {
 
 function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: number) {
   const stuck =
+    status === "driver_unavailable" ||
     (status === "requested" && ageMinutes >= 10) ||
     (status === "vendor_accepted" && updateAgeMinutes >= 10) ||
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
@@ -112,7 +113,8 @@ function orderPriority(status: string, ageMinutes: number, updateAgeMinutes: num
     (status === "delivering" && updateAgeMinutes >= 30);
 
   let priority = 70;
-  if (status === "pickup_ready") priority = stuck ? 1 : 10;
+  if (status === "driver_unavailable") priority = 0;
+  else if (status === "pickup_ready") priority = stuck ? 1 : 10;
   else if (status === "requested") priority = stuck ? 2 : 15;
   else if (status === "vendor_accepted") priority = stuck ? 2 : 16;
   else if (status === "driver_assigned" || status === "driver_accepted") priority = stuck ? 3 : 18;
@@ -144,7 +146,7 @@ export async function GET(req: NextRequest) {
 
   const ordersRes = await admin
     .from("bookings")
-    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_fee_proposal_expires_at,takeout_fee_proposed_at,takeout_delivery_fee,takeout_customer_confirmed_at")
+    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_fee_proposal_expires_at,takeout_fee_proposed_at,takeout_delivery_fee,takeout_customer_confirmed_at,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at")
     .eq("service_type", "takeout")
     .order("created_at", { ascending: false })
     .limit(500);
@@ -297,6 +299,10 @@ export async function GET(req: NextRequest) {
       update_age_minutes: updateAgeMinutes,
       is_stuck: op.stuck || proposalStuck,
       proposal_expiry_stuck: proposalStuck,
+      takeout_auto_dispatch_exhausted:
+        r.takeout_auto_dispatch_exhausted === true,
+      takeout_auto_dispatch_exhausted_at:
+        r.takeout_auto_dispatch_exhausted_at || null,
       priority: proposalStuck ? 1 : op.priority,
     };
   });
@@ -329,6 +335,9 @@ export async function GET(req: NextRequest) {
       (o: any) =>
         o.vendor_status === "driver_assigned" ||
         o.vendor_status === "driver_accepted"
+    ).length,
+    driver_unavailable: orders.filter(
+      (o: any) => o.vendor_status === "driver_unavailable"
     ).length,
     picked_up: orders.filter((o: any) => o.vendor_status === "picked_up" || o.vendor_status === "delivering").length,
     completed: orders.filter((o: any) => o.status === "completed").length,
