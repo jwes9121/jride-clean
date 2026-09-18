@@ -460,104 +460,6 @@ async function loadDriverCatalog(admin: any) {
 }
 
 
-async function loadDriverContactCatalog(admin: any) {
-  const [driversResult, profilesResult] = await Promise.all([
-    admin
-      .from("drivers")
-      .select("id,driver_status,driver_name")
-      .order("driver_name", { ascending: true }),
-    admin
-      .from("driver_profiles")
-      .select("driver_id,full_name,callsign,municipality,vehicle_type,phone"),
-  ]);
-
-  for (const result of [driversResult, profilesResult]) {
-    if (result.error) throw new Error(result.error.message);
-  }
-
-  const profilesById = new Map(
-    (profilesResult.data || []).map((row: any) => [
-      String(row.driver_id),
-      row,
-    ])
-  );
-
-  return (driversResult.data || [])
-    .map((driver: any) => {
-      const driverId = String(driver.id || "");
-      const profile: any = profilesById.get(driverId) || {};
-
-      return {
-        driver_id: driverId,
-        driver_name:
-          profile.full_name ||
-          driver.driver_name ||
-          profile.callsign ||
-          "Unknown driver",
-        callsign: profile.callsign || null,
-        municipality: profile.municipality || null,
-        vehicle_type: profile.vehicle_type || null,
-        phone: profile.phone || null,
-        driver_status: driver.driver_status || null,
-      };
-    })
-    .filter((driver: any) => Boolean(driver.driver_id))
-    .sort((a: any, b: any) =>
-      String(a.driver_name || "").localeCompare(String(b.driver_name || ""))
-    );
-}
-
-async function loadVendorContactCatalog(admin: any) {
-  const [accountsResult, credentialsResult] = await Promise.all([
-    admin
-      .from("vendor_accounts")
-      .select(
-        "id,display_name,town,accepting_orders,suspended_until"
-      )
-      .order("display_name", { ascending: true }),
-    admin
-      .from("vendor_onboarding_credentials")
-      .select(
-        "vendor_id,vendor_name,town,contact_name,phone,status"
-      ),
-  ]);
-
-  for (const result of [accountsResult, credentialsResult]) {
-    if (result.error) throw new Error(result.error.message);
-  }
-
-  const credentialsByVendorId = new Map(
-    (credentialsResult.data || []).map((row: any) => [
-      String(row.vendor_id),
-      row,
-    ])
-  );
-
-  return (accountsResult.data || [])
-    .map((account: any) => {
-      const vendorId = String(account.id || "");
-      const credential: any = credentialsByVendorId.get(vendorId) || {};
-
-      return {
-        vendor_id: vendorId,
-        vendor_name:
-          account.display_name ||
-          credential.vendor_name ||
-          "Unknown vendor",
-        contact_name: credential.contact_name || null,
-        town: account.town || credential.town || null,
-        phone: credential.phone || null,
-        accepting_orders: account.accepting_orders === true,
-        credential_status: credential.status || null,
-        suspended_until: account.suspended_until || null,
-      };
-    })
-    .filter((vendor: any) => Boolean(vendor.vendor_id))
-    .sort((a: any, b: any) =>
-      String(a.vendor_name || "").localeCompare(String(b.vendor_name || ""))
-    );
-}
-
 export async function GET(request: NextRequest) {
   try {
     const authorization = await getAuthorizedUser();
@@ -592,16 +494,9 @@ export async function GET(request: NextRequest) {
     if (fromIso) pingQuery = pingQuery.gte("created_at", fromIso);
     if (toIso) pingQuery = pingQuery.lte("created_at", toIso);
 
-    const [
-      pingResult,
-      driverCatalog,
-      driverContacts,
-      vendorContacts,
-    ] = await Promise.all([
+    const [pingResult, driverCatalog] = await Promise.all([
       pingQuery,
       loadDriverCatalog(admin),
-      loadDriverContactCatalog(admin),
-      loadVendorContactCatalog(admin),
     ]);
 
     if (pingResult.error) {
@@ -866,8 +761,6 @@ export async function GET(request: NextRequest) {
       },
       towns,
       drivers: driverCatalog,
-      driver_contacts: driverContacts,
-      vendors: vendorContacts,
       rows,
       auth_debug: {
         requester_email: authorization.email,
