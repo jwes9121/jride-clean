@@ -217,6 +217,33 @@ function normStatus(s?: any) {
   return String(s || "").trim().toLowerCase();
 }
 
+export type LiveTripsServiceFilter = "all" | "ride" | "takeout" | "errand";
+
+function matchesServiceFilter(
+  trip: TripRow,
+  serviceFilter: LiveTripsServiceFilter
+): boolean {
+  if (serviceFilter === "all") return true;
+
+  const serviceType = normStatus(trip?.service_type);
+  if (serviceFilter === "ride") {
+    return (
+      serviceType === "motorcycle" ||
+      serviceType === "tricycle" ||
+      serviceType === "ride"
+    );
+  }
+
+  return serviceType === serviceFilter;
+}
+
+function serviceFilterLabel(serviceFilter: LiveTripsServiceFilter): string {
+  if (serviceFilter === "ride") return "Ride";
+  if (serviceFilter === "takeout") return "Takeout";
+  if (serviceFilter === "errand") return "Errand";
+  return "Live Operations";
+}
+
 function normTripId(t: TripRow): string {
   return String(t.uuid || t.id || t.booking_code || "");
 }
@@ -810,7 +837,11 @@ function mergeDriverRows(prev: DriverRow[], incoming: DriverRow): DriverRow[] {
   return next;
 }
 
-export default function LiveTripsClient() {
+export default function LiveTripsClient({
+  serviceFilter = "all",
+}: {
+  serviceFilter?: LiveTripsServiceFilter;
+}) {
   const [zones, setZones] = useState<ZoneRow[]>([]);
   const [allTrips, setAllTrips] = useState<TripRow[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
@@ -1050,20 +1081,25 @@ export default function LiveTripsClient() {
     };
   }, []);
 
+  const serviceTrips = useMemo(
+    () => allTrips.filter((trip) => matchesServiceFilter(trip, serviceFilter)),
+    [allTrips, serviceFilter]
+  );
+
   const stuckTripIds = useMemo(() => {
     const s = new Set<string>();
-    for (const t of allTrips) {
+    for (const t of serviceTrips) {
       if (computeIsProblem(t)) {
         const id = normTripId(t);
         if (id) s.add(id);
       }
     }
     return s;
-  }, [allTrips]);
+  }, [serviceTrips]);
 
   const counts = useMemo(() => {
     const c = {
-      all: allTrips.length,
+      all: serviceTrips.length,
       dispatch: 0,
       pending: 0,
       active: 0,
@@ -1082,7 +1118,7 @@ export default function LiveTripsClient() {
       problem: 0,
     };
 
-    for (const t of allTrips) {
+    for (const t of serviceTrips) {
       const s = normStatus(t.status);
 
       if (s === "requested") c.requested++;
@@ -1106,12 +1142,12 @@ export default function LiveTripsClient() {
     }
 
     return c;
-  }, [allTrips]);
+  }, [serviceTrips]);
 
   const dispatchPressure = useMemo(() => {
     const driversReady = drivers.filter((d) => Boolean(d.assign_eligible)).length;
-    const searchingTrips = allTrips.filter((t) => ["requested", "searching"].includes(normStatus(t.status))).length;
-    const activeTrips = allTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status))).length;
+    const searchingTrips = serviceTrips.filter((t) => ["requested", "searching"].includes(normStatus(t.status))).length;
+    const activeTrips = serviceTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status))).length;
     const demandPressure = searchingTrips + activeTrips;
     let coverageLabel = "LOW";
     let coverageTone = "bg-rose-50 text-rose-700 border-rose-200";
@@ -1134,7 +1170,7 @@ export default function LiveTripsClient() {
       coverageLabel,
       coverageTone,
     };
-  }, [allTrips, drivers]);
+  }, [serviceTrips, drivers]);
 
   const officialTownKeys = useMemo(() => {
     const set = new Set<string>();
@@ -1161,17 +1197,17 @@ export default function LiveTripsClient() {
     let out: TripRow[] = [];
 
     if (f === "all") {
-      out = allTrips.slice();
+      out = serviceTrips.slice();
     } else if (f === "dispatch") {
-      out = allTrips.filter((t) => LIVETRIPS_DISPATCH_STATUSES.includes(normStatus(t.status)));
+      out = serviceTrips.filter((t) => LIVETRIPS_DISPATCH_STATUSES.includes(normStatus(t.status)));
     } else if (f === "pending") {
-      out = allTrips.filter((t) => LIVETRIPS_PENDING_STATUSES.includes(normStatus(t.status)));
+      out = serviceTrips.filter((t) => LIVETRIPS_PENDING_STATUSES.includes(normStatus(t.status)));
     } else if (f === "active") {
-      out = allTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status)));
+      out = serviceTrips.filter((t) => LIVETRIPS_ACTIVE_STATUSES.includes(normStatus(t.status)));
     } else if (f === "problem") {
-      out = allTrips.filter((t) => stuckTripIds.has(normTripId(t)));
+      out = serviceTrips.filter((t) => stuckTripIds.has(normTripId(t)));
     } else {
-      out = allTrips.filter((t) => normStatus(t.status) === f);
+      out = serviceTrips.filter((t) => normStatus(t.status) === f);
     }
 
     out = out.filter((trip) => {
@@ -1204,12 +1240,12 @@ export default function LiveTripsClient() {
     });
 
     return out;
-  }, [allTrips, tripFilter, stuckTripIds, townFilter, queryNeedle]);
+  }, [serviceTrips, tripFilter, stuckTripIds, townFilter, queryNeedle]);
 
   const mapTrips = useMemo(() => {
     if (viewMode === "drivers") {
       const selectedDriverTrip = selectedDriverId
-        ? allTrips.find(
+        ? serviceTrips.find(
             (trip) =>
               String(trip.assigned_driver_id || trip.driver_id || "") ===
               selectedDriverId
@@ -1225,7 +1261,7 @@ export default function LiveTripsClient() {
       return base;
     }
     return visibleTrips;
-  }, [viewMode, allTrips, visibleTrips, selectedDriverId]);
+  }, [viewMode, serviceTrips, visibleTrips, selectedDriverId]);
 
   useEffect(() => {
     if (viewMode === "drivers") return;
@@ -1243,8 +1279,8 @@ export default function LiveTripsClient() {
 
   const selectedTrip = useMemo(() => {
     if (!selectedTripId) return null;
-    return allTrips.find((t) => normTripId(t) === selectedTripId) || null;
-  }, [allTrips, selectedTripId]);
+    return serviceTrips.find((t) => normTripId(t) === selectedTripId) || null;
+  }, [serviceTrips, selectedTripId]);
 
   const selectedManualDriver = useMemo(() => {
     return drivers.find((d) => String(d.driver_id || "") === manualDriverId) || null;
@@ -1288,7 +1324,7 @@ export default function LiveTripsClient() {
     
     .map((d, idx) => {
         const driverId = String(d.driver_id || "");
-        const driverTrips = allTrips.filter((t) => String(t.assigned_driver_id || t.driver_id || "") === driverId);
+        const driverTrips = serviceTrips.filter((t) => String(t.assigned_driver_id || t.driver_id || "") === driverId);
         const activeTrip = driverTrips.find((t) => {
           const s = normStatus(t.status);
           return LIVETRIPS_DISPATCH_STATUSES.includes(s);
@@ -1310,7 +1346,7 @@ export default function LiveTripsClient() {
         const bu = new Date(b.driver.updated_at || "").getTime() || 0;
         return bu - au;
       });
-  }, [drivers, allTrips]);
+  }, [drivers, serviceTrips]);
 
   const filteredDriverRows = useMemo(() => {
     return driverRows.filter((row) => {
@@ -1547,8 +1583,16 @@ export default function LiveTripsClient() {
     <div className="min-h-screen bg-slate-50 p-4 text-slate-900 md:p-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">LiveTrips Command Center</h1>
-          <p className="mt-1 text-sm text-slate-600">Premium dispatch workspace for trip cycle monitoring, driver readiness, and rapid incident response without touching backend trip rules.</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {serviceFilter === "all"
+              ? "Live Operations"
+              : serviceFilterLabel(serviceFilter) + " Dispatch"}
+          </h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {serviceFilter === "all"
+              ? "Ride, Takeout, and Errand live monitoring in the unified JRide Dispatch Center."
+              : "Filtered to " + serviceFilterLabel(serviceFilter) + " while preserving the existing dispatch rules and actions."}
+          </p>
         </div>
         <div className="text-xs text-gray-600 text-right">
           <div className="font-medium">Stuck watcher thresholds</div>

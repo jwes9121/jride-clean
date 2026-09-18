@@ -30,39 +30,13 @@ const ADMIN_LINK_GROUPS: AdminLinkGroup[] = [
         keywords: "employee coordinator schedule rest day coverage bawi",
       },
       {
-        title: "LiveTrips",
+        title: "Dispatch Center",
         href: "/admin/livetrips",
-        description: "Live map, driver locator, active trips, and trip actions.",
+        description:
+          "Single dispatch workspace for Ride, Takeout, Advance Booking, Errand, and AgriMarket.",
         badge: "Primary",
-        keywords: "map locate driver search command center",
-      },
-      {
-        title: "Dispatch Workspace",
-        href: "/admin/dispatch",
-        description: "Open the shared Ride and Errand dispatch workspace.",
-        badge: "Primary",
-        keywords: "ride errand assignment escalation dispatcher",
-      },
-      {
-        title: "Ride Dispatch",
-        href: "/admin/ride-dispatch",
-        description: "Assign drivers and manage the Ride queue.",
-        badge: "Primary",
-        keywords: "rides assignment regular booking",
-      },
-      {
-        title: "Takeout Dispatch",
-        href: "/admin/takeout-dispatch",
-        description: "Assign accepted Takeout orders and manage delivery status.",
-        badge: "Primary",
-        keywords: "food order vendor delivery rider",
-      },
-      {
-        title: "Advance Booking Dispatch",
-        href: "/admin/advance-booking-dispatch",
-        description: "Monitor and dispatch scheduled Ride bookings.",
-        badge: "Primary",
-        keywords: "scheduled future reservation",
+        keywords:
+          "dispatch live map ride motorcycle tricycle takeout advance booking errand agrimarket driver assignment",
       },
       {
         title: "Takeout Operations",
@@ -366,10 +340,6 @@ const ADMIN_LINK_GROUPS: AdminLinkGroup[] = [
 
 const DISPATCHER_LINKS = new Set([
   "/admin/livetrips",
-  "/admin/dispatch",
-  "/admin/ride-dispatch",
-  "/admin/takeout-dispatch",
-  "/admin/advance-booking-dispatch",
   "/admin/takeout-ops",
   "/admin/driver-availability-pings",
   "/admin/stuck-trips",

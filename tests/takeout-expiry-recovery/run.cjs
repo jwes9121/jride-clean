@@ -446,7 +446,7 @@ function cancelParams(row, overrides = {}) {
       path.join(root, 'app/api/admin/takeout-dispatch/assign/route.ts'),
       'utf8',
     );
-    const takeoutDispatchPage = fs.readFileSync(
+    const legacyTakeoutDispatchPage = fs.readFileSync(
       path.join(root, 'app/admin/takeout-dispatch/page.tsx'),
       'utf8',
     );
@@ -482,7 +482,11 @@ function cancelParams(row, overrides = {}) {
     assert(manualAssign.includes('updatePayload.takeout_pricing_status = "waiting_driver_accept"'));
     assert(takeoutDispatchAssign.includes('"driver_unavailable"'));
     assert(takeoutDispatchAssign.includes('takeout_auto_dispatch_exhausted: preserveAutoDispatchExhausted'));
-    assert(takeoutDispatchPage.includes('"driver_unavailable"'));
+    assert(
+      legacyTakeoutDispatchPage.includes(
+        'redirect("/admin/livetrips?service=takeout")',
+      ),
+    );
     assert(liveTrips.includes('"driver_unavailable"'));
     assert(liveTrips.includes('serviceType === "takeout"'));
     assert(trackingPage.includes('No driver currently available - JRide Operations has been notified'));

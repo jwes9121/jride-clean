@@ -1,1 +1,5 @@
-export { default } from "../../dispatch/page";
+import { redirect } from "next/navigation";
+
+export default function LegacyAdminDispatchPage() {
+  redirect("/admin/livetrips");
+}
