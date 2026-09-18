@@ -394,6 +394,41 @@ function cancelParams(row, overrides = {}) {
     assert.equal(db.row.last_expired_driver_id, driverC);
   });
 
+  await test('LiveTrips dispatch keeps every active Takeout workflow stage visible', () => {
+    const liveTrips = fs.readFileSync(
+      path.join(root, 'app/admin/livetrips/LiveTripsClient.tsx'),
+      'utf8',
+    );
+
+    const requiredTakeoutStatuses = [
+      'vendor_pending',
+      'vendor_accepted',
+      'driver_assigned',
+      'driver_accepted',
+      'driver_fee_proposed',
+      'customer_confirmed',
+      'preparing',
+      'pickup_ready',
+      'driver_unavailable',
+      'cash_collected',
+      'vendor_bound',
+      'rider_arrived_vendor',
+      'arrived_vendor',
+      'picked_up',
+      'delivering',
+    ];
+
+    for (const status of requiredTakeoutStatuses) {
+      assert(
+        liveTrips.includes('"' + status + '"'),
+        'LiveTrips must retain active Takeout status: ' + status,
+      );
+    }
+
+    assert(liveTrips.includes('serviceType === "takeout"'));
+    assert(liveTrips.includes('LIVETRIPS_DISPATCH_STATUSES.includes(s)'));
+  });
+
   await test('Takeout dispatch keeps five-minute driver windows and blocks exhausted automatic reassignment', () => {
     const cron = fs.readFileSync(
       path.join(root, 'app/api/cron/takeout-expiry-recovery/route.ts'),
