@@ -452,6 +452,26 @@ export async function POST(req: NextRequest) {
     const isRideBooking =
       bookingServiceType === "motorcycle" || bookingServiceType === "tricycle";
     const isTakeoutBooking = bookingServiceType === "takeout";
+    const takeoutAutoDispatchExhausted =
+      (booking as any).takeout_auto_dispatch_exhausted === true;
+
+    if (
+      isTakeoutBooking &&
+      takeoutAutoDispatchExhausted &&
+      !explicitDriverId
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "takeout_manual_driver_required",
+          message:
+            "Automatic Takeout dispatch is exhausted. Select a specific eligible driver for manual recovery.",
+          booking_id: bookingDbId,
+          booking_code: text((booking as any).booking_code),
+        },
+        { status: 409 }
+      );
+    }
 
     if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
       return NextResponse.json(
