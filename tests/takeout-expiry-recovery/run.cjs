@@ -308,6 +308,92 @@ function cancelParams(row, overrides = {}) {
     );
   });
 
+  await test('exhausted Takeout stays exhausted after manual recovery driver also times out', async () => {
+    const driverA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const driverB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const driverC = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const db = makeDb({
+      id: '99999999-9999-4999-8999-999999999999',
+      booking_code: 'TO-EXHAUSTION-TEST',
+      service_type: 'takeout',
+      status: 'assigned',
+      vendor_status: 'driver_assigned',
+      customer_status: 'driver_assigned',
+      driver_status: 'driver_assigned',
+      assigned_driver_id: driverA,
+      driver_id: driverA,
+      driver_accept_expires_at: expiredAt,
+      takeout_driver_accept_expires_at: expiredAt,
+      takeout_customer_confirmed_at: null,
+      takeout_fee_proposed_at: null,
+      takeout_delivery_fee: null,
+      takeout_auto_dispatch_exhausted: false,
+      takeout_auto_dispatch_exhausted_at: null,
+      last_expired_driver_id: null,
+    });
+
+    let result = await recovery.resetExpiredTakeoutDriverAcceptance(db, {
+      bookingId: db.row.id,
+      bookingCode: db.row.booking_code,
+      expiredDriverId: driverA,
+      markDriverUnavailable: false,
+    });
+    assert.equal(result.didReset, true);
+    assert.equal(db.row.status, 'searching');
+    assert.equal(db.row.takeout_auto_dispatch_exhausted, false);
+
+    Object.assign(db.row, {
+      status: 'assigned',
+      vendor_status: 'driver_assigned',
+      customer_status: 'driver_assigned',
+      driver_status: 'driver_assigned',
+      assigned_driver_id: driverB,
+      driver_id: driverB,
+      driver_accept_expires_at: expiredAt,
+      takeout_driver_accept_expires_at: expiredAt,
+      takeout_pricing_status: 'waiting_driver_accept',
+    });
+
+    result = await recovery.resetExpiredTakeoutDriverAcceptance(db, {
+      bookingId: db.row.id,
+      bookingCode: db.row.booking_code,
+      expiredDriverId: driverB,
+      markDriverUnavailable: true,
+    });
+    assert.equal(result.didReset, true);
+    assert.equal(db.row.status, 'searching');
+    assert.equal(db.row.vendor_status, 'driver_unavailable');
+    assert.equal(db.row.customer_status, 'driver_unavailable');
+    assert.equal(db.row.takeout_pricing_status, 'driver_unavailable');
+    assert.equal(db.row.takeout_auto_dispatch_exhausted, true);
+    assert.ok(db.row.takeout_auto_dispatch_exhausted_at);
+
+    Object.assign(db.row, {
+      status: 'assigned',
+      vendor_status: 'driver_assigned',
+      customer_status: 'driver_assigned',
+      driver_status: 'driver_assigned',
+      assigned_driver_id: driverC,
+      driver_id: driverC,
+      driver_accept_expires_at: expiredAt,
+      takeout_driver_accept_expires_at: expiredAt,
+      takeout_pricing_status: 'waiting_driver_accept',
+      takeout_auto_dispatch_exhausted: true,
+    });
+
+    result = await recovery.resetExpiredTakeoutDriverAcceptance(db, {
+      bookingId: db.row.id,
+      bookingCode: db.row.booking_code,
+      expiredDriverId: driverC,
+      markDriverUnavailable: true,
+    });
+    assert.equal(result.didReset, true);
+    assert.equal(db.row.status, 'searching');
+    assert.equal(db.row.takeout_pricing_status, 'driver_unavailable');
+    assert.equal(db.row.takeout_auto_dispatch_exhausted, true);
+    assert.equal(db.row.last_expired_driver_id, driverC);
+  });
+
   await test('Takeout dispatch keeps five-minute driver windows and blocks exhausted automatic reassignment', () => {
     const cron = fs.readFileSync(
       path.join(root, 'app/api/cron/takeout-expiry-recovery/route.ts'),
@@ -321,6 +407,22 @@ function cancelParams(row, overrides = {}) {
       path.join(root, 'app/api/dispatch/assign/route.ts'),
       'utf8',
     );
+    const takeoutDispatchAssign = fs.readFileSync(
+      path.join(root, 'app/api/admin/takeout-dispatch/assign/route.ts'),
+      'utf8',
+    );
+    const takeoutDispatchPage = fs.readFileSync(
+      path.join(root, 'app/admin/takeout-dispatch/page.tsx'),
+      'utf8',
+    );
+    const liveTrips = fs.readFileSync(
+      path.join(root, 'app/admin/livetrips/LiveTripsClient.tsx'),
+      'utf8',
+    );
+    const trackingPage = fs.readFileSync(
+      path.join(root, 'app/takeout/track/[bookingCode]/page.tsx'),
+      'utf8',
+    );
 
     assert(cron.includes('markDriverUnavailable: reachedUniqueOfferLimit'));
     assert(cron.includes('two_unique_driver_accept_windows_expired'));
@@ -328,14 +430,27 @@ function cancelParams(row, overrides = {}) {
     assert(cron.includes('openTakeoutDriverUnavailableOperationsCase'));
     assert(autoAssign.includes('TAKEOUT_DRIVER_UNAVAILABLE_STATUS'));
     assert(autoAssign.includes('TAKEOUT_DRIVER_UNAVAILABLE'));
+    assert(autoAssign.includes('takeout_auto_dispatch_exhausted'));
     assert(
       autoAssign.includes(
         'takeout_pricing_status.is.null,takeout_pricing_status.neq.driver_unavailable',
       ),
     );
+    assert(
+      autoAssign.includes(
+        'takeout_auto_dispatch_exhausted.is.null,takeout_auto_dispatch_exhausted.eq.false',
+      ),
+    );
     assert(autoAssign.includes('new Date(Date.now() + 5 * 60 * 1000)'));
     assert(manualAssign.includes('const TAKEOUT_DRIVER_ACCEPT_TTL_SECONDS = 300'));
+    assert(manualAssign.includes('takeout_manual_driver_required'));
     assert(manualAssign.includes('updatePayload.takeout_pricing_status = "waiting_driver_accept"'));
+    assert(takeoutDispatchAssign.includes('"driver_unavailable"'));
+    assert(takeoutDispatchAssign.includes('takeout_auto_dispatch_exhausted: preserveAutoDispatchExhausted'));
+    assert(takeoutDispatchPage.includes('"driver_unavailable"'));
+    assert(liveTrips.includes('"driver_unavailable"'));
+    assert(liveTrips.includes('serviceType === "takeout"'));
+    assert(trackingPage.includes('No driver currently available - JRide Operations has been notified'));
   });
 
   await test('cron keeps driver-accept expiry reassignment but never reassigns an expired passenger quote', () => {
