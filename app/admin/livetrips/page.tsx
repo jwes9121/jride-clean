@@ -4,6 +4,8 @@ import LiveTripsClient, {
 } from "./LiveTripsClient";
 import AdvanceBookingDispatchPanel from "./components/AdvanceBookingDispatchPanel";
 import AgrimarketDispatchGate from "./components/AgrimarketDispatchGate";
+import RideDispatchPanel from "./components/RideDispatchPanel";
+import TakeoutDispatchPanel from "./components/TakeoutDispatchPanel";
 
 type DispatchService =
   | "all"
@@ -63,11 +65,7 @@ export default function LiveTripsPage({
   const activeService = normalizeService(searchParams?.service);
 
   const liveTripsFilter: LiveTripsServiceFilter =
-    activeService === "ride" ||
-    activeService === "takeout" ||
-    activeService === "errand"
-      ? activeService
-      : "all";
+    activeService === "errand" ? "errand" : "all";
 
   return (
     <main className="min-h-screen bg-slate-100">
@@ -126,7 +124,11 @@ export default function LiveTripsPage({
       </section>
 
       <div className="mx-auto max-w-[1800px]">
-        {activeService === "advance" ? (
+        {activeService === "ride" ? (
+          <RideDispatchPanel />
+        ) : activeService === "takeout" ? (
+          <TakeoutDispatchPanel />
+        ) : activeService === "advance" ? (
           <AdvanceBookingDispatchPanel />
         ) : activeService === "agrimarket" ? (
           <div className="p-3 md:p-4">

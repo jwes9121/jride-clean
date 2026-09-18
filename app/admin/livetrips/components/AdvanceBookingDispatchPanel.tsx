@@ -464,7 +464,7 @@ export default function AdvanceBookingDispatchPanel() {
   }), [bookings]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 text-slate-900">
+    <section className="min-h-screen bg-slate-50 p-4 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-4">
         <section className="rounded-2xl border bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -641,6 +641,6 @@ export default function AdvanceBookingDispatchPanel() {
           )}
         </section>
       </div>
-    </main>
+    </section>
   );
 }

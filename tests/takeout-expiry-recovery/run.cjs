@@ -450,6 +450,10 @@ function cancelParams(row, overrides = {}) {
       path.join(root, 'app/admin/takeout-dispatch/page.tsx'),
       'utf8',
     );
+    const takeoutDispatchPanel = fs.readFileSync(
+      path.join(root, 'app/admin/livetrips/components/TakeoutDispatchPanel.tsx'),
+      'utf8',
+    );
     const liveTrips = fs.readFileSync(
       path.join(root, 'app/admin/livetrips/LiveTripsClient.tsx'),
       'utf8',
@@ -487,6 +491,9 @@ function cancelParams(row, overrides = {}) {
         'redirect("/admin/livetrips?service=takeout")',
       ),
     );
+    assert(takeoutDispatchPanel.includes('"driver_unavailable"'));
+    assert(takeoutDispatchPanel.includes('takeout_auto_dispatch_exhausted'));
+    assert(takeoutDispatchPanel.includes('"/api/admin/takeout-dispatch/assign"'));
     assert(liveTrips.includes('"driver_unavailable"'));
     assert(liveTrips.includes('serviceType === "takeout"'));
     assert(trackingPage.includes('No driver currently available - JRide Operations has been notified'));
