@@ -174,7 +174,9 @@ export async function GET(req: NextRequest) {
           bookingCode: resetResult.bookingCode,
           expiredDriverId,
           townRaw: row?.town ? String(row.town) : null,
-          reason: "driver_accept_unique_offer_limit_reached",
+          reason: alreadyAutoDispatchExhausted
+            ? "manual_recovery_driver_accept_window_expired_after_auto_dispatch_exhausted"
+            : "driver_accept_unique_offer_limit_reached",
           reassignmentAttempted: false,
           reassignmentSuccess: false,
           dispatchStatus: null,
@@ -188,7 +190,9 @@ export async function GET(req: NextRequest) {
           expiredDriverId,
           previousExpiredDriverId,
           townRaw: row?.town ? String(row.town) : null,
-          reason: "two_unique_driver_accept_windows_expired",
+          reason: alreadyAutoDispatchExhausted
+            ? "manual_recovery_driver_accept_window_expired_after_auto_dispatch_exhausted"
+            : "two_unique_driver_accept_windows_expired",
           operationsAlerted: !operationsCase.error,
         });
 
