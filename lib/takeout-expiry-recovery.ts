@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 export const TAKEOUT_DRIVER_UNAVAILABLE_STATUS = "driver_unavailable";
 export const TAKEOUT_MAX_UNIQUE_DRIVER_OFFERS = 2;
 export const TAKEOUT_DRIVER_UNAVAILABLE_NOTE =
-  "Takeout driver unavailable after two unique 5-minute driver offers.";
+  "Takeout driver unavailable. Automatic reassignment stopped; JRide Operations review required.";
 
 export function reachedTakeoutUniqueDriverOfferLimit(
   previousExpiredDriverId: string | null | undefined,
@@ -250,6 +250,7 @@ export async function recordTakeoutDriverUnavailableLifecycleEvent(
     previousExpiredDriverId?: string | null;
     townRaw: string | null;
     reason: string;
+    operationsAlerted: boolean;
   }
 ) {
   const lifecycleRes = await serviceSupabase.rpc(
@@ -273,7 +274,7 @@ export async function recordTakeoutDriverUnavailableLifecycleEvent(
         unique_driver_offer_limit: TAKEOUT_MAX_UNIQUE_DRIVER_OFFERS,
         driver_accept_window_seconds: 300,
         automatic_reassignment_stopped: true,
-        operations_alerted: true,
+        operations_alerted: params.operationsAlerted,
       },
     }
   );
