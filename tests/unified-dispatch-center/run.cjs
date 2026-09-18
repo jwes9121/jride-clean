@@ -81,6 +81,10 @@ test("LiveTrips driver list stays usable without a wide side-scroll layout", () 
   ]) {
     assert(client.includes(">" + label + "</th>"), "missing compact driver column " + label);
   }
+  assert(client.includes(">Driver Map</div>"));
+  assert(client.includes("Live driver positions for the current town filter."));
+  assert(client.includes('viewMode !== "drivers" ? ('));
+  assert(client.includes("selectedDriverId={selectedDriverId}"));
 });
 
 test("overdue Takeout vendor-pending rows leave normal Dispatch and surface as problems", () => {

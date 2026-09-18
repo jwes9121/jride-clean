@@ -1943,7 +1943,8 @@ export default function LiveTripsClient({
           </div>
 
           {viewMode === "drivers" ? (
-            <div className="overflow-auto" style={{ maxHeight: 520 }}>
+            <>
+              <div className="overflow-auto" style={{ maxHeight: 520 }}>
               <table className="min-w-[900px] w-full text-sm">
                 <thead className="sticky top-0 border-b border-slate-200 bg-white/95 backdrop-blur">
                   <tr className="text-left">
@@ -2085,7 +2086,36 @@ export default function LiveTripsClient({
                   )}
                 </tbody>
               </table>
-            </div>
+              </div>
+
+              <div className="border-t border-slate-200 bg-slate-50/60 p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-slate-900">Driver Map</div>
+                    <div className="text-xs text-slate-500">
+                      Live driver positions for the current town filter. Use Locate to focus a driver.
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {selectedDriverId ? "Selected driver highlighted" : "Select a driver from the list"}
+                  </div>
+                </div>
+                <div className="overflow-hidden rounded-lg border bg-white">
+                  <LiveTripsMap
+                    trips={mapTrips as any}
+                    drivers={drivers as any}
+                    selectedTripId={selectedTripId}
+                    selectedDriverId={selectedDriverId}
+                    stuckTripIds={stuckTripIds as any}
+                    townFilter={townFilter}
+                    onDriverSelect={selectDriver}
+                    onEmergencyAssign={async (bookingCode) => {
+                      await emergencyAssignNearest(bookingCode);
+                    }}
+                  />
+                </div>
+              </div>
+            </>
           ) : (
             <div className="overflow-auto" style={{ maxHeight: 420 }}>
               <table className="w-full text-sm">
@@ -2370,20 +2400,22 @@ export default function LiveTripsClient({
           </div>
         </div>
 
-        <div className="rounded-lg border overflow-hidden">
-          <LiveTripsMap
-            trips={mapTrips as any}
-            drivers={drivers as any}
-            selectedTripId={selectedTripId}
-            selectedDriverId={selectedDriverId}
-            stuckTripIds={stuckTripIds as any}
-            townFilter={townFilter}
-            onDriverSelect={selectDriver}
-            onEmergencyAssign={async (bookingCode) => {
-              await emergencyAssignNearest(bookingCode);
-            }}
-          />
-        </div>
+        {viewMode !== "drivers" ? (
+          <div className="rounded-lg border overflow-hidden">
+            <LiveTripsMap
+              trips={mapTrips as any}
+              drivers={drivers as any}
+              selectedTripId={selectedTripId}
+              selectedDriverId={selectedDriverId}
+              stuckTripIds={stuckTripIds as any}
+              townFilter={townFilter}
+              onDriverSelect={selectDriver}
+              onEmergencyAssign={async (bookingCode) => {
+                await emergencyAssignNearest(bookingCode);
+              }}
+            />
+          </div>
+        ) : null}
       </div>
 
       {ticketInspectorOpen ? (
