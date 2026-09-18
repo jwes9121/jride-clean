@@ -56,6 +56,10 @@ type TripRow = {
   dropoff_lat?: number | null;
   dropoff_lng?: number | null;
   status?: string | null;
+  service_type?: string | null;
+  vendor_status?: string | null;
+  customer_status?: string | null;
+  takeout_auto_dispatch_exhausted?: boolean | null;
   zone?: string | null;
   town?: string | null;
   driver_id?: string | null;
@@ -172,6 +176,7 @@ const LIVETRIPS_PENDING_STATUSES = [
   "searching",
   "assigned",
   "driver_assigned",
+  "driver_unavailable",
   "accepted",
   "fare_proposed",
   "ready",
@@ -247,6 +252,7 @@ function computeIsProblem(t: TripRow): boolean {
   const mins = minutesSince(t.updated_at || t.created_at || null);
 
   const isStuck =
+    s === "driver_unavailable" ||
     (s === "on_the_way" && mins >= STUCK_THRESHOLDS_MIN.on_the_way) ||
     (s === "on_trip" && mins >= STUCK_THRESHOLDS_MIN.on_trip);
 
@@ -268,6 +274,7 @@ type FilterKey =
   | "requested"
   | "searching"
   | "assigned"
+  | "driver_unavailable"
   | "accepted"
   | "fare_proposed"
   | "ready"
@@ -674,6 +681,7 @@ function textOrEmpty(v?: any): string {
 }
 
 function statusPillClass(status: string): string {
+  if (status === "driver_unavailable") return "border-rose-300 bg-rose-50 text-rose-800";
   if (["requested", "searching"].includes(status)) return "border-amber-300 bg-amber-50 text-amber-800";
   if (["assigned", "accepted", "fare_proposed", "ready"].includes(status)) return "border-blue-300 bg-blue-50 text-blue-800";
   if (["on_the_way", "arrived", "on_trip"].includes(status)) return "border-emerald-300 bg-emerald-50 text-emerald-800";
@@ -705,13 +713,19 @@ function tripRowTone(t: TripRow): string {
 }
 
 function normalizeTripRow(t: any): TripRow {
+  const serviceType = normStatus(t?.service_type);
+  const displayStatus =
+    serviceType === "takeout"
+      ? normStatus(t?.customer_status || t?.vendor_status || t?.status || "requested")
+      : normStatus(t?.status || "requested");
+
   return {
     ...t,
     booking_code: t?.booking_code ?? t?.bookingCode ?? null,
     pickup_label: t?.pickup_label ?? t?.from_label ?? t?.fromLabel ?? null,
     dropoff_label: t?.dropoff_label ?? t?.to_label ?? t?.toLabel ?? null,
     zone: t?.zone ?? t?.town ?? t?.zone_name ?? null,
-    status: t?.status ?? "requested",
+    status: displayStatus || "requested",
   };
 }
 
@@ -1043,6 +1057,7 @@ export default function LiveTripsClient() {
       requested: 0,
       searching: 0,
       assigned: 0,
+      driver_unavailable: 0,
       accepted: 0,
       fare_proposed: 0,
       ready: 0,
@@ -1060,6 +1075,7 @@ export default function LiveTripsClient() {
       if (s === "requested") c.requested++;
       if (s === "searching") c.searching++;
       if (s === "assigned") c.assigned++;
+      if (s === "driver_unavailable") c.driver_unavailable++;
       if (s === "accepted") c.accepted++;
       if (s === "fare_proposed") c.fare_proposed++;
       if (s === "ready") c.ready++;

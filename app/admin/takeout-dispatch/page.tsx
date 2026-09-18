@@ -21,6 +21,8 @@ type TakeoutOrder = {
   update_age_minutes: number;
   is_stuck: boolean;
   proposal_expiry_stuck?: boolean;
+  takeout_auto_dispatch_exhausted?: boolean;
+  takeout_auto_dispatch_exhausted_at?: string | null;
   priority: number;
 };
 
@@ -50,6 +52,7 @@ const FILTERS = [
   "preparing",
   "pickup_ready",
   "driver_assigned",
+  "driver_unavailable",
   "picked_up",
   "cash",
   "stuck",
@@ -76,6 +79,7 @@ const DISPATCH_VISIBLE = new Set([
   "pickup_ready",
   "driver_assigned",
   "driver_accepted",
+  "driver_unavailable",
   "driver_fee_proposed",
   "customer_confirmed",
   "rider_arrived_vendor",
@@ -94,6 +98,7 @@ const MANUAL_ASSIGNABLE = new Set([
   "preparing",
   "pickup_ready",
   "driver_assigned",
+  "driver_unavailable",
 ]);
 
 function money(v: any) {
@@ -137,6 +142,7 @@ function statusClass(status: string | null, stuck: boolean) {
   if (s === "vendor_pending") return "border-slate-300 bg-slate-50 text-slate-700";
   if (s === "vendor_accepted") return "border-emerald-300 bg-emerald-50 text-emerald-800";
   if (s === "pickup_ready") return "border-emerald-300 bg-emerald-50 text-emerald-800";
+  if (s === "driver_unavailable") return "border-red-300 bg-red-50 text-red-800";
   if (s === "driver_assigned" || s === "driver_accepted" || s === "rider_arrived_vendor" || s === "driver_fee_proposed" || s === "customer_confirmed") return "border-blue-300 bg-blue-50 text-blue-800";
   if (s === "picked_up" || s === "delivering") return "border-purple-300 bg-purple-50 text-purple-800";
   if (s === "completed") return "border-slate-300 bg-slate-50 text-slate-700";
@@ -240,6 +246,7 @@ export default function TakeoutDispatchPage() {
       if (s === "preparing") next.preparing += 1;
       if (s === "pickup_ready") next.pickup_ready += 1;
       if (s === "driver_assigned" || s === "driver_accepted" || s === "driver_fee_proposed" || s === "customer_confirmed" || s === "rider_arrived_vendor") next.driver_assigned += 1;
+      if (s === "driver_unavailable") next.driver_unavailable += 1;
       if (s === "picked_up" || s === "delivering") next.picked_up += 1;
       if (s === "completed") next.completed += 1;
       if (s === "cancelled" || s === "canceled") next.cancelled += 1;
@@ -269,6 +276,7 @@ export default function TakeoutDispatchPage() {
       if (filter === "cash") return dispatchVisible(order) && !!order.cash_required;
       if (filter === "stuck") return dispatchVisible(order) && !!order.is_stuck;
       if (filter === "driver_assigned") return ["driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "rider_arrived_vendor"].includes(s);
+      if (filter === "driver_unavailable") return s === "driver_unavailable";
       if (filter === "picked_up") return s === "picked_up" || s === "delivering";
       if (filter === "cancelled") return s === "cancelled" || s === "canceled";
       return s === filter;

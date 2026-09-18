@@ -452,6 +452,31 @@ export async function POST(req: NextRequest) {
     const isRideBooking =
       bookingServiceType === "motorcycle" || bookingServiceType === "tricycle";
     const isTakeoutBooking = bookingServiceType === "takeout";
+    const takeoutWasDriverUnavailable =
+      cleanStatus((booking as any).takeout_pricing_status) === "driver_unavailable" ||
+      cleanStatus((booking as any).vendor_status) === "driver_unavailable" ||
+      cleanStatus((booking as any).customer_status) === "driver_unavailable";
+    const takeoutAutoDispatchExhausted =
+      (booking as any).takeout_auto_dispatch_exhausted === true ||
+      takeoutWasDriverUnavailable;
+
+    if (
+      isTakeoutBooking &&
+      takeoutAutoDispatchExhausted &&
+      !explicitDriverId
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "takeout_manual_driver_required",
+          message:
+            "Automatic Takeout dispatch is exhausted. Select a specific eligible driver for manual recovery.",
+          booking_id: bookingDbId,
+          booking_code: text((booking as any).booking_code),
+        },
+        { status: 409 }
+      );
+    }
 
     if (!ASSIGNABLE_STATUSES.has(currentStatus)) {
       return NextResponse.json(
@@ -1074,6 +1099,11 @@ export async function POST(req: NextRequest) {
       updatePayload.driver_fee_proposal_expires_at = null;
       updatePayload.driver_accept_expires_at = takeoutDriverAcceptExpiresIso;
       updatePayload.takeout_driver_accept_expires_at = takeoutDriverAcceptExpiresIso;
+      if (takeoutAutoDispatchExhausted) {
+        updatePayload.takeout_auto_dispatch_exhausted = true;
+        updatePayload.takeout_auto_dispatch_exhausted_at =
+          (booking as any).takeout_auto_dispatch_exhausted_at || nowIso;
+      }
     }
 
     if (typeof body?.emergency_mode === "boolean") {

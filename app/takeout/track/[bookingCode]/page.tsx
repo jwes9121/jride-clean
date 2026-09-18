@@ -348,7 +348,7 @@ export default function TakeoutTrackPage() {
     const terminal = [customerStatus, vendorStatus, normText(order?.status)].find(v => ["completed", "cancelled", "vendor_timeout"].includes(v));
     const workflow = vendorStatus && !["requested", "vendor_pending"].includes(vendorStatus) ? vendorStatus : "";
     const { progressStatus, vendorReady } = passengerProgress(order, terminal || workflow || customerStatus || vendorStatus);
-    const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "driver_accepted", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(vendorStatus);
+    const vendorHasAccepted = ["vendor_accepted", "driver_assigned", "driver_accepted", "driver_unavailable", "driver_fee_proposed", "customer_confirmed", "preparing", "pickup_ready", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].includes(vendorStatus);
     const passengerConfirmed = ["customer_confirmed", "confirmed"].includes(pricingStatus) || Boolean(order?.takeout_customer_confirmed_at);
     const progressLabels: Record<string, string> = {
       requested: "Order submitted",
@@ -358,6 +358,7 @@ export default function TakeoutTrackPage() {
       pickup_ready: "Order ready for pickup",
       driver_assigned: passengerConfirmed ? "Passenger confirmed total" : "Driver assigned",
       driver_accepted: "Driver accepted your order",
+      driver_unavailable: "No driver currently available - JRide Operations has been notified",
       driver_fee_proposed: "Delivery quote ready",
       customer_confirmed: "Passenger confirmed total",
       arrived_customer_cash: "Driver at customer for payment",
