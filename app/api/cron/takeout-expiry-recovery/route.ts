@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  markTakeoutDriverUnavailable,
+  openTakeoutDriverUnavailableOperationsCase,
+  reachedTakeoutUniqueDriverOfferLimit,
+  recordTakeoutDriverUnavailableLifecycleEvent,
   recordTakeoutExpiryLifecycleEvent,
   resetExpiredTakeoutDriverAcceptance,
   triggerTakeoutFeeProposalReassign,
@@ -69,6 +73,7 @@ export async function GET(req: NextRequest) {
   let reassignedCount = 0;
   let driverAcceptResetCount = 0;
   let driverAcceptReassignedCount = 0;
+  let driverUnavailableCount = 0;
   let feeProposalCancelledCount = 0;
   let feeProposalDriverNotifiedCount = 0;
 
@@ -78,7 +83,7 @@ export async function GET(req: NextRequest) {
   } = await supabase
     .from("bookings")
     .select(
-      "id,booking_code,status,assigned_driver_id,driver_accept_expires_at,town,driver_status"
+      "id,booking_code,status,assigned_driver_id,last_expired_driver_id,driver_accept_expires_at,town,driver_status"
     )
     .eq("service_type", "takeout")
     .eq("status", "assigned")
@@ -108,6 +113,14 @@ export async function GET(req: NextRequest) {
     const bookingId = String(row?.id || "");
     const bookingCode = row?.booking_code ? String(row.booking_code) : null;
     const expiredDriverId = String(row?.assigned_driver_id || "");
+    const previousExpiredDriverId = String(
+      row?.last_expired_driver_id || ""
+    ).trim();
+    const reachedUniqueOfferLimit =
+      reachedTakeoutUniqueDriverOfferLimit(
+        previousExpiredDriverId,
+        expiredDriverId
+      );
 
     if (!bookingId || !expiredDriverId) continue;
 
@@ -118,6 +131,7 @@ export async function GET(req: NextRequest) {
           bookingId,
           bookingCode,
           expiredDriverId,
+          markDriverUnavailable: reachedUniqueOfferLimit,
         }
       );
 
@@ -137,6 +151,56 @@ export async function GET(req: NextRequest) {
       driverAcceptResetCount += 1;
       resetCount += 1;
 
+      if (reachedUniqueOfferLimit) {
+        driverUnavailableCount += 1;
+
+        const operationsCase =
+          await openTakeoutDriverUnavailableOperationsCase(supabase, {
+            bookingId: resetResult.bookingId,
+          });
+        if (operationsCase.error) {
+          errors.push({
+            bookingId: resetResult.bookingId,
+            bookingCode: resetResult.bookingCode,
+            error: operationsCase.error,
+          });
+        }
+
+        await recordTakeoutExpiryLifecycleEvent(supabase, {
+          bookingId: resetResult.bookingId,
+          bookingCode: resetResult.bookingCode,
+          expiredDriverId,
+          townRaw: row?.town ? String(row.town) : null,
+          reason: "driver_accept_unique_offer_limit_reached",
+          reassignmentAttempted: false,
+          reassignmentSuccess: false,
+          dispatchStatus: null,
+          statusBefore: String(row?.status || "unknown"),
+          expiryType: "driver_accept_window",
+        });
+
+        await recordTakeoutDriverUnavailableLifecycleEvent(supabase, {
+          bookingId: resetResult.bookingId,
+          bookingCode: resetResult.bookingCode,
+          expiredDriverId,
+          previousExpiredDriverId,
+          townRaw: row?.town ? String(row.town) : null,
+          reason: "two_unique_driver_accept_windows_expired",
+        });
+
+        console.log(
+          "[JRIDE_TAKEOUT_DRIVER_UNAVAILABLE]",
+          JSON.stringify({
+            bookingCode: resetResult.bookingCode,
+            expiredDriverId,
+            previousExpiredDriverId,
+            expiredAt: row?.driver_accept_expires_at || null,
+            reason: "two_unique_driver_accept_windows_expired",
+          })
+        );
+        continue;
+      }
+
       const reassignResult = await triggerTakeoutFeeProposalReassign(
         req,
         resetResult.bookingId,
@@ -145,10 +209,52 @@ export async function GET(req: NextRequest) {
       );
 
       const reassignmentSuccess = !!reassignResult.payload?.assigned;
+      let markedDriverUnavailable = false;
 
       if (reassignmentSuccess) {
         driverAcceptReassignedCount += 1;
         reassignedCount += 1;
+      } else if (
+        reassignResult.attempted &&
+        reassignResult.status === 200
+      ) {
+        const markResult = await markTakeoutDriverUnavailable(supabase, {
+          bookingId: resetResult.bookingId,
+          bookingCode: resetResult.bookingCode,
+          expiredDriverId,
+        });
+
+        if (markResult.error) {
+          errors.push({
+            bookingId: resetResult.bookingId,
+            bookingCode: resetResult.bookingCode,
+            error: markResult.error,
+          });
+        } else if (markResult.didMark) {
+          markedDriverUnavailable = true;
+          driverUnavailableCount += 1;
+
+          const operationsCase =
+            await openTakeoutDriverUnavailableOperationsCase(supabase, {
+              bookingId: resetResult.bookingId,
+            });
+          if (operationsCase.error) {
+            errors.push({
+              bookingId: resetResult.bookingId,
+              bookingCode: resetResult.bookingCode,
+              error: operationsCase.error,
+            });
+          }
+
+          await recordTakeoutDriverUnavailableLifecycleEvent(supabase, {
+            bookingId: resetResult.bookingId,
+            bookingCode: resetResult.bookingCode,
+            expiredDriverId,
+            previousExpiredDriverId: null,
+            townRaw: row?.town ? String(row.town) : null,
+            reason: "no_second_unique_driver_available",
+          });
+        }
       }
 
       await recordTakeoutExpiryLifecycleEvent(
@@ -174,6 +280,7 @@ export async function GET(req: NextRequest) {
           expiredDriverId,
           expiredAt: row?.driver_accept_expires_at || null,
           reassigned: reassignmentSuccess,
+          driverUnavailable: markedDriverUnavailable,
           dispatchStatus: reassignResult.status,
           dispatchPayload: reassignResult.payload,
           reason: "driver_accept_expired_cron_sweep",
@@ -316,6 +423,7 @@ export async function GET(req: NextRequest) {
     driverAcceptExpiredCandidates: driverAcceptRows.length,
     driverAcceptReset: driverAcceptResetCount,
     driverAcceptReassigned: driverAcceptReassignedCount,
+    driverUnavailable: driverUnavailableCount,
     feeProposalExpiredCandidates: rows.length,
     feeProposalCancelled: feeProposalCancelledCount,
     feeProposalDriverNotified: feeProposalDriverNotifiedCount,
@@ -332,6 +440,7 @@ export async function GET(req: NextRequest) {
       driverAcceptExpiredCandidates: driverAcceptRows.length,
       driverAcceptReset: driverAcceptResetCount,
       driverAcceptReassigned: driverAcceptReassignedCount,
+      driverUnavailable: driverUnavailableCount,
       feeProposalExpiredCandidates: rows.length,
       feeProposalCancelled: feeProposalCancelledCount,
       feeProposalDriverNotified: feeProposalDriverNotifiedCount,
