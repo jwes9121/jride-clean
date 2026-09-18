@@ -3521,6 +3521,7 @@ function selectedAddressTown(
                 preparing: "Vendor preparing order",
                 pickup_ready: "Order ready for pickup",
                 driver_assigned: "Driver found",
+                driver_unavailable: "No driver currently available - JRide Operations notified",
                 driver_fee_proposed: "Delivery quote ready",
                 customer_confirmed: "Order confirmed",
                 rider_arrived_vendor: "Driver arrived at vendor",
