@@ -352,7 +352,9 @@ async function cleanupExpiredTakeoutDriverAssignment(
       expiredDriverId,
       previousExpiredDriverId: previousExpiredDriverId || null,
       townRaw: booking.town ?? null,
-      reason: "two_unique_driver_accept_windows_expired_auto_assign_cleanup",
+      reason: alreadyAutoDispatchExhausted
+        ? "manual_recovery_driver_accept_window_expired_after_auto_dispatch_exhausted"
+        : "two_unique_driver_accept_windows_expired_auto_assign_cleanup",
       operationsAlerted: !operationsCase.error,
     });
   }
