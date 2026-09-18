@@ -63,6 +63,38 @@ test("Ride and Takeout tabs preserve their specialized dispatch controls", () =>
   assert(takeout.includes("NEXT_ACTIONS"));
 });
 
+
+test("LiveTrips driver list stays usable without a wide side-scroll layout", () => {
+  const client = read("app/admin/livetrips/LiveTripsClient.tsx");
+
+  assert(client.includes('viewMode === "drivers" ? "" : "xl:grid-cols-[1.05fr,0.95fr]"'));
+  assert(client.includes('className="min-w-[900px] w-full text-sm"'));
+  assert(!client.includes('className="min-w-[1280px] w-full text-sm"'));
+  for (const label of [
+    "Driver",
+    "Vehicle",
+    "Towns",
+    "Coverage / Ride",
+    "Status / Freshness",
+    "Trip / Last Ping",
+    "Map",
+  ]) {
+    assert(client.includes(">" + label + "</th>"), "missing compact driver column " + label);
+  }
+});
+
+test("overdue Takeout vendor-pending rows leave normal Dispatch and surface as problems", () => {
+  const client = read("app/admin/livetrips/LiveTripsClient.tsx");
+
+  assert(client.includes("TAKEOUT_VENDOR_PENDING_MAX_AGE_MS = 5 * 60 * 1000"));
+  assert(client.includes("function isOverdueTakeoutVendorPending"));
+  assert(client.includes('normStatus(t.service_type) !== "takeout"'));
+  assert(client.includes('normStatus(t.status) !== "vendor_pending"'));
+  assert(client.includes("isOverdueTakeoutVendorPending(t) ||"));
+  assert(client.includes('return "VENDOR TIMEOUT OVERDUE"'));
+  assert(client.includes("!isOverdueTakeoutVendorPending(t)"));
+});
+
 test("Advance Booking keeps its existing dispatcher API inside the unified center", () => {
   const panel = read(
     "app/admin/livetrips/components/AdvanceBookingDispatchPanel.tsx"
@@ -112,4 +144,4 @@ test("staff navigation advertises one primary dispatch destination", () => {
   assert(!controlCenter.includes('href="/admin/dispatch"'));
 });
 
-console.log("6 unified Dispatch Center regression groups passed.");
+console.log("8 unified Dispatch Center regression groups passed.");
