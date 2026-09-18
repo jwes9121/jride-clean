@@ -83,7 +83,7 @@ export function canMarkReady(order: VendorOrder): boolean {
 export function orderBadge(order: VendorOrder): string {
   const status = orderStatus(order);
   if (canMarkReady(order)) return "Prepare now";
-  const labels: Record<string, string> = { vendor_pending: "New order", completed: "Completed", cancelled: "Cancelled", vendor_timeout: "Expired", pickup_ready: "Ready", picked_up: "Picked up", delivering: "Delivering" };
+  const labels: Record<string, string> = { vendor_pending: "New order", driver_unavailable: "Driver unavailable", completed: "Completed", cancelled: "Cancelled", vendor_timeout: "Expired", pickup_ready: "Ready", picked_up: "Picked up", delivering: "Delivering" };
   const waiting: Record<string, string> = {
     "Finding a driver": "Finding driver",
     "Waiting for driver confirmation": "Driver confirmation",
@@ -99,6 +99,7 @@ export function orderStage(order: VendorOrder): { title: string; note: string; t
   if (status === "vendor_timeout" || status === "expired") return { title: "Acceptance expired", note: clean(order.cancel_reason) || VENDOR_ACCEPT_TIMEOUT_REASON, tone: "danger" };
   if (status === "cancelled") return { title: "Cancelled", note: clean(order.vendor_cancel_reason || order.cancel_reason) || "This order was cancelled. Do not prepare it.", tone: "danger" };
   if (status === "vendor_pending") return { title: "New order", note: "Review the items, then accept or decline.", tone: "urgent" };
+  if (status === "driver_unavailable") return { title: "No driver currently available", note: "JRide Operations has been notified. Do not prepare yet unless the customer has already confirmed.", tone: "waiting" };
   if (status === "picked_up") return { title: "Picked up", note: "The driver has the order. No store action needed.", tone: "progress" };
   if (status === "delivering") return { title: "Out for delivery", note: "The driver is delivering. No store action needed.", tone: "progress" };
   if (status === "pickup_ready") return { title: "Ready for pickup", note: "Keep the order packed. Check the order number with the driver at handoff.", tone: "success" };
