@@ -63,6 +63,15 @@ type ProductRow = {
 };
 
 type CartLine = { product: ProductRow; quantity: number };
+type AgrimarketVehicle = "motorcycle" | "tricycle" | "kolong_kolong";
+
+function vehicleRank(value: unknown): number {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "kolong_kolong") return 3;
+  if (raw === "tricycle") return 2;
+  if (raw === "motorcycle") return 1;
+  return 0;
+}
 
 function authHeaders(json = false): Record<string, string> {
   return passengerAuthHeaders(json);
@@ -82,7 +91,9 @@ function formatDate(value: unknown): string {
 }
 
 function titleCase(value: unknown): string {
-  return String(value || "").replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  const raw = String(value || "").trim();
+  if (raw.toLowerCase() === "kolong_kolong") return "Kolong-Kolong";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function isDemoProductName(value: unknown): boolean {
@@ -108,7 +119,7 @@ export default function AgrimarketPage() {
   const [deliveryTownResolved, setDeliveryTownResolved] = useState(false);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [preferredVehicle, setPreferredVehicle] = useState<"motorcycle" | "tricycle">("motorcycle");
+  const [preferredVehicle, setPreferredVehicle] = useState<AgrimarketVehicle>("motorcycle");
   const [quote, setQuote] = useState<any>(null);
   const [placed, setPlaced] = useState<any>(null);
   const [query, setQuery] = useState("");
@@ -280,14 +291,27 @@ export default function AgrimarketPage() {
     () => cart.reduce((sum, line) => sum + line.product.unit_price * line.quantity, 0),
     [cart]
   );
-  const requiresTricycle = cart.some((line) => line.product.vehicle_requirement === "tricycle");
+  const cartRequiredVehicle = useMemo(() => {
+    let required: "either" | AgrimarketVehicle = "either";
+    for (const line of cart) {
+      if (vehicleRank(line.product.vehicle_requirement) > vehicleRank(required)) {
+        required = String(line.product.vehicle_requirement || "either")
+          .trim()
+          .toLowerCase() as "either" | AgrimarketVehicle;
+      }
+    }
+    return required;
+  }, [cart]);
   const cartMode = cart[0]?.product.availability_mode || null;
   const cartHarvest = cartMode === "scheduled_harvest" ? cart[0]?.product : null;
   const cartCrossTownProduct = cart.find((line) => line.product.is_cross_town)?.product || null;
 
   useEffect(() => {
-    if (requiresTricycle && preferredVehicle !== "tricycle") setPreferredVehicle("tricycle");
-  }, [requiresTricycle, preferredVehicle]);
+    if (vehicleRank(preferredVehicle) >= vehicleRank(cartRequiredVehicle)) return;
+    setPreferredVehicle(
+      cartRequiredVehicle === "kolong_kolong" ? "kolong_kolong" : "tricycle"
+    );
+  }, [cartRequiredVehicle, preferredVehicle]);
 
   function openProduct(product: ProductRow) {
     setSelectedProductId(product.id);
@@ -648,8 +672,26 @@ export default function AgrimarketPage() {
               {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
               <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{line.product.producer_alias} - {line.product.producer_town}</p></div><strong>{money(line.product.unit_price * line.quantity)}</strong></div><div className="mt-2 flex items-center gap-2"><input type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
               <div className="mt-4 flex justify-between border-t pt-3"><span>Products</span><strong>{money(cartSubtotal)}</strong></div>
-              <label className="mt-4 block text-sm font-semibold">Preferred eligible vehicle<select value={requiresTricycle ? "tricycle" : preferredVehicle} disabled={requiresTricycle} onChange={(e) => { setPreferredVehicle(e.target.value as "motorcycle" | "tricycle"); setQuote(null); }} className="mt-2 w-full rounded-xl border bg-white px-3 py-3"><option value="motorcycle">Motorcycle</option><option value="tricycle">Tricycle</option></select></label>
-              {requiresTricycle ? <p className="mt-1 text-xs text-blue-800">This cart requires a tricycle because of its cargo.</p> : null}
+              <label className="mt-4 block text-sm font-semibold">
+                Preferred eligible vehicle
+                <select
+                  value={preferredVehicle}
+                  onChange={(e) => {
+                    setPreferredVehicle(e.target.value as AgrimarketVehicle);
+                    setQuote(null);
+                  }}
+                  className="mt-2 w-full rounded-xl border bg-white px-3 py-3"
+                >
+                  <option value="motorcycle" disabled={vehicleRank(cartRequiredVehicle) > 1}>Motorcycle</option>
+                  <option value="tricycle" disabled={vehicleRank(cartRequiredVehicle) > 2}>Tricycle</option>
+                  <option value="kolong_kolong">Kolong-Kolong</option>
+                </select>
+              </label>
+              {cartRequiredVehicle === "kolong_kolong" ? (
+                <p className="mt-1 text-xs text-blue-800">This cart requires Kolong-Kolong.</p>
+              ) : cartRequiredVehicle === "tricycle" ? (
+                <p className="mt-1 text-xs text-blue-800">This cart requires a Tricycle or Kolong-Kolong.</p>
+              ) : null}
               <button onClick={getQuote} disabled={quoting || !addressId} className="mt-4 w-full rounded-xl border-2 border-emerald-700 px-4 py-3 font-bold text-emerald-800 disabled:border-slate-300 disabled:text-slate-400">{quoting ? "Calculating..." : "Review delivery quote"}</button>
             </>}
 
@@ -670,10 +712,10 @@ export default function AgrimarketPage() {
                   <div className="flex justify-between gap-3"><span>Driver Approach Fee</span><strong className="text-right">Pending driver assignment</strong></div>
                   <div className="flex justify-between border-t pt-2 text-base"><span>Initial approved amount</span><strong>{money(quote.initial_approved_total ?? quote.total_before_driver_pickup_surcharge)}</strong></div>
                 </div>
-                {quote.heavy_load_fee?.estimate_exceeds_v1_limit ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800">The listing-based weight estimate is above the V1 100 kg limit. The farmer must confirm the actual load; orders above 100 kg are not supported in V1.</p> : null}
+                {quote.heavy_load_fee?.estimate_exceeds_v1_limit ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800">The listing-based weight estimate is above the 200 kg JRide cargo limit. The farmer must confirm the actual load; orders above 200 kg are not supported.</p> : null}
                 {Array.isArray(quote.heavy_load_fee?.tiers) ? <p className="mt-3 text-xs text-slate-600">Heavy Load tiers: {quote.heavy_load_fee.tiers.map((tier: any) => `up to ${tier.max_kg} kg = ${money(tier.fee)}`).join(" / ")}. The farmer's exact weight or selected weight band is authoritative.</p> : null}
                 {quote.special_handling_fee?.tiers ? <p className="mt-2 text-xs text-slate-600">Special Handling tiers: {Object.entries(quote.special_handling_fee.tiers).map(([tier, fee]) => `${titleCase(tier)} = ${money(fee)}`).join(" / ")}.</p> : null}
-                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">If the farmer confirmation increases your total or changes the required vehicle to Tricycle, JRide pauses the order and asks you to accept the revised charges before dispatch.</p>
+                <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">If the farmer confirmation increases your total or changes the required vehicle to Tricycle or Kolong-Kolong, JRide pauses the order and asks you to accept the revised charges before dispatch.</p>
                 <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Driver Approach Fee: the first {quote.driver_approach_fee?.first_km_free ?? 1.5} km has no raw pickup charge. From 1.5 to 6.5 km, approach pricing increases by {money(quote.driver_approach_fee?.tier_one_fee_per_block ?? 20)} per started 0.5 km; above 6.5 km through 10 km, by {money(quote.driver_approach_fee?.tier_two_fee_per_block ?? 10)} per started 0.5 km. The {money(quote.driver_approach_fee?.base_delivery_fee_credit ?? quote.delivery?.base_fee ?? 40)} delivery base is credited against that approach charge, so it is not charged twice. The normal approach charge is capped at {money(quote.driver_approach_fee?.max_approach_charge ?? 270)} and normal assignment is limited to {quote.driver_approach_fee?.normal_assignment_max_km ?? 10} km.</p>
                 {quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves the expected quantity. No driver is assigned until the farmer confirms the products are ready. Any delay or shortfall needs your approval.</p> : null}
                 {quote.cash_collection?.required ? <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Product subtotal is above PHP 500. The assigned driver will collect {money(quote.cash_collection.amount)} product cash from you before going to the farmer.</p> : null}
