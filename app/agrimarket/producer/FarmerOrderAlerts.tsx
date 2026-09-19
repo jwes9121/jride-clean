@@ -17,7 +17,7 @@ const EMPTY: Feed = { orders: [], offset: 0, received: 0, publicKey: null, pushA
 function stored(key: string) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
 function save(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* Session still works. */ } }
 
-export default function FarmerOrderAlerts({ accountCode }: { accountCode: string }) {
+export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { accountCode: string; onReviewOrder?: (orderCode: string) => void }) {
   const account = accountCode;
   const [subscriptionId, setSubscriptionId] = useState("");
   const [browserSubscribed, setBrowserSubscribed] = useState(false);
@@ -215,7 +215,7 @@ export default function FarmerOrderAlerts({ accountCode }: { accountCode: string
   return <section className={styles.alertPanel} aria-label="AgriMarket order alerts">
     {pending.length > 0 && <div className={styles.incomingOrderBar}>
       <div role="status" aria-live="polite"><strong><Bell size={18} aria-hidden="true" />{pending.length} {pending.length === 1 ? "order needs" : "orders need"} your reply</strong><span>Review before the farmer confirmation deadline.</span></div>
-      <a href={farmerOrderHref(pending[0].order_code)} onClick={dismiss}>Review order</a>
+      <a href={farmerOrderHref(pending[0].order_code)} onClick={() => { dismiss(); onReviewOrder?.(pending[0].order_code); }}>Review order</a>
     </div>}
     {error && <p className={styles.alertConnectionError} role="alert">{error}</p>}
     <details className={styles.alertSettings}>
@@ -245,7 +245,7 @@ export default function FarmerOrderAlerts({ accountCode }: { accountCode: string
       <p>{pending.length} order{pending.length === 1 ? "" : "s"} waiting for your response.</p>
       {pending.map(order => <div key={order.order_code} className={styles.alertOrder}><strong>{order.order_code}</strong>
         <p>Respond within {Math.max(0, Math.ceil((Date.parse(order.producer_confirm_expires_at) - now - feed.offset) / 1000))} seconds.</p>
-        <a href={farmerOrderHref(order.order_code)} onClick={dismiss}>Review order</a></div>)}
+        <a href={farmerOrderHref(order.order_code)} onClick={() => { dismiss(); onReviewOrder?.(order.order_code); }}>Review order</a></div>)}
       <button type="button" onClick={dismiss}>Remind me in 30 seconds</button>
     </dialog>
   </section>;

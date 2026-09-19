@@ -140,6 +140,7 @@ export default function AgrimarketProducerPage() {
   accountRef.current = sessionCode;
   const loadFlight = useRef("");
   const revealedOrder = useRef("");
+  const [orderToReveal, setOrderToReveal] = useState<{ id: string } | null>(null);
   const [connected, setConnected] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
@@ -176,26 +177,35 @@ export default function AgrimarketProducerPage() {
     return () => window.clearInterval(timer);
   }, [connected, disabled, sessionCode]);
 
+  function reviewOrder(orderCode: string) {
+    if (!/^AG-[A-Z0-9-]+$/i.test(orderCode)) return;
+    revealedOrder.current = "";
+    setFilter("all");
+    setOrderToReveal({ id: `agri-order-${orderCode}` });
+  }
+
   useEffect(() => {
-    let frame = 0;
-    const revealOrder = () => {
-      const id = window.location.hash.slice(1);
-      if (!id.startsWith("agri-order-") || revealedOrder.current === id ||
-          !orders.some(order => `agri-order-${order.order_code}` === id)) return;
-      setFilter("all");
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        const card = document.getElementById(id);
-        if (card) {
-          card.scrollIntoView({ block: "start" });
-          revealedOrder.current = id;
-        }
-      });
+    const readOrderLink = () => {
+      const prefix = "#agri-order-";
+      if (window.location.hash.startsWith(prefix)) reviewOrder(window.location.hash.slice(prefix.length));
     };
-    revealOrder();
-    window.addEventListener("hashchange", revealOrder);
-    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("hashchange", revealOrder); };
-  }, [orders]);
+    readOrderLink();
+    window.addEventListener("hashchange", readOrderLink);
+    return () => window.removeEventListener("hashchange", readOrderLink);
+  }, []);
+
+  useEffect(() => {
+    const id = orderToReveal?.id;
+    if (!id || revealedOrder.current === id || !orders.some(order => `agri-order-${order.order_code}` === id)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const card = document.getElementById(id);
+      if (card) {
+        card.scrollIntoView({ block: "start" });
+        revealedOrder.current = id;
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [orders, orderToReveal]);
 
   useEffect(() => {
     setHistoryPage(0);
@@ -415,7 +425,7 @@ export default function AgrimarketProducerPage() {
   }
 
   if (sessionCode && !connected) {
-    return <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} loading={loading || restoring}>
+    return <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} onReviewOrder={reviewOrder} loading={loading || restoring}>
       <p role="status">{loading ? "Loading your orders..." : "Your orders could not be loaded. Tap Refresh to try again."}</p>
       <FarmerFeedback error={error || authError} />
     </FarmerWorkspace>;
@@ -433,7 +443,7 @@ export default function AgrimarketProducerPage() {
   const filters = [{ id: "all", label: "Active orders", count: orders.length }, { id: "new", label: "Needs reply", count: needsReply.length }, { id: "progress", label: "In progress", count: inProgress.length }, { id: "harvest", label: "Scheduled", count: harvest.length }, { id: "history", label: "History", count: null }];
 
   return (
-    <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} loading={loading || restoring}>
+    <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} onReviewOrder={reviewOrder} loading={loading || restoring}>
       <section className={styles.ordersHeading} aria-labelledby="farmer-orders-title">
         <div><h1 id="farmer-orders-title">Your orders</h1><p>{setupOnly ? "Farm setup is open. Ordering has not launched yet." : needsReply.length ? "New orders are waiting for your reply." : "Manage active orders and view your history."}</p></div>
         <span>{loading ? "Refreshing..." : "Updates every 10 sec"}</span>

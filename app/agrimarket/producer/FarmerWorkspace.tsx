@@ -6,11 +6,12 @@ import { ArrowLeft, ArrowUpRight, Check, ClipboardList, Leaf, LockKeyhole, Packa
 import styles from "./farmer.module.css";
 import FarmerOrderAlerts from "./FarmerOrderAlerts";
 
-export function FarmerWorkspace({ section, children, onRefresh, onSignOut, accountCode = "", loading = false, guest = false }: {
+export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onReviewOrder, accountCode = "", loading = false, guest = false }: {
   section: "orders" | "products";
   children: ReactNode;
   onRefresh?: () => void;
   onSignOut?: () => void;
+  onReviewOrder?: (orderCode: string) => void;
   accountCode?: string;
   loading?: boolean;
   guest?: boolean;
@@ -35,7 +36,7 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, accou
           <button type="button" onClick={onRefresh} disabled={loading} className={styles.refresh} aria-label={loading ? "Refreshing" : `Refresh ${section}`}><RefreshCw size={18} className={loading ? styles.spinning : ""} /></button>
           {onSignOut && <button type="button" onClick={onSignOut} disabled={loading} className={styles.tab}>Sign out</button>}
         </nav>}
-        {!guest && <FarmerOrderAlerts key={accountCode} accountCode={accountCode} />}
+        {!guest && <FarmerOrderAlerts key={accountCode} accountCode={accountCode} onReviewOrder={onReviewOrder} />}
         {children}
         <footer className={styles.footer}><Sprout size={15} /> Grown locally. Connected by JRide.</footer>
       </main>
