@@ -98,9 +98,17 @@ test("farmer product setup can explicitly require Kolong-Kolong", () => {
   assert(butcheringForm.includes('<option value="kolong_kolong">Kolong-Kolong</option>'));
 });
 
+test("AgriMarket partial de-escalation cannot leave stale Kolong-Kolong approval", () => {
+  const sql = read("supabase/migrations/20260919054800_kolong_kolong_partial_deescalation_reapproval_fix_v1.sql");
+  assert(sql.includes("v_old_required_rank"));
+  assert(sql.includes("v_old_required_rank > v_required_rank"));
+  assert(sql.includes("KOLONG_PARTIAL_DEESCALATION_RESET_FAILED"));
+  assert(sql.includes("KOLONG_REESCALATION_FRESH_APPROVAL_BASELINE_FAILED"));
+});
+
 test("Driver Locations legacy admin endpoint is not part of this change", () => {
   const source = read("app/api/driver_locations/route.ts");
   assert(!source.includes("kolong_kolong"));
 });
 
-console.log("6 Kolong-Kolong regression groups passed.");
+console.log("7 Kolong-Kolong regression groups passed.");
