@@ -64,8 +64,35 @@ type ProducerOrder = {
   picked_up_at?: string | null;
   delivered_at?: string | null;
   completed_at?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  producer_rejected_at?: string | null;
+  producer_timeout_at?: string | null;
+  producer_confirm_expires_at?: string | null;
+  created_at?: string | null;
   items: OrderItem[];
 };
+
+const HISTORY_STATUSES = ["completed", "cancelled", "producer_rejected", "producer_timeout"];
+
+function historyOutcome(order: ProducerOrder) {
+  if (order.status === "producer_timeout") return {
+    label: "Expired",
+    reason: "No farmer response was received before the confirmation deadline.",
+    at: order.producer_confirm_expires_at || order.producer_timeout_at,
+  };
+  if (order.status === "producer_rejected") return {
+    label: "Declined by farmer",
+    reason: order.cancel_reason?.replace(/_/g, " ") || "The farmer could not fulfill this order.",
+    at: order.producer_rejected_at,
+  };
+  if (order.status === "cancelled") return {
+    label: "Cancelled",
+    reason: order.cancel_reason?.replace(/_/g, " ") || "No cancellation reason was recorded.",
+    at: order.cancelled_at,
+  };
+  return { label: "Completed", reason: "This order was completed.", at: order.completed_at };
+}
 
 const PREP_OPTIONS = [0, 10, 15, 20, 30, 45, 60, 90, 120];
 const HANDLING_TIERS = ["standard", "bulky", "live_single", "live_difficult"] as const;
@@ -117,6 +144,12 @@ export default function AgrimarketProducerPage() {
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
   const [setupOnly, setSetupOnly] = useState(false);
   const [filter, setFilter] = useState("all");
+  const [historyOrders, setHistoryOrders] = useState<ProducerOrder[]>([]);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [historyRefresh, setHistoryRefresh] = useState(0);
   const [prep, setPrep] = useState<Record<string, number>>({});
   const [weightBasis, setWeightBasis] = useState<Record<string, "exact" | "approximate">>({});
   const [cargoWeight, setCargoWeight] = useState<Record<string, string>>({});
@@ -142,13 +175,67 @@ export default function AgrimarketProducerPage() {
     return () => window.clearInterval(timer);
   }, [connected, disabled, sessionCode]);
 
+  useEffect(() => {
+    setHistoryPage(0);
+    setHistoryOrders([]);
+    setHistoryHasMore(false);
+    setHistoryError("");
+    setFilter("all");
+  }, [sessionCode]);
+
+  useEffect(() => {
+    if (filter !== "history" || !sessionCode) return;
+    let cancelled = false;
+    let pending = false;
+    const controller = new AbortController();
+    setHistoryOrders([]);
+    setHistoryHasMore(false);
+    setHistoryLoading(true);
+    setHistoryError("");
+    async function refreshHistory() {
+      if (pending) return;
+      pending = true;
+      try {
+        const response = await fetch(`/api/agrimarket/producer/orders?view=history&page=${historyPage}`, {
+          cache: "no-store", headers: farmerSessionHeaders(sessionCode), signal: controller.signal,
+        });
+        const payload = await response.json();
+        if (cancelled || accountRef.current !== sessionCode) return;
+        if (response.status === 401 || response.status === 403) {
+          invalidate();
+          setHistoryOrders([]);
+          throw new Error("Sign in again to view order history.");
+        }
+        if (!response.ok || payload?.ok !== true || !Array.isArray(payload.orders)) {
+          throw new Error(payload?.message || "Unable to load order history.");
+        }
+        setHistoryOrders(payload.orders);
+        setHistoryHasMore(payload.has_more === true);
+        setHistoryError("");
+      } catch (cause: any) {
+        if (!cancelled) setHistoryError(cause?.message || "Unable to load order history.");
+      } finally {
+        pending = false;
+        if (!cancelled) setHistoryLoading(false);
+      }
+    }
+    void refreshHistory();
+    const timer = window.setInterval(() => void refreshHistory(), 10000);
+    return () => { cancelled = true; controller.abort(); window.clearInterval(timer); };
+  }, [filter, sessionCode, historyPage, historyRefresh]);
+
+  function refreshOrders() {
+    void loadOrders();
+    setHistoryRefresh((value) => value + 1);
+  }
+
   async function loadOrders(code = sessionCode, quiet = false) {
     if (!code || loadFlight.current === code) return;
     loadFlight.current = code;
     if (!quiet) setLoading(true);
     setError("");
     try {
-    const response = await fetch("/api/agrimarket/producer/orders", { cache: "no-store", headers: farmerSessionHeaders(code) });
+    const response = await fetch("/api/agrimarket/producer/orders?view=active", { cache: "no-store", headers: farmerSessionHeaders(code) });
     const payload = await response.json().catch(() => ({}));
     if (accountRef.current !== code) return;
     if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
@@ -306,7 +393,7 @@ export default function AgrimarketProducerPage() {
   }
 
   if (sessionCode && !connected) {
-    return <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadOrders()} loading={loading || restoring}>
+    return <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} loading={loading || restoring}>
       <p role="status">{loading ? "Loading your orders..." : "Your orders could not be loaded. Tap Refresh to try again."}</p>
       <FarmerFeedback error={error || authError} />
     </FarmerWorkspace>;
@@ -319,11 +406,12 @@ export default function AgrimarketProducerPage() {
   const needsReply = orders.filter((order) => order.status === "awaiting_producer");
   const harvest = orders.filter((order) => order.status === "awaiting_harvest");
   const inProgress = orders.filter((order) => !["awaiting_producer", "awaiting_harvest", "completed", "delivered"].includes(order.status));
-  const visibleOrders = filter === "new" ? needsReply : filter === "harvest" ? harvest : filter === "progress" ? inProgress : orders;
-  const filters = [{ id: "all", label: "All orders", count: orders.length }, { id: "new", label: "Needs reply", count: needsReply.length }, { id: "progress", label: "In progress", count: inProgress.length }, { id: "harvest", label: "Scheduled", count: harvest.length }];
+  const viewingHistory = filter === "history";
+  const visibleOrders = viewingHistory ? historyOrders : filter === "new" ? needsReply : filter === "harvest" ? harvest : filter === "progress" ? inProgress : orders;
+  const filters = [{ id: "all", label: "Active orders", count: orders.length }, { id: "new", label: "Needs reply", count: needsReply.length }, { id: "progress", label: "In progress", count: inProgress.length }, { id: "harvest", label: "Scheduled", count: harvest.length }, { id: "history", label: "History", count: null }];
 
   return (
-    <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadOrders()} loading={loading || restoring}>
+    <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} loading={loading || restoring}>
       <section className={styles.hero} aria-labelledby="farmer-orders-title">
         <span className={styles.eyebrow}>A GOOD DAY STARTS AT YOUR FARM</span>
         <h1 id="farmer-orders-title">{needsReply.length ? "Your next order" : "Ready for your"}{" "}<br />{needsReply.length ? "is waiting." : "next order."}</h1>
@@ -337,10 +425,22 @@ export default function AgrimarketProducerPage() {
       </div>
       <FarmerFeedback error={error || authError} message={message} />
       <div className={styles.sectionHeading}><h2>Your orders</h2><span>{loading ? "Refreshing…" : "Refreshes every 10 sec"}</span></div>
-      <div className={styles.filters} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}<span className={styles.filterCount}>{item.count}</span></button>)}</div>
-      <div className={!orders.length ? styles.dashboardGrid : undefined}>
-        <section className={styles.orderList} aria-label="Farmer orders" aria-busy={loading}>
-          {!visibleOrders.length && <div>
+      <div className={styles.filters} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}{item.count !== null && <span className={styles.filterCount}>{item.count}</span>}</button>)}</div>
+      {viewingHistory && <div className="mb-4 text-sm text-slate-600">
+        <p>Completed, cancelled, declined and expired orders. Newest bookings first.</p>
+        <FarmerFeedback error={historyError} />
+        <div className="mt-3 flex items-center gap-3" aria-label="History pages">
+          <button type="button" disabled={historyLoading || historyPage === 0} onClick={() => setHistoryPage((value) => value - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Previous</button>
+          <span>Page {historyPage + 1}</span>
+          <button type="button" disabled={historyLoading || !historyHasMore} onClick={() => setHistoryPage((value) => value + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-40">Next</button>
+        </div>
+      </div>}
+      <div className={!orders.length && !viewingHistory ? styles.dashboardGrid : undefined}>
+        <section className={styles.orderList} aria-label={viewingHistory ? "Order history" : "Farmer orders"} aria-busy={viewingHistory ? historyLoading : loading}>
+          {viewingHistory && !visibleOrders.length && <p role="status" className="rounded-xl border bg-white p-5 text-sm text-slate-600">
+            {historyLoading ? "Loading order history..." : historyError ? "History could not be refreshed. Tap Refresh to retry." : historyPage > 0 ? "No more orders on this page. Choose Previous." : "No completed, cancelled, declined or expired orders yet."}
+          </p>}
+          {!viewingHistory && !visibleOrders.length && <div>
             <div className={styles.emptyCard}>
               <span className={styles.emptyIcon}><PackageCheck size={43} /></span>
               <h2>{orders.length ? "You’re all caught up here." : "Room for something good."}</h2>
@@ -350,15 +450,23 @@ export default function AgrimarketProducerPage() {
             {setupOnly && <div className={styles.setupNotice}><Clock3 size={18} /><div><strong>Your farm setup is open.</strong>You can manage products now. Customer ordering is not open yet.</div></div>}
           </div>}
           {visibleOrders.map((order) => {
+            const isHistory = HISTORY_STATUSES.includes(order.status);
+            const unfulfilled = isHistory && order.status !== "completed";
+            const outcome = historyOutcome(order);
             const scheduled = order.fulfillment_mode === "scheduled_harvest";
             const pendingProposal = order.pending_harvest_proposal;
             const activity = scheduledActivity(order.items);
             return (
               <article id={`agri-order-${order.order_code}`} key={order.order_code} className={styles.orderCard}>
-                <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-xl font-bold">{scheduled ? scheduledTitle(order.items) : "Agrimarket Order"}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold">{order.status === "awaiting_harvest" ? "Reservation confirmed" : titleCase(order.status)}</span></div>
+                <div className="flex flex-wrap justify-between gap-3"><div><p className="text-xs font-semibold uppercase text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-xl font-bold">{scheduled ? scheduledTitle(order.items) : "Agrimarket Order"}</h2></div><span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold">{isHistory ? outcome.label : order.status === "awaiting_harvest" ? "Reservation confirmed" : titleCase(order.status)}</span></div>
+                {isHistory && <div className={`mt-3 rounded-xl p-3 text-sm ${unfulfilled ? "bg-amber-50 text-amber-950" : "bg-emerald-50 text-emerald-950"}`}>
+                  <p className="font-semibold">{outcome.label}{outcome.at ? ` - ${formatDate(outcome.at)}` : ""}</p>
+                  <p>{outcome.reason}</p>
+                  {order.created_at && <p className="mt-1 text-xs">Placed {formatDate(order.created_at)}</p>}
+                </div>}
                 {scheduled ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} window</strong><br/>{formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}</div> : null}
                 <div className="mt-4 divide-y rounded-xl border">{order.items.map((item) => <div key={item.product_id} className="flex justify-between gap-3 p-3"><div><strong>{item.product_name}</strong><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
-                <div className="mt-3 flex justify-between"><span>Farmer product payment</span><strong>{money(order.product_subtotal)}</strong></div>
+                <div className="mt-3 flex justify-between"><span>{unfulfilled ? "Product subtotal (order not fulfilled)" : "Farmer product payment"}</span><strong>{money(order.product_subtotal)}</strong></div>
 
                 {order.status === "awaiting_producer" ? (
                   <div className="mt-4 rounded-2xl bg-blue-50 p-4">
@@ -396,7 +504,7 @@ export default function AgrimarketProducerPage() {
 
                 {["preparing", "awaiting_customer_reapproval", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : order.status === "awaiting_customer_reapproval" ? "Waiting for customer to approve revised charges" : titleCase(order.status)}</strong>{order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_basis ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_basis === "exact" ? `${order.confirmed_cargo_weight_kg ?? "?"} kg exact` : `${String(order.confirmed_cargo_weight_band || "").replace(/_/g, "-")} kg approximate`} - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
 
-                {order.confirmed_cargo_weight_basis ? <div className="mt-3 rounded-xl border bg-white p-3 text-sm"><p className="font-semibold">Customer charge impact after your confirmation</p><div className="mt-2 grid gap-1 sm:grid-cols-2"><p>Delivery: <strong>{money(order.customer_delivery_fee)}</strong></p><p>Heavy Load Fee: <strong>{money(order.customer_heavy_load_fee)}</strong></p><p>Special Handling Fee: <strong>{money(order.customer_special_handling_fee)}</strong></p><p>Driver Approach Fee: <strong>{order.customer_driver_approach_fee_locked ? money(order.customer_driver_approach_fee) : "Pending driver assignment"}</strong></p></div><p className="mt-2">Current customer total: <strong>{money(order.customer_total_payable)}</strong>{!order.customer_driver_approach_fee_locked ? " before final Driver Approach Fee" : ""}</p>{order.customer_reapproval_required ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Waiting for customer approval: {money(order.customer_approved_total)} to {money(order.customer_reapproval_proposed_total ?? order.customer_total_payable)}{order.customer_reapproval_proposed_vehicle_type === "tricycle"
+                {!unfulfilled && order.confirmed_cargo_weight_basis ? <div className="mt-3 rounded-xl border bg-white p-3 text-sm"><p className="font-semibold">Customer charge impact after your confirmation</p><div className="mt-2 grid gap-1 sm:grid-cols-2"><p>Delivery: <strong>{money(order.customer_delivery_fee)}</strong></p><p>Heavy Load Fee: <strong>{money(order.customer_heavy_load_fee)}</strong></p><p>Special Handling Fee: <strong>{money(order.customer_special_handling_fee)}</strong></p><p>Driver Approach Fee: <strong>{order.customer_driver_approach_fee_locked ? money(order.customer_driver_approach_fee) : "Pending driver assignment"}</strong></p></div><p className="mt-2">Current customer total: <strong>{money(order.customer_total_payable)}</strong>{!order.customer_driver_approach_fee_locked ? " before final Driver Approach Fee" : ""}</p>{order.customer_reapproval_required ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Waiting for customer approval: {money(order.customer_approved_total)} to {money(order.customer_reapproval_proposed_total ?? order.customer_total_payable)}{order.customer_reapproval_proposed_vehicle_type === "tricycle"
   ? " and Tricycle required"
   : order.customer_reapproval_proposed_vehicle_type === "kolong_kolong"
     ? " and Kolong-Kolong required"
@@ -405,7 +513,7 @@ export default function AgrimarketProducerPage() {
             );
           })}
         </section>
-        {!orders.length && <aside className={styles.stepsCard}>
+        {!orders.length && !viewingHistory && <aside className={styles.stepsCard}>
           <h2>A little guide for your first order</h2>
           <div className={styles.step}><span className={styles.stepIcon}><CheckCheck size={18} /></span><div><h3>Confirm what you can supply</h3><p>Review the items and let your customer know you’re ready to prepare.</p></div></div>
           <div className={styles.step}><span className={styles.stepIcon}><Sprout size={18} /></span><div><h3>Prepare your products</h3><p>Confirm the load and pack everything for a smooth pickup.</p></div></div>

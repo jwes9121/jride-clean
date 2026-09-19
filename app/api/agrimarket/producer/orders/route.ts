@@ -13,6 +13,14 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
+const HISTORY_STATUSES = ["completed", "cancelled", "producer_rejected", "producer_timeout"];
+const ACTIVE_STATUSES = [
+  "awaiting_producer", "awaiting_harvest", "producer_accepted", "preparing",
+  "awaiting_customer_reapproval", "ready_for_dispatch", "dispatching",
+  "driver_assigned", "picked_up", "delivering", "delivered", "exception",
+];
+const HISTORY_PAGE_SIZE = 25;
+
 type HandlingTier = "standard" | "bulky" | "live_single" | "live_difficult";
 
 function minimumHandlingTier(items: any[]): HandlingTier {
@@ -50,28 +58,27 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const view = req.nextUrl.searchParams.get("view") || "all";
+    const rawPage = req.nextUrl.searchParams.get("page") || "0";
+    if (!["all", "active", "history"].includes(view) || !/^\d{1,6}$/.test(rawPage)) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ORDER_VIEW_INVALID" });
+    }
+    const page = view === "history" ? Number(rawPage) : 0;
+    const pageSize = view === "history" ? HISTORY_PAGE_SIZE : 100;
+    const offset = page * pageSize;
+    const statuses = view === "history" ? HISTORY_STATUSES
+      : view === "active" ? ACTIVE_STATUSES : [...ACTIVE_STATUSES, ...HISTORY_STATUSES];
+
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,created_at,updated_at"
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,cancelled_at,cancel_reason,created_at,updated_at"
       )
       .eq("producer_id", producerAuth.producer.id)
-      .in("status", [
-        "awaiting_producer",
-        "awaiting_harvest",
-        "producer_accepted",
-        "preparing",
-        "awaiting_customer_reapproval",
-        "ready_for_dispatch",
-        "dispatching",
-        "driver_assigned",
-        "picked_up",
-        "delivering",
-        "delivered",
-        "completed",
-      ])
+      .in("status", statuses)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .order("id", { ascending: false })
+      .range(offset, offset + pageSize);
 
     if (ordersRes.error) {
       return jsonNoStore(500, {
@@ -81,7 +88,9 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const orders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+    const fetchedOrders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+    const hasMore = fetchedOrders.length > pageSize;
+    const orders = fetchedOrders.slice(0, pageSize);
     const orderIds = orders.map((row: any) => String(row.id || "")).filter(Boolean);
     const itemsByOrder = new Map<string, any[]>();
     const proposalByOrder = new Map<string, any>();
@@ -225,6 +234,8 @@ export async function GET(req: NextRequest) {
         picked_up_at: row.picked_up_at,
         delivered_at: row.delivered_at,
         completed_at: row.completed_at,
+        cancelled_at: row.cancelled_at,
+        cancel_reason: row.cancel_reason || null,
         items: orderItems,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -234,6 +245,9 @@ export async function GET(req: NextRequest) {
     return jsonNoStore(200, {
       ok: true,
       producer_id: producerAuth.producer.id,
+      view,
+      page,
+      has_more: hasMore,
       farmer_fee_policy: "free_launch_v1",
       farmer_wallet_enabled: false,
       joining_fee: 0,
