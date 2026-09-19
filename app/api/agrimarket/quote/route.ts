@@ -50,6 +50,7 @@ function estimateHeavyLoadFee(weightKg: number | null, pricing: any): number | n
   if (weightKg <= num(pricing.heavy_load_exact_tier2_max_kg)) return num(pricing.heavy_load_tier2_fee);
   if (weightKg <= num(pricing.heavy_load_exact_tier3_max_kg)) return num(pricing.heavy_load_tier3_fee);
   if (weightKg <= num(pricing.heavy_load_exact_tier4_max_kg)) return num(pricing.heavy_load_tier4_fee);
+  if (weightKg <= num(pricing.kolong_kolong_max_kg)) return num(pricing.heavy_load_tier4_fee);
   return null;
 }
 
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
       admin
         .from("agrimarket_pricing_settings")
         .select(
-          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee"
+          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,kolong_kolong_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee"
         )
         .eq("id", 1)
         .eq("is_active", true)
@@ -136,7 +137,7 @@ export async function POST(req: NextRequest) {
     const estimatedHeavyLoadFee = estimateHeavyLoadFee(context.estimatedCargoWeightKg, pricing);
     const estimateExceedsV1Limit =
       context.estimatedCargoWeightKg != null &&
-      context.estimatedCargoWeightKg > num(pricing.heavy_load_exact_tier4_max_kg);
+      context.estimatedCargoWeightKg > num(pricing.kolong_kolong_max_kg);
     const baseDeliveryFee = Number(quote.base_delivery_fee || 0);
     const driverApproachPolicy = {
       rule: "agrimarket_errand_pickup_parity_v1",
@@ -236,7 +237,9 @@ export async function POST(req: NextRequest) {
           { max_kg: num(pricing.heavy_load_exact_tier2_max_kg), fee: num(pricing.heavy_load_tier2_fee) },
           { max_kg: num(pricing.heavy_load_exact_tier3_max_kg), fee: num(pricing.heavy_load_tier3_fee) },
           { max_kg: num(pricing.heavy_load_exact_tier4_max_kg), fee: num(pricing.heavy_load_tier4_fee) },
+          { max_kg: num(pricing.kolong_kolong_max_kg), fee: num(pricing.heavy_load_tier4_fee), vehicle: "Kolong-Kolong" },
         ],
+        max_supported_cargo_kg: num(pricing.kolong_kolong_max_kg),
       },
       special_handling_fee: {
         status: "pending_farmer_confirmation",
