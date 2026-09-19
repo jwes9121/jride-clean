@@ -27,7 +27,7 @@ const CARGO_CLASSES = new Set([
   "other_agri",
 ]);
 const AVAILABILITY_MODES = new Set(["always_available", "scheduled_harvest"]);
-const VEHICLES = new Set(["either", "motorcycle", "tricycle"]);
+const VEHICLES = new Set(["either", "motorcycle", "tricycle", "kolong_kolong"]);
 const PROCESSING_FORMS = new Set(["whole", "chopped", "sliced", "ground", "other"]);
 
 function text(value: unknown): string {
@@ -284,7 +284,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      if (cargoClass === "live_livestock" || productGroup === "livestock") {
+      if (
+        (cargoClass === "live_livestock" || productGroup === "livestock") &&
+        vehicleRequirement !== "kolong_kolong"
+      ) {
         vehicleRequirement = "tricycle";
       }
 

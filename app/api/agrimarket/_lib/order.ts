@@ -7,6 +7,40 @@ export type RequestedAgrimarketItem = {
   quantity: number;
 };
 
+export type AgrimarketVehicle =
+  | "motorcycle"
+  | "tricycle"
+  | "kolong_kolong";
+
+export type AgrimarketVehicleRequirement =
+  | "either"
+  | AgrimarketVehicle;
+
+function normalizeVehicleValue(value: unknown): string {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (
+    raw.includes("kolong") ||
+    raw.includes("kulong") ||
+    raw.includes("sidecar")
+  ) {
+    return "kolong_kolong";
+  }
+  if (raw.includes("motor") || raw.includes("moto") || raw.includes("bike")) {
+    return "motorcycle";
+  }
+  if (raw.includes("trike") || raw.includes("tricycle") || raw.includes("toda")) {
+    return "tricycle";
+  }
+  return raw;
+}
+
+function vehicleRank(value: AgrimarketVehicleRequirement): number {
+  if (value === "motorcycle") return 1;
+  if (value === "tricycle") return 2;
+  if (value === "kolong_kolong") return 3;
+  return 0;
+}
+
 export type AgrimarketOrderContext = {
   address: any;
   producer: any;
@@ -29,8 +63,8 @@ export type AgrimarketOrderContext = {
   }>;
   productSubtotal: number;
   estimatedCargoWeightKg: number | null;
-  requiredVehicleType: "either" | "tricycle";
-  preferredVehicleType: "motorcycle" | "tricycle";
+  requiredVehicleType: AgrimarketVehicleRequirement;
+  preferredVehicleType: AgrimarketVehicle;
   handlingEligible: boolean;
   fulfillmentMode: "always_available" | "scheduled_harvest";
   harvestExpectedStartAt: string | null;
@@ -107,13 +141,19 @@ export function normalizeAgrimarketAddressId(body: any): string {
   return value;
 }
 
-export function normalizeAgrimarketPreferredVehicle(body: any): "motorcycle" | "tricycle" {
-  const value = String(body?.preferred_vehicle_type || body?.preferredVehicleType || "").trim().toLowerCase();
-  if (value !== "motorcycle" && value !== "tricycle") {
+export function normalizeAgrimarketPreferredVehicle(body: any): AgrimarketVehicle {
+  const value = normalizeVehicleValue(
+    body?.preferred_vehicle_type || body?.preferredVehicleType || ""
+  );
+  if (
+    value !== "motorcycle" &&
+    value !== "tricycle" &&
+    value !== "kolong_kolong"
+  ) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_INVALID_PREFERRED_VEHICLE",
       400,
-      "preferred_vehicle_type must be motorcycle or tricycle."
+      "preferred_vehicle_type must be motorcycle, tricycle, or kolong_kolong."
     );
   }
   return value;
@@ -124,7 +164,7 @@ export async function loadAgrimarketOrderContext(
   customerUserId: string,
   addressId: string,
   items: RequestedAgrimarketItem[],
-  preferredVehicleType: "motorcycle" | "tricycle"
+  preferredVehicleType: AgrimarketVehicle
 ): Promise<AgrimarketOrderContext> {
   const addressRes = await admin
     .from("passenger_addresses")
@@ -192,7 +232,7 @@ export async function loadAgrimarketOrderContext(
   let estimatedCargoWeightKg = 0;
   let cargoWeightEstimateComplete = true;
   let handlingEligible = false;
-  let requiresTricycle = false;
+  let requiredVehicleType: AgrimarketVehicleRequirement = "either";
   let earliestCutoffMs = Number.POSITIVE_INFINITY;
   let earliestCutoffIso: string | null = null;
 
@@ -246,8 +286,24 @@ export async function loadAgrimarketOrderContext(
 
     producerIds.add(String(product.producer_id || ""));
     modes.add(mode);
-    if (String(product.vehicle_requirement || "either").toLowerCase() === "tricycle") {
-      requiresTricycle = true;
+
+    const productVehicle = normalizeVehicleValue(
+      product.vehicle_requirement || "either"
+    ) as AgrimarketVehicleRequirement;
+    if (
+      productVehicle !== "either" &&
+      productVehicle !== "motorcycle" &&
+      productVehicle !== "tricycle" &&
+      productVehicle !== "kolong_kolong"
+    ) {
+      throw new AgrimarketRequestError(
+        "AGRIMARKET_PRODUCT_VEHICLE_INVALID",
+        409,
+        "A selected product has an invalid vehicle requirement."
+      );
+    }
+    if (vehicleRank(productVehicle) > vehicleRank(requiredVehicleType)) {
+      requiredVehicleType = productVehicle;
     }
 
     const unitPrice = money(product.unit_price);
@@ -348,13 +404,13 @@ export async function loadAgrimarketOrderContext(
     );
   }
 
-  const requiredVehicleType: "either" | "tricycle" = requiresTricycle ? "tricycle" : "either";
-
-  if (requiredVehicleType === "tricycle" && preferredVehicleType !== "tricycle") {
+  if (vehicleRank(preferredVehicleType) < vehicleRank(requiredVehicleType)) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_VEHICLE_REQUIREMENT_MISMATCH",
       409,
-      "This cart requires a tricycle."
+      requiredVehicleType === "kolong_kolong"
+        ? "This cart requires Kolong-Kolong."
+        : "This cart requires a Tricycle or Kolong-Kolong."
     );
   }
 

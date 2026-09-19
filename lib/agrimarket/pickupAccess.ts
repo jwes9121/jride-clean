@@ -17,8 +17,9 @@ export function pickupAccessError(producer: any, vehicle: string): string | null
 
   // Accessibility describes the verified handoff pin, including roadside handoff.
   // A roadside flag alone never makes an inaccessible pin safe for a vehicle.
-  const accessible = vehicle === "tricycle"
-    ? producer.pickup_tricycle_accessible
-    : vehicle === "motorcycle" && producer.pickup_motorcycle_accessible;
+  const accessible =
+    vehicle === "tricycle" || vehicle === "kolong_kolong"
+      ? producer.pickup_tricycle_accessible
+      : vehicle === "motorcycle" && producer.pickup_motorcycle_accessible;
   return accessible ? null : "AGRIMARKET_PICKUP_VEHICLE_INACCESSIBLE";
 }

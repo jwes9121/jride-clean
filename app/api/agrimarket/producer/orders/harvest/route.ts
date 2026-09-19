@@ -89,17 +89,29 @@ export async function POST(req: NextRequest) {
       }
       if (
         confirmedCargoWeightBasis === "exact" &&
-        (confirmedCargoWeightKg == null || !Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0)
+        (
+          confirmedCargoWeightKg == null ||
+          !Number.isFinite(confirmedCargoWeightKg) ||
+          confirmedCargoWeightKg <= 0 ||
+          confirmedCargoWeightKg > 200
+        )
       ) {
         return jsonNoStore(400, {
           ok: false,
-          error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_REQUIRED",
-          message: "Enter the weighed total cargo weight.",
+          error:
+            confirmedCargoWeightKg != null && confirmedCargoWeightKg > 200
+              ? "AGRIMARKET_CARGO_OVER_200KG_UNSUPPORTED"
+              : "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_REQUIRED",
+          message:
+            confirmedCargoWeightKg != null && confirmedCargoWeightKg > 200
+              ? "JRide supports Agrimarket cargo up to 200 kg."
+              : "Enter the weighed total cargo weight.",
+          max_kg: 200,
         });
       }
       if (
         confirmedCargoWeightBasis === "approximate" &&
-        (!confirmedCargoWeightBand || !new Set(["1_15", "16_25", "26_50", "51_100", "over_100"]).has(confirmedCargoWeightBand))
+        (!confirmedCargoWeightBand || !new Set(["1_15", "16_25", "26_50", "51_100", "101_200", "over_200"]).has(confirmedCargoWeightBand))
       ) {
         return jsonNoStore(400, {
           ok: false,

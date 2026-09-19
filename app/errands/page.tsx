@@ -289,7 +289,8 @@ function vehicleLabel(raw: unknown): string {
   const value = clean(raw).toLowerCase();
   if (value === "motorcycle") return "Motorcycle";
   if (value === "tricycle") return "Tricycle";
-  return "Motorcycle or Tricycle";
+  if (value === "kolong_kolong") return "Kolong-Kolong";
+  return "Motorcycle / Tricycle / Kolong-Kolong";
 }
 
 function stopStatusClasses(statusRaw: unknown): string {
@@ -325,7 +326,7 @@ export default function ErrandPage() {
   const [estimatedPurchase, setEstimatedPurchase] = React.useState("");
   const [cargoWeight, setCargoWeight] = React.useState("");
   const [vehicleRequirement, setVehicleRequirement] = React.useState<
-    "either" | "motorcycle" | "tricycle"
+    "either" | "motorcycle" | "tricycle" | "kolong_kolong"
   >("either");
   const [bookingBusy, setBookingBusy] = React.useState(false);
   const [confirmBusy, setConfirmBusy] = React.useState(false);
@@ -340,11 +341,16 @@ export default function ErrandPage() {
   const eligibilityFailed = Boolean(clean(eligibility?.error));
 
   const cargoKg = numberOrNull(cargoWeight);
-  const cargoTooHeavy = cargoKg != null && cargoKg > 100;
+  const cargoTooHeavy = cargoKg != null && cargoKg > 200;
 
   React.useEffect(() => {
-    if (cargoKg != null && cargoKg > 25 && vehicleRequirement !== "tricycle") {
-      setVehicleRequirement("tricycle");
+    if (cargoKg == null) return;
+    if (cargoKg > 100 && vehicleRequirement !== "kolong_kolong") {
+      setVehicleRequirement("kolong_kolong");
+      return;
+    }
+    if (cargoKg > 25 && vehicleRequirement === "motorcycle") {
+      setVehicleRequirement("either");
     }
   }, [cargoKg, vehicleRequirement]);
 
@@ -818,8 +824,10 @@ function NewErrandFlow(props: {
   setCargoWeight: (value: string) => void;
   cargoKg: number | null;
   cargoTooHeavy: boolean;
-  vehicleRequirement: "either" | "motorcycle" | "tricycle";
-  setVehicleRequirement: (value: "either" | "motorcycle" | "tricycle") => void;
+  vehicleRequirement: "either" | "motorcycle" | "tricycle" | "kolong_kolong";
+  setVehicleRequirement: (
+    value: "either" | "motorcycle" | "tricycle" | "kolong_kolong"
+  ) => void;
   stepReady: boolean[];
   formReady: boolean;
   notice: string;
@@ -1107,7 +1115,7 @@ function NewErrandFlow(props: {
                   <input
                     type="number"
                     min="0"
-                    max="100"
+                    max="200"
                     step="0.5"
                     value={cargoWeight}
                     onChange={(event) => setCargoWeight(event.target.value)}
@@ -1118,20 +1126,25 @@ function NewErrandFlow(props: {
                 </div>
 
                 {cargoTooHeavy ? (
-                  <div className="mt-2 rounded-xl bg-[#3B2027] px-3 py-2 text-xs font-bold text-[#FCA5A5]">More than 100 kg is not eligible for a normal JRide Errand.</div>
+                  <div className="mt-2 rounded-xl bg-[#3B2027] px-3 py-2 text-xs font-bold text-[#FCA5A5]">More than 200 kg is not eligible for a normal JRide Errand.</div>
+                ) : cargoKg != null && cargoKg > 100 ? (
+                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">101-200 kg requires Kolong-Kolong.</div>
                 ) : cargoKg != null && cargoKg > 50 ? (
-                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">51-100 kg requires a tricycle and driver acceptance.</div>
+                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">51-100 kg requires a Tricycle or Kolong-Kolong and driver acceptance.</div>
                 ) : cargoKg != null && cargoKg > 25 ? (
-                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">Above 25 kg requires a tricycle.</div>
+                  <div className="mt-2 rounded-xl bg-[#392A15] px-3 py-2 text-xs font-semibold text-[#FDE68A]">Above 25 kg requires a Tricycle or Kolong-Kolong.</div>
                 ) : null}
 
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {([
-                    ["either", "Either"],
+                    ["either", "Any eligible"],
                     ["motorcycle", "Motorcycle"],
                     ["tricycle", "Tricycle"],
+                    ["kolong_kolong", "Kolong-Kolong"],
                   ] as const).map(([value, label]) => {
-                    const disabled = cargoKg != null && cargoKg > 25 && value !== "tricycle";
+                    const disabled =
+                      (cargoKg != null && cargoKg > 100 && value !== "kolong_kolong") ||
+                      (cargoKg != null && cargoKg > 25 && value === "motorcycle");
                     return (
                       <button
                         key={value}

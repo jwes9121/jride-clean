@@ -73,16 +73,27 @@ export async function POST(req: NextRequest) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_INVALID_CARGO_WEIGHT_BASIS" });
     }
 
-    if (confirmedCargoWeightKg != null && (!Number.isFinite(confirmedCargoWeightKg) || confirmedCargoWeightKg <= 0)) {
+    if (
+      confirmedCargoWeightKg != null &&
+      (
+        !Number.isFinite(confirmedCargoWeightKg) ||
+        confirmedCargoWeightKg <= 0 ||
+        confirmedCargoWeightKg > 200
+      )
+    ) {
       return jsonNoStore(400, {
         ok: false,
-        error: "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_INVALID",
+        error:
+          confirmedCargoWeightKg != null && confirmedCargoWeightKg > 200
+            ? "AGRIMARKET_CARGO_OVER_200KG_UNSUPPORTED"
+            : "AGRIMARKET_CONFIRMED_CARGO_WEIGHT_INVALID",
+        max_kg: 200,
       });
     }
 
     if (
       confirmedCargoWeightBand != null &&
-      !new Set(["1_15", "16_25", "26_50", "51_100", "over_100"]).has(confirmedCargoWeightBand)
+      !new Set(["1_15", "16_25", "26_50", "51_100", "101_200", "over_200"]).has(confirmedCargoWeightBand)
     ) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_INVALID_CARGO_WEIGHT_BAND" });
     }
