@@ -8,6 +8,14 @@ const ALLOWED_WINDOWS = new Set([7, 30, 90]);
 
 type AnyRow = Record<string, any>;
 
+type TownRow = {
+  town: string;
+  registered: number;
+  verified: number;
+  new_registered: number;
+  verified_from_cohort: number;
+};
+
 type DailyRow = {
   date: string;
   registered: number;
@@ -117,7 +125,12 @@ export default async function PassengerGrowthPage({
   const [authUsers, passengerProfiles, approvedVerificationRows, testIdentityRows] =
     await Promise.all([
       listAllAuthUsers(admin),
-      fetchPaged(() => admin.from("passenger_profiles").select("user_id,created_at")),
+      fetchPaged(() =>
+        admin
+          .from("passenger_profiles")
+          .select("user_id,created_at,town_origin")
+          .order("user_id", { ascending: true })
+      ),
       fetchPaged(() =>
         admin
           .from("passenger_verifications")
@@ -184,6 +197,60 @@ export default async function PassengerGrowthPage({
   const startDate = shiftDateKey(today, -(days - 1));
   const previousStartDate = shiftDateKey(startDate, -days);
   const previousEndDate = shiftDateKey(startDate, -1);
+
+
+  const profileTownByUserId = new Map<string, string>(
+    passengerProfiles.map((row) => [
+      String(row.user_id || ""),
+      String(row.town_origin || "").trim().replace(/\s+/g, " "),
+    ])
+  );
+  const townLabels = new Map(
+    ["Banaue", "Hingyon", "Kiangan", "Lagawe", "Lamut", "Other", "Unknown"].map(
+      (town) => [town.toLowerCase(), town]
+    )
+  );
+  const townBuckets = new Map<string, TownRow>();
+
+  function townBucket(value: string) {
+    const key = (value || "Unknown").toLowerCase();
+    let bucket = townBuckets.get(key);
+    if (!bucket) {
+      bucket = {
+        town: townLabels.get(key) || value,
+        registered: 0,
+        verified: 0,
+        new_registered: 0,
+        verified_from_cohort: 0,
+      };
+      townBuckets.set(key, bucket);
+    }
+    return bucket;
+  }
+
+  for (const town of ["Banaue", "Hingyon", "Kiangan", "Lagawe", "Lamut"]) {
+    townBucket(town);
+  }
+
+  for (const user of productionUsers) {
+    const userId = String(user.id);
+    const bucket = townBucket(profileTownByUserId.get(userId) || "");
+    const isVerified = verifiedUserIds.has(userId);
+    const registrationDate = manilaDateKey(String(user.created_at || ""));
+
+    bucket.registered += 1;
+    if (isVerified) bucket.verified += 1;
+    if (registrationDate >= startDate && registrationDate <= today) {
+      bucket.new_registered += 1;
+      if (isVerified) bucket.verified_from_cohort += 1;
+    }
+  }
+
+  const townRows = Array.from(townBuckets.values()).sort((a, b) => {
+    if (a.town === "Unknown") return 1;
+    if (b.town === "Unknown") return -1;
+    return a.town.localeCompare(b.town, "en");
+  });
 
   let baseCumulative = productionUsers.filter((user) => {
     const key = manilaDateKey(String(user.created_at || ""));
@@ -304,6 +371,58 @@ export default async function PassengerGrowthPage({
           title="Latest production registration"
           value={formatDateTime(latestRegistration)}
         />
+      </section>
+
+
+      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-bold" id="passengers-by-town">Passengers by Town</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Registered and verified totals are all time, grouped by the passenger&apos;s current profile town.
+          New registrations cover {formatDateKey(startDate)} to {formatDateKey(today)}.
+        </p>
+        <div className="mt-3 overflow-auto">
+          <table className="w-full min-w-[880px] text-left text-sm" aria-labelledby="passengers-by-town">
+            <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th scope="col" className="p-3">Town</th>
+                <th scope="col" className="p-3 text-right">Registered passengers</th>
+                <th scope="col" className="p-3 text-right">Verified passengers</th>
+                <th scope="col" className="p-3 text-right">Verification rate</th>
+                <th scope="col" className="p-3 text-right">New registrations - {days} days</th>
+                <th scope="col" className="p-3 text-right">Verified from new registrations</th>
+              </tr>
+            </thead>
+            <tbody>
+              {townRows.map((row) => (
+                <tr key={row.town.toLowerCase()} className="border-t border-slate-100">
+                  <th scope="row" className="p-3 font-semibold">{row.town}</th>
+                  <td className="p-3 text-right font-semibold">{count(row.registered)}</td>
+                  <td className="p-3 text-right">{count(row.verified)}</td>
+                  <td className="p-3 text-right">
+                    {row.registered > 0 ? pct((row.verified / row.registered) * 100) : "-"}
+                  </td>
+                  <td className="p-3 text-right">{count(row.new_registered)}</td>
+                  <td className="p-3 text-right">{count(row.verified_from_cohort)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-slate-200 bg-slate-50 font-bold">
+              <tr>
+                <th scope="row" className="p-3">Total</th>
+                <td className="p-3 text-right">{count(registeredUsers)}</td>
+                <td className="p-3 text-right">{count(verifiedUsers)}</td>
+                <td className="p-3 text-right">{pct(verificationRate)}</td>
+                <td className="p-3 text-right">{count(selectedRegistered)}</td>
+                <td className="p-3 text-right">{count(selectedVerifiedFromCohort)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          Verified passengers are currently admin-approved. Verified from new registrations counts
+          passengers who registered in the selected period and are verified now.
+          Missing towns appear as Unknown; other town labels are retained as recorded.
+        </p>
       </section>
 
       <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
