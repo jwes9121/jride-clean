@@ -48,8 +48,17 @@ function ageSeconds(value: unknown): number | null {
   return Math.max(0, Math.floor((Date.now() - parsed) / 1000));
 }
 
-function normalizeVehicle(value: unknown): "motorcycle" | "tricycle" | "" {
+type AgrimarketVehicle = "motorcycle" | "tricycle" | "kolong_kolong";
+
+function normalizeVehicle(value: unknown): AgrimarketVehicle | "" {
   const raw = lower(value);
+  if (
+    raw.includes("kolong") ||
+    raw.includes("kulong") ||
+    raw.includes("sidecar")
+  ) {
+    return "kolong_kolong";
+  }
   if (raw.includes("motor") || raw.includes("moto") || raw.includes("bike")) {
     return "motorcycle";
   }
@@ -57,6 +66,14 @@ function normalizeVehicle(value: unknown): "motorcycle" | "tricycle" | "" {
     return "tricycle";
   }
   return "";
+}
+
+function vehicleRank(value: unknown): number {
+  const normalized = normalizeVehicle(value);
+  if (normalized === "motorcycle") return 1;
+  if (normalized === "tricycle") return 2;
+  if (normalized === "kolong_kolong") return 3;
+  return lower(value) === "either" ? 0 : -1;
 }
 
 function effectiveMinWallet(value: unknown): number {
@@ -254,8 +271,8 @@ export async function offerAgrimarketDriver(input: {
   if (!preferredVehicle) {
     return { ok: false, error: "AGRIMARKET_PREFERRED_VEHICLE_INVALID" };
   }
-  if (lower(order.required_vehicle_type) === "tricycle" && preferredVehicle !== "tricycle") {
-    return { ok: false, error: "AGRIMARKET_TRICYCLE_REQUIRED" };
+  if (vehicleRank(preferredVehicle) < vehicleRank(order.required_vehicle_type)) {
+    return { ok: false, error: "AGRIMARKET_REQUIRED_VEHICLE_MISMATCH" };
   }
 
   const accessError = pickupAccessError(producerRes.data, preferredVehicle);
