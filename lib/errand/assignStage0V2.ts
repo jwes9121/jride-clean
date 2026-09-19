@@ -47,6 +47,13 @@ function effectiveMinWallet(value: unknown): number {
 
 function normalizeVehicle(value: unknown): string {
   const raw = lower(value);
+  if (
+    raw.includes("kolong") ||
+    raw.includes("kulong") ||
+    raw.includes("sidecar")
+  ) {
+    return "kolong_kolong";
+  }
   if (raw.includes("motor") || raw.includes("moto") || raw.includes("bike")) {
     return "motorcycle";
   }
@@ -177,7 +184,41 @@ export async function assignErrandStage0V2(input: {
     };
   }
 
-  const requiredVehicle = lower((jobRes.data as any).vehicle_requirement);
+  const requiredVehicle = normalizeVehicle((jobRes.data as any).vehicle_requirement);
+  const cargoWeightKg =
+    finiteNumber((jobRes.data as any).confirmed_cargo_weight_kg) ??
+    finiteNumber((jobRes.data as any).estimated_cargo_weight_kg) ??
+    0;
+
+  const capacityRes = await admin
+    .from("errand_pricing_settings")
+    .select("motorcycle_max_kg,tricycle_extra_heavy_max_kg,kolong_kolong_max_kg")
+    .eq("singleton", true)
+    .limit(1)
+    .maybeSingle();
+  if (capacityRes.error || !capacityRes.data) {
+    return {
+      ok: false,
+      error: "ERRAND_CAPACITY_SETTINGS_UNAVAILABLE",
+      message: capacityRes.error?.message,
+    };
+  }
+
+  const motorcycleMaxKg = finiteNumber((capacityRes.data as any).motorcycle_max_kg);
+  const tricycleMaxKg = finiteNumber(
+    (capacityRes.data as any).tricycle_extra_heavy_max_kg
+  );
+  const kolongKolongMaxKg = finiteNumber(
+    (capacityRes.data as any).kolong_kolong_max_kg
+  );
+
+  if (
+    motorcycleMaxKg == null ||
+    tricycleMaxKg == null ||
+    kolongKolongMaxKg == null
+  ) {
+    return { ok: false, error: "ERRAND_CAPACITY_SETTINGS_INVALID" };
+  }
 
   const outcomesRes = await admin
     .from("errand_driver_offer_outcomes")
@@ -227,8 +268,19 @@ export async function assignErrandStage0V2(input: {
     const lat = finiteNumber(row.lat);
     const lng = finiteNumber(row.lng);
     const vehicle = normalizeVehicle(row.vehicle_type);
-    const vehicleEligible =
-      !requiredVehicle || requiredVehicle === "either" || requiredVehicle === vehicle;
+    const maxCargoKg =
+      vehicle === "motorcycle"
+        ? motorcycleMaxKg
+        : vehicle === "tricycle"
+          ? tricycleMaxKg
+          : vehicle === "kolong_kolong"
+            ? kolongKolongMaxKg
+            : -1;
+    const vehicleMatchesRequest =
+      !requiredVehicle ||
+      requiredVehicle === "either" ||
+      requiredVehicle === vehicle;
+    const vehicleCapacityEligible = cargoWeightKg <= maxCargoKg;
 
     return (
       age != null &&
@@ -236,7 +288,8 @@ export async function assignErrandStage0V2(input: {
       online &&
       lat != null &&
       lng != null &&
-      vehicleEligible
+      vehicleMatchesRequest &&
+      vehicleCapacityEligible
     );
   });
 
