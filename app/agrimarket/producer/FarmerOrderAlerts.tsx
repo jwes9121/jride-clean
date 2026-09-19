@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Bell, ChevronDown, Settings2 } from "lucide-react";
 import { AGRI_ALERT_REPEAT_MS, AGRI_ALERT_SCOPE, AGRI_ALERT_STALE_MS, AGRI_ALERT_WORKER,
   farmerOrderHref, pendingFarmerOrders, type PendingFarmerOrder } from "@/lib/agrimarket/browserAlerts";
 import styles from "./farmer.module.css";
@@ -212,25 +213,33 @@ export default function FarmerOrderAlerts({ accountCode }: { accountCode: string
   }
 
   return <section className={styles.alertPanel} aria-label="AgriMarket order alerts">
-    <strong>Order alerts</strong>
-    <p>Page sound: {sound ? "enabled" : "off"}. Background setup: {registered ? "registered; delivery unconfirmed" : permission === "denied" ? "blocked by browser" : "needs phone check"}.</p>
-    <div className={styles.alertButtons}>
-      <button type="button" onClick={() => void enableSound()}>{sound ? "Test sound" : "Enable sound"}</button>
-      {sound && <button type="button" onClick={() => { setSound(false); audio.current?.pause(); save("AGRI_SOUND_V1:" + account, "off"); }}>Mute page sound</button>}
-      <button type="button" disabled={busy} onClick={() => void enablePush()}>{feed.subscription?.last_test?.last_error === "SUBSCRIPTION_GONE"
-        ? "Repair background alerts" : registered ? "Refresh alert registration" : "Enable background alerts"}</button>
-      <button type="button" disabled={busy || !registered} onClick={() => void testPush()}>Test background alert</button>
-      {registered && <button type="button" disabled={busy} onClick={() => void disablePush()}>Disable background alerts</button>}
-    </div>
-    <p className={styles.alertNote}>Background notification sound depends on your phone settings. Repeated page sound requires an active browser page.</p>
-    <PhoneAlertCheck key={subscriptionId} serverRegistered={Boolean(subscriptionId && feed.subscription?.active)} onState={deviceState} />
-    {message && <p role="status">{message}</p>}
-    {error && <p role="alert">{error}</p>}
-    {lastTest && <p>Last background test: {lastTest.last_error === "SUBSCRIPTION_GONE"
-      ? "the push service rejected this browser registration. Tap Repair background alerts to request a new one"
-      : lastTest.status === "sent"
-      ? "accepted by the push service; phone delivery and sound are NOT confirmed"
-      : ["pending", "sending"].includes(lastTest.status) ? "queued. Lock the phone now and allow up to 90 seconds. No order or driver dispatch was created" : lastTest.status}.</p>}
+    {pending.length > 0 && <div className={styles.incomingOrderBar}>
+      <div role="status" aria-live="polite"><strong><Bell size={18} aria-hidden="true" />{pending.length} {pending.length === 1 ? "order needs" : "orders need"} your reply</strong><span>Review before the farmer confirmation deadline.</span></div>
+      <a href={farmerOrderHref(pending[0].order_code)} onClick={dismiss}>Review order</a>
+    </div>}
+    {error && <p className={styles.alertConnectionError} role="alert">{error}</p>}
+    <details className={styles.alertSettings}>
+      <summary><span><Settings2 size={16} aria-hidden="true" />Notification settings</span><ChevronDown size={16} aria-hidden="true" /></summary>
+      <div className={styles.alertSettingsBody}>
+        <p>Page sound: {sound ? "enabled" : "off"}. Background setup: {registered ? "registered; delivery unconfirmed" : permission === "denied" ? "blocked by browser" : "needs phone check"}.</p>
+        <div className={styles.alertButtons}>
+          <button type="button" onClick={() => void enableSound()}>{sound ? "Test sound" : "Enable sound"}</button>
+          {sound && <button type="button" onClick={() => { setSound(false); audio.current?.pause(); save("AGRI_SOUND_V1:" + account, "off"); }}>Mute page sound</button>}
+          <button type="button" disabled={busy} onClick={() => void enablePush()}>{feed.subscription?.last_test?.last_error === "SUBSCRIPTION_GONE"
+            ? "Repair background alerts" : registered ? "Refresh alert registration" : "Enable background alerts"}</button>
+          <button type="button" disabled={busy || !registered} onClick={() => void testPush()}>Test background alert</button>
+          {registered && <button type="button" disabled={busy} onClick={() => void disablePush()}>Disable background alerts</button>}
+        </div>
+        <p className={styles.alertNote}>Background notification sound depends on your phone settings. Repeated page sound requires an active browser page.</p>
+        <PhoneAlertCheck key={subscriptionId} serverRegistered={Boolean(subscriptionId && feed.subscription?.active)} onState={deviceState} />
+        {message && <p role="status">{message}</p>}
+        {lastTest && <p>Last background test: {lastTest.last_error === "SUBSCRIPTION_GONE"
+          ? "the push service rejected this browser registration. Tap Repair background alerts to request a new one"
+          : lastTest.status === "sent"
+          ? "accepted by the push service; phone delivery and sound are NOT confirmed"
+          : ["pending", "sending"].includes(lastTest.status) ? "queued. Lock the phone now and allow up to 90 seconds. No order or driver dispatch was created" : lastTest.status}.</p>}
+      </div>
+    </details>
     <dialog ref={dialog} className={styles.alertDialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="agri-incoming-title">
       <h2 id="agri-incoming-title">New AgriMarket order</h2>
       <p>{pending.length} order{pending.length === 1 ? "" : "s"} waiting for your response.</p>

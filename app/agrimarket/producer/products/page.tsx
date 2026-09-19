@@ -254,17 +254,11 @@ export default function AgrimarketProducerProductsPage() {
   return (
     <FarmerWorkspace section="products" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadProducts()} loading={loading || restoring || Boolean(busy)}>
         <div className={styles.productHeading}>
-          <div><span className={styles.eyebrow}>YOUR PRIVATE VENDOR SPACE</span><h1 className="break-words">{vendorName || "Your farm shelf."}</h1><p>Your products, photos and stock, together in one place.</p></div>
+          <div><h1 className="break-words">{vendorName || "Your products"}</h1><p>Your products, photos and stock.</p></div>
           <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
         </div>
-        <form className="mb-6 rounded-2xl border border-[#dfe5d7] bg-white p-5" onSubmit={event => { event.preventDefault(); void productAction({ action: "set_vendor_name", vendor_name: vendorNameDraft }, "vendor-name"); }}>
-          <label htmlFor="vendor-name" className="text-sm font-semibold">Vendor name</label>
-          <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving…" : "Save vendor name"}</button></div>
-          <p className="mt-2 text-xs text-slate-600">Hidden from passengers. Visible to you, Admin and the driver assigned to your order.</p>
-        </form>
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#edf1e3] p-5"><div><h2 className="font-semibold">Planning to butcher livestock?</h2><p className="mt-1 text-sm text-slate-600">Add a date, meat cuts and a price per kilo for each part.</p></div><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
+        <div className={styles.productActions}><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
         {showButchering && <ButcheringForm accessCode={accessCode} headers={farmerSessionHeaders(sessionCode, true)} onClose={() => setShowButchering(false)} onSaved={async count => { setShowButchering(false); setMessage(`Butchering schedule saved with ${count} meat ${count === 1 ? "cut" : "cuts"}.`); await loadProducts(); }} />}
-        <div className={styles.stats} aria-label="Product overview"><div className={styles.stat}><strong>{products.length}</strong><span>Total products</span></div><div className={styles.stat}><strong>{activeCount}</strong><span>Active listings</span></div><div className={styles.stat}><strong>{products.length - activeCount}</strong><span>Paused listings</span></div></div>
         <FarmerFeedback error={authError || (showCreate ? undefined : error)} message={message} />
 
         {showCreate && <section ref={createPanel} id="new-product" className={styles.createPanel}>
@@ -345,6 +339,14 @@ export default function AgrimarketProducerProductsPage() {
             </article>;
           })}
         </section>
+        <details className={styles.farmDetails}>
+          <summary>Farm details</summary>
+          <form className={styles.farmDetailsBody} onSubmit={event => { event.preventDefault(); void productAction({ action: "set_vendor_name", vendor_name: vendorNameDraft }, "vendor-name"); }}>
+            <label htmlFor="vendor-name" className="text-sm font-semibold">Vendor name</label>
+            <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving…" : "Save vendor name"}</button></div>
+            <p className="mt-2 text-xs text-slate-600">Hidden from passengers. Visible to you, Admin and the driver assigned to your order.</p>
+          </form>
+        </details>
     </FarmerWorkspace>
   );
 }

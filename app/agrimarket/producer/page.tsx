@@ -139,6 +139,7 @@ export default function AgrimarketProducerPage() {
   const accountRef = useRef(sessionCode);
   accountRef.current = sessionCode;
   const loadFlight = useRef("");
+  const revealedOrder = useRef("");
   const [connected, setConnected] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [orders, setOrders] = useState<ProducerOrder[]>([]);
@@ -174,6 +175,27 @@ export default function AgrimarketProducerPage() {
     const timer = window.setInterval(() => void loadOrders(sessionCode, true), 10000);
     return () => window.clearInterval(timer);
   }, [connected, disabled, sessionCode]);
+
+  useEffect(() => {
+    let frame = 0;
+    const revealOrder = () => {
+      const id = window.location.hash.slice(1);
+      if (!id.startsWith("agri-order-") || revealedOrder.current === id ||
+          !orders.some(order => `agri-order-${order.order_code}` === id)) return;
+      setFilter("all");
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const card = document.getElementById(id);
+        if (card) {
+          card.scrollIntoView({ block: "start" });
+          revealedOrder.current = id;
+        }
+      });
+    };
+    revealOrder();
+    window.addEventListener("hashchange", revealOrder);
+    return () => { window.cancelAnimationFrame(frame); window.removeEventListener("hashchange", revealOrder); };
+  }, [orders]);
 
   useEffect(() => {
     setHistoryPage(0);
@@ -412,11 +434,9 @@ export default function AgrimarketProducerPage() {
 
   return (
     <FarmerWorkspace section="orders" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={refreshOrders} loading={loading || restoring}>
-      <section className={styles.hero} aria-labelledby="farmer-orders-title">
-        <span className={styles.eyebrow}>A GOOD DAY STARTS AT YOUR FARM</span>
-        <h1 id="farmer-orders-title">{needsReply.length ? "Your next order" : "Ready for your"}{" "}<br />{needsReply.length ? "is waiting." : "next order."}</h1>
-        <p>{needsReply.length ? "Review your new orders and let customers know what you can prepare." : "A simple space to manage orders, prepare your harvest and grow together."}</p>
-        <span className={styles.heroBadge}>{setupOnly ? "Getting ready for launch" : "Your farmer workspace"}</span>
+      <section className={styles.ordersHeading} aria-labelledby="farmer-orders-title">
+        <div><h1 id="farmer-orders-title">Your orders</h1><p>{setupOnly ? "Farm setup is open. Ordering has not launched yet." : needsReply.length ? "New orders are waiting for your reply." : "Manage active orders and view your history."}</p></div>
+        <span>{loading ? "Refreshing..." : "Updates every 10 sec"}</span>
       </section>
       <div className={styles.stats} aria-label="Order overview">
         <div className={styles.stat}><strong>{needsReply.length}</strong><span>Need your reply</span></div>
@@ -424,8 +444,7 @@ export default function AgrimarketProducerPage() {
         <div className={styles.stat}><strong>{harvest.length}</strong><span>Scheduled</span></div>
       </div>
       <FarmerFeedback error={error || authError} message={message} />
-      <div className={styles.sectionHeading}><h2>Your orders</h2><span>{loading ? "Refreshing…" : "Refreshes every 10 sec"}</span></div>
-      <div className={styles.filters} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}{item.count !== null && <span className={styles.filterCount}>{item.count}</span>}</button>)}</div>
+      <div className={`${styles.filters} ${styles.orderFilters}`} aria-label="Filter orders">{filters.map((item) => <button type="button" key={item.id} onClick={() => setFilter(item.id)} aria-pressed={filter === item.id} className={`${styles.filter} ${filter === item.id ? styles.filterActive : ""}`}>{item.label}{item.count !== null && <span className={styles.filterCount}>{item.count}</span>}</button>)}</div>
       {viewingHistory && <div className="mb-4 text-sm text-slate-600">
         <p>Completed, cancelled, declined and expired orders. Newest bookings first.</p>
         <FarmerFeedback error={historyError} />

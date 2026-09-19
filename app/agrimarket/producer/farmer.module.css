@@ -137,7 +137,29 @@
 @media (min-width: 760px) { .hero { padding: 34px 36px; } .hero h1 br { display: none; } .dashboardGrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 22px; align-items: start; } .stepsCard { margin-top: 0; } .productGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .productHeading h1 { font-size: 36px; } .stats { max-width: 100%; } .emptyCard { padding: 39px 25px; } }
 @media (max-width: 480px) { .headerInner { padding: 16px 18px; } .main { padding: 18px 17px 24px; } .navigation { margin-bottom: 20px; } .tabs { flex: 1; } .tab { flex: 1; padding: 0 13px; font-size: 12px; } .hero { padding: 25px 23px; border-radius: 22px; } .hero h1 { font-size: 30px; } .hero p { max-width: 245px; font-size: 12px; } .stat { padding: 0 15px; } .stat strong { font-size: 23px; } .stat span { font-size: 10px; } .stats { padding: 17px 0; } .formGrid { grid-template-columns: minmax(0, 1fr); } .createPanel { padding: 19px; } .loginCard { padding: 24px; } .orderCard { padding: 17px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
-.alertPanel { margin: 16px 0; padding: 16px; border: 1px solid #bbd6c6; border-radius: 16px; background: #f0faf3; color: #123d2c; }
+.alertPanel { position: sticky; top: 0; z-index: 20; margin: 0 0 16px; border: 1px solid #bbd6c6; border-radius: 14px; background: #f5faf4; color: #123d2c; box-shadow: 0 3px 10px #123e3210; }
+.alertSettings summary { min-height: 44px; padding: 10px 13px; display: flex; align-items: center; justify-content: space-between; gap: 10px; list-style: none; cursor: pointer; font-size: 12px; font-weight: 600; }
+.alertSettings summary::-webkit-details-marker { display: none; }
+.alertSettings summary > span { display: flex; align-items: center; gap: 8px; }
+.alertSettings[open] > summary > svg { transform: rotate(180deg); }
+.alertSettingsBody { max-height: min(360px, 55dvh); overflow-y: auto; overscroll-behavior: contain; padding: 0 14px 14px; border-top: 1px solid #d8e5da; }
+.incomingOrderBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; background: #fff3cc; border-radius: 13px 13px 0 0; color: #49380e; border-bottom: 1px solid #e8d28d; }
+.incomingOrderBar > div { min-width: 0; }
+.incomingOrderBar strong { display: flex; align-items: center; gap: 7px; font-size: 14px; line-height: 1.3; }
+.incomingOrderBar span { display: block; margin-top: 4px; font-size: 11px; }
+.incomingOrderBar a { flex-shrink: 0; min-height: 44px; padding: 10px 12px; display: flex; align-items: center; text-align: center; border-radius: 10px; background: var(--forest); color: #fff; text-decoration: none; font-size: 12px; font-weight: 700; }
+.alertPanel .alertConnectionError { margin: 0; padding: 10px 13px; color: #8b3025; background: #fff0ec; font-size: 12px; border-radius: 13px 13px 0 0; }
+.ordersHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 0; }
+.ordersHeading h1 { margin: 0; font-size: 25px; line-height: 1.2; font-weight: 700; letter-spacing: -.6px; }
+.ordersHeading p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.ordersHeading > span { flex-shrink: 0; font-size: 10px; color: var(--muted); }
+.orderFilters { margin-top: 14px; }
+.orderCard { scroll-margin-top: 150px; }
+.productActions { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+.farmDetails { margin-top: 24px; border: 1px solid var(--line); border-radius: 14px; background: #fffefb; }
+.farmDetails summary { min-height: 44px; padding: 13px 16px; cursor: pointer; font-size: 12px; font-weight: 650; }
+.farmDetailsBody { padding: 0 16px 16px; }
+@media (max-width: 480px) { .headerInner { padding: 10px 17px; } .main { padding-top: 12px; } .navigation { gap: 8px; margin-bottom: 12px; flex-wrap: wrap; } .tab { padding: 0 9px; } .brand { font-size: 19px; } .brandMark { width: 36px; height: 36px; } .productHeading { margin-bottom: 8px; } .productHeading h1 { font-size: 24px; margin-top: 0; } .productHeading .addButton { margin-top: 0; } .productToolbar { margin-top: 12px; } .stats { padding: 12px 0; } .stat strong { font-size: 21px; } .ordersHeading { align-items: flex-start; } .ordersHeading > span { max-width: 65px; text-align: right; line-height: 1.5; } }
 .alertPanel p { margin: 8px 0; font-size: 14px; line-height: 1.5; }
 .alertButtons { display: flex; flex-wrap: wrap; gap: 8px; }
 .alertButtons button, .alertDialog button, .alertDialog a { min-height: 44px; padding: 10px 14px; border: 1px solid #286c49; border-radius: 10px; background: #fff; color: #17452f; font: inherit; font-weight: 700; cursor: pointer; }
