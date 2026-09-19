@@ -824,8 +824,10 @@ function NewErrandFlow(props: {
   setCargoWeight: (value: string) => void;
   cargoKg: number | null;
   cargoTooHeavy: boolean;
-  vehicleRequirement: "either" | "motorcycle" | "tricycle";
-  setVehicleRequirement: (value: "either" | "motorcycle" | "tricycle") => void;
+  vehicleRequirement: "either" | "motorcycle" | "tricycle" | "kolong_kolong";
+  setVehicleRequirement: (
+    value: "either" | "motorcycle" | "tricycle" | "kolong_kolong"
+  ) => void;
   stepReady: boolean[];
   formReady: boolean;
   notice: string;
