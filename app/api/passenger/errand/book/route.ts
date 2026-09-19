@@ -25,7 +25,7 @@ type ErrandBookBody = {
   is_pabili?: boolean;
   estimated_purchase_amount?: number | string | null;
   estimated_cargo_weight_kg?: number | string | null;
-  vehicle_requirement?: "motorcycle" | "tricycle" | "either";
+  vehicle_requirement?: "motorcycle" | "tricycle" | "kolong_kolong" | "either";
   accompanied?: boolean;
 };
 
@@ -251,7 +251,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!["motorcycle", "tricycle", "either"].includes(vehicleRequirement)) {
+    if (!["motorcycle", "tricycle", "kolong_kolong", "either"].includes(vehicleRequirement)) {
       return NextResponse.json(
         { ok: false, code: "INVALID_VEHICLE_REQUIREMENT" },
         { status: 400 }
