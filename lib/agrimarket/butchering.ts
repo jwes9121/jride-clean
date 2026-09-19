@@ -2,7 +2,7 @@ export type MeatCut = { name: string; price_per_kg: number; available_kg: number
 export type ButcheringPayload = {
   species: string; breed: string | null; description: string | null;
   butcher_start_at: string; butcher_end_at: string | null; order_cutoff_at: string;
-  condition: "fresh" | "chilled"; vehicle_requirement: "either" | "motorcycle" | "tricycle";
+  condition: "fresh" | "chilled"; vehicle_requirement: "either" | "motorcycle" | "tricycle" | "kolong_kolong";
   default_prep_minutes: number; is_active: boolean; cuts: MeatCut[];
 };
 const clean = (value: unknown) => typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
@@ -27,7 +27,7 @@ export function normalizeButchering(input: any): ButcheringPayload {
   const start = date(input.butcher_start_at), end = input.butcher_end_at ? date(input.butcher_end_at) : null, cutoff = date(input.order_cutoff_at);
   if (!start || !cutoff || (input.butcher_end_at && !end)) throw new Error("Enter the butchering date and reservation cutoff in Philippine time.");
   if (Date.parse(cutoff) >= Date.parse(start) || (end && Date.parse(end) < Date.parse(start))) throw new Error("Reservations must close before butchering starts. The end time cannot be earlier than the start.");
-  if (!["fresh", "chilled"].includes(input.condition) || !["either", "motorcycle", "tricycle"].includes(input.vehicle_requirement)) throw new Error("Choose the meat condition and delivery vehicle.");
+  if (!["fresh", "chilled"].includes(input.condition) || !["either", "motorcycle", "tricycle", "kolong_kolong"].includes(input.vehicle_requirement)) throw new Error("Choose the meat condition and delivery vehicle.");
   const prep = Number(input.default_prep_minutes);
   if (!/^[0-9]+$/.test(String(input.default_prep_minutes)) || !Number.isInteger(prep) || prep < 0 || prep > 1440 || typeof input.is_active !== "boolean") throw new Error("Check the preparation time and listing status.");
   if (!Array.isArray(input.cuts) || !input.cuts.length || input.cuts.length > 30) throw new Error("Add between 1 and 30 meat cuts.");
