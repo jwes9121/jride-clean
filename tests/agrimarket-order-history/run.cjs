@@ -112,5 +112,37 @@ async function runTests(load, assert, report) {
   report("database failures are surfaced instead of being reported as empty history");
 }
 
-runTests(load, assert, message => console.log("PASS " + message))
+async function checkDispatchLoading() {
+  const panel = fs.readFileSync(path.resolve(__dirname, "../../app/admin/livetrips/components/AgrimarketDispatchPanel.tsx"), "utf8");
+  const start = panel.indexOf("  const load = useCallback(");
+  const block = panel.slice(start, panel.indexOf("\n  useEffect", start));
+  const source = ts.transpileModule(block + "\nmodule.exports = load;", {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  async function check(reply) {
+    const state = {};
+    const setters = Object.fromEntries(["Loading", "Error", "HasLoaded", "Enabled", "StaffRole", "Orders"]
+      .map(key => ["set" + key, value => { state[key] = value; }]));
+    const module = { exports: {} };
+    vm.runInNewContext(source, { module, ...setters, useCallback: fn => fn,
+      loadFlight: { current: false }, fetch: async () => reply });
+    await module.exports();
+    return state;
+  }
+  const good = await check({ ok: true, json: async () => ({ ok: true, enabled: true, orders: [], staff_role: "admin" }) });
+  assert.equal(good.HasLoaded, true);
+  assert.equal(good.Orders.length, 0);
+  for (const reply of [
+    { ok: true, json: async () => ({}) },
+    { ok: false, json: async () => ({ error: "Sign in again" }) },
+    { ok: true, json: async () => { throw Error("invalid JSON"); } },
+  ]) {
+    const state = await check(reply);
+    assert.equal(state.HasLoaded, undefined);
+    assert.ok(state.Error);
+    assert.notEqual(state.Enabled, false);
+  }
+  console.log("PASS dispatch only treats a validated successful response as an order list");
+}
+runTests(load, assert, message => console.log("PASS " + message)).then(checkDispatchLoading)
   .catch(error => { console.error(error); process.exitCode = 1; });

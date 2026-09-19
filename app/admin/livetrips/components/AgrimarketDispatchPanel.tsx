@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type AgrimarketDispatchOrder = {
   pickup_issue?: { status: string; reason: string; confirm_farmer_refund?: unknown; confirm_customer_refund?: unknown } | null;
@@ -95,12 +95,16 @@ export default function AgrimarketDispatchPanel() {
   const [staffRole, setStaffRole] = useState("");
   const [orders, setOrders] = useState<AgrimarketDispatchOrder[]>([]);
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const loadFlight = useRef(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
   const load = useCallback(async (quiet = false) => {
+    if (loadFlight.current) return;
+    loadFlight.current = true;
     if (!quiet) setLoading(true);
     setError("");
     try {
@@ -108,15 +112,20 @@ export default function AgrimarketDispatchPanel() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload?.ok === false) {
         setError(payload?.message || payload?.error || "Unable to load Agrimarket dispatch.");
+      } else if (payload?.ok !== true || typeof payload.enabled !== "boolean" || !Array.isArray(payload.orders)) {
+        setError("The order list could not be read. Tap Refresh to try again.");
       } else {
-        setEnabled(Boolean(payload?.enabled));
+        setHasLoaded(true);
+        setEnabled(payload.enabled);
         setStaffRole(String(payload?.staff_role || ""));
         setOrders(Array.isArray(payload?.orders) ? payload.orders : []);
       }
     } catch (cause: any) {
       setError(String(cause?.message || "Unable to load Agrimarket dispatch."));
+    } finally {
+      loadFlight.current = false;
+      if (!quiet) setLoading(false);
     }
-    if (!quiet) setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -199,18 +208,21 @@ export default function AgrimarketDispatchPanel() {
             </span>
           </div>
           <p className="mt-1 text-[11px] text-slate-600">
-            Separate server-side dispatcher. It does not use the Haversine Smart Auto Assign ranking.
+            Orders appear while waiting for the farmer. Driver matching starts after acceptance and any required customer approval.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-[11px]">
-          <span className="rounded-full bg-white px-2 py-1">{orders.length} active</span>
+          <span className="rounded-full bg-white px-2 py-1">{hasLoaded ? `${orders.length} active` : "Loading orders..."}</span>
           <span className="rounded-full bg-white px-2 py-1">{summary.offered} offered</span>
           <span className="rounded-full bg-white px-2 py-1">{summary.assigned} assigned</span>
           {summary.harvest > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1">{summary.harvest} harvest</span> : null}
           {summary.settlement > 0 ? <span className="rounded-full bg-rose-100 px-2 py-1">{summary.settlement} settlement</span> : null}
           <button
             type="button"
-            onClick={() => setExpanded((value) => !value)}
+            onClick={() => {
+              setExpanded((value) => !value);
+              if (!expanded) void load();
+            }}
             className="rounded-lg border bg-white px-3 py-1.5 font-semibold"
           >
             {expanded ? "Hide" : "Open"}
@@ -231,7 +243,12 @@ export default function AgrimarketDispatchPanel() {
 
       {expanded ? (
         <div className="mt-3 max-h-[42vh] space-y-2 overflow-y-auto pr-1">
-          {orders.length === 0 ? (
+          {!hasLoaded && !error ? (
+            <div role="status" className="rounded-xl border bg-white p-4 text-center text-xs text-slate-500">
+              Loading Agrimarket orders...
+            </div>
+          ) : null}
+          {hasLoaded && !loading && !error && orders.length === 0 ? (
             <div className="rounded-xl border bg-white p-4 text-center text-xs text-slate-500">
               No active Agrimarket orders.
             </div>
@@ -275,6 +292,17 @@ export default function AgrimarketDispatchPanel() {
                   </div>
                 </div>
 
+                {order.status === "awaiting_producer" ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
+                    Waiting for farmer acceptance. No driver will be offered this order yet.
+                    {order.producer_confirm_expires_at ? ` Farmer reply deadline: ${formatDate(order.producer_confirm_expires_at)}.` : ""}
+                  </div>
+                ) : null}
+                {order.status === "awaiting_customer_reapproval" ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
+                    Waiting for the customer to approve revised charges or vehicle requirements. Driver matching is paused.
+                  </div>
+                ) : null}
                 {order.cash_collection_required ? (
                   <div className="mt-2 rounded-lg bg-blue-50 p-2 text-[11px] text-blue-900">
                     Cash-first: driver collects {money(order.cash_collection_amount)} from the customer before the farmer.

@@ -14,6 +14,9 @@ export const runtime = "nodejs";
 const ACTIVE_STATUSES = [
   "awaiting_producer",
   "awaiting_harvest",
+  "producer_accepted",
+  "awaiting_customer_reapproval",
+  "exception",
   "preparing",
   "ready_for_dispatch",
   "dispatching",
