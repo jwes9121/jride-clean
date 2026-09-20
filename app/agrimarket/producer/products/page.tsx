@@ -194,7 +194,7 @@ export default function AgrimarketProducerProductsPage() {
       setVendorName(payload.vendor_name || ""); setVendorNameDraft(payload.vendor_name || "");
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
       setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
-      setMessage(busyKey === "vendor-name" ? "Your private vendor name is saved." : "Product list updated.");
+      setMessage(busyKey === "vendor-name" ? "Your store name is saved." : "Product list updated.");
       if (busyKey === "create" && newPhoto) {
         if (payload.created_product_id) {
           try { await savePhoto(payload.created_product_id, newPhoto); setMessage("Product and photo saved."); }
