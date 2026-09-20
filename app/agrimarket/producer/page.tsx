@@ -189,14 +189,21 @@ export default function AgrimarketProducerPage() {
 
   useEffect(() => {
     if (!connected || disabled || !sessionCode) return;
-    const timer = window.setInterval(() => void loadOrders(sessionCode, true), 10000);
-    return () => window.clearInterval(timer);
+    const refresh = () => { if (document.visibilityState === "visible") void loadOrders(sessionCode, true); };
+    const timer = window.setInterval(refresh, 10000);
+    const push = (event: MessageEvent) => { if (event.data?.type === "jride-agrimarket-refresh") refresh(); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    navigator.serviceWorker?.addEventListener("message", push);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh); navigator.serviceWorker?.removeEventListener("message", push); };
   }, [connected, disabled, sessionCode]);
 
   function reviewOrder(orderCode: string) {
     if (!/^AG-[A-Z0-9-]+$/i.test(orderCode)) return;
     revealedOrder.current = "";
     setFilter("all");
+    if (sessionCode) void loadOrders(sessionCode, true);
     setOrderToReveal({ id: `agri-order-${orderCode}` });
   }
 
@@ -283,7 +290,7 @@ export default function AgrimarketProducerPage() {
     if (!quiet) setLoading(true);
     setError("");
     try {
-    const response = await fetch("/api/agrimarket/producer/orders?view=active", { cache: "no-store", headers: farmerSessionHeaders(code) });
+    const response = await fetch("/api/agrimarket/producer/orders?view=active", { cache: "no-store", headers: farmerSessionHeaders(code), signal: AbortSignal.timeout(8000) });
     const payload = await response.json().catch(() => ({}));
     if (accountRef.current !== code) return;
     if (["AGRIMARKET_DISABLED", "AGRIMARKET_FARMER_PORTAL_DISABLED"].includes(payload?.error)) {
@@ -489,7 +496,7 @@ export default function AgrimarketProducerPage() {
             <div className={styles.emptyCard}>
               <span className={styles.emptyIcon}><PackageCheck size={43} /></span>
               <h2>{orders.length ? "You’re all caught up here." : "Room for something good."}</h2>
-              <p>{orders.length ? "There are no orders in this view. Choose another filter to see the rest." : "New orders will appear here. For now, give your products a little care and keep your stock up to date."}</p>
+              <p>{orders.length ? "There are no orders in this view. Choose another filter to see the rest." : "Orders for the signed-in store appear here. Check History for expired, cancelled or completed bookings."}</p>
               {orders.length ? <button className={styles.primaryButton} onClick={() => setFilter("all")}>See all orders <ArrowUpRight size={17} /></button> : <Link href="/agrimarket/producer/products" className={styles.primaryButton}>Manage my products <ArrowUpRight size={17} /></Link>}
             </div>
             {setupOnly && <div className={styles.setupNotice}><Clock3 size={18} /><div><strong>Your farm setup is open.</strong>You can manage products now. Customer ordering is not open yet.</div></div>}

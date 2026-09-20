@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
 
       const currentRes = await admin
         .from("agrimarket_products")
-        .select("id,reserved_quantity,sold_quantity")
+        .select("id,listed_quantity,reserved_quantity,sold_quantity")
         .eq("id", productId)
         .eq("producer_id", producerAuth.producer.id)
         .limit(1)
@@ -198,11 +198,18 @@ export async function POST(req: NextRequest) {
         .from("agrimarket_products")
         .update({ listed_quantity: listedQuantity, updated_at: new Date().toISOString() })
         .eq("id", productId)
-        .eq("producer_id", producerAuth.producer.id);
+        .eq("producer_id", producerAuth.producer.id)
+        .eq("listed_quantity", currentRes.data.listed_quantity)
+        .eq("reserved_quantity", currentRes.data.reserved_quantity)
+        .eq("sold_quantity", currentRes.data.sold_quantity)
+        .select("id")
+        .maybeSingle();
 
       if (updateRes.error) {
         return jsonNoStore(409, { ok: false, error: "AGRIMARKET_PRODUCT_QUANTITY_UPDATE_FAILED", message: updateRes.error.message });
       }
+      if (!updateRes.data) return jsonNoStore(409, { ok: false, error: "AGRIMARKET_STOCK_CHANGED",
+        message: "Stock changed while saving. Refresh your products, check reservations, and enter the available quantity again." });
     } else if (action === "set_unit_weight") {
       const productId = uuid(body?.product_id || body?.productId);
       const unitWeightKg = finiteNumber(body?.unit_weight_kg ?? body?.unitWeightKg);

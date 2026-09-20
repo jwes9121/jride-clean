@@ -218,6 +218,7 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
       <a href={farmerOrderHref(pending[0].order_code)} onClick={() => { dismiss(); onReviewOrder?.(pending[0].order_code); }}>Review order</a>
     </div>}
     {error && <p className={styles.alertConnectionError} role="alert">{error}</p>}
+    {feed.received > 0 && !registered && <p className="mb-2 text-xs text-amber-800">Background alerts are not enabled on this browser. Keep Orders open, or enable and test alerts in Notification settings below.</p>}
     <details className={styles.alertSettings}>
       <summary><span><Settings2 size={16} aria-hidden="true" />Notification settings</span><ChevronDown size={16} aria-hidden="true" /></summary>
       <div className={styles.alertSettingsBody}>

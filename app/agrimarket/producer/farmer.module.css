@@ -108,6 +108,13 @@
 .activeBadge { color: #49763a; background: #edf3e2; }
 .stockStats { display: grid; grid-template-columns: 1.25fr 1fr 1fr; gap: 8px; border-top: 1px solid #edf0e7; padding-top: 17px; margin-top: 18px; }
 .stockStats strong { display: block; font-size: 17px; font-weight: 650; }
+.stockStats small { font-size: 12px; overflow-wrap: anywhere; }
+.storeStatus { padding: 18px; margin-bottom: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fffefb; font-size: 13px; }
+.storeStatusRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.storeStatusRow > div { min-width: 0; overflow-wrap: anywhere; }
+.storeStatusRow strong { font-size: 16px; }
+.storeStatus p { margin: 6px 0; }
+.stockControls { padding: 16px 21px; border-top: 1px solid var(--line); background: #f9faf3; display: grid; gap: 12px; }
 .stockStats span { display: block; color: #87917f; font-size: 10px; margin-top: 4px; }
 .editDetails { border-top: 1px solid var(--line); background: #f9faf3; }
 .editDetails summary { min-height: 47px; padding: 13px 21px; cursor: pointer; font-size: 12px; font-weight: 600; color: #617152; }

@@ -243,7 +243,8 @@ export async function POST(req: NextRequest) {
       return jsonNoStore(rpcFailureStatus(message), {
         ok: false,
         error: "AGRIMARKET_ORDER_CREATE_FAILED",
-        message,
+        message: message.includes("AGRIMARKET_PRODUCER_UNAVAILABLE_STORE_CLOSED")
+          ? "This store has closed for new orders. Refresh AgriMarket to choose an available store." : message,
       });
     }
 
