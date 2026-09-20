@@ -254,7 +254,7 @@ export default function AgrimarketProducerProductsPage() {
   return (
     <FarmerWorkspace section="products" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadProducts()} loading={loading || restoring || Boolean(busy)}>
         <div className={styles.productHeading}>
-          <div><h1 className="break-words">{vendorName || "Your products"}</h1><p>Your products, photos and stock.</p></div>
+          <div><h1 className="break-words">{vendorName || "Your products"}</h1><p>Your products, photos and stock.</p>{!vendorName.trim() ? <p role="alert" className="mt-2 text-sm font-bold text-amber-800">Store name required. <a href="#farm-details" className="underline">Complete Farm details</a> before publishing.</p> : null}</div>
           <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
         </div>
         <div className={styles.productActions}><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
@@ -303,7 +303,7 @@ export default function AgrimarketProducerProductsPage() {
               <p className={`${styles.scheduleNote} ${styles.fullWidth}`}>The date is an estimate. No driver is assigned until you confirm the products are ready. Shortfall or delay requires customer approval.</p>
             </> : null}
           </div></fieldset>
-            <div className={styles.formActions}><button type="button" disabled={!!busy || preparingPhoto} className={styles.quietButton} onClick={() => { setShowCreate(false); setNewPhoto(null); }}>Cancel</button><button disabled={!!busy || preparingPhoto} className={styles.primaryButton}>{busy === "create" ? "Saving…" : "Add product"}<ArrowUpRight size={17} /></button></div>
+            <div className={styles.formActions}><button type="button" disabled={!!busy || preparingPhoto} className={styles.quietButton} onClick={() => { setShowCreate(false); setNewPhoto(null); }}>Cancel</button><button disabled={!!busy || preparingPhoto} className={styles.primaryButton}>{busy === "create" ? "Saving..." : "Add product"}<ArrowUpRight size={17} /></button></div>
           </form>
         </section>}
 
@@ -331,20 +331,20 @@ export default function AgrimarketProducerProductsPage() {
               <details className={styles.editDetails}>
                 <summary>Edit stock & weight<span className="sr-only"> for {product.name}</span></summary>
                 <div className={styles.editGrid}>
-                  <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_available_quantity", product_id: product.id, available_quantity: Number(stockDraft[product.id]) }, `stock-${product.id}`); }}><label>Available quantity<input required type="number" min="0" step="0.01" value={stockDraft[product.id] ?? ""} onChange={(event) => setStockDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `stock-${product.id}` ? "Saving…" : "Save stock"}</button></form>
-                  <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_unit_weight", product_id: product.id, unit_weight_kg: (weightDraft[product.id] || "").trim() ? Number(weightDraft[product.id]) : null }, `weight-${product.id}`); }}><label>Weight per unit (kg)<input type="number" min="0.001" step="0.001" value={weightDraft[product.id] ?? ""} onChange={(event) => setWeightDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `weight-${product.id}` ? "Saving…" : "Save weight"}</button></form>
+                  <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_available_quantity", product_id: product.id, available_quantity: Number(stockDraft[product.id]) }, `stock-${product.id}`); }}><label>Available quantity<input required type="number" min="0" step="0.01" value={stockDraft[product.id] ?? ""} onChange={(event) => setStockDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `stock-${product.id}` ? "Saving..." : "Save stock"}</button></form>
+                  <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_unit_weight", product_id: product.id, unit_weight_kg: (weightDraft[product.id] || "").trim() ? Number(weightDraft[product.id]) : null }, `weight-${product.id}`); }}><label>Weight per unit (kg)<input type="number" min="0.001" step="0.001" value={weightDraft[product.id] ?? ""} onChange={(event) => setWeightDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `weight-${product.id}` ? "Saving..." : "Save weight"}</button></form>
                   <button type="button" disabled={Boolean(busy)} onClick={() => void productAction({ action: "set_active", product_id: product.id, is_active: !product.is_active }, `active-${product.id}`)} className={styles.secondaryButton}>{busy === `active-${product.id}` ? "Updating…" : product.is_active ? "Pause listing" : "Reopen listing"}</button>
                 </div>
               </details>
             </article>;
           })}
         </section>
-        <details className={styles.farmDetails}>
+        <details id="farm-details" className={styles.farmDetails} open={!vendorName.trim() || undefined}>
           <summary>Farm details</summary>
           <form className={styles.farmDetailsBody} onSubmit={event => { event.preventDefault(); void productAction({ action: "set_vendor_name", vendor_name: vendorNameDraft }, "vendor-name"); }}>
-            <label htmlFor="vendor-name" className="text-sm font-semibold">Vendor name</label>
-            <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving…" : "Save vendor name"}</button></div>
-            <p className="mt-2 text-xs text-slate-600">Hidden from passengers. Visible to you, Admin and the driver assigned to your order.</p>
+            <label htmlFor="vendor-name" className="text-sm font-semibold">Store name (required)</label>
+            <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving..." : "Save store name"}</button></div>
+            <p className="mt-2 text-xs text-slate-600">Customers see this name when they open your store profile. A store name is required before publishing products or receiving orders. Your private contact details and pickup pin stay restricted.</p>
           </form>
         </details>
     </FarmerWorkspace>

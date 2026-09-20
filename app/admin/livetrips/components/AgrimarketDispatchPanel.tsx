@@ -1,5 +1,6 @@
 "use client";
 
+import ReapprovalCountdown from "@/components/agrimarket/ReapprovalCountdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgrimarketOrderDetails, type DispatchItem } from "./AgrimarketOrderDetails";
 
@@ -7,6 +8,9 @@ export type AgrimarketDispatchOrder = {
   customer?: { name: string | null; phone: string | null; delivery_label: string | null; address_text: string | null; landmark: string | null } | null;
   items?: DispatchItem[];
   details?: Record<string, string | number | null>;
+  customer_reapproval_expires_at?: string | null;
+  server_now?: string;
+  admin_actions?: { can_cancel: boolean; can_reassign: boolean; recovery_required: boolean; active_offer_id: string | null };
   created_at?: string | null;
   updated_at?: string | null;
   pickup_issue?: { status: string; reason: string; confirm_farmer_refund?: unknown; confirm_customer_refund?: unknown } | null;
@@ -145,6 +149,24 @@ export default function AgrimarketDispatchPanel() {
     const timer = window.setInterval(() => void load(true), 10000);
     return () => window.clearInterval(timer);
   }, [enabled, load]);
+
+  async function adminAction(order: AgrimarketDispatchOrder, action: "cancel" | "reassign") {
+    const note = window.prompt(action === "cancel" ? "Cancel this order and release its reserved stock. Enter the reason (at least 5 characters):" : "Release this driver/offer and find the next eligible driver. The driver approach fee will be recalculated. Enter the reason (at least 5 characters):");
+    if (note == null) return;
+    if (note.trim().length < 5 || note.trim().length > 1000) { setError("Enter a reason of 5 to 1000 characters."); return; }
+    setBusy(order.order_id); setError(""); setMessage("");
+    try {
+      const response = await fetch("/api/agrimarket/admin/dispatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        action, order_code: order.order_code, note: note.trim(), expected_status: order.status,
+        expected_driver_id: order.assigned_driver?.driver_id || null, expected_offer_id: order.admin_actions?.active_offer_id || null,
+      }) });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.message || payload.error || "Unable to update the order.");
+      setMessage(action === "cancel" ? `${order.order_code}: cancelled and reserved stock released.` : `${order.order_code}: previous driver/offer released. ${payload.dispatch?.offered ? "Offered to the next eligible driver." : payload.dispatch?.assigned ? "A driver is assigned." : "Waiting for an eligible driver; automatic matching will retry."}`);
+      await load(true);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to update the order. Refresh before trying again."); }
+    finally { setBusy(""); }
+  }
 
   async function resolveIssue(order: AgrimarketDispatchOrder, resolution: string) {
     const note = window.prompt(resolution === "cancel" ? "Why is this order being cancelled? Required cash returns must be confirmed by the driver." : "Confirm the ORIGINAL booked load, price and vehicle have been restored. Describe the correction. Material changes require cancellation and a new booking.");
@@ -301,7 +323,7 @@ export default function AgrimarketDispatchPanel() {
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
                     <span className="text-slate-500">Ready</span>
-                    <p className="font-semibold">{order.ready_at ? formatDate(order.ready_at) : "Not ready"}</p>
+                    <p className="font-semibold">{order.status === "awaiting_customer_reapproval" ? "Paused for customer approval" : order.ready_at ? formatDate(order.ready_at) : "Not ready"}</p>
                   </div>
                 </div>
 
@@ -314,6 +336,8 @@ export default function AgrimarketDispatchPanel() {
                 {order.status === "awaiting_customer_reapproval" ? (
                   <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                     Waiting for the customer to approve revised charges or vehicle requirements. Driver matching is paused.
+                    <ReapprovalCountdown expiresAt={order.customer_reapproval_expires_at} serverNow={order.server_now} />
+                    <p>No response within five minutes cancels this order and releases reserved stock.</p>
                   </div>
                 ) : null}
                 {order.cash_collection_required ? (
@@ -361,6 +385,11 @@ export default function AgrimarketDispatchPanel() {
                 ) : null}
 
                 <AgrimarketOrderDetails order={order} />
+                {staffRole === "admin" ? <div className="mt-3 flex flex-wrap gap-2">
+                  <button type="button" disabled={Boolean(busy) || !order.admin_actions?.can_cancel} onClick={() => void adminAction(order, "cancel")} className="rounded-lg border border-red-700 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-40">Cancel order</button>
+                  <button type="button" disabled={Boolean(busy) || !order.admin_actions?.can_reassign} onClick={() => void adminAction(order, "reassign")} className="rounded-lg border border-indigo-700 px-3 py-2 text-xs font-bold text-indigo-700 disabled:opacity-40">Reassign driver</button>
+                  {order.admin_actions?.recovery_required ? <p className="w-full text-xs text-amber-900">Cash or goods have moved, or a pickup issue is open. Resolve the recovery before cancellation or reassignment.</p> : !order.admin_actions?.can_reassign ? <p className="w-full text-xs text-slate-500">Reassignment is available after a driver offer or assignment, before cash collection or pickup.</p> : null}
+                </div> : null}
 
                 {canDispatch ? (
                   <button

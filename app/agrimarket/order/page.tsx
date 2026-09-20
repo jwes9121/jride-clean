@@ -1,5 +1,7 @@
 "use client";
 
+import CustomerReapprovalDialog from "@/components/agrimarket/CustomerReapprovalDialog";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
@@ -57,6 +59,8 @@ type OrderStatus = {
   confirmed_cargo_weight_band?: string | null;
   confirmed_handling_tier?: string | null;
   cargo_confirmation?: CargoConfirmation | null;
+  server_now?: string;
+  cancel_reason?: string | null;
   customer_reapproval_required?: boolean;
   customer_reapproval?: {
     approved_total: number;
@@ -67,6 +71,7 @@ type OrderStatus = {
     price_increased: boolean;
     vehicle_escalated: boolean;
     required_at?: string | null;
+    expires_at?: string | null;
     confirmed_cargo?: CargoConfirmation | null;
     charge_breakdown?: ChargeBreakdown | null;
   } | null;
@@ -183,12 +188,15 @@ export default function AgrimarketOrderTrackingPage() {
     if (!clean) return;
     if (!quiet) setLoading(true);
     setError("");
-    const response = await fetch(`/api/agrimarket/order-status?${new URLSearchParams({ order_code: clean }).toString()}`, { cache: "no-store", headers: authHeaders() });
-    const payload = await response.json().catch(() => ({}));
-    if (payload?.error === "AGRIMARKET_DISABLED") { setDisabled(true); setOrder(null); }
-    else if (!response.ok || payload?.ok === false) { setError(payload?.message || payload?.error || "Unable to load this Agrimarket order."); if (!quiet) setOrder(null); }
-    else { setOrder(payload.order as OrderStatus); window.history.replaceState(null, "", `/agrimarket/order?code=${encodeURIComponent(clean)}`); }
-    if (!quiet) setLoading(false);
+    try {
+      const response = await fetch(`/api/agrimarket/order-status?${new URLSearchParams({ order_code: clean }).toString()}`, { cache: "no-store", headers: authHeaders() });
+      const payload = await response.json().catch(() => ({}));
+      if (payload?.error === "AGRIMARKET_DISABLED") { setDisabled(true); setOrder(null); }
+      else if (!response.ok || payload?.ok === false) { setError(payload?.message || payload?.error || "Unable to load this Agrimarket order."); if (!quiet) setOrder(null); }
+      else { setOrder(payload.order as OrderStatus); window.history.replaceState(null, "", `/agrimarket/order?code=${encodeURIComponent(clean)}`); }
+    } catch {
+      setError("Unable to refresh the order. Check your connection. The approval deadline still applies.");
+    } finally { if (!quiet) setLoading(false); }
   }
 
   async function respondHarvest(responseValue: "accept" | "reject") {
@@ -203,28 +211,28 @@ export default function AgrimarketOrderTrackingPage() {
   }
 
   async function respondReapproval(responseValue: "accept" | "reject") {
-    if (!order) return;
-    setResponding(true);
-    setError("");
-    const response = await fetch("/api/agrimarket/order-reapproval-response", {
-      method: "POST",
-      headers: authHeaders(true),
-      body: JSON.stringify({
-        order_code: order.order_code,
-        response: responseValue,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) {
-      setError(
-        payload?.message ||
-          payload?.error ||
-          "Unable to respond to the revised Agrimarket charges."
-      );
-    } else {
+    if (!order || responding) return;
+    setResponding(true); setError("");
+    try {
+      const response = await fetch("/api/agrimarket/order-reapproval-response", {
+        method: "POST", headers: authHeaders(true), body: JSON.stringify({
+          order_code: order.order_code, response: responseValue,
+          expected_total: order.customer_reapproval?.revised_total,
+          expected_vehicle: order.customer_reapproval?.revised_vehicle_type,
+          expected_deadline: order.customer_reapproval?.expires_at,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
       await loadOrder(order.order_code, true);
-    }
-    setResponding(false);
+      if (!response.ok || payload?.ok === false) {
+        setError(payload?.error === "AGRIMARKET_REAPPROVAL_PROPOSAL_STALE"
+          ? "The proposal changed. Review the refreshed details before approving."
+          : payload?.error === "AGRIMARKET_REAPPROVAL_EXPIRED" ? "The approval window has expired."
+          : payload?.message || "Unable to respond. Please check the order and try again.");
+      }
+    } catch {
+      setError("Unable to reach JRide. Check your connection and try again before the deadline.");
+    } finally { setResponding(false); }
   }
 
   if (disabled) return <main className="min-h-screen bg-emerald-50 p-8"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8"><h1 className="text-2xl font-bold">Agrimarket is still in pre-launch</h1></div></main>;
@@ -253,7 +261,11 @@ export default function AgrimarketOrderTrackingPage() {
             {order.confirmed_cargo_weight_basis === "approximate" ? <p className="mt-2 text-xs text-slate-600">The selected weight range is authoritative for Heavy Load Fee and vehicle sizing. Any rough kilogram estimate is not treated as an exact weight.</p> : null}
           </div>
 
-          {order.customer_reapproval_required && order.customer_reapproval ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer confirmation changed your delivery requirements</h3><div className="mt-3 space-y-1 text-sm"><p>Previously approved total: <strong>{money(order.customer_reapproval.approved_total)}</strong></p><p>Revised total: <strong>{money(order.customer_reapproval.revised_total)}</strong></p>{order.customer_reapproval.price_increased ? <p>Increase: <strong>{money(order.customer_reapproval.increase_amount)}</strong></p> : null}{order.customer_reapproval.vehicle_escalated ? <p>Vehicle change: <strong>{titleCase(order.customer_reapproval.approved_vehicle_type)} to Tricycle required</strong></p> : null}</div>{order.customer_reapproval.charge_breakdown ? <div className="mt-3 rounded-xl bg-white/70 p-3 text-sm"><p className="font-semibold">Farmer-confirmed charge breakdown</p><div className="mt-2 space-y-1"><div className="flex justify-between"><span>Products</span><strong>{money(order.customer_reapproval.charge_breakdown.products)}</strong></div><div className="flex justify-between"><span>Delivery</span><strong>{money(order.customer_reapproval.charge_breakdown.delivery)}</strong></div><div className="flex justify-between"><span>Heavy Load Fee</span><strong>{money(order.customer_reapproval.charge_breakdown.heavy_load_fee)}</strong></div><div className="flex justify-between"><span>Special Handling Fee</span><strong>{money(order.customer_reapproval.charge_breakdown.special_handling_fee)}</strong></div><div className="flex justify-between"><span>Driver Approach Fee</span><strong>{order.customer_reapproval.charge_breakdown.driver_approach_fee_locked ? money(order.customer_reapproval.charge_breakdown.driver_approach_fee) : "Pending driver assignment"}</strong></div></div></div> : null}<p className="mt-3 text-xs">No driver will be dispatched until you accept. If you do not want the revised charges or vehicle requirement, cancel this order and the reserved inventory will be released.</p><div className="mt-3 flex flex-wrap gap-2"><button disabled={responding} onClick={() => respondReapproval("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">Accept revised charges</button><button disabled={responding} onClick={() => respondReapproval("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white disabled:bg-slate-400">Cancel order</button></div></div> : null}
+          {order.customer_reapproval_required && order.customer_reapproval ? <CustomerReapprovalDialog
+            proposal={order.customer_reapproval} serverNow={order.server_now} busy={responding} error={error}
+            onRespond={response => void respondReapproval(response)} onExpire={() => void loadOrder(order.order_code, true)} /> : null}
+          {order.cancel_reason === "customer_reapproval_timeout" ? <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-4 text-sm">Cancelled because the five-minute approval window expired. Reserved stock has been released. You can place a new order from the marketplace.</p> : null}
+
 
           {order.cash_due_now > 0 ? <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-blue-950"><p className="text-sm font-semibold">Cash due now</p><p className="mt-1 text-2xl font-bold">{money(order.cash_due_now)}</p><p className="mt-1 text-xs">Pay only to the assigned JRide driver as instructed.</p></div> : null}
 

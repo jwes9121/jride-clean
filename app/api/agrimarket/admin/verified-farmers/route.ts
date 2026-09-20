@@ -128,6 +128,9 @@ function provisioningFailure(error: any) {
       message: "A farmer with this mobile number already has an open or approved Agrimarket record.",
     });
   }
+  if (raw.includes("store_name_required") || raw.includes("STORE_NAME_REQUIRED")) {
+    return jsonNoStore(409, { ok: false, error: "AGRIMARKET_STORE_NAME_REQUIRED", message: "The farmer must save a store name in Farm details before orders can be enabled." });
+  }
   if (raw.includes("NO_ACTIVE_PRODUCT")) {
     return jsonNoStore(409, {
       ok: false,

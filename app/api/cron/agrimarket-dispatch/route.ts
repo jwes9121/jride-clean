@@ -43,6 +43,9 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
 
+  const approvalExpiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1");
+  if (approvalExpiry.error) return NextResponse.json({ ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" }, { status: 503, headers: headers() });
+
   const settlementRes = await admin.rpc("agrimarket_retry_pending_settlements_v1", {
     p_now: nowIso,
     p_limit: 100,

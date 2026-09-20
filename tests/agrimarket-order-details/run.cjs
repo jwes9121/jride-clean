@@ -37,7 +37,7 @@ function harness({ denied = false, failTable, mismatch = false, missing = false 
     agrimarket_producers: [{ id: 'farm-a', vendor_name: 'Test Farm', town: 'Hingyon', barangay: 'Test area' }],
   };
   const db = {
-    rpc: async name => { assert.equal(name, 'agrimarket_expire_pending_orders_v1'); return { error: null }; },
+    rpc: async name => { assert(['agrimarket_expire_pending_orders_v1', 'agrimarket_expire_customer_reapproval_v1'].includes(name)); return { error: null }; },
     from(table) {
       calls.push(table);
       let data = [...(rows[table] || [])];

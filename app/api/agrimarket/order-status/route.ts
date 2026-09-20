@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,created_at,updated_at"
+        "id,order_code,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,cancel_reason,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -63,6 +63,13 @@ export async function GET(req: NextRequest) {
     }
 
     const order: any = orderRes.data;
+    if (order.status === "awaiting_customer_reapproval" && order.customer_reapproval_expires_at && Date.parse(order.customer_reapproval_expires_at) <= Date.now()) {
+      const expiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1", { p_order_id: order.id });
+      if (expiry.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" });
+      const refreshed = await admin.from("agrimarket_orders").select("status,cancel_reason,updated_at,customer_reapproval_response,customer_approved_total,customer_approved_vehicle_type,ready_at").eq("id", order.id).single();
+      if (refreshed.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_ORDER_STATUS_READ_FAILED" });
+      Object.assign(order, refreshed.data);
+    }
     const [itemsRes, proposalRes] = await Promise.all([
       admin
         .from("agrimarket_order_items")
@@ -186,6 +193,8 @@ export async function GET(req: NextRequest) {
         confirmed_cargo_weight_band: text(order.confirmed_cargo_weight_band) || null,
         confirmed_handling_tier: text(order.confirmed_handling_tier) || null,
         cargo_confirmation: cargoConfirmation,
+        server_now: new Date().toISOString(),
+        cancel_reason: order.cancel_reason || null,
         customer_reapproval_required: customerReapprovalRequired,
         customer_reapproval: customerReapprovalRequired
           ? {
@@ -196,9 +205,9 @@ export async function GET(req: NextRequest) {
               revised_vehicle_type: revisedVehicleType,
               price_increased: revisedTotal > approvedTotal,
               vehicle_escalated:
-                approvedVehicleType !== "tricycle" &&
-                revisedVehicleType === "tricycle",
+                (["motorcycle", "tricycle", "kolong_kolong"].indexOf(revisedVehicleType) > ["motorcycle", "tricycle", "kolong_kolong"].indexOf(approvedVehicleType)),
               required_at: order.customer_reapproval_required_at,
+              expires_at: order.customer_reapproval_expires_at,
               confirmed_cargo: cargoConfirmation,
               charge_breakdown: chargeBreakdown,
             }

@@ -145,9 +145,12 @@ export async function POST(req: NextRequest) {
     let createdProductId: string | null = null;
     let vendorName: string | null = producerAuth.producer.vendor_name || null;
 
+    if (!vendorName?.trim() && (action === "create" || (action === "set_active" && body.is_active === true))) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_STORE_NAME_REQUIRED", message: "Save your required store name in Farm details before publishing products." });
+    }
     if (action === "set_vendor_name") {
       const value = typeof body.vendor_name === "string" ? body.vendor_name.trim().replace(/\s+/g, " ") : "";
-      if (value.length < 2 || value.length > 60 || /[\u0000-\u001f\u007f]/.test(value)) return jsonNoStore(400, { ok: false, message: "Enter a vendor name between 2 and 60 characters." });
+      if (value.length < 2 || value.length > 60 || /[\u0000-\u001f\u007f]/.test(value)) return jsonNoStore(400, { ok: false, message: "Enter a store name between 2 and 60 characters." });
       const saved = await admin.from("agrimarket_producers").update({ vendor_name: value, updated_at: new Date().toISOString() }).eq("id", producerAuth.producer.id).select("id,vendor_name").maybeSingle();
       if (saved.error || !saved.data) return jsonNoStore(409, { ok: false, message: "The vendor name could not be saved. Refresh and try again." });
       vendorName = saved.data.vendor_name;
