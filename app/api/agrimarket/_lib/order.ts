@@ -376,7 +376,7 @@ export async function loadAgrimarketOrderContext(
   const producerId = Array.from(producerIds)[0];
   const producerRes = await admin
     .from("agrimarket_producers")
-    .select(`id,pickup_lat,pickup_lng,status,accepting_orders,marketplace_fee_percent,${PICKUP_ACCESS_COLUMNS}`)
+    .select(`id,pickup_lat,pickup_lng,status,accepting_orders,store_open,marketplace_fee_percent,${PICKUP_ACCESS_COLUMNS}`)
     .eq("id", producerId)
     .limit(1)
     .maybeSingle();
@@ -387,7 +387,8 @@ export async function loadAgrimarketOrderContext(
   if (
     !producerRes.data ||
     String((producerRes.data as any).status || "").toLowerCase() !== "active" ||
-    (producerRes.data as any).accepting_orders !== true
+    (producerRes.data as any).accepting_orders !== true ||
+    (producerRes.data as any).store_open === false
   ) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_PRODUCER_UNAVAILABLE",

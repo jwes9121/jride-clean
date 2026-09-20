@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     const orderRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,cancel_reason,created_at,updated_at"
+        "id,producer_id,order_code,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,selected_vehicle_type,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_responded_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,customer_reapproval_resume_status,product_subtotal,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,cash_collection_required,cash_collection_amount,customer_cash_collected_at,customer_cash_collected_amount,route_plan,assignment_anchor,route_distance_km,route_duration_seconds,delivery_base_fee,delivery_distance_fee,delivery_fee,driver_to_first_pickup_km,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,handling_fee,handling_reason,handling_locked_at,total_payable,picked_up_at,delivering_at,delivered_at,completed_at,final_cash_collected_at,final_cash_collected_amount,cancel_reason,created_at,updated_at"
       )
       .eq("order_code", orderCode)
       .eq("customer_user_id", passengerAuth.user.id)
@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
       if (refreshed.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_ORDER_STATUS_READ_FAILED" });
       Object.assign(order, refreshed.data);
     }
-    const [itemsRes, proposalRes] = await Promise.all([
+    const [itemsRes, proposalRes, storeRes] = await Promise.all([
       admin
         .from("agrimarket_order_items")
         .select(
@@ -86,6 +86,7 @@ export async function GET(req: NextRequest) {
         .order("proposed_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      admin.from("agrimarket_producers").select("vendor_name,town").eq("id", order.producer_id).maybeSingle(),
     ]);
 
     if (itemsRes.error) {
@@ -102,6 +103,8 @@ export async function GET(req: NextRequest) {
         message: proposalRes.error.message,
       });
     }
+
+    if (storeRes.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_ORDER_STORE_READ_FAILED" });
 
     const collectedBeforeFarmer = num(order.customer_cash_collected_amount);
     const finalCashDue = Math.max(0, num(order.total_payable) - collectedBeforeFarmer);
@@ -155,6 +158,7 @@ export async function GET(req: NextRequest) {
       ok: true,
       order: {
         order_code: order.order_code,
+        store: storeRes.data ? { name: storeRes.data.vendor_name || null, town: storeRes.data.town || null } : null,
         status: order.status,
         pickup_paused: order.pickup_issue?.status === "open",
         pickup_message: order.pickup_issue?.status === "open" ? "Pickup is paused while JRide resolves a load issue. No extra charge has been added." : null,

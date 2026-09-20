@@ -255,7 +255,8 @@ export async function GET(req: NextRequest) {
       .select("id,town,pickup_lat,pickup_lng,status,accepting_orders")
       .in("id", producerIds)
       .eq("status", "active")
-      .eq("accepting_orders", true);
+      .eq("accepting_orders", true)
+      .eq("store_open", true);
 
     if (producerRes.error) {
       return jsonNoStore(500, {

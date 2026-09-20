@@ -1,5 +1,7 @@
 "use client";
 
+import OrderExpiryDialog from "@/components/agrimarket/OrderExpiryDialog";
+import { agrimarketExpiryNotice } from "@/lib/agrimarket/orderExpiry";
 import CustomerReapprovalDialog from "@/components/agrimarket/CustomerReapprovalDialog";
 
 import Link from "next/link";
@@ -26,6 +28,7 @@ type OrderStatus = {
   pickup_paused?: boolean;
   pickup_message?: string | null;
   order_code: string;
+  store?: { name: string | null; town: string | null } | null;
   status: string;
   fulfillment_mode: string;
   harvest_expected_start_at?: string | null;
@@ -148,6 +151,8 @@ function cargoConfirmationLabel(order: OrderStatus): string {
 }
 
 function progressLabel(order: OrderStatus): string {
+  const expiry = agrimarketExpiryNotice(order);
+  if (expiry) return expiry.title;
   if (order.pickup_paused) return "Pickup paused - JRide is resolving a load issue";
   if (order.completed_at || order.status === "completed") return "Order completed";
   if (order.delivered_at || order.status === "delivered") return "Delivered";
@@ -179,8 +184,11 @@ export default function AgrimarketOrderTrackingPage() {
   useEffect(() => {
     if (!order || disabled) return;
     if (["completed", "cancelled", "producer_rejected", "producer_timeout"].includes(String(order.status).toLowerCase())) return;
-    const timer = window.setInterval(() => void loadOrder(order.order_code, true), 10000);
-    return () => window.clearInterval(timer);
+    const refresh = () => { if (document.visibilityState === "visible") void loadOrder(order.order_code, true); };
+    const timer = window.setInterval(refresh, 10000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
   }, [order?.order_code, order?.status, disabled]);
 
   async function loadOrder(orderCode = code, quiet = false) {
@@ -235,6 +243,8 @@ export default function AgrimarketOrderTrackingPage() {
     } finally { setResponding(false); }
   }
 
+  const expiryNotice = order ? agrimarketExpiryNotice(order) : null;
+
   if (disabled) return <main className="min-h-screen bg-emerald-50 p-8"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8"><h1 className="text-2xl font-bold">Agrimarket is still in pre-launch</h1></div></main>;
 
   return (
@@ -247,6 +257,12 @@ export default function AgrimarketOrderTrackingPage() {
         {order ? <section className="mt-5 rounded-3xl border bg-white p-5 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{order.order_code}</p><h2 className="mt-1 text-2xl font-bold">{progressLabel(order)}</h2><p className="mt-1 text-sm text-slate-500">Status: {titleCase(order.status)}</p>
 
+          {order.store?.name && <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm">Store: <strong>{order.store.name}</strong>{order.store.town ? ` - ${order.store.town}` : ""}</p>}
+          {expiryNotice ? <>
+            <p role="alert" className="mt-4 rounded-xl border-2 border-red-400 bg-red-50 p-4 font-semibold text-red-900">{expiryNotice.message}</p>
+            <OrderExpiryDialog key={order.order_code} orderCode={order.order_code} storeName={order.store?.name}
+              title={expiryNotice.title} message={expiryNotice.message} onAcknowledge={() => window.location.replace("/agrimarket")} />
+          </> : <>
           {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}<br/>{order.harvest_ready_at ? `Farmer marked products ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer confirms the products are ready."}</div> : null}
 
           {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New {scheduledActivity(order.items)} date: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}
@@ -264,7 +280,6 @@ export default function AgrimarketOrderTrackingPage() {
           {order.customer_reapproval_required && order.customer_reapproval ? <CustomerReapprovalDialog
             proposal={order.customer_reapproval} serverNow={order.server_now} busy={responding} error={error}
             onRespond={response => void respondReapproval(response)} onExpire={() => void loadOrder(order.order_code, true)} /> : null}
-          {order.cancel_reason === "customer_reapproval_timeout" ? <p role="alert" className="mt-4 rounded-xl bg-amber-50 p-4 text-sm">Cancelled because the five-minute approval window expired. Reserved stock has been released. You can place a new order from the marketplace.</p> : null}
 
 
           {order.cash_due_now > 0 ? <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-blue-950"><p className="text-sm font-semibold">Cash due now</p><p className="mt-1 text-2xl font-bold">{money(order.cash_due_now)}</p><p className="mt-1 text-xs">Pay only to the assigned JRide driver as instructed.</p></div> : null}
@@ -273,7 +288,8 @@ export default function AgrimarketOrderTrackingPage() {
           <div className="mt-5 space-y-2 text-sm"><div className="flex justify-between"><span>Products</span><strong>{money(order.product_subtotal)}</strong></div><div className="flex justify-between"><span>Delivery</span><strong>{money(order.delivery_fee)}</strong></div><div className="flex justify-between"><span>Heavy Load Fee</span><strong>{order.heavy_load_fee_confirmed ? money(order.heavy_load_fee) : "Pending farmer confirmation"}</strong></div><div className="flex justify-between"><span>Special Handling Fee</span><strong>{order.special_handling_fee_confirmed ? money(order.special_handling_fee) : "Pending farmer confirmation"}</strong></div><div className="flex justify-between"><span>Driver Approach Fee</span><strong>{order.pickup_fee_locked ? money(order.pickup_distance_fee) : "Pending driver assignment"}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Current total</span><strong>{money(order.total_payable)}</strong></div></div>
           {!order.pickup_fee_locked ? <p className="mt-2 text-xs text-slate-500">Current total does not yet include the final Driver Approach Fee. That fee is locked only after an eligible driver is assigned.</p> : null}
           {order.cash_collection_required ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">Product cash-first order: {money(order.cash_collection_amount)} is collected before farmer pickup. Remaining Delivery, Heavy Load, Special Handling, and Driver Approach charges are settled at final delivery as applicable.</div> : null}
-          <p className="mt-5 text-xs text-slate-500">Farmer identity, personal contact details, and exact source location are protected by JRide.</p>
+          <p className="mt-5 text-xs text-slate-500">Farmer personal contact details and the exact pickup location are protected by JRide.</p>
+          </>}
         </section> : null}
       </div>
     </main>
