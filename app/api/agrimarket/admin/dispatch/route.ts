@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { loadOrderCustomers, nullableNumber } from "@/lib/agrimarket/orderCustomer";
 import { offerAgrimarketDriver } from "@/lib/agrimarket/dispatch";
 import {
   agrimarketEnabled,
@@ -55,7 +56,8 @@ export async function GET() {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at"
+        "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at," +
+        "customer_user_id,delivery_address_id,delivery_label,delivery_lat,delivery_lng,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,route_provider,selected_vehicle_type,checkout_preferred_vehicle_type,product_required_vehicle_type,delivery_base_fee,delivery_distance_fee,delivery_rate_per_km,heavy_load_fee,handling_reason,pickup_fee_locked_at,driver_delivery_payout,delivery_company_cut,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,final_cash_collected_at,final_cash_collected_amount,company_settlement_due,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_band,confirmed_handling_tier,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,dispatch_started_at,picked_up_at,delivering_at,delivered_at,completed_at"
       )
       .in("status", ACTIVE_STATUSES)
       .order("created_at", { ascending: false })
@@ -73,11 +75,11 @@ export async function GET() {
     const orderIds = orders.map((row: any) => text(row.id)).filter(Boolean);
     const producerIds = Array.from(new Set(orders.map((row: any) => text(row.producer_id)).filter(Boolean)));
 
-    const [producerRes, offersRes] = await Promise.all([
+    const [producerRes, offersRes, itemsRes, customers] = await Promise.all([
       producerIds.length
         ? admin
             .from("agrimarket_producers")
-            .select("id,town,barangay")
+            .select("id,town,barangay,vendor_name,contact_name")
             .in("id", producerIds)
         : Promise.resolve({ data: [], error: null } as any),
       orderIds.length
@@ -89,14 +91,27 @@ export async function GET() {
             .in("order_id", orderIds)
             .order("updated_at", { ascending: false })
         : Promise.resolve({ data: [], error: null } as any),
+      orderIds.length
+        ? admin.from("agrimarket_order_items")
+            .select("order_id,product_id,product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at")
+            .in("order_id", orderIds).order("created_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null } as any),
+      loadOrderCustomers(admin, orders),
     ]);
 
-    if (producerRes.error || offersRes.error) {
+    if (producerRes.error || offersRes.error || itemsRes.error) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_ADMIN_DISPATCH_DETAIL_FAILED",
-        message: producerRes.error?.message || offersRes.error?.message,
+        message: producerRes.error?.message || offersRes.error?.message || itemsRes.error?.message,
       });
+    }
+
+    const itemsByOrder = new Map<string, any[]>();
+    for (const item of itemsRes.data || []) {
+      const list = itemsByOrder.get(item.order_id) || [];
+      list.push({ ...item, quantity: nullableNumber(item.quantity), unit_price: nullableNumber(item.unit_price), line_total: nullableNumber(item.line_total) });
+      itemsByOrder.set(item.order_id, list);
     }
 
     const producerById = new Map<string, any>();
@@ -146,6 +161,26 @@ export async function GET() {
       const expiryMs = offer?.expires_at ? Date.parse(String(offer.expires_at)) : NaN;
 
       return {
+        customer: customers.get(row.id) || null,
+        items: itemsByOrder.get(row.id) || [],
+        details: {
+          ...Object.fromEntries([
+            "delivery_lat", "delivery_lng", "route_distance_km", "route_duration_seconds",
+            "farmer_to_customer_distance_km", "farmer_to_customer_duration_seconds",
+            "customer_to_farmer_distance_km", "customer_to_farmer_duration_seconds", "driver_to_first_pickup_km",
+            "delivery_base_fee", "delivery_distance_fee", "delivery_rate_per_km", "heavy_load_fee",
+            "driver_delivery_payout", "delivery_company_cut", "customer_cash_collected_amount", "producer_paid_amount",
+            "final_cash_collected_amount", "company_settlement_due", "estimated_cargo_weight_kg", "confirmed_cargo_weight_kg",
+            "customer_approved_total", "customer_reapproval_proposed_total",
+          ].map(key => [key, nullableNumber(row[key])])),
+          ...Object.fromEntries([
+            "route_provider", "selected_vehicle_type", "checkout_preferred_vehicle_type", "product_required_vehicle_type",
+            "handling_reason", "pickup_fee_locked_at", "customer_cash_collected_at", "producer_paid_at", "final_cash_collected_at",
+            "confirmed_cargo_weight_basis", "confirmed_cargo_weight_band", "confirmed_handling_tier",
+            "customer_approved_vehicle_type", "customer_reapproval_required_at", "customer_reapproval_response",
+            "customer_reapproval_proposed_vehicle_type", "dispatch_started_at", "picked_up_at", "delivering_at", "delivered_at", "completed_at",
+          ].map(key => [key, row[key] ?? null])),
+        },
         order_id: row.id,
         order_code: row.order_code,
         status: row.status,
@@ -170,6 +205,7 @@ export async function GET() {
         handling_fee: num(row.handling_fee),
         total_payable: num(row.total_payable),
         farmer_area: {
+          name: producer?.vendor_name || producer?.contact_name || null,
           town: producer?.town || null,
           barangay: producer?.barangay || null,
         },

@@ -1,8 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AgrimarketOrderDetails, type DispatchItem } from "./AgrimarketOrderDetails";
 
-type AgrimarketDispatchOrder = {
+export type AgrimarketDispatchOrder = {
+  customer?: { name: string | null; phone: string | null; delivery_label: string | null; address_text: string | null; landmark: string | null } | null;
+  items?: DispatchItem[];
+  details?: Record<string, string | number | null>;
+  created_at?: string | null;
+  updated_at?: string | null;
   pickup_issue?: { status: string; reason: string; confirm_farmer_refund?: unknown; confirm_customer_refund?: unknown } | null;
   order_id: string;
   order_code: string;
@@ -26,7 +32,7 @@ type AgrimarketDispatchOrder = {
   pickup_distance_fee: number;
   handling_fee: number;
   total_payable: number;
-  farmer_area?: { town?: string | null; barangay?: string | null } | null;
+  farmer_area?: { name?: string | null; town?: string | null; barangay?: string | null } | null;
   assigned_driver?: {
     driver_id: string;
     name: string;
@@ -60,6 +66,8 @@ function money(value: unknown): string {
 }
 
 function titleCase(value: unknown): string {
+  if (value === "kolong_kolong") return "Kolong-Kolong";
+  if (value === "either") return "Any eligible vehicle";
   return String(value || "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -273,6 +281,11 @@ export default function AgrimarketDispatchPanel() {
                   </div>
                 </div>
 
+                <div className="mt-2 space-y-1 break-words text-xs">
+                  <p>Customer: <strong>{order.customer?.name || "Name unavailable"}</strong> - Farmer: <strong>{order.farmer_area?.name || "Name unavailable"}</strong></p>
+                  <p>Placed {formatDate(order.created_at)} (Philippine time)</p>
+                  <p className="text-slate-600">{order.items?.length ? order.items.slice(0, 2).map(item => `${item.quantity ?? "?"} ${item.selling_unit || ""} ${item.product_name || "Unnamed product"}`).join("; ") + (order.items.length > 2 ? `; +${order.items.length - 2} more` : "") : "Item details unavailable"}</p>
+                </div>
                 <div className="mt-2 grid gap-2 text-[11px] sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-lg bg-slate-50 p-2">
                     <span className="text-slate-500">First pickup</span>
@@ -346,6 +359,8 @@ export default function AgrimarketDispatchPanel() {
                     {order.wallet_settlement_error ? ` ${order.wallet_settlement_error}` : ""}
                   </div>
                 ) : null}
+
+                <AgrimarketOrderDetails order={order} />
 
                 {canDispatch ? (
                   <button
