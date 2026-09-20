@@ -1,5 +1,7 @@
 "use client";
 
+import ReapprovalCountdown from "@/components/agrimarket/ReapprovalCountdown";
+
 import { useFarmerSession } from "./useFarmerSession";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 
@@ -68,6 +70,8 @@ type ProducerOrder = {
   customer_special_handling_fee: number;
   customer_total_payable: number;
   customer_approved_total: number;
+  customer_reapproval_expires_at?: string | null;
+  server_now?: string;
   customer_reapproval_required: boolean;
   customer_reapproval_proposed_total?: number | null;
   customer_reapproval_proposed_vehicle_type?: string | null;
@@ -560,8 +564,9 @@ export default function AgrimarketProducerPage() {
                   </>}
                 </div> : null}
 
-                {["preparing", "awaiting_customer_reapproval", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : order.status === "awaiting_customer_reapproval" ? "Waiting for customer to approve revised charges" : titleCase(order.status)}</strong>{order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_basis ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_basis === "exact" ? `${order.confirmed_cargo_weight_kg ?? "?"} kg exact` : `${String(order.confirmed_cargo_weight_band || "").replace(/_/g, "-")} kg approximate`} - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
+                {["preparing", "awaiting_customer_reapproval", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : order.status === "awaiting_customer_reapproval" ? "Waiting for customer to approve revised charges" : titleCase(order.status)}</strong>{order.status !== "awaiting_customer_reapproval" && order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_basis ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_basis === "exact" ? `${order.confirmed_cargo_weight_kg ?? "?"} kg exact` : `${String(order.confirmed_cargo_weight_band || "").replace(/_/g, "-")} kg approximate`} - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
 
+                {order.customer_reapproval_required ? <div role="alert" className="mt-3 rounded-xl border border-amber-400 bg-amber-50 p-3 text-sm text-amber-950"><strong>Customer approval needed</strong><ReapprovalCountdown expiresAt={order.customer_reapproval_expires_at} serverNow={order.server_now} /><p className="mt-2">Hold preparation until the customer approves. If the five-minute window expires, the order will be cancelled and your reserved stock released.</p></div> : null}
                 {!unfulfilled && order.confirmed_cargo_weight_basis ? <div className="mt-3 rounded-xl border bg-white p-3 text-sm"><p className="font-semibold">Customer charge impact after your confirmation</p><div className="mt-2 grid gap-1 sm:grid-cols-2"><p>Delivery: <strong>{money(order.customer_delivery_fee)}</strong></p><p>Heavy Load Fee: <strong>{money(order.customer_heavy_load_fee)}</strong></p><p>Special Handling Fee: <strong>{money(order.customer_special_handling_fee)}</strong></p><p>Driver Approach Fee: <strong>{order.customer_driver_approach_fee_locked ? money(order.customer_driver_approach_fee) : "Pending driver assignment"}</strong></p></div><p className="mt-2">Current customer total: <strong>{money(order.customer_total_payable)}</strong>{!order.customer_driver_approach_fee_locked ? " before final Driver Approach Fee" : ""}</p>{order.customer_reapproval_required ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Waiting for customer approval: {money(order.customer_approved_total)} to {money(order.customer_reapproval_proposed_total ?? order.customer_total_payable)}{order.customer_reapproval_proposed_vehicle_type === "tricycle"
   ? " and Tricycle required"
   : order.customer_reapproval_proposed_vehicle_type === "kolong_kolong"

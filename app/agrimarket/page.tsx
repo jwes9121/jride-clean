@@ -1,5 +1,7 @@
 "use client";
 
+import StoreProfile from "./StoreProfile";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductPhoto } from "./ProductPhoto";
@@ -127,6 +129,7 @@ export default function AgrimarketPage() {
   const [searchArea, setSearchArea] = useState<SearchArea>("near_me");
   const [sortMode, setSortMode] = useState<SortMode>("closest_recommended");
   const [exploreOpen, setExploreOpen] = useState(false);
+  const [storeProductId, setStoreProductId] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [crossTownPending, setCrossTownPending] = useState<ProductRow | null>(null);
   const [crossTownApprovals, setCrossTownApprovals] = useState<Record<string, boolean>>({});
@@ -601,6 +604,7 @@ export default function AgrimarketPage() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{selectedProduct.producer_alias}</p>
                     <h2 className="mt-1 text-2xl font-bold">{selectedProduct.name}</h2>
+                    <button type="button" onClick={() => setStoreProductId(selectedProduct.id)} className="mt-2 rounded-lg border border-emerald-700 px-3 py-2 text-sm font-bold text-emerald-800">View store profile</button>
                     <p className="mt-1 text-sm text-slate-500">{selectedProduct.producer_town || "Town unavailable"} - {exactRoadDistance(selectedProduct.road_distance_km)} by road from your selected delivery address.</p>
                   </div>
                   <button type="button" onClick={() => setSelectedProductId(null)} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold text-slate-700">Close</button>
@@ -631,6 +635,7 @@ export default function AgrimarketPage() {
                           <h4 className="mt-1 font-bold">{product.name}</h4>
                           <p className="mt-2 text-sm text-slate-600">{money(product.unit_price)} / {product.selling_unit}</p>
                           <p className="mt-1 text-xs text-slate-500">{product.producer_town || "Town unavailable"} - {exactRoadDistance(product.road_distance_km)} - {product.remaining_quantity} reservable</p>
+                          <button type="button" onClick={() => setStoreProductId(product.id)} className="mt-2 rounded-lg border px-3 py-2 text-sm font-semibold">View store profile</button>
                           <button type="button" onClick={() => openProduct(product)} className="mt-3 w-full rounded-xl border border-emerald-700 bg-white px-3 py-2 text-sm font-bold text-emerald-800">View product</button>
                         </article>
                       ))}
@@ -656,6 +661,7 @@ export default function AgrimarketPage() {
                   {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([product])}</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
                   {product.vehicle_requirement === "tricycle" ? <p className="mt-2 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
                   <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setStoreProductId(product.id)} className="rounded-xl border px-3 py-3 font-semibold">View store profile</button>
                     <button type="button" onClick={() => openProduct(product)} className="rounded-xl border border-emerald-700 bg-white px-3 py-3 font-bold text-emerald-800">View product</button>
                     <button disabled={!product.can_order_now} onClick={() => addToCart(product)} className="rounded-xl bg-emerald-700 px-3 py-3 font-bold text-white disabled:bg-slate-300">{product.can_order_now ? (product.availability_mode === "scheduled_harvest" ? "Reserve" : "Add to cart") : "Closed"}</button>
                   </div>
@@ -725,6 +731,7 @@ export default function AgrimarketPage() {
           </aside>
         </div>
       </div>
+    {storeProductId ? <StoreProfile productId={storeProductId} onClose={() => setStoreProductId(null)} /> : null}
     </main>
   );
 }

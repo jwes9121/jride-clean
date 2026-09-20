@@ -39,12 +39,14 @@ export async function POST(req: NextRequest) {
 
     const admin = createServiceSupabase();
     const actionRes = await admin.rpc(
-      "agrimarket_customer_respond_reapproval_v1",
+      "agrimarket_customer_respond_reapproval_v2",
       {
         p_order_code: orderCode,
         p_customer_user_id: passengerAuth.user.id,
         p_response: response,
-        p_now: new Date().toISOString(),
+        p_expected_total: body.expected_total == null ? null : Number(body.expected_total),
+        p_expected_vehicle: body.expected_vehicle || null,
+        p_expected_deadline: body.expected_deadline || null,
       }
     );
 

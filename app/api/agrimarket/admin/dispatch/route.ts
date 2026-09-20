@@ -1,3 +1,4 @@
+import { agrimarketAdminActions } from "@/lib/agrimarket/adminActions";
 import { NextRequest } from "next/server";
 import { loadOrderCustomers, nullableNumber } from "@/lib/agrimarket/orderCustomer";
 import { offerAgrimarketDriver } from "@/lib/agrimarket/dispatch";
@@ -53,11 +54,13 @@ export async function GET() {
 
   try {
     const admin = createServiceSupabase();
+    const expiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1");
+    if (expiry.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" });
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
         "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at," +
-        "customer_user_id,delivery_address_id,delivery_label,delivery_lat,delivery_lng,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,route_provider,selected_vehicle_type,checkout_preferred_vehicle_type,product_required_vehicle_type,delivery_base_fee,delivery_distance_fee,delivery_rate_per_km,heavy_load_fee,handling_reason,pickup_fee_locked_at,driver_delivery_payout,delivery_company_cut,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,final_cash_collected_at,final_cash_collected_amount,company_settlement_due,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_band,confirmed_handling_tier,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,dispatch_started_at,picked_up_at,delivering_at,delivered_at,completed_at"
+        "customer_user_id,delivery_address_id,delivery_label,delivery_lat,delivery_lng,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,route_provider,selected_vehicle_type,checkout_preferred_vehicle_type,product_required_vehicle_type,delivery_base_fee,delivery_distance_fee,delivery_rate_per_km,heavy_load_fee,handling_reason,pickup_fee_locked_at,driver_delivery_payout,delivery_company_cut,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,final_cash_collected_at,final_cash_collected_amount,company_settlement_due,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_band,confirmed_handling_tier,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,dispatch_started_at,picked_up_at,delivering_at,delivered_at,completed_at"
       )
       .in("status", ACTIVE_STATUSES)
       .order("created_at", { ascending: false })
@@ -160,7 +163,11 @@ export async function GET() {
       const assignedDriver = driverById.get(text(row.assigned_driver_id));
       const expiryMs = offer?.expires_at ? Date.parse(String(offer.expires_at)) : NaN;
 
+      const activeOffer = (offersRes.data || []).find((candidate: any) => candidate.order_id === row.id && candidate.status === "offered");
       return {
+        admin_actions: agrimarketAdminActions(row, activeOffer?.id || null),
+        customer_reapproval_expires_at: row.customer_reapproval_expires_at || null,
+        server_now: new Date(nowMs).toISOString(),
         customer: customers.get(row.id) || null,
         items: itemsByOrder.get(row.id) || [],
         details: {
@@ -276,6 +283,30 @@ export async function POST(req: NextRequest) {
     const action = text(body?.action || "offer_next").toLowerCase();
     const orderId = uuid(body?.order_id || body?.orderId);
     const orderCode = text(body?.order_code || body?.orderCode);
+
+    if (action === "cancel" || action === "reassign") {
+      const note = text(body?.note);
+      if (!orderCode || note.length < 5 || note.length > 1000 || !text(body.expected_status)) {
+        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ADMIN_REASON_REQUIRED", message: "Enter a reason of 5 to 1000 characters and refresh the order." });
+      }
+      const result = await createServiceSupabase().rpc("agrimarket_admin_order_action_v1", {
+        p_order_code: orderCode, p_action: action, p_actor: staff.actor, p_note: note,
+        p_expected_status: text(body.expected_status), p_expected_driver_id: uuid(body.expected_driver_id),
+        p_expected_offer_id: uuid(body.expected_offer_id),
+      });
+      if (result.error) return jsonNoStore(409, { ok: false, error: "AGRIMARKET_ADMIN_ACTION_FAILED", message: "The action could not be completed. Refresh the order before trying again." });
+      if (!result.data?.ok) return jsonNoStore(409, result.data);
+      if (action === "reassign") {
+        // The release is committed. Report a subsequent matching failure separately.
+        try {
+          const dispatch = await offerAgrimarketDriver({ orderId: result.data.order_id });
+          return jsonNoStore(200, { ...result.data, dispatch });
+        } catch {
+          return jsonNoStore(200, { ...result.data, dispatch: { ok: false, message: "Previous driver released. Matching will retry automatically." } });
+        }
+      }
+      return jsonNoStore(200, result.data);
+    }
 
     if (action === "resolve_pickup_issue") {
       if (!orderCode) return jsonNoStore(400, { ok: false, error: "AGRIMARKET_ORDER_CODE_REQUIRED" });

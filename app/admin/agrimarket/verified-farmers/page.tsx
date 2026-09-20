@@ -611,7 +611,7 @@ export default function VerifiedFarmersAdminPage() {
               <p><strong>Farmer:</strong> {credential.farmer_name}</p>
               <p className="mt-1"><strong>Audit code:</strong> {credential.application_code}</p>
               <p className="mt-1"><strong>Login:</strong> <Link href={credential.farmer_login_url} className="font-semibold text-emerald-700 underline">{credential.farmer_login_url}</Link></p>
-              <p className="mt-2 font-semibold text-amber-800">Orders are blocked until product setup is complete and an administrator marks the farmer ready.</p>
+              <p className="mt-2 font-semibold text-amber-800">Orders are blocked until the required store name and product setup are complete and an administrator marks the farmer ready.</p>
             </div>
           </section>
         ) : null}

@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
   let payload;
   try { payload = normalizeButchering(body); }
   catch (error) { return jsonNoStore(400, { ok: false, message: error instanceof Error ? error.message : "Check the meat cuts and schedule." }); }
+  if (!auth.producer.vendor_name?.trim()) return jsonNoStore(400, { ok: false, error: "AGRIMARKET_STORE_NAME_REQUIRED", message: "Save your required store name in Farm details before publishing a butchering schedule." });
   const result = await createServiceSupabase().rpc("agrimarket_create_butchering_batch_v1", { p_producer_id: auth.producer.id, p_request_id: body.request_id, p_payload: payload });
   if (result.error) {
     const reason = String(result.error.message || "");

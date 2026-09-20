@@ -68,7 +68,7 @@ test('removal clears the photo and cleans only a managed storage object',async()
   const helper=load('lib/agrimarket/product-photo.ts');for(const url of ['https://evil.example/'+oldPath,oldUrl+'?path=other',oldUrl.replace(oldPath,'../secrets'),oldUrl.replace(bucket,'passenger-ids')])assert.equal(helper.managedPhotoPath(url,origin),null);
 });
 test('product creation rejects arbitrary photo URLs and returns its new ID for the optional upload',async()=>{
-  let writes=0;const server={agrimarketFarmerPortalEnabled:()=>true,jsonNoStore:(status,body)=>Response.json(body,{status}),requireAgrimarketProducer:async()=>({ok:true,producer:{id:owner}}),createServiceSupabase:()=>({from(){const chain={insert(){writes++;return chain},select(){return chain},eq(){return chain},order(){return chain},async single(){return {data:{id:pid},error:null}},then(resolve){resolve({data:[],error:null})}};return chain}})};
+  let writes=0;const server={agrimarketFarmerPortalEnabled:()=>true,jsonNoStore:(status,body)=>Response.json(body,{status}),requireAgrimarketProducer:async()=>({ok:true,producer:{id:owner,vendor_name:'Test Farm Store'}}),createServiceSupabase:()=>({from(){const chain={insert(){writes++;return chain},select(){return chain},eq(){return chain},order(){return chain},async single(){return {data:{id:pid},error:null}},then(resolve){resolve({data:[],error:null})}};return chain}})};
   const api=load('app/api/agrimarket/producer/products/route.ts',{'../../_lib/server':server});
   const body={name:'Test tomatoes',product_group:'produce',condition:'normal',cargo_class:'standard_produce',selling_unit:'kg',unit_price:60,available_quantity:10};
   assert.equal((await api.POST({json:async()=>({...body,photo_urls:[oldUrl]})})).status,400);assert.equal(writes,0);

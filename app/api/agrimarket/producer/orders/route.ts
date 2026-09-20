@@ -59,6 +59,8 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const reapprovalExpiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1");
+    if (reapprovalExpiry.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" });
     const view = req.nextUrl.searchParams.get("view") || "all";
     const rawPage = req.nextUrl.searchParams.get("page") || "0";
     if (!["all", "active", "history"].includes(view) || !/^\d{1,6}$/.test(rawPage)) {
@@ -73,7 +75,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,cancelled_at,cancel_reason,created_at,updated_at," +
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,cancelled_at,cancel_reason,created_at,updated_at," +
         "customer_user_id,delivery_address_id,delivery_label,route_plan,assignment_anchor,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,cash_collection_required,selected_vehicle_type"
       )
       .eq("producer_id", producerAuth.producer.id)
@@ -238,6 +240,8 @@ export async function GET(req: NextRequest) {
         customer_total_payable: Number(row.total_payable || 0),
         customer_approved_total: Number(row.customer_approved_total || 0),
         customer_reapproval_required: reapprovalRequired,
+        customer_reapproval_expires_at: row.customer_reapproval_expires_at || null,
+        server_now: new Date(nowMs).toISOString(),
         customer_reapproval_proposed_total:
           row.customer_reapproval_proposed_total == null
             ? null
