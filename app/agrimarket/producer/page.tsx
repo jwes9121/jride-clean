@@ -19,6 +19,11 @@ type OrderItem = {
   quantity: number;
   line_total: number;
   condition_required?: string | null;
+  species?: string | null;
+  breed?: string | null;
+  meat_cut?: string | null;
+  processing_form?: string | null;
+  cargo_class?: string | null;
 };
 
 type HarvestProposal = {
@@ -30,6 +35,13 @@ type HarvestProposal = {
 };
 
 type ProducerOrder = {
+  customer?: { name: string | null; delivery_label: string | null };
+  route_plan?: string | null;
+  assignment_anchor?: string | null;
+  farmer_to_customer_distance_km?: number | null;
+  farmer_to_customer_duration_seconds?: number | null;
+  cash_collection_required?: boolean;
+  selected_vehicle_type?: string | null;
   order_code: string;
   status: string;
   fulfillment_mode: string;
@@ -494,8 +506,25 @@ export default function AgrimarketProducerPage() {
                   {order.created_at && <p className="mt-1 text-xs">Placed {formatDate(order.created_at)}</p>}
                 </div>}
                 {scheduled ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} window</strong><br/>{formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}</div> : null}
-                <div className="mt-4 divide-y rounded-xl border">{order.items.map((item) => <div key={item.product_id} className="flex justify-between gap-3 p-3"><div><strong>{item.product_name}</strong><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
+                <div className="mt-3 space-y-1 break-words text-sm">
+                  <p>Customer: <strong>{order.customer?.name || "Name unavailable"}</strong></p>
+                  <p>Deliver to: <strong>{order.customer?.delivery_label || "Destination unavailable"}</strong></p>
+                  <p className="text-xs text-slate-600">Farm to customer: {order.farmer_to_customer_distance_km == null ? "Distance unavailable" : `${order.farmer_to_customer_distance_km.toFixed(1)} km`}{order.farmer_to_customer_duration_seconds == null ? "" : ` / about ${Math.ceil(order.farmer_to_customer_duration_seconds / 60)} min driving`}</p>
+                </div>
+                <div className="mt-4 divide-y rounded-xl border">{order.items.map((item) => <div key={item.product_id} className="flex flex-wrap justify-between gap-3 p-3"><div className="min-w-0 break-words"><strong>{item.product_name}</strong><p className="text-xs text-slate-500">{item.quantity} {item.selling_unit} x {money(item.unit_price)}</p><p className="text-xs text-slate-600">{[item.species, item.breed, item.meat_cut, item.processing_form, item.condition_required, item.cargo_class].filter(Boolean).map(titleCase).join(" / ")}</p></div><strong>{money(item.line_total)}</strong></div>)}</div>
                 <div className="mt-3 flex justify-between"><span>{unfulfilled ? "Product subtotal (order not fulfilled)" : "Farmer product payment"}</span><strong>{money(order.product_subtotal)}</strong></div>
+                <details className="mt-3 rounded-xl border p-3 text-sm">
+                  <summary className="cursor-pointer font-semibold">Pickup and order details</summary>
+                  <div className="mt-2 space-y-2">
+                    <p>Placed: {formatDate(order.created_at)} (Philippine time)</p>
+                    <p>Pickup plan: {order.assignment_anchor === "customer" ? "Driver visits customer first to collect cash, then your farm." : order.assignment_anchor === "farmer" ? "Driver visits your farm first, then delivers to the customer." : "Not available"}</p>
+                    <p>Required vehicle: <strong>{order.required_vehicle_type === "either" ? "Any eligible vehicle" : titleCase(order.required_vehicle_type) || "Not available"}</strong>{order.selected_vehicle_type ? ` / Selected: ${titleCase(order.selected_vehicle_type)}` : ""}</p>
+                    <p>Estimated load: {order.estimated_cargo_weight_kg == null ? "Not available" : `${order.estimated_cargo_weight_kg} kg`}. Minimum handling: {titleCase(order.minimum_handling_tier)}.</p>
+                    <p>Farmer payment: {order.producer_paid_at ? `${money(order.producer_paid_amount)} recorded at ${formatDate(order.producer_paid_at)}` : unfulfilled ? "No payment recorded" : `${money(order.product_subtotal)} at pickup; payment not yet recorded.`}</p>
+                    {order.cash_collection_required && <p>Cash-first order: the driver collects the customer's cash before coming to your farm.</p>}
+                    <p className="text-xs text-slate-600">Driving time is a route estimate, not the driver's arrival time.</p>
+                  </div>
+                </details>
 
                 {order.status === "awaiting_producer" ? (
                   <div className="mt-4 rounded-2xl bg-blue-50 p-4">

@@ -4,12 +4,13 @@ const path = require("node:path");
 const vm = require("node:vm");
 const ts = require("typescript");
 const filename = path.resolve(__dirname, "../../app/api/agrimarket/producer/orders/route.ts");
-function load(mocks) {
+function load(mocks, sourceFile = filename) {
   const module = { exports: {} };
-  const source = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
+  const source = ts.transpileModule(fs.readFileSync(sourceFile, "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
   }).outputText;
   vm.runInNewContext(source, { module, exports: module.exports, require: name => {
+    if (name === "@/lib/agrimarket/orderCustomer") return load(mocks, path.resolve(__dirname, "../../lib/agrimarket/orderCustomer.ts"));
     if (!(name in mocks)) throw new Error("Unexpected dependency: " + name);
     return mocks[name];
   }, Date, console }, { filename });

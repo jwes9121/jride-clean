@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs && node tests/unified-dispatch-center/run.cjs && node tests/operations-orientation-notes/run.cjs && node tests/kolong-kolong/run.cjs && node tests/agrimarket-order-history/run.cjs",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs && node tests/unified-dispatch-center/run.cjs && node tests/operations-orientation-notes/run.cjs && node tests/kolong-kolong/run.cjs && node tests/agrimarket-order-history/run.cjs && node tests/agrimarket-order-details/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -20,7 +20,8 @@
     "test:unified-dispatch-center": "node tests/unified-dispatch-center/run.cjs",
     "test:operations-orientation-notes": "node tests/operations-orientation-notes/run.cjs",
     "test:kolong-kolong": "node tests/kolong-kolong/run.cjs",
-    "test:agrimarket-order-history": "node tests/agrimarket-order-history/run.cjs"
+    "test:agrimarket-order-history": "node tests/agrimarket-order-history/run.cjs",
+    "test:agrimarket-order-details": "node tests/agrimarket-order-details/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",
