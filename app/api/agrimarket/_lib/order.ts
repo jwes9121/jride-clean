@@ -1,4 +1,5 @@
 import { coordinate, hasValidPin } from "@/lib/agrimarket/coordinates";
+import { cargoConflict } from "@/lib/agrimarket/cartCompatibility";
 import { PICKUP_ACCESS_COLUMNS, pickupAccessError } from "@/lib/agrimarket/pickupAccess";
 import { reverseGeocodeIfugaoTown } from "./location";
 
@@ -207,7 +208,7 @@ export async function loadAgrimarketOrderContext(
   const productsRes = await admin
     .from("agrimarket_products")
     .select(
-      "id,producer_id,name,product_group,species,meat_cut,selling_unit,unit_weight_kg,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
+      "id,producer_id,name,product_group,species,meat_cut,cargo_class,selling_unit,unit_weight_kg,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,is_active"
     )
     .in("id", productIds);
 
@@ -371,6 +372,11 @@ export async function loadAgrimarketOrderContext(
     harvestExpectedStartAt = Array.from(harvestStarts)[0] || null;
     const end = Array.from(harvestEnds)[0] || harvestExpectedStartAt;
     harvestExpectedEndAt = end === harvestExpectedStartAt ? null : end;
+  }
+
+  const cargoError = cargoConflict(products);
+  if (cargoError) {
+    throw new AgrimarketRequestError("AGRIMARKET_CARGO_COMPATIBILITY_MISMATCH", 409, cargoError);
   }
 
   const producerId = Array.from(producerIds)[0];

@@ -68,7 +68,10 @@ export async function POST(req: NextRequest) {
         : code.includes("INVALID")
           ? 400
           : 409;
-      return jsonNoStore(status, { ok: false, error: code, result });
+      const message = code === "AGRIMARKET_REAPPROVAL_PROPOSAL_STALE"
+        ? "JRide could not verify that your approval matches the current revision. Refresh and review the order again. If this repeats, open the order on app.jride.net or update the passenger app. No approval was recorded."
+        : undefined;
+      return jsonNoStore(status, { ok: false, error: code, ...(message ? { message } : {}), result });
     }
 
     return jsonNoStore(200, {

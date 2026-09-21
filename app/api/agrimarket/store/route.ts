@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     if (product.error) throw product.error;
     if (!product.data) return jsonNoStore(404, { ok: false, message: "This store profile is unavailable." });
     const producer = await admin.from("agrimarket_producers").select("vendor_name,town")
-      .eq("id", product.data.producer_id).eq("status", "active").eq("accepting_orders", true).maybeSingle();
+      .eq("id", product.data.producer_id).eq("status", "active").eq("accepting_orders", true).eq("store_open", true).maybeSingle();
     if (producer.error) throw producer.error;
     if (!producer.data?.vendor_name?.trim()) return jsonNoStore(404, { ok: false, message: "This store profile is unavailable." });
     return jsonNoStore(200, { ok: true, store: { name: producer.data.vendor_name, town: producer.data.town } });

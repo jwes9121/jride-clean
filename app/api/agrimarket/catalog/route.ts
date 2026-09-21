@@ -30,6 +30,7 @@ type ProductRow = {
   cargo_class: string;
   selling_unit: string;
   unit_price: number | string;
+  unit_weight_kg?: number | string | null;
   remaining_quantity: number | string;
   availability_mode: string;
   harvest_start_at: string | null;
@@ -193,7 +194,7 @@ export async function GET(req: NextRequest) {
       admin
         .from("agrimarket_products")
         .select(
-          "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
+          "id,producer_id,name,description,product_group,species,breed,meat_cut,processing_form,condition,cargo_class,selling_unit,unit_price,unit_weight_kg,remaining_quantity,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at,default_prep_minutes,vehicle_requirement,handling_eligible,photo_urls"
         )
         .eq("is_active", true)
         .gt("remaining_quantity", 0)
@@ -339,6 +340,7 @@ export async function GET(req: NextRequest) {
           cargo_class: row.cargo_class,
           selling_unit: row.selling_unit,
           unit_price: numberValue(row.unit_price),
+          unit_weight_kg: row.unit_weight_kg == null ? null : numberValue(row.unit_weight_kg),
           remaining_quantity: numberValue(row.remaining_quantity),
           availability_mode: row.availability_mode,
           scheduled_activity: scheduledHarvest ? scheduledActivity([row]) : null,

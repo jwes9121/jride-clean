@@ -30,6 +30,7 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [snoozeUntil, setSnoozeUntil] = useState(0);
+  const [reviewingOrder, setReviewingOrder] = useState("");
   const audio = useRef<HTMLAudioElement | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const feedRef = useRef(feed);
@@ -51,6 +52,15 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
     audio.current = new Audio("/sounds/vendor-order-alert.mp3");
     audio.current.preload = "auto";
     return () => { mounted.current = false; audio.current?.pause(); audio.current = null; };
+  }, []);
+
+  useEffect(() => {
+    const review = (event: FocusEvent) => {
+      const code = event.target instanceof Element ? event.target.closest("[data-agri-review-order]")?.getAttribute("data-agri-review-order") : null;
+      if (code) setReviewingOrder(code);
+    };
+    document.addEventListener("focusin", review);
+    return () => document.removeEventListener("focusin", review);
   }, []);
 
   const deviceState = useCallback((state: AlertDeviceState) => {
@@ -130,7 +140,8 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
 
   const fresh = now > 0 && feed.received > 0 && now - feed.received <= AGRI_ALERT_STALE_MS;
   const pending = fresh ? pendingFarmerOrders(feed.orders, now + feed.offset) : [];
-  const open = visible && pending.length > 0 && now >= snoozeUntil;
+  const popupOrders = pending.filter(order => order.order_code !== reviewingOrder);
+  const open = visible && popupOrders.length > 0 && now >= snoozeUntil;
   useEffect(() => {
     if (open && dialog.current && !dialog.current.open) dialog.current.showModal();
     if (!open && dialog.current?.open) dialog.current.close();
@@ -215,13 +226,14 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
   return <section className={styles.alertPanel} aria-label="AgriMarket order alerts">
     {pending.length > 0 && <div className={styles.incomingOrderBar}>
       <div role="status" aria-live="polite"><strong><Bell size={18} aria-hidden="true" />{pending.length} {pending.length === 1 ? "order needs" : "orders need"} your reply</strong><span>Review before the farmer confirmation deadline.</span></div>
-      <a href={farmerOrderHref(pending[0].order_code)} onClick={() => { dismiss(); onReviewOrder?.(pending[0].order_code); }}>Review order</a>
+      <a href={farmerOrderHref(pending[0].order_code)} onClick={() => { dismiss(); setReviewingOrder(pending[0].order_code); onReviewOrder?.(pending[0].order_code); }}>Review order</a>
     </div>}
     {error && <p className={styles.alertConnectionError} role="alert">{error}</p>}
-    {feed.received > 0 && !registered && <p className="mb-2 text-xs text-amber-800">Background alerts are not enabled on this browser. Keep Orders open, or enable and test alerts in Notification settings below.</p>}
     <details className={styles.alertSettings}>
       <summary><span><Settings2 size={16} aria-hidden="true" />Notification settings</span><ChevronDown size={16} aria-hidden="true" /></summary>
       <div className={styles.alertSettingsBody}>
+        <p className={styles.alertNote}>These settings control browser alerts. The vendor app manages its own notifications.</p>
+        {feed.received > 0 && !registered && <p className="text-amber-800">Browser background alerts are not enabled here. For browser use, keep Orders open or enable and test background alerts below.</p>}
         <p>Page sound: {sound ? "enabled" : "off"}. Background setup: {registered ? "registered; delivery unconfirmed" : permission === "denied" ? "blocked by browser" : "needs phone check"}.</p>
         <div className={styles.alertButtons}>
           <button type="button" onClick={() => void enableSound()}>{sound ? "Test sound" : "Enable sound"}</button>
@@ -243,10 +255,10 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
     </details>
     <dialog ref={dialog} className={styles.alertDialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="agri-incoming-title">
       <h2 id="agri-incoming-title">New AgriMarket order</h2>
-      <p>{pending.length} order{pending.length === 1 ? "" : "s"} waiting for your response.</p>
-      {pending.map(order => <div key={order.order_code} className={styles.alertOrder}><strong>{order.order_code}</strong>
+      <p>{popupOrders.length} order{popupOrders.length === 1 ? "" : "s"} waiting for your response.</p>
+      {popupOrders.map(order => <div key={order.order_code} className={styles.alertOrder}><strong>{order.order_code}</strong>
         <p>Respond within {Math.max(0, Math.ceil((Date.parse(order.producer_confirm_expires_at) - now - feed.offset) / 1000))} seconds.</p>
-        <a href={farmerOrderHref(order.order_code)} onClick={() => { dismiss(); onReviewOrder?.(order.order_code); }}>Review order</a></div>)}
+        <a href={farmerOrderHref(order.order_code)} onClick={() => { dismiss(); setReviewingOrder(order.order_code); onReviewOrder?.(order.order_code); }}>Review order</a></div>)}
       <button type="button" onClick={dismiss}>Remind me in 30 seconds</button>
     </dialog>
   </section>;
