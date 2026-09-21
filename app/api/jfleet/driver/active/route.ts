@@ -54,11 +54,12 @@ export async function GET(req: Request) {
   }
 
   const rows = bookings.data ?? [];
+  const bookingIds = rows.map((row) => row.id);
   const vehicleIds = rows.map((row) => row.assigned_vehicle_id).filter(Boolean);
   const itineraryIds = rows.map((row) => row.current_itinerary_id).filter(Boolean);
   const passengerIds = rows.map((row) => row.passenger_user_id).filter(Boolean);
 
-  const [vehicles, stops, passengers] = await Promise.all([
+  const [vehicles, stops, passengers, addons] = await Promise.all([
     vehicleIds.length
       ? admin
           .from("jfleet_vehicles")
@@ -78,9 +79,18 @@ export async function GET(req: Request) {
           .select("user_id,full_name,phone")
           .in("user_id", passengerIds)
       : Promise.resolve({ data: [], error: null }),
+    bookingIds.length
+      ? admin
+          .from("jfleet_addons")
+          .select(
+            "id,booking_id,requested_by,description,additional_route,fuel_vehicle_fee,driver_fee,other_fee,total_amount,status,proposed_at,accepted_at,payment_confirmed_at,notes"
+          )
+          .in("booking_id", bookingIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (vehicles.error || stops.error || passengers.error) {
+  if (vehicles.error || stops.error || passengers.error || addons.error) {
     return NextResponse.json(
       { ok: false, code: "JFLEET_DRIVER_TRIP_DETAIL_FAILED", message: "Could not load JFleet trip details." },
       { status: 500, headers }
@@ -103,6 +113,7 @@ export async function GET(req: Request) {
         itinerary: (stops.data ?? [])
           .filter((stop) => stop.itinerary_id === row.current_itinerary_id)
           .sort((a, b) => a.sequence_no - b.sequence_no),
+        addons: (addons.data ?? []).filter((addon) => addon.booking_id === row.id),
       })),
     },
     { status: 200, headers }
