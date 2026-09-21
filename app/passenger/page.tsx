@@ -15,6 +15,7 @@ export default function PassengerDashboardPage() {
   const [verificationStatus, setVerificationStatus] = React.useState("");
   const [nightAllowed, setNightAllowed] = React.useState(false);
   const [agrimarketEnabled, setAgrimarketEnabled] = React.useState(false);
+  const [jfleetEnabled, setJfleetEnabled] = React.useState(false);
 
   const [freeRideStatus, setFreeRideStatus] = React.useState<string>("unknown");
   const [freeRideMsg, setFreeRideMsg] = React.useState<string>("");
@@ -23,18 +24,23 @@ export default function PassengerDashboardPage() {
     let alive = true;
     (async () => {
       try {
-        const [sessionResponse, agrimarketResponse] = await Promise.all([
+        const [sessionResponse, agrimarketResponse, jfleetResponse] = await Promise.all([
           fetch("/api/public/auth/session", { cache: "no-store" }),
           fetch("/api/agrimarket/status", { cache: "no-store" }).catch(() => null),
+          fetch("/api/jfleet/status", { cache: "no-store" }).catch(() => null),
         ]);
         const j: any = await sessionResponse.json().catch(() => ({}));
         const agrimarketJson: any = agrimarketResponse
           ? await agrimarketResponse.json().catch(() => ({}))
           : {};
+        const jfleetJson: any = jfleetResponse
+          ? await jfleetResponse.json().catch(() => ({}))
+          : {};
         if (!alive) return;
         const ok = !!j?.authed;
         setAuthed(ok);
         setAgrimarketEnabled(agrimarketJson?.enabled === true);
+        setJfleetEnabled(jfleetJson?.enabled === true);
 
         try {
           const cr = await fetch("/api/public/passenger/can-book", { cache: "no-store" });
@@ -82,6 +88,7 @@ export default function PassengerDashboardPage() {
         setAuthed(false);
         setVerificationStatus("");
         setAgrimarketEnabled(false);
+        setJfleetEnabled(false);
       } finally {
         if (!alive) return;
         setLoading(false);
@@ -176,7 +183,7 @@ export default function PassengerDashboardPage() {
           </div>
         ) : null}
 
-        <div className={"grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 " + (agrimarketEnabled ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
+        <div className={"grid grid-cols-1 md:grid-cols-2 gap-3 mt-5 " + (agrimarketEnabled && jfleetEnabled ? "lg:grid-cols-5" : agrimarketEnabled || jfleetEnabled ? "lg:grid-cols-4" : "lg:grid-cols-3")}>
           <button type="button" onClick={goBookRide} className="text-left rounded-xl border border-blue-500 bg-blue-500/10 px-4 py-3">
             <div className="font-semibold">Book Ride</div><div className="text-sm opacity-70">Go to ride booking</div>
           </button>
@@ -189,6 +196,11 @@ export default function PassengerDashboardPage() {
           {agrimarketEnabled ? (
             <button type="button" onClick={() => (authed ? router.push("/agrimarket") : gotoLogin("/agrimarket"))} className="text-left rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-3">
               <div className="font-semibold text-emerald-900">Agrimarket</div><div className="text-sm text-emerald-800/70">Buy from local farmers</div>
+            </button>
+          ) : null}
+          {jfleetEnabled ? (
+            <button type="button" onClick={() => (authed ? router.push("/jfleet") : gotoLogin("/jfleet"))} className="text-left rounded-xl border border-slate-400 bg-slate-50 hover:bg-slate-100 px-4 py-3">
+              <div className="font-semibold text-slate-950">JFleet</div><div className="text-sm text-slate-600">Vans, Pickups & Trucks for Hire</div>
             </button>
           ) : null}
         </div>
