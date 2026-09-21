@@ -479,13 +479,13 @@ returns trigger
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 begin
   new.cancellation_free_until :=
     new.scheduled_start_at - (new.free_cancel_hours * interval '1 hour');
   return new;
 end;
-$;
+$$;
 
 create trigger jfleet_set_booking_policy_snapshots_trg
 before insert or update of scheduled_start_at, free_cancel_hours
