@@ -326,6 +326,7 @@ create table public.jfleet_payments (
     check (status in ('pending','confirmed','failed','refunded','void')),
   payment_channel text,
   payment_reference text,
+  idempotency_key text unique,
   received_by text,
   confirmed_by_owner_user_id uuid references auth.users(id) on delete set null,
   paid_at timestamptz,
@@ -734,6 +735,551 @@ begin
 end;
 $$;
 
+create or replace function public.jfleet_accept_quote_v1(
+  p_inquiry_id uuid,
+  p_quote_id uuid,
+  p_passenger_user_id uuid,
+  p_booking_code text,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_inquiry public.jfleet_inquiries%rowtype;
+  v_quote public.jfleet_quotes%rowtype;
+  v_partner public.jfleet_partners%rowtype;
+  v_booking public.jfleet_bookings%rowtype;
+begin
+  select *
+    into v_inquiry
+  from public.jfleet_inquiries
+  where id = p_inquiry_id
+  for update;
+
+  if v_inquiry.id is null or v_inquiry.passenger_user_id is distinct from p_passenger_user_id then
+    raise exception 'JFLEET_INQUIRY_NOT_FOUND';
+  end if;
+
+  if v_inquiry.converted_booking_id is not null then
+    select *
+      into v_booking
+    from public.jfleet_bookings
+    where id = v_inquiry.converted_booking_id;
+
+    return jsonb_build_object(
+      'ok', true,
+      'already_converted', true,
+      'booking_id', v_booking.id,
+      'booking_code', v_booking.booking_code,
+      'status', v_booking.status,
+      'payment_status', v_booking.payment_status,
+      'reservation_required_amount', v_booking.reservation_required_amount,
+      'cancellation_free_until', v_booking.cancellation_free_until
+    );
+  end if;
+
+  select *
+    into v_quote
+  from public.jfleet_quotes
+  where id = p_quote_id
+    and inquiry_id = p_inquiry_id
+  for update;
+
+  if v_quote.id is null then
+    raise exception 'JFLEET_QUOTE_NOT_FOUND';
+  end if;
+
+  if v_quote.status <> 'sent' then
+    raise exception 'JFLEET_QUOTE_NOT_ACCEPTABLE';
+  end if;
+
+  if v_quote.valid_until <= p_now then
+    update public.jfleet_quotes
+    set status = 'expired'
+    where id = v_quote.id;
+
+    update public.jfleet_inquiries
+    set status = 'expired'
+    where id = v_inquiry.id;
+
+    raise exception 'JFLEET_QUOTE_EXPIRED';
+  end if;
+
+  if v_quote.itinerary_id is distinct from (
+    select i.id
+    from public.jfleet_itineraries i
+    where i.inquiry_id = v_inquiry.id
+      and i.status = 'current'
+    order by i.version_no desc
+    limit 1
+  ) then
+    raise exception 'JFLEET_QUOTE_ITINERARY_NOT_CURRENT';
+  end if;
+
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = v_inquiry.partner_id
+    and status = 'active'
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_PARTNER_NOT_ACTIVE';
+  end if;
+
+  insert into public.jfleet_bookings(
+    booking_code,
+    inquiry_id,
+    accepted_quote_id,
+    passenger_user_id,
+    partner_id,
+    current_itinerary_id,
+    scheduled_start_at,
+    scheduled_end_at,
+    original_quote_amount,
+    reservation_percent,
+    free_cancel_hours,
+    late_cancel_percent,
+    commission_percent,
+    minimum_commission,
+    status,
+    payment_status
+  ) values (
+    upper(trim(p_booking_code)),
+    v_inquiry.id,
+    v_quote.id,
+    v_inquiry.passenger_user_id,
+    v_inquiry.partner_id,
+    v_quote.itinerary_id,
+    v_inquiry.scheduled_start_at,
+    v_inquiry.scheduled_end_at,
+    v_quote.total_amount,
+    greatest(v_partner.reservation_percent, 20.00),
+    v_partner.free_cancel_hours,
+    v_partner.late_cancel_percent,
+    v_partner.commission_percent,
+    v_partner.minimum_commission,
+    'reservation_pending',
+    'reservation_pending'
+  )
+  returning * into v_booking;
+
+  update public.jfleet_quotes
+  set status = case when id = v_quote.id then 'accepted' else 'superseded' end,
+      accepted_at = case when id = v_quote.id then p_now else accepted_at end
+  where inquiry_id = v_inquiry.id
+    and status = 'sent';
+
+  update public.jfleet_inquiries
+  set status = 'converted',
+      accepted_quote_id = v_quote.id,
+      converted_booking_id = v_booking.id
+  where id = v_inquiry.id;
+
+  insert into public.jfleet_events(
+    inquiry_id, booking_id, actor_type, actor_id, event_type, details, created_at
+  ) values (
+    v_inquiry.id,
+    v_booking.id,
+    'customer',
+    p_passenger_user_id::text,
+    'quote_accepted_booking_created',
+    jsonb_build_object(
+      'quote_id', v_quote.id,
+      'quote_version', v_quote.version_no,
+      'original_quote_amount', v_quote.total_amount,
+      'reservation_percent', v_booking.reservation_percent,
+      'reservation_required_amount', v_booking.reservation_required_amount,
+      'cancellation_free_until', v_booking.cancellation_free_until
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'already_converted', false,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'status', v_booking.status,
+    'payment_status', v_booking.payment_status,
+    'original_quote_amount', v_booking.original_quote_amount,
+    'reservation_percent', v_booking.reservation_percent,
+    'reservation_required_amount', v_booking.reservation_required_amount,
+    'cancellation_free_until', v_booking.cancellation_free_until
+  );
+end;
+$;
+
+create or replace function public.jfleet_owner_confirm_payment_v1(
+  p_booking_id uuid,
+  p_owner_user_id uuid,
+  p_payment_kind text,
+  p_amount numeric,
+  p_payment_channel text,
+  p_payment_reference text,
+  p_idempotency_key text,
+  p_notes text default null,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_partner public.jfleet_partners%rowtype;
+  v_existing public.jfleet_payments%rowtype;
+  v_payment_id uuid;
+  v_paid numeric(12,2);
+  v_status text;
+  v_payment_status text;
+begin
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'JFLEET_PAYMENT_AMOUNT_INVALID';
+  end if;
+
+  if lower(trim(coalesce(p_payment_kind,''))) not in ('reservation','balance','full_payment') then
+    raise exception 'JFLEET_PAYMENT_KIND_INVALID';
+  end if;
+
+  if length(trim(coalesce(p_idempotency_key,''))) < 8 then
+    raise exception 'JFLEET_PAYMENT_IDEMPOTENCY_REQUIRED';
+  end if;
+
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_BOOKING_NOT_FOUND';
+  end if;
+
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = v_booking.partner_id
+    and owner_user_id = p_owner_user_id
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_OWNER_NOT_AUTHORIZED';
+  end if;
+
+  if v_booking.status in ('completed','cancelled_customer','cancelled_operator') then
+    raise exception 'JFLEET_BOOKING_PAYMENT_CLOSED';
+  end if;
+
+  select *
+    into v_existing
+  from public.jfleet_payments
+  where idempotency_key = trim(p_idempotency_key);
+
+  if v_existing.id is not null then
+    if v_existing.booking_id is distinct from v_booking.id
+       or v_existing.amount is distinct from p_amount
+       or v_existing.payment_kind is distinct from lower(trim(p_payment_kind)) then
+      raise exception 'JFLEET_PAYMENT_IDEMPOTENCY_CONFLICT';
+    end if;
+  else
+    insert into public.jfleet_payments(
+      booking_id,
+      payment_kind,
+      amount,
+      status,
+      payment_channel,
+      payment_reference,
+      idempotency_key,
+      received_by,
+      confirmed_by_owner_user_id,
+      paid_at,
+      confirmed_at,
+      notes,
+      created_at,
+      updated_at
+    ) values (
+      v_booking.id,
+      lower(trim(p_payment_kind)),
+      round(p_amount, 2),
+      'confirmed',
+      nullif(trim(coalesce(p_payment_channel,'')),''),
+      nullif(trim(coalesce(p_payment_reference,'')),''),
+      trim(p_idempotency_key),
+      'transport_partner_owner',
+      p_owner_user_id,
+      p_now,
+      p_now,
+      nullif(trim(coalesce(p_notes,'')),''),
+      p_now,
+      p_now
+    )
+    returning id into v_payment_id;
+  end if;
+
+  select coalesce(sum(p.amount),0)
+    into v_paid
+  from public.jfleet_payments p
+  where p.booking_id = v_booking.id
+    and p.status = 'confirmed'
+    and p.payment_kind in ('reservation','balance','full_payment');
+
+  if v_paid >= v_booking.original_quote_amount then
+    v_payment_status := 'fully_paid';
+    v_status := case
+      when v_booking.assigned_driver_id is not null
+       and v_booking.assigned_vehicle_id is not null then 'assigned'
+      else greatest(v_booking.status, 'confirmed')
+    end;
+  elsif v_paid >= v_booking.reservation_required_amount then
+    v_payment_status := 'reservation_paid';
+    v_status := case
+      when v_booking.status = 'reservation_pending' then 'confirmed'
+      else v_booking.status
+    end;
+  else
+    v_payment_status := 'reservation_pending';
+    v_status := v_booking.status;
+  end if;
+
+  update public.jfleet_bookings
+  set payment_status = v_payment_status,
+      status = v_status,
+      reservation_paid_at = case
+        when v_paid >= reservation_required_amount
+        then coalesce(reservation_paid_at, p_now)
+        else reservation_paid_at
+      end,
+      fully_paid_at = case
+        when v_paid >= original_quote_amount
+        then coalesce(fully_paid_at, p_now)
+        else fully_paid_at
+      end
+  where id = v_booking.id
+  returning * into v_booking;
+
+  insert into public.jfleet_events(
+    booking_id, actor_type, actor_id, event_type, details, created_at
+  ) values (
+    v_booking.id,
+    'owner',
+    p_owner_user_id::text,
+    'payment_confirmed',
+    jsonb_build_object(
+      'payment_kind', lower(trim(p_payment_kind)),
+      'amount', round(p_amount,2),
+      'confirmed_original_payments', v_paid,
+      'payment_status', v_booking.payment_status,
+      'booking_status', v_booking.status,
+      'idempotency_key', trim(p_idempotency_key)
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'confirmed_original_payments', v_paid,
+    'reservation_required_amount', v_booking.reservation_required_amount,
+    'original_quote_amount', v_booking.original_quote_amount,
+    'payment_status', v_booking.payment_status,
+    'booking_status', v_booking.status,
+    'fully_paid', v_paid >= v_booking.original_quote_amount
+  );
+end;
+$;
+
+create or replace function public.jfleet_cancel_customer_v1(
+  p_booking_id uuid,
+  p_passenger_user_id uuid,
+  p_reason text,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_paid numeric(12,2);
+  v_penalty numeric(12,2);
+  v_refund numeric(12,2);
+  v_late boolean;
+begin
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+    and passenger_user_id = p_passenger_user_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_BOOKING_NOT_FOUND';
+  end if;
+
+  if v_booking.status in ('on_trip','completed','cancelled_customer','cancelled_operator') then
+    raise exception 'JFLEET_BOOKING_NOT_CANCELLABLE';
+  end if;
+
+  if p_now >= v_booking.scheduled_start_at then
+    raise exception 'JFLEET_BOOKING_ALREADY_DUE';
+  end if;
+
+  select coalesce(sum(p.amount),0)
+    into v_paid
+  from public.jfleet_payments p
+  where p.booking_id = v_booking.id
+    and p.status = 'confirmed'
+    and p.payment_kind in ('reservation','balance','full_payment');
+
+  v_late := p_now > v_booking.cancellation_free_until;
+  v_penalty := case
+    when v_late
+      then round(v_booking.original_quote_amount * v_booking.late_cancel_percent / 100.0, 2)
+    else 0
+  end;
+  v_penalty := least(v_penalty, v_paid);
+  v_refund := greatest(v_paid - v_penalty, 0);
+
+  update public.jfleet_bookings
+  set status = 'cancelled_customer',
+      payment_status = case
+        when v_refund > 0 then 'refund_pending'
+        else 'refunded'
+      end,
+      cancelled_at = p_now,
+      cancelled_by = 'customer',
+      cancellation_reason = nullif(trim(coalesce(p_reason,'')),''),
+      cancellation_penalty_amount = v_penalty,
+      refund_amount = v_refund
+  where id = v_booking.id
+  returning * into v_booking;
+
+  insert into public.jfleet_events(
+    booking_id, actor_type, actor_id, event_type, details, created_at
+  ) values (
+    v_booking.id,
+    'customer',
+    p_passenger_user_id::text,
+    'booking_cancelled_customer',
+    jsonb_build_object(
+      'late_cancellation', v_late,
+      'cancellation_free_until', v_booking.cancellation_free_until,
+      'late_cancel_percent', v_booking.late_cancel_percent,
+      'original_quote_amount', v_booking.original_quote_amount,
+      'confirmed_original_payments', v_paid,
+      'penalty_amount', v_penalty,
+      'refund_amount', v_refund
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'status', v_booking.status,
+    'late_cancellation', v_late,
+    'cancellation_free_until', v_booking.cancellation_free_until,
+    'penalty_amount', v_penalty,
+    'refund_amount', v_refund,
+    'payment_status', v_booking.payment_status
+  );
+end;
+$;
+
+create or replace function public.jfleet_cancel_operator_v1(
+  p_booking_id uuid,
+  p_owner_user_id uuid,
+  p_reason text,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_partner public.jfleet_partners%rowtype;
+  v_paid numeric(12,2);
+begin
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_BOOKING_NOT_FOUND';
+  end if;
+
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = v_booking.partner_id
+    and owner_user_id = p_owner_user_id
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_OWNER_NOT_AUTHORIZED';
+  end if;
+
+  if v_booking.status in ('on_trip','completed','cancelled_customer','cancelled_operator') then
+    raise exception 'JFLEET_BOOKING_NOT_CANCELLABLE';
+  end if;
+
+  select coalesce(sum(p.amount),0)
+    into v_paid
+  from public.jfleet_payments p
+  where p.booking_id = v_booking.id
+    and p.status = 'confirmed'
+    and p.payment_kind in ('reservation','balance','full_payment');
+
+  update public.jfleet_bookings
+  set status = 'cancelled_operator',
+      payment_status = case when v_paid > 0 then 'refund_pending' else 'refunded' end,
+      cancelled_at = p_now,
+      cancelled_by = 'operator',
+      cancellation_reason = nullif(trim(coalesce(p_reason,'')),''),
+      cancellation_penalty_amount = 0,
+      refund_amount = v_paid
+  where id = v_booking.id
+  returning * into v_booking;
+
+  insert into public.jfleet_events(
+    booking_id, actor_type, actor_id, event_type, details, created_at
+  ) values (
+    v_booking.id,
+    'owner',
+    p_owner_user_id::text,
+    'booking_cancelled_operator',
+    jsonb_build_object(
+      'confirmed_original_payments', v_paid,
+      'penalty_amount', 0,
+      'refund_amount', v_paid
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'status', v_booking.status,
+    'penalty_amount', 0,
+    'refund_amount', v_paid,
+    'payment_status', v_booking.payment_status
+  );
+end;
+$;
+
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
 create index jfleet_inquiries_partner_status_due_idx
@@ -802,6 +1348,18 @@ revoke all on function public.jfleet_guard_trip_start_v1() from public, anon, au
 revoke all on function public.jfleet_create_inquiry_v1(
   text, uuid, uuid, text, text, text, text, double precision, double precision,
   timestamptz, timestamptz, integer, text, numeric, text, text, jsonb
+) from public, anon, authenticated;
+revoke all on function public.jfleet_accept_quote_v1(
+  uuid, uuid, uuid, text, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_owner_confirm_payment_v1(
+  uuid, uuid, text, numeric, text, text, text, text, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_cancel_customer_v1(
+  uuid, uuid, text, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_cancel_operator_v1(
+  uuid, uuid, text, timestamptz
 ) from public, anon, authenticated;
 
 comment on table public.jfleet_inquiries is
