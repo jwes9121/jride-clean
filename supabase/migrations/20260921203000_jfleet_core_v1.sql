@@ -1045,8 +1045,6 @@ begin
   if v_paid >= v_booking.original_quote_amount then
     v_payment_status := 'fully_paid';
     v_status := case
-      when v_booking.assigned_driver_id is not null
-       and v_booking.assigned_vehicle_id is not null then 'assigned'
       when v_booking.status = 'reservation_pending' then 'confirmed'
       else v_booking.status
     end;
