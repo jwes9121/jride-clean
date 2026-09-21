@@ -44,10 +44,11 @@ export async function GET(req: Request) {
   }
 
   const rows = bookings.data ?? [];
+  const bookingIds = rows.map((row) => row.id);
   const vehicleIds = rows.map((row) => row.assigned_vehicle_id).filter(Boolean);
   const driverIds = rows.map((row) => row.assigned_driver_id).filter(Boolean);
 
-  const [vehicles, drivers] = await Promise.all([
+  const [vehicles, drivers, addons] = await Promise.all([
     vehicleIds.length
       ? admin
           .from("jfleet_vehicles")
@@ -60,9 +61,18 @@ export async function GET(req: Request) {
           .select("id,full_name,photo_url,rating_average,rating_count,completed_trips")
           .in("id", driverIds)
       : Promise.resolve({ data: [], error: null }),
+    bookingIds.length
+      ? admin
+          .from("jfleet_addons")
+          .select(
+            "id,booking_id,requested_by,description,additional_route,fuel_vehicle_fee,driver_fee,other_fee,total_amount,status,proposed_at,accepted_at,payment_confirmed_at,notes"
+          )
+          .in("booking_id", bookingIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
-  if (vehicles.error || drivers.error) {
+  if (vehicles.error || drivers.error || addons.error) {
     return NextResponse.json(
       { ok: false, code: "JFLEET_ASSIGNMENT_READ_FAILED", message: "Could not load JFleet assignment details." },
       { status: 500, headers }
@@ -79,6 +89,7 @@ export async function GET(req: Request) {
         ...row,
         vehicle: row.assigned_vehicle_id ? vehicleMap.get(row.assigned_vehicle_id) ?? null : null,
         driver: row.assigned_driver_id ? driverMap.get(row.assigned_driver_id) ?? null : null,
+        addons: (addons.data ?? []).filter((addon) => addon.booking_id === row.id),
       })),
     },
     { status: 200, headers }
