@@ -94,6 +94,21 @@ type JFleetBooking = {
     rating_count: number;
     completed_trips: number;
   } | null;
+  addons?: Array<{
+    id: string;
+    requested_by: string;
+    description: string;
+    additional_route: { label?: string } | unknown;
+    fuel_vehicle_fee: number | string;
+    driver_fee: number | string;
+    other_fee: number | string;
+    total_amount: number | string;
+    status: string;
+    proposed_at: string;
+    accepted_at?: string | null;
+    payment_confirmed_at?: string | null;
+    notes?: string | null;
+  }>;
 };
 
 const PURPOSE_OPTIONS = [
@@ -393,6 +408,38 @@ export default function JFleetPage() {
         failure instanceof Error
           ? failure.message
           : "The quotation could not be accepted."
+      );
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function respondAddon(addonId: string, responseValue: "accept" | "decline") {
+    if (actionBusy) return;
+    setActionBusy("addon:" + addonId + ":" + responseValue);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/jfleet/addons/respond", {
+        method: "POST",
+        headers: passengerAuthHeaders(true),
+        body: JSON.stringify({ addon_id: addonId, response: responseValue }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || "The additional-charge response could not be saved.");
+      }
+      setSuccess(
+        responseValue === "accept"
+          ? "Additional charge accepted. Pay the amount requested by the transport owner before taking the side trip."
+          : "Additional route declined. The original itinerary remains in effect."
+      );
+      await loadBookings();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The additional-charge response could not be saved."
       );
     } finally {
       setActionBusy("");
@@ -971,6 +1018,67 @@ export default function JFleetPage() {
                     ) : active ? (
                       <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
                         Vehicle and driver assignment will appear after the reservation is confirmed by the owner.
+                      </div>
+                    ) : null}
+
+                    {(booking.addons ?? []).length ? (
+                      <div className="mt-4 space-y-3">
+                        {(booking.addons ?? []).map((addon) => {
+                          const routeLabel =
+                            addon.additional_route &&
+                            typeof addon.additional_route === "object" &&
+                            "label" in addon.additional_route
+                              ? String((addon.additional_route as { label?: string }).label || "")
+                              : "";
+                          return (
+                            <div key={addon.id} className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div>
+                                  <strong>Additional route / side trip</strong>
+                                  <p className="mt-1">{addon.description}</p>
+                                  {routeLabel ? <p className="mt-1"><strong>Route:</strong> {routeLabel}</p> : null}
+                                </div>
+                                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold">
+                                  {readable(addon.status)}
+                                </span>
+                              </div>
+                              <div className="mt-3 grid gap-1 sm:grid-cols-2">
+                                <p>Fuel / vehicle: <strong>{money(addon.fuel_vehicle_fee)}</strong></p>
+                                <p>Driver / time: <strong>{money(addon.driver_fee)}</strong></p>
+                                <p>Other: <strong>{money(addon.other_fee)}</strong></p>
+                                <p>Total additional fee: <strong>{money(addon.total_amount)}</strong></p>
+                              </div>
+                              {addon.status === "proposed" ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={actionBusy.startsWith("addon:" + addon.id)}
+                                    onClick={() => void respondAddon(addon.id, "accept")}
+                                    className="rounded-lg bg-violet-800 px-4 py-2 font-bold text-white disabled:opacity-50"
+                                  >
+                                    Accept Additional Charge
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={actionBusy.startsWith("addon:" + addon.id)}
+                                    onClick={() => void respondAddon(addon.id, "decline")}
+                                    className="rounded-lg border border-violet-300 bg-white px-4 py-2 font-bold disabled:opacity-50"
+                                  >
+                                    Keep Original Itinerary
+                                  </button>
+                                </div>
+                              ) : addon.status === "accepted" ? (
+                                <p className="mt-3 font-semibold">
+                                  Accepted - awaiting payment confirmation from the transport owner.
+                                </p>
+                              ) : addon.status === "paid" ? (
+                                <p className="mt-3 font-semibold">
+                                  Paid and approved. This amount is included in the current trip value.
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : null}
 
