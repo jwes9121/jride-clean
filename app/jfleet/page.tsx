@@ -61,6 +61,41 @@ type Inquiry = {
   }>;
 };
 
+type JFleetBooking = {
+  id: string;
+  booking_code: string;
+  inquiry_id: string;
+  scheduled_start_at: string;
+  scheduled_end_at: string;
+  original_quote_amount: number | string;
+  addon_total: number | string;
+  reservation_percent: number | string;
+  reservation_required_amount: number | string;
+  cancellation_free_until: string;
+  final_trip_value: number | string;
+  status: string;
+  payment_status: string;
+  reservation_paid_at?: string | null;
+  fully_paid_at?: string | null;
+  cancellation_penalty_amount: number | string;
+  refund_amount: number | string;
+  vehicle?: {
+    id: string;
+    vehicle_type: string;
+    make?: string | null;
+    model?: string | null;
+    plate_number: string;
+  } | null;
+  driver?: {
+    id: string;
+    full_name: string;
+    photo_url?: string | null;
+    rating_average: number | string;
+    rating_count: number;
+    completed_trips: number;
+  } | null;
+};
+
 const PURPOSE_OPTIONS = [
   ["tour_leisure", "Tour / Leisure"],
   ["family", "Family trip"],
@@ -129,7 +164,10 @@ export default function JFleetPage() {
   const [authed, setAuthed] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [inquiries, setInquiries] = React.useState<Inquiry[]>([]);
+  const [bookings, setBookings] = React.useState<JFleetBooking[]>([]);
   const [reading, setReading] = React.useState(false);
+  const [actionBusy, setActionBusy] = React.useState("");
+  const [cancelReasons, setCancelReasons] = React.useState<Record<string, string>>({});
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
@@ -165,6 +203,19 @@ export default function JFleetPage() {
     }
   }, []);
 
+  const loadBookings = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/jfleet/bookings", {
+        cache: "no-store",
+        headers: passengerAuthHeaders(),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && body?.ok) {
+        setBookings(Array.isArray(body.bookings) ? body.bookings : []);
+      }
+    } catch {}
+  }, []);
+
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -179,7 +230,7 @@ export default function JFleetPage() {
         setAuthed(session?.authed === true);
 
         if (statusBody?.enabled && session?.authed === true) {
-          await loadInquiries();
+          await Promise.all([loadInquiries(), loadBookings()]);
         }
       } catch {
         if (alive) setError("JFleet could not be loaded. Try again.");
@@ -190,7 +241,7 @@ export default function JFleetPage() {
     return () => {
       alive = false;
     };
-  }, [loadInquiries]);
+  }, [loadBookings, loadInquiries]);
 
   function updateStop(index: number, patch: Partial<RouteStop>) {
     setStops((current) =>
@@ -311,6 +362,88 @@ export default function JFleetPage() {
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function acceptQuote(inquiry: Inquiry, quoteId: string) {
+    if (actionBusy) return;
+    setActionBusy("accept:" + quoteId);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/jfleet/quotes/accept", {
+        method: "POST",
+        headers: passengerAuthHeaders(true),
+        body: JSON.stringify({ inquiry_id: inquiry.id, quote_id: quoteId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || "The quotation could not be accepted.");
+      }
+      setSuccess(
+        "Booking " +
+          body.booking_code +
+          " created. Minimum reservation required: " +
+          money(body.reservation_required_amount) +
+          "."
+      );
+      await Promise.all([loadInquiries(), loadBookings()]);
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "The quotation could not be accepted."
+      );
+    } finally {
+      setActionBusy("");
+    }
+  }
+
+  async function cancelBooking(booking: JFleetBooking) {
+    if (actionBusy) return;
+    const confirmed = window.confirm(
+      "Cancel " +
+        booking.booking_code +
+        "? Cancellations after " +
+        formatDate(booking.cancellation_free_until) +
+        " forfeit 10% of the accepted quotation."
+    );
+    if (!confirmed) return;
+
+    setActionBusy("cancel:" + booking.id);
+    setError("");
+    setSuccess("");
+    try {
+      const response = await fetch("/api/jfleet/bookings/cancel", {
+        method: "POST",
+        headers: passengerAuthHeaders(true),
+        body: JSON.stringify({
+          booking_id: booking.id,
+          reason: cancelReasons[booking.id] || null,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || "The booking could not be cancelled.");
+      }
+      setSuccess(
+        body.late_cancellation
+          ? "Booking cancelled. Late-cancellation penalty: " +
+              money(body.penalty_amount) +
+              ". Refund due: " +
+              money(body.refund_amount) +
+              "."
+          : "Booking cancelled within the refundable period. Refund due: " +
+              money(body.refund_amount) +
+              "."
+      );
+      await Promise.all([loadInquiries(), loadBookings()]);
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "The booking could not be cancelled."
+      );
+    } finally {
+      setActionBusy("");
     }
   }
 
@@ -747,6 +880,126 @@ export default function JFleetPage() {
                           Status: {readable(quote.status)} | Valid until:{" "}
                           {formatDate(quote.valid_until)}
                         </p>
+                        {quote.status === "sent" && inquiry.status === "quote_ready" ? (
+                          <button
+                            type="button"
+                            disabled={actionBusy === "accept:" + quote.id}
+                            onClick={() => void acceptQuote(inquiry, quote.id)}
+                            className="mt-3 w-full rounded-lg bg-emerald-800 px-4 py-2 font-bold text-white disabled:opacity-50"
+                          >
+                            {actionBusy === "accept:" + quote.id
+                              ? "Accepting..."
+                              : "Accept Quote"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold">Your JFleet Bookings</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                A booking appears here only after you accept a quotation.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadBookings()}
+              className="rounded-xl border px-3 py-2 text-sm font-semibold"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {bookings.length === 0 ? (
+            <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+              You have no confirmed JFleet booking yet.
+            </p>
+          ) : (
+            <div className="mt-5 space-y-4">
+              {bookings.map((booking) => {
+                const active = ![
+                  "completed",
+                  "cancelled_customer",
+                  "cancelled_operator",
+                ].includes(booking.status);
+                return (
+                  <article key={booking.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          {booking.booking_code}
+                        </p>
+                        <h3 className="mt-1 font-bold">{readable(booking.status)}</h3>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">
+                        {readable(booking.payment_status)}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                      <p><strong>Trip:</strong> {formatDate(booking.scheduled_start_at)} to {formatDate(booking.scheduled_end_at)}</p>
+                      <p><strong>Original quotation:</strong> {money(booking.original_quote_amount)}</p>
+                      <p><strong>Minimum reservation:</strong> {money(booking.reservation_required_amount)}</p>
+                      <p><strong>Free cancellation until:</strong> {formatDate(booking.cancellation_free_until)}</p>
+                      <p><strong>Add-ons:</strong> {money(booking.addon_total)}</p>
+                      <p><strong>Current trip value:</strong> {money(booking.final_trip_value)}</p>
+                    </div>
+
+                    {booking.driver && booking.vehicle ? (
+                      <div className="mt-3 rounded-xl bg-blue-50 p-3 text-sm text-blue-950">
+                        <strong>Assigned driver and vehicle</strong>
+                        <p className="mt-1">
+                          {booking.driver.full_name} | Rating:{" "}
+                          {booking.driver.rating_count
+                            ? Number(booking.driver.rating_average).toFixed(1)
+                            : "New"}{" "}
+                          | Completed JFleet trips: {booking.driver.completed_trips}
+                        </p>
+                        <p>
+                          {booking.vehicle.make || ""} {booking.vehicle.model || ""} -{" "}
+                          {booking.vehicle.plate_number}
+                        </p>
+                      </div>
+                    ) : active ? (
+                      <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+                        Vehicle and driver assignment will appear after the reservation is confirmed by the owner.
+                      </div>
+                    ) : null}
+
+                    {active ? (
+                      <div className="mt-4 rounded-xl border border-slate-200 p-3">
+                        <label className="text-sm font-medium text-slate-700">
+                          Cancellation reason (optional)
+                          <input
+                            value={cancelReasons[booking.id] || ""}
+                            onChange={(event) =>
+                              setCancelReasons((current) => ({
+                                ...current,
+                                [booking.id]: event.target.value,
+                              }))
+                            }
+                            maxLength={1000}
+                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={actionBusy === "cancel:" + booking.id}
+                          onClick={() => void cancelBooking(booking)}
+                          className="mt-3 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-bold text-red-800 disabled:opacity-50"
+                        >
+                          {actionBusy === "cancel:" + booking.id
+                            ? "Cancelling..."
+                            : "Cancel Booking"}
+                        </button>
                       </div>
                     ) : null}
                   </article>
