@@ -617,7 +617,7 @@ returns jsonb
 language plpgsql
 security invoker
 set search_path = ''
-as $$$$
+as $$
 declare
   v_partner public.jfleet_partners%rowtype;
   v_inquiry_id uuid;
@@ -732,7 +732,7 @@ begin
     'partner_id', p_partner_id
   );
 end;
-$$$$;
+$$;
 
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
