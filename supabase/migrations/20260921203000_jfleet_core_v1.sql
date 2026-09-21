@@ -594,6 +594,146 @@ create trigger jfleet_guard_trip_start_trg
 before update of status on public.jfleet_bookings
 for each row execute function public.jfleet_guard_trip_start_v1();
 
+create or replace function public.jfleet_create_inquiry_v1(
+  p_inquiry_code text,
+  p_passenger_user_id uuid,
+  p_partner_id uuid,
+  p_purpose text,
+  p_requested_vehicle_type text,
+  p_trip_mode text,
+  p_pickup_label text,
+  p_pickup_lat double precision,
+  p_pickup_lng double precision,
+  p_scheduled_start_at timestamptz,
+  p_scheduled_end_at timestamptz,
+  p_passenger_count integer,
+  p_cargo_description text,
+  p_cargo_weight_kg numeric,
+  p_luggage_notes text,
+  p_special_notes text,
+  p_stops jsonb
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$$$
+declare
+  v_partner public.jfleet_partners%rowtype;
+  v_inquiry_id uuid;
+  v_itinerary_id uuid;
+  v_due_at timestamptz;
+  v_stop jsonb;
+  v_sequence integer := 1;
+  v_stop_type text;
+  v_label text;
+begin
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = p_partner_id
+    and status = 'active'
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_PARTNER_NOT_ACTIVE';
+  end if;
+
+  if p_scheduled_start_at is null or p_scheduled_start_at <= clock_timestamp() then
+    raise exception 'JFLEET_TRIP_MUST_BE_IN_FUTURE';
+  end if;
+
+  if jsonb_typeof(coalesce(p_stops, '[]'::jsonb)) <> 'array'
+     or jsonb_array_length(coalesce(p_stops, '[]'::jsonb)) < 1 then
+    raise exception 'JFLEET_ITINERARY_DESTINATION_REQUIRED';
+  end if;
+
+  v_due_at := clock_timestamp() + make_interval(mins => v_partner.quote_tat_minutes);
+
+  insert into public.jfleet_inquiries(
+    inquiry_code, passenger_user_id, partner_id, purpose,
+    requested_vehicle_type, trip_mode, pickup_label, pickup_lat, pickup_lng,
+    scheduled_start_at, scheduled_end_at, passenger_count,
+    cargo_description, cargo_weight_kg, luggage_notes, special_notes,
+    status, current_itinerary_version, quote_due_at
+  ) values (
+    upper(trim(p_inquiry_code)), p_passenger_user_id, p_partner_id, p_purpose,
+    p_requested_vehicle_type, p_trip_mode, trim(p_pickup_label), p_pickup_lat, p_pickup_lng,
+    p_scheduled_start_at, p_scheduled_end_at, p_passenger_count,
+    nullif(trim(coalesce(p_cargo_description,'')),''), p_cargo_weight_kg,
+    nullif(trim(coalesce(p_luggage_notes,'')),''), nullif(trim(coalesce(p_special_notes,'')),''),
+    'quote_requested', 1, v_due_at
+  )
+  returning id into v_inquiry_id;
+
+  insert into public.jfleet_itineraries(
+    inquiry_id, version_no, source, status
+  ) values (
+    v_inquiry_id, 1, 'customer', 'current'
+  )
+  returning id into v_itinerary_id;
+
+  insert into public.jfleet_itinerary_stops(
+    itinerary_id, sequence_no, stop_type, location_label, lat, lng
+  ) values (
+    v_itinerary_id, 0, 'pickup', trim(p_pickup_label), p_pickup_lat, p_pickup_lng
+  );
+
+  for v_stop in
+    select value from jsonb_array_elements(p_stops)
+  loop
+    v_label := trim(coalesce(v_stop->>'label',''));
+    v_stop_type := lower(trim(coalesce(v_stop->>'stop_type','stop')));
+
+    if v_label = '' then
+      raise exception 'JFLEET_ITINERARY_STOP_LABEL_REQUIRED';
+    end if;
+
+    if v_stop_type not in ('stop','destination','return') then
+      raise exception 'JFLEET_ITINERARY_STOP_TYPE_INVALID';
+    end if;
+
+    insert into public.jfleet_itinerary_stops(
+      itinerary_id, sequence_no, stop_type, location_label, lat, lng, notes
+    ) values (
+      v_itinerary_id,
+      v_sequence,
+      v_stop_type,
+      v_label,
+      case when nullif(v_stop->>'lat','') is null then null else (v_stop->>'lat')::double precision end,
+      case when nullif(v_stop->>'lng','') is null then null else (v_stop->>'lng')::double precision end,
+      nullif(trim(coalesce(v_stop->>'notes','')),'')
+    );
+
+    v_sequence := v_sequence + 1;
+  end loop;
+
+  insert into public.jfleet_events(
+    inquiry_id, actor_type, actor_id, event_type, details
+  ) values (
+    v_inquiry_id,
+    'customer',
+    p_passenger_user_id::text,
+    'inquiry_submitted',
+    jsonb_build_object(
+      'inquiry_code', upper(trim(p_inquiry_code)),
+      'quote_due_at', v_due_at,
+      'quote_tat_minutes', v_partner.quote_tat_minutes,
+      'itinerary_version', 1
+    )
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'inquiry_id', v_inquiry_id,
+    'inquiry_code', upper(trim(p_inquiry_code)),
+    'status', 'quote_requested',
+    'quote_due_at', v_due_at,
+    'partner_id', p_partner_id
+  );
+end;
+$$$$;
+
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
 create index jfleet_inquiries_partner_status_due_idx
@@ -659,6 +799,10 @@ revoke all on function public.jfleet_touch_updated_at_v1() from public, anon, au
 revoke all on function public.jfleet_set_booking_policy_snapshots_v1() from public, anon, authenticated;
 revoke all on function public.jfleet_guard_assignment_v1() from public, anon, authenticated;
 revoke all on function public.jfleet_guard_trip_start_v1() from public, anon, authenticated;
+revoke all on function public.jfleet_create_inquiry_v1(
+  text, uuid, uuid, text, text, text, text, double precision, double precision,
+  timestamptz, timestamptz, integer, text, numeric, text, text, jsonb
+) from public, anon, authenticated;
 
 comment on table public.jfleet_inquiries is
   'JFleet canvassing/request-for-quotation records. Not counted as confirmed bookings.';
