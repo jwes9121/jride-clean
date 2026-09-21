@@ -1311,7 +1311,7 @@ returns jsonb
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 declare
   v_inquiry public.jfleet_inquiries%rowtype;
   v_partner public.jfleet_partners%rowtype;
@@ -1499,7 +1499,7 @@ begin
     'valid_until', v_quote.valid_until
   );
 end;
-$;
+$$;
 
 create or replace function public.jfleet_owner_assign_v1(
   p_booking_id uuid,
@@ -1512,7 +1512,7 @@ returns jsonb
 language plpgsql
 security invoker
 set search_path = ''
-as $
+as $$
 declare
   v_booking public.jfleet_bookings%rowtype;
   v_partner public.jfleet_partners%rowtype;
@@ -1646,7 +1646,7 @@ begin
     'plate_number', v_vehicle.plate_number
   );
 end;
-$;
+$$;
 
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
