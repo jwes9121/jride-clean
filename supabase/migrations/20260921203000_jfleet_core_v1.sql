@@ -507,6 +507,16 @@ declare
   v_driver_status text;
   v_driver_verified boolean;
 begin
+  if new.assigned_vehicle_id is not null or new.assigned_driver_id is not null then
+    if new.payment_status not in ('reservation_paid','fully_paid') then
+      raise exception 'JFLEET_RESERVATION_PAYMENT_REQUIRED_BEFORE_ASSIGNMENT';
+    end if;
+
+    if new.status in ('reservation_pending','cancelled_customer','cancelled_operator','completed') then
+      raise exception 'JFLEET_BOOKING_NOT_ASSIGNABLE';
+    end if;
+  end if;
+
   if new.assigned_vehicle_id is not null then
     select partner_id, status, documents_verified
       into v_vehicle_partner, v_vehicle_status, v_vehicle_verified
@@ -1033,7 +1043,8 @@ begin
     v_status := case
       when v_booking.assigned_driver_id is not null
        and v_booking.assigned_vehicle_id is not null then 'assigned'
-      else greatest(v_booking.status, 'confirmed')
+      when v_booking.status = 'reservation_pending' then 'confirmed'
+      else v_booking.status
     end;
   elsif v_paid >= v_booking.reservation_required_amount then
     v_payment_status := 'reservation_paid';
