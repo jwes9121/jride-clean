@@ -144,7 +144,7 @@ create table public.jfleet_inquiries (
   pickup_lat double precision,
   pickup_lng double precision,
   scheduled_start_at timestamptz not null,
-  scheduled_end_at timestamptz,
+  scheduled_end_at timestamptz not null,
   passenger_count integer check (passenger_count is null or passenger_count >= 1),
   cargo_description text,
   cargo_weight_kg numeric(12,3) check (cargo_weight_kg is null or cargo_weight_kg > 0),
@@ -244,7 +244,7 @@ create table public.jfleet_bookings (
   partner_id uuid not null references public.jfleet_partners(id) on delete restrict,
   current_itinerary_id uuid not null references public.jfleet_itineraries(id) on delete restrict,
   scheduled_start_at timestamptz not null,
-  scheduled_end_at timestamptz,
+  scheduled_end_at timestamptz not null,
   original_quote_amount numeric(12,2) not null check (original_quote_amount > 0),
   addon_total numeric(12,2) not null default 0 check (addon_total >= 0),
   reservation_percent numeric(5,2) not null default 20.00
@@ -652,6 +652,10 @@ begin
 
   if p_scheduled_start_at is null or p_scheduled_start_at <= clock_timestamp() then
     raise exception 'JFLEET_TRIP_MUST_BE_IN_FUTURE';
+  end if;
+
+  if p_scheduled_end_at is null or p_scheduled_end_at <= p_scheduled_start_at then
+    raise exception 'JFLEET_TRIP_END_REQUIRED';
   end if;
 
   if jsonb_typeof(coalesce(p_stops, '[]'::jsonb)) <> 'array'
@@ -1291,6 +1295,359 @@ begin
 end;
 $$;
 
+create or replace function public.jfleet_owner_send_quote_v1(
+  p_inquiry_id uuid,
+  p_owner_user_id uuid,
+  p_total_amount numeric,
+  p_valid_until timestamptz,
+  p_inclusions text,
+  p_exclusions text,
+  p_pricing_notes text,
+  p_fuel_basis_note text,
+  p_items jsonb default '[]'::jsonb,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_inquiry public.jfleet_inquiries%rowtype;
+  v_partner public.jfleet_partners%rowtype;
+  v_itinerary_id uuid;
+  v_quote public.jfleet_quotes%rowtype;
+  v_version integer;
+  v_item jsonb;
+  v_sequence integer := 0;
+  v_items_total numeric(12,2) := 0;
+begin
+  if p_total_amount is null or p_total_amount <= 0 then
+    raise exception 'JFLEET_QUOTE_AMOUNT_INVALID';
+  end if;
+
+  if p_valid_until is null or p_valid_until <= p_now then
+    raise exception 'JFLEET_QUOTE_VALIDITY_INVALID';
+  end if;
+
+  select *
+    into v_inquiry
+  from public.jfleet_inquiries
+  where id = p_inquiry_id
+  for update;
+
+  if v_inquiry.id is null then
+    raise exception 'JFLEET_INQUIRY_NOT_FOUND';
+  end if;
+
+  if v_inquiry.status in ('quote_accepted','declined','expired','cancelled','converted') then
+    raise exception 'JFLEET_INQUIRY_NOT_QUOTABLE';
+  end if;
+
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = v_inquiry.partner_id
+    and owner_user_id = p_owner_user_id
+    and status = 'active'
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_OWNER_NOT_AUTHORIZED';
+  end if;
+
+  select i.id
+    into v_itinerary_id
+  from public.jfleet_itineraries i
+  where i.inquiry_id = v_inquiry.id
+    and i.status = 'current'
+  order by i.version_no desc
+  limit 1;
+
+  if v_itinerary_id is null then
+    raise exception 'JFLEET_CURRENT_ITINERARY_NOT_FOUND';
+  end if;
+
+  select coalesce(max(q.version_no),0) + 1
+    into v_version
+  from public.jfleet_quotes q
+  where q.inquiry_id = v_inquiry.id;
+
+  update public.jfleet_quotes
+  set status = 'superseded'
+  where inquiry_id = v_inquiry.id
+    and status = 'sent';
+
+  insert into public.jfleet_quotes(
+    inquiry_id,
+    partner_id,
+    itinerary_id,
+    version_no,
+    status,
+    total_amount,
+    valid_until,
+    inclusions,
+    exclusions,
+    pricing_notes,
+    fuel_basis_note,
+    sent_at,
+    created_by_owner_user_id,
+    created_at,
+    updated_at
+  ) values (
+    v_inquiry.id,
+    v_partner.id,
+    v_itinerary_id,
+    v_version,
+    'sent',
+    round(p_total_amount,2),
+    p_valid_until,
+    nullif(trim(coalesce(p_inclusions,'')),''),
+    nullif(trim(coalesce(p_exclusions,'')),''),
+    nullif(trim(coalesce(p_pricing_notes,'')),''),
+    nullif(trim(coalesce(p_fuel_basis_note,'')),''),
+    p_now,
+    p_owner_user_id,
+    p_now,
+    p_now
+  )
+  returning * into v_quote;
+
+  if jsonb_typeof(coalesce(p_items,'[]'::jsonb)) <> 'array' then
+    raise exception 'JFLEET_QUOTE_ITEMS_INVALID';
+  end if;
+
+  for v_item in
+    select value from jsonb_array_elements(coalesce(p_items,'[]'::jsonb))
+  loop
+    if trim(coalesce(v_item->>'label','')) = '' then
+      raise exception 'JFLEET_QUOTE_ITEM_LABEL_REQUIRED';
+    end if;
+
+    if lower(trim(coalesce(v_item->>'item_type','other'))) not in
+      ('vehicle_hire','fuel','driver','toll_parking','accommodation','other') then
+      raise exception 'JFLEET_QUOTE_ITEM_TYPE_INVALID';
+    end if;
+
+    if coalesce((v_item->>'amount')::numeric,0) < 0 then
+      raise exception 'JFLEET_QUOTE_ITEM_AMOUNT_INVALID';
+    end if;
+
+    insert into public.jfleet_quote_items(
+      quote_id,
+      sequence_no,
+      item_type,
+      label,
+      amount,
+      included,
+      notes
+    ) values (
+      v_quote.id,
+      v_sequence,
+      lower(trim(coalesce(v_item->>'item_type','other'))),
+      trim(v_item->>'label'),
+      round(coalesce((v_item->>'amount')::numeric,0),2),
+      coalesce((v_item->>'included')::boolean,true),
+      nullif(trim(coalesce(v_item->>'notes','')),'')
+    );
+
+    if coalesce((v_item->>'included')::boolean,true) then
+      v_items_total := v_items_total + round(coalesce((v_item->>'amount')::numeric,0),2);
+    end if;
+
+    v_sequence := v_sequence + 1;
+  end loop;
+
+  if v_sequence > 0 and v_items_total <> round(p_total_amount,2) then
+    raise exception 'JFLEET_QUOTE_ITEMS_TOTAL_MISMATCH';
+  end if;
+
+  update public.jfleet_inquiries
+  set status = 'quote_ready',
+      owner_opened_at = coalesce(owner_opened_at,p_now)
+  where id = v_inquiry.id;
+
+  insert into public.jfleet_events(
+    inquiry_id,
+    actor_type,
+    actor_id,
+    event_type,
+    details,
+    created_at
+  ) values (
+    v_inquiry.id,
+    'owner',
+    p_owner_user_id::text,
+    'quote_sent',
+    jsonb_build_object(
+      'quote_id', v_quote.id,
+      'version_no', v_quote.version_no,
+      'total_amount', v_quote.total_amount,
+      'valid_until', v_quote.valid_until,
+      'itinerary_id', v_itinerary_id
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'quote_id', v_quote.id,
+    'inquiry_id', v_inquiry.id,
+    'version_no', v_quote.version_no,
+    'status', v_quote.status,
+    'total_amount', v_quote.total_amount,
+    'valid_until', v_quote.valid_until
+  );
+end;
+$;
+
+create or replace function public.jfleet_owner_assign_v1(
+  p_booking_id uuid,
+  p_owner_user_id uuid,
+  p_vehicle_id uuid,
+  p_driver_id uuid,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_partner public.jfleet_partners%rowtype;
+  v_vehicle public.jfleet_vehicles%rowtype;
+  v_driver public.jfleet_drivers%rowtype;
+  v_conflict uuid;
+begin
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_BOOKING_NOT_FOUND';
+  end if;
+
+  select *
+    into v_partner
+  from public.jfleet_partners
+  where id = v_booking.partner_id
+    and owner_user_id = p_owner_user_id
+    and status = 'active'
+  for share;
+
+  if v_partner.id is null then
+    raise exception 'JFLEET_OWNER_NOT_AUTHORIZED';
+  end if;
+
+  if v_booking.payment_status not in ('reservation_paid','fully_paid') then
+    raise exception 'JFLEET_RESERVATION_PAYMENT_REQUIRED_BEFORE_ASSIGNMENT';
+  end if;
+
+  if v_booking.status in ('cancelled_customer','cancelled_operator','completed','on_trip') then
+    raise exception 'JFLEET_BOOKING_NOT_ASSIGNABLE';
+  end if;
+
+  select *
+    into v_vehicle
+  from public.jfleet_vehicles
+  where id = p_vehicle_id
+    and partner_id = v_booking.partner_id
+    and status = 'active'
+    and documents_verified = true
+  for share;
+
+  if v_vehicle.id is null then
+    raise exception 'JFLEET_VEHICLE_NOT_ELIGIBLE';
+  end if;
+
+  select *
+    into v_driver
+  from public.jfleet_drivers
+  where id = p_driver_id
+    and partner_id = v_booking.partner_id
+    and status = 'active'
+    and documents_verified = true
+  for share;
+
+  if v_driver.id is null then
+    raise exception 'JFLEET_DRIVER_NOT_ELIGIBLE';
+  end if;
+
+  select b.id
+    into v_conflict
+  from public.jfleet_bookings b
+  where b.id <> v_booking.id
+    and b.assigned_vehicle_id = p_vehicle_id
+    and b.status not in ('completed','cancelled_customer','cancelled_operator')
+    and tstzrange(b.scheduled_start_at,b.scheduled_end_at,'[)')
+        && tstzrange(v_booking.scheduled_start_at,v_booking.scheduled_end_at,'[)')
+  limit 1;
+
+  if v_conflict is not null then
+    raise exception 'JFLEET_VEHICLE_SCHEDULE_CONFLICT';
+  end if;
+
+  v_conflict := null;
+
+  select b.id
+    into v_conflict
+  from public.jfleet_bookings b
+  where b.id <> v_booking.id
+    and b.assigned_driver_id = p_driver_id
+    and b.status not in ('completed','cancelled_customer','cancelled_operator')
+    and tstzrange(b.scheduled_start_at,b.scheduled_end_at,'[)')
+        && tstzrange(v_booking.scheduled_start_at,v_booking.scheduled_end_at,'[)')
+  limit 1;
+
+  if v_conflict is not null then
+    raise exception 'JFLEET_DRIVER_SCHEDULE_CONFLICT';
+  end if;
+
+  update public.jfleet_bookings
+  set assigned_vehicle_id = p_vehicle_id,
+      assigned_driver_id = p_driver_id,
+      assigned_at = p_now,
+      status = 'assigned'
+  where id = v_booking.id
+  returning * into v_booking;
+
+  insert into public.jfleet_events(
+    booking_id,
+    actor_type,
+    actor_id,
+    event_type,
+    details,
+    created_at
+  ) values (
+    v_booking.id,
+    'owner',
+    p_owner_user_id::text,
+    'vehicle_driver_assigned',
+    jsonb_build_object(
+      'vehicle_id', p_vehicle_id,
+      'driver_id', p_driver_id,
+      'driver_name', v_driver.full_name,
+      'plate_number', v_vehicle.plate_number
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'status', v_booking.status,
+    'vehicle_id', p_vehicle_id,
+    'driver_id', p_driver_id,
+    'driver_name', v_driver.full_name,
+    'plate_number', v_vehicle.plate_number
+  );
+end;
+$;
+
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
 create index jfleet_inquiries_partner_status_due_idx
@@ -1371,6 +1728,12 @@ revoke all on function public.jfleet_cancel_customer_v1(
 ) from public, anon, authenticated;
 revoke all on function public.jfleet_cancel_operator_v1(
   uuid, uuid, text, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_owner_send_quote_v1(
+  uuid, uuid, numeric, timestamptz, text, text, text, text, jsonb, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_owner_assign_v1(
+  uuid, uuid, uuid, uuid, timestamptz
 ) from public, anon, authenticated;
 
 comment on table public.jfleet_inquiries is
