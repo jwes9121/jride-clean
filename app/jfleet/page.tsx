@@ -234,7 +234,7 @@ export default function JFleetPage() {
       return;
     }
 
-    if ((tripMode === "round_trip" || tripMode === "multi_day") && !scheduledEnd) {
+    if (!scheduledEnd) {
       setError("Enter the expected trip end date and time.");
       return;
     }
@@ -456,7 +456,6 @@ export default function JFleetPage() {
                 value={tripMode}
                 onChange={(event) => {
                   setTripMode(event.target.value);
-                  if (event.target.value === "one_way") setScheduledEnd("");
                 }}
                 className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
               >
@@ -511,17 +510,15 @@ export default function JFleetPage() {
                 />
               </label>
 
-              {tripMode !== "one_way" ? (
-                <label className="text-sm font-medium text-slate-700">
-                  Expected trip end
-                  <input
-                    type="datetime-local"
-                    value={scheduledEnd}
-                    onChange={(event) => setScheduledEnd(event.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-                  />
-                </label>
-              ) : null}
+              <label className="text-sm font-medium text-slate-700">
+                Expected trip end
+                <input
+                  type="datetime-local"
+                  value={scheduledEnd}
+                  onChange={(event) => setScheduledEnd(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
+                />
+              </label>
             </div>
 
             <div className="mt-5 space-y-3">
