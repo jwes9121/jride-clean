@@ -35,6 +35,17 @@ type Trip = {
     lng?: number | null;
     notes?: string | null;
   }>;
+  addons?: Array<{
+    id: string;
+    requested_by: string;
+    description: string;
+    additional_route: { label?: string } | unknown;
+    fuel_vehicle_fee: number | string;
+    driver_fee: number | string;
+    other_fee: number | string;
+    total_amount: number | string;
+    status: string;
+  }>;
 };
 
 type ActiveResponse = {
@@ -350,6 +361,45 @@ export default function JFleetDriverPage() {
                   ))}
                 </div>
               </div>
+
+              {(activeTrip.addons ?? []).length ? (
+                <div className="mt-4 space-y-3">
+                  {(activeTrip.addons ?? []).map((addon) => {
+                    const routeLabel =
+                      addon.additional_route &&
+                      typeof addon.additional_route === "object" &&
+                      "label" in addon.additional_route
+                        ? String((addon.additional_route as { label?: string }).label || "")
+                        : "";
+                    return (
+                      <div key={addon.id} className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <strong>Additional route / side trip</strong>
+                            <p className="mt-1">{addon.description}</p>
+                            {routeLabel ? <p className="mt-1">Route: {routeLabel}</p> : null}
+                          </div>
+                          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold">
+                            {title(addon.status)}
+                          </span>
+                        </div>
+                        <p className="mt-2">
+                          Additional total: <strong>{Number(addon.total_amount).toLocaleString(undefined, { style: "currency", currency: "PHP" })}</strong>
+                        </p>
+                        {addon.status === "proposed" ? (
+                          <p className="mt-2 font-semibold">Do not take this side trip yet. Customer approval is pending.</p>
+                        ) : addon.status === "accepted" ? (
+                          <p className="mt-2 font-semibold">Customer accepted. Wait for the owner to confirm payment.</p>
+                        ) : addon.status === "paid" ? (
+                          <p className="mt-2 font-semibold">Paid and approved by the owner.</p>
+                        ) : addon.status === "declined" ? (
+                          <p className="mt-2 font-semibold">Declined. Follow the original itinerary.</p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
 
               <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
                 <strong>GPS security tracking</strong>
