@@ -168,7 +168,7 @@ export async function POST(req: Request) {
     );
   }
 
-  if ((tripMode === "round_trip" || tripMode === "multi_day") && !scheduledEnd) {
+  if (!scheduledEnd) {
     return NextResponse.json(
       { ok: false, code: "JFLEET_END_TIME_REQUIRED", message: "Enter the expected trip end date and time." },
       { status: 400, headers }
