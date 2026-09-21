@@ -76,6 +76,23 @@ type Payment = {
   confirmed_at?: string | null;
 };
 
+type Addon = {
+  id: string;
+  booking_id: string;
+  requested_by: string;
+  description: string;
+  additional_route: { label?: string } | unknown;
+  fuel_vehicle_fee: number | string;
+  driver_fee: number | string;
+  other_fee: number | string;
+  total_amount: number | string;
+  status: string;
+  proposed_at: string;
+  accepted_at?: string | null;
+  payment_confirmed_at?: string | null;
+  notes?: string | null;
+};
+
 type Vehicle = {
   id: string;
   unit_code: string;
@@ -118,6 +135,7 @@ type Dashboard = {
   quotes?: Quote[];
   bookings?: Booking[];
   payments?: Payment[];
+  addons?: Addon[];
   vehicles?: Vehicle[];
   drivers?: Driver[];
   message?: string;
@@ -143,6 +161,22 @@ type PaymentDraft = {
 type AssignmentDraft = {
   vehicle_id: string;
   driver_id: string;
+};
+
+type AddonDraft = {
+  requested_by: "customer" | "driver" | "owner";
+  description: string;
+  route_label: string;
+  fuel_vehicle_fee: string;
+  driver_fee: string;
+  other_fee: string;
+  notes: string;
+};
+
+type AddonPaymentDraft = {
+  payment_channel: string;
+  payment_reference: string;
+  notes: string;
 };
 
 function money(value: unknown): string {
@@ -181,6 +215,8 @@ export default function JFleetOwnerPage() {
   const [quoteDrafts, setQuoteDrafts] = React.useState<Record<string, QuoteDraft>>({});
   const [paymentDrafts, setPaymentDrafts] = React.useState<Record<string, PaymentDraft>>({});
   const [assignmentDrafts, setAssignmentDrafts] = React.useState<Record<string, AssignmentDraft>>({});
+  const [addonDrafts, setAddonDrafts] = React.useState<Record<string, AddonDraft>>({});
+  const [addonPaymentDrafts, setAddonPaymentDrafts] = React.useState<Record<string, AddonPaymentDraft>>({});
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -260,6 +296,34 @@ export default function JFleetOwnerPage() {
 
   function assignmentDraft(bookingId: string): AssignmentDraft {
     return assignmentDrafts[bookingId] ?? { vehicle_id: "", driver_id: "" };
+  }
+
+  function addonsFor(bookingId: string) {
+    return (data?.addons ?? []).filter((addon) => addon.booking_id === bookingId);
+  }
+
+  function addonDraft(bookingId: string): AddonDraft {
+    return (
+      addonDrafts[bookingId] ?? {
+        requested_by: "customer",
+        description: "",
+        route_label: "",
+        fuel_vehicle_fee: "",
+        driver_fee: "",
+        other_fee: "",
+        notes: "",
+      }
+    );
+  }
+
+  function addonPaymentDraft(addonId: string): AddonPaymentDraft {
+    return (
+      addonPaymentDrafts[addonId] ?? {
+        payment_channel: "",
+        payment_reference: "",
+        notes: "",
+      }
+    );
   }
 
   async function sendQuote(inquiry: Inquiry) {
@@ -365,6 +429,97 @@ export default function JFleetOwnerPage() {
       await load();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Assignment failed.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function proposeAddon(booking: Booking) {
+    const draft = addonDraft(booking.id);
+    setBusyKey("addon-propose:" + booking.id);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/jfleet/owner/addons/propose", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          booking_id: booking.id,
+          requested_by: draft.requested_by,
+          description: draft.description,
+          route_label: draft.route_label,
+          fuel_vehicle_fee: Number(draft.fuel_vehicle_fee || 0),
+          driver_fee: Number(draft.driver_fee || 0),
+          other_fee: Number(draft.other_fee || 0),
+          notes: draft.notes || null,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || "Additional trip charge could not be proposed.");
+      }
+      setMessage(
+        booking.booking_code +
+          " additional charge proposed: " +
+          money(body.total_amount) +
+          ". Waiting for customer approval."
+      );
+      setAddonDrafts((current) => ({ ...current, [booking.id]: {
+        requested_by: "customer",
+        description: "",
+        route_label: "",
+        fuel_vehicle_fee: "",
+        driver_fee: "",
+        other_fee: "",
+        notes: "",
+      }}));
+      await load();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Additional trip charge could not be proposed."
+      );
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function confirmAddonPayment(addon: Addon) {
+    const draft = addonPaymentDraft(addon.id);
+    setBusyKey("addon-pay:" + addon.id);
+    setError("");
+    setMessage("");
+    try {
+      const response = await fetch("/api/jfleet/owner/addons/confirm-payment", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          addon_id: addon.id,
+          payment_channel: draft.payment_channel,
+          payment_reference: draft.payment_reference,
+          notes: draft.notes || null,
+        }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || !body?.ok) {
+        throw new Error(body?.message || "Additional-charge payment could not be confirmed.");
+      }
+      setMessage(
+        "Additional charge paid. Current trip value: " +
+          money(body.final_trip_value) +
+          " | JRide commission: " +
+          money(body.jride_commission_amount)
+      );
+      await load();
+    } catch (failure) {
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Additional-charge payment could not be confirmed."
+      );
     } finally {
       setBusyKey("");
     }
@@ -610,6 +765,8 @@ export default function JFleetOwnerPage() {
               const payment = paymentDraft(booking.id);
               const assignment = assignmentDraft(booking.id);
               const totalPaid = paidAmount(booking.id);
+              const bookingAddons = addonsFor(booking.id);
+              const addon = addonDraft(booking.id);
               const closed = ["completed", "cancelled_customer", "cancelled_operator"].includes(booking.status);
               return (
                 <article key={booking.id} className="rounded-2xl border border-slate-200 p-4">
@@ -631,6 +788,183 @@ export default function JFleetOwnerPage() {
                     <p><strong>Partner net:</strong> {money(booking.partner_net_amount)}</p>
                     <p><strong>Trip:</strong> {dateTime(booking.scheduled_start_at)} to {dateTime(booking.scheduled_end_at)}</p>
                   </div>
+
+                  {bookingAddons.length ? (
+                    <div className="mt-4 space-y-3">
+                      {bookingAddons.map((item) => {
+                        const routeLabel =
+                          item.additional_route &&
+                          typeof item.additional_route === "object" &&
+                          "label" in item.additional_route
+                            ? String((item.additional_route as { label?: string }).label || "")
+                            : "";
+                        const payDraft = addonPaymentDraft(item.id);
+                        return (
+                          <div key={item.id} className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <strong>{item.description}</strong>
+                                {routeLabel ? <p className="mt-1">Route: {routeLabel}</p> : null}
+                              </div>
+                              <span className="rounded-full bg-white px-3 py-1 text-xs font-bold">
+                                {title(item.status)}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid gap-1 sm:grid-cols-4">
+                              <p>Fuel/vehicle: {money(item.fuel_vehicle_fee)}</p>
+                              <p>Driver/time: {money(item.driver_fee)}</p>
+                              <p>Other: {money(item.other_fee)}</p>
+                              <p><strong>Total: {money(item.total_amount)}</strong></p>
+                            </div>
+                            {item.status === "proposed" ? (
+                              <p className="mt-2 font-semibold">Waiting for customer approval.</p>
+                            ) : item.status === "accepted" ? (
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <input
+                                  placeholder="Payment channel"
+                                  value={payDraft.payment_channel}
+                                  onChange={(event) =>
+                                    setAddonPaymentDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: { ...payDraft, payment_channel: event.target.value },
+                                    }))
+                                  }
+                                  className="rounded-lg border bg-white px-3 py-2"
+                                />
+                                <input
+                                  placeholder="Reference number, if any"
+                                  value={payDraft.payment_reference}
+                                  onChange={(event) =>
+                                    setAddonPaymentDrafts((current) => ({
+                                      ...current,
+                                      [item.id]: { ...payDraft, payment_reference: event.target.value },
+                                    }))
+                                  }
+                                  className="rounded-lg border bg-white px-3 py-2"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={busyKey === "addon-pay:" + item.id}
+                                  onClick={() => void confirmAddonPayment(item)}
+                                  className="rounded-lg bg-violet-800 px-4 py-2 font-bold text-white disabled:opacity-50 sm:col-span-2"
+                                >
+                                  {busyKey === "addon-pay:" + item.id
+                                    ? "Saving..."
+                                    : "Confirm Additional Fee Paid"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {booking.status === "on_trip" ? (
+                    <div className="mt-4 rounded-xl border border-violet-200 p-3">
+                      <h4 className="font-bold">Additional route / side trip</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Quote the added fuel/vehicle cost and any driver/time fee. The customer must approve it before the side trip is treated as authorized.
+                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <select
+                          value={addon.requested_by}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: {
+                                ...addon,
+                                requested_by: event.target.value as AddonDraft["requested_by"],
+                              },
+                            }))
+                          }
+                          className="rounded-lg border bg-white px-3 py-2"
+                        >
+                          <option value="customer">Requested by customer</option>
+                          <option value="driver">Reported by driver</option>
+                          <option value="owner">Initiated by owner</option>
+                        </select>
+                        <input
+                          placeholder="Side-trip description"
+                          value={addon.description}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: { ...addon, description: event.target.value },
+                            }))
+                          }
+                          className="rounded-lg border px-3 py-2"
+                        />
+                        <input
+                          placeholder="Additional route / destination"
+                          value={addon.route_label}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: { ...addon, route_label: event.target.value },
+                            }))
+                          }
+                          className="rounded-lg border px-3 py-2 sm:col-span-2"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Fuel / vehicle fee"
+                          value={addon.fuel_vehicle_fee}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: { ...addon, fuel_vehicle_fee: event.target.value },
+                            }))
+                          }
+                          className="rounded-lg border px-3 py-2"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Driver / time fee"
+                          value={addon.driver_fee}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: { ...addon, driver_fee: event.target.value },
+                            }))
+                          }
+                          className="rounded-lg border px-3 py-2"
+                        />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Other fee"
+                          value={addon.other_fee}
+                          onChange={(event) =>
+                            setAddonDrafts((current) => ({
+                              ...current,
+                              [booking.id]: { ...addon, other_fee: event.target.value },
+                            }))
+                          }
+                          className="rounded-lg border px-3 py-2"
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            busyKey === "addon-propose:" + booking.id ||
+                            !addon.description.trim() ||
+                            !addon.route_label.trim()
+                          }
+                          onClick={() => void proposeAddon(booking)}
+                          className="rounded-lg bg-violet-800 px-4 py-2 font-bold text-white disabled:opacity-50"
+                        >
+                          {busyKey === "addon-propose:" + booking.id
+                            ? "Sending..."
+                            : "Send Additional Charge"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {!closed ? (
                     <div className="mt-4 grid gap-4 lg:grid-cols-2">
