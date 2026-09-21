@@ -1648,6 +1648,224 @@ begin
 end;
 $$;
 
+create or replace function public.jfleet_driver_transition_v1(
+  p_booking_id uuid,
+  p_driver_id uuid,
+  p_action text,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_action text := lower(trim(coalesce(p_action,'')));
+begin
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+    and assigned_driver_id = p_driver_id
+  for update;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_DRIVER_BOOKING_NOT_FOUND';
+  end if;
+
+  if v_action = 'en_route' then
+    if v_booking.status not in ('assigned','upcoming','ready_for_trip') then
+      raise exception 'JFLEET_DRIVER_TRANSITION_INVALID';
+    end if;
+    update public.jfleet_bookings
+    set status = 'driver_en_route'
+    where id = v_booking.id
+    returning * into v_booking;
+
+  elsif v_action = 'arrived' then
+    if v_booking.status not in ('assigned','upcoming','ready_for_trip','driver_en_route') then
+      raise exception 'JFLEET_DRIVER_TRANSITION_INVALID';
+    end if;
+    update public.jfleet_bookings
+    set status = 'driver_arrived'
+    where id = v_booking.id
+    returning * into v_booking;
+
+  elsif v_action = 'start' then
+    if v_booking.status not in ('driver_arrived','ready_for_trip') then
+      raise exception 'JFLEET_DRIVER_TRANSITION_INVALID';
+    end if;
+    update public.jfleet_bookings
+    set status = 'on_trip'
+    where id = v_booking.id
+    returning * into v_booking;
+
+  elsif v_action = 'complete' then
+    if v_booking.status <> 'on_trip' then
+      raise exception 'JFLEET_DRIVER_TRANSITION_INVALID';
+    end if;
+    update public.jfleet_bookings
+    set status = 'completed'
+    where id = v_booking.id
+    returning * into v_booking;
+
+    update public.jfleet_drivers
+    set completed_trips = completed_trips + 1,
+        updated_at = p_now
+    where id = p_driver_id;
+
+  else
+    raise exception 'JFLEET_DRIVER_ACTION_INVALID';
+  end if;
+
+  insert into public.jfleet_events(
+    booking_id,
+    actor_type,
+    actor_id,
+    event_type,
+    details,
+    created_at
+  ) values (
+    v_booking.id,
+    'driver',
+    p_driver_id::text,
+    'driver_' || v_action,
+    jsonb_build_object(
+      'booking_status', v_booking.status,
+      'payment_status', v_booking.payment_status
+    ),
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_code', v_booking.booking_code,
+    'status', v_booking.status,
+    'payment_status', v_booking.payment_status
+  );
+end;
+$$;
+
+create or replace function public.jfleet_driver_location_v1(
+  p_driver_id uuid,
+  p_booking_id uuid,
+  p_lat double precision,
+  p_lng double precision,
+  p_accuracy_m double precision,
+  p_heading_deg double precision,
+  p_speed_mps double precision,
+  p_device_id text,
+  p_captured_at timestamptz,
+  p_now timestamptz default clock_timestamp()
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_booking public.jfleet_bookings%rowtype;
+  v_captured_at timestamptz := coalesce(p_captured_at,p_now);
+begin
+  if p_lat is null or p_lat < -90 or p_lat > 90
+     or p_lng is null or p_lng < -180 or p_lng > 180 then
+    raise exception 'JFLEET_LOCATION_INVALID';
+  end if;
+
+  if p_accuracy_m is not null and (p_accuracy_m < 0 or p_accuracy_m > 5000) then
+    raise exception 'JFLEET_LOCATION_ACCURACY_INVALID';
+  end if;
+
+  if v_captured_at < p_now - interval '10 minutes'
+     or v_captured_at > p_now + interval '2 minutes' then
+    raise exception 'JFLEET_LOCATION_TIMESTAMP_INVALID';
+  end if;
+
+  select *
+    into v_booking
+  from public.jfleet_bookings
+  where id = p_booking_id
+    and assigned_driver_id = p_driver_id
+    and status in (
+      'assigned','upcoming','driver_en_route','driver_arrived',
+      'ready_for_trip','on_trip'
+    )
+  for share;
+
+  if v_booking.id is null then
+    raise exception 'JFLEET_ACTIVE_DRIVER_BOOKING_NOT_FOUND';
+  end if;
+
+  insert into public.jfleet_driver_locations(
+    driver_id,
+    booking_id,
+    lat,
+    lng,
+    accuracy_m,
+    heading_deg,
+    speed_mps,
+    device_id,
+    captured_at,
+    updated_at
+  ) values (
+    p_driver_id,
+    v_booking.id,
+    p_lat,
+    p_lng,
+    p_accuracy_m,
+    p_heading_deg,
+    p_speed_mps,
+    nullif(trim(coalesce(p_device_id,'')),''),
+    v_captured_at,
+    p_now
+  )
+  on conflict(driver_id) do update
+  set booking_id = excluded.booking_id,
+      lat = excluded.lat,
+      lng = excluded.lng,
+      accuracy_m = excluded.accuracy_m,
+      heading_deg = excluded.heading_deg,
+      speed_mps = excluded.speed_mps,
+      device_id = excluded.device_id,
+      captured_at = excluded.captured_at,
+      updated_at = excluded.updated_at
+  where public.jfleet_driver_locations.captured_at <= excluded.captured_at;
+
+  insert into public.jfleet_route_points(
+    booking_id,
+    driver_id,
+    lat,
+    lng,
+    accuracy_m,
+    heading_deg,
+    speed_mps,
+    device_id,
+    captured_at,
+    received_at
+  ) values (
+    v_booking.id,
+    p_driver_id,
+    p_lat,
+    p_lng,
+    p_accuracy_m,
+    p_heading_deg,
+    p_speed_mps,
+    nullif(trim(coalesce(p_device_id,'')),''),
+    v_captured_at,
+    p_now
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'booking_id', v_booking.id,
+    'booking_status', v_booking.status,
+    'captured_at', v_captured_at
+  );
+end;
+$$;
+
 create index jfleet_inquiries_passenger_created_idx
   on public.jfleet_inquiries(passenger_user_id, created_at desc);
 create index jfleet_inquiries_partner_status_due_idx
@@ -1734,6 +1952,13 @@ revoke all on function public.jfleet_owner_send_quote_v1(
 ) from public, anon, authenticated;
 revoke all on function public.jfleet_owner_assign_v1(
   uuid, uuid, uuid, uuid, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_driver_transition_v1(
+  uuid, uuid, text, timestamptz
+) from public, anon, authenticated;
+revoke all on function public.jfleet_driver_location_v1(
+  uuid, uuid, double precision, double precision, double precision,
+  double precision, double precision, text, timestamptz, timestamptz
 ) from public, anon, authenticated;
 
 comment on table public.jfleet_inquiries is
