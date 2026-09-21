@@ -259,8 +259,7 @@ create table public.jfleet_bookings (
     check (minimum_commission >= 0),
   reservation_required_amount numeric(12,2)
     generated always as (round(original_quote_amount * reservation_percent / 100.0, 2)) stored,
-  cancellation_free_until timestamptz
-    generated always as (scheduled_start_at - make_interval(hours => free_cancel_hours)) stored,
+  cancellation_free_until timestamptz not null,
   final_trip_value numeric(12,2)
     generated always as (original_quote_amount + addon_total) stored,
   jride_commission_amount numeric(12,2)
@@ -475,6 +474,24 @@ create trigger jfleet_route_deviation_events_touch_updated_at
 before update on public.jfleet_route_deviation_events
 for each row execute function public.jfleet_touch_updated_at_v1();
 
+create or replace function public.jfleet_set_booking_policy_snapshots_v1()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $
+begin
+  new.cancellation_free_until :=
+    new.scheduled_start_at - (new.free_cancel_hours * interval '1 hour');
+  return new;
+end;
+$;
+
+create trigger jfleet_set_booking_policy_snapshots_trg
+before insert or update of scheduled_start_at, free_cancel_hours
+on public.jfleet_bookings
+for each row execute function public.jfleet_set_booking_policy_snapshots_v1();
+
 create or replace function public.jfleet_guard_assignment_v1()
 returns trigger
 language plpgsql
@@ -639,6 +656,7 @@ revoke all on table public.jfleet_route_deviation_events from anon, authenticate
 revoke all on table public.jfleet_events from anon, authenticated;
 
 revoke all on function public.jfleet_touch_updated_at_v1() from public, anon, authenticated;
+revoke all on function public.jfleet_set_booking_policy_snapshots_v1() from public, anon, authenticated;
 revoke all on function public.jfleet_guard_assignment_v1() from public, anon, authenticated;
 revoke all on function public.jfleet_guard_trip_start_v1() from public, anon, authenticated;
 
