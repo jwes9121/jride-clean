@@ -1,6 +1,7 @@
 "use client";
 
-import StoreProfile from "./StoreProfile";
+import StoreProfile, { type StoreIdentity } from "./StoreProfile";
+import { cartConflict, cargoGroupLabel } from "@/lib/agrimarket/cartCompatibility";
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -51,6 +52,7 @@ type ProductRow = {
   cargo_class: string;
   selling_unit: string;
   unit_price: number;
+  unit_weight_kg?: number | null;
   remaining_quantity: number;
   availability_mode: "always_available" | "scheduled_harvest";
   harvest_start_at?: string | null;
@@ -130,6 +132,7 @@ export default function AgrimarketPage() {
   const [sortMode, setSortMode] = useState<SortMode>("closest_recommended");
   const [exploreOpen, setExploreOpen] = useState(false);
   const [storeProductId, setStoreProductId] = useState<string | null>(null);
+  const [storeNames, setStoreNames] = useState<Record<string, StoreIdentity>>({});
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [crossTownPending, setCrossTownPending] = useState<ProductRow | null>(null);
   const [crossTownApprovals, setCrossTownApprovals] = useState<Record<string, boolean>>({});
@@ -190,6 +193,8 @@ export default function AgrimarketPage() {
     setCart([]);
     setCartMessage("");
     setSelectedProductId(null);
+    setStoreProductId(null);
+    setStoreNames({});
     setCrossTownPending(null);
     setCrossTownApprovals({});
     setSearchArea("near_me");
@@ -290,6 +295,28 @@ export default function AgrimarketPage() {
       });
   }, [products, selectedProduct]);
 
+  const storeProduct = products.find(product => product.id === storeProductId) || null;
+  const storeProducts = storeProduct ? products.filter(product => product.cart_group_key === storeProduct.cart_group_key) : [];
+  const cartStore = cart.length ? storeNames[cart[0].product.cart_group_key] : null;
+  const cartError = cartConflict(cart.map(line => line.product));
+  const cartWeight = cart.length && cart.every(line => Number(line.product.unit_weight_kg) > 0)
+    ? Math.round(cart.reduce((sum, line) => sum + Number(line.product.unit_weight_kg) * line.quantity, 0) * 1000) / 1000 : null;
+
+  useEffect(() => {
+    if (storeProductId) document.getElementById("agrimarket-store")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [storeProductId]);
+
+  function reviewCart() {
+    document.getElementById("agrimarket-cart")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function addStoreItem(id: string, store: StoreIdentity) {
+    const product = storeProducts.find(row => row.id === id);
+    if (!product || quoting || ordering) return;
+    setStoreNames(current => ({ ...current, [product.cart_group_key]: store }));
+    addToCart(product);
+  }
+
   const cartSubtotal = useMemo(
     () => cart.reduce((sum, line) => sum + line.product.unit_price * line.quantity, 0),
     [cart]
@@ -317,6 +344,7 @@ export default function AgrimarketPage() {
   }, [cartRequiredVehicle, preferredVehicle]);
 
   function openProduct(product: ProductRow) {
+    setStoreProductId(null);
     setSelectedProductId(product.id);
   }
 
@@ -341,6 +369,7 @@ export default function AgrimarketPage() {
   }
 
   function addToCartConfirmed(product: ProductRow) {
+    if (quoting || ordering) return;
     setCartMessage("");
     setQuote(null);
     setPlaced(null);
@@ -364,6 +393,9 @@ export default function AgrimarketPage() {
       }
     }
 
+    const conflict = cartConflict([...cart.map(line => line.product), product]);
+    if (conflict) { setCartMessage(conflict); return; }
+    setCartMessage(`${product.name} added to this store's cart.`);
     setCart((current) => {
       const existing = current.find((line) => line.product.id === product.id);
       if (existing) {
@@ -378,6 +410,7 @@ export default function AgrimarketPage() {
   }
 
   function addToCart(product: ProductRow) {
+    if (quoting || ordering) return;
     setCartMessage("");
     if (!deliveryTownResolved || !deliveryTown) {
       setCartMessage("JRide could not confirm the municipality of this delivery pin. Re-select or update the delivery pin before adding an Agrimarket item.");
@@ -389,6 +422,7 @@ export default function AgrimarketPage() {
     }
     if (product.cross_town_notice_required && !crossTownApprovals[crossTownKey(product)]) {
       setCrossTownPending(product);
+      window.requestAnimationFrame(() => document.getElementById("agrimarket-cross-town")?.scrollIntoView({ behavior: "smooth", block: "start" }));
       return;
     }
     addToCartConfirmed(product);
@@ -406,6 +440,8 @@ export default function AgrimarketPage() {
   function viewCloserOptions() {
     if (!crossTownPending) return;
     const productName = crossTownPending.name;
+    setStoreProductId(null);
+    setSelectedProductId(null);
     setCrossTownPending(null);
     setExploreOpen(true);
     setSearchArea("near_me");
@@ -417,6 +453,7 @@ export default function AgrimarketPage() {
   }
 
   function openExplore() {
+    setStoreProductId(null);
     setExploreOpen(true);
     setSearchArea(deliveryTownResolved ? "nearby_towns" : "all_ifugao");
     setSortMode("closest_recommended");
@@ -429,6 +466,7 @@ export default function AgrimarketPage() {
   }
 
   function updateQuantity(productId: string, value: number) {
+    if (quoting || ordering) return;
     setQuote(null);
     setPlaced(null);
     setCart((current) => current
@@ -439,6 +477,7 @@ export default function AgrimarketPage() {
   }
 
   function clearCart() {
+    if (quoting || ordering) return;
     setCart([]);
     setQuote(null);
     setPlaced(null);
@@ -450,9 +489,11 @@ export default function AgrimarketPage() {
   }
 
   async function getQuote() {
-    if (!addressId || !cart.length) return;
+    if (!addressId || !cart.length || quoting || ordering) return;
+    if (cartError) { setCartMessage(cartError); return; }
     setQuoting(true);
     setError("");
+    try {
     const response = await fetch("/api/agrimarket/quote", {
       method: "POST",
       headers: authHeaders(true),
@@ -465,11 +506,15 @@ export default function AgrimarketPage() {
     } else {
       setQuote(payload);
     }
-    setQuoting(false);
+    } catch {
+      setQuote(null);
+      setError("The delivery quote could not be loaded. Check your connection and try again.");
+    } finally { setQuoting(false); }
   }
 
   async function placeOrder() {
-    if (!quote || !addressId || !cart.length) return;
+    if (!quote || !addressId || !cart.length || ordering || quoting) return;
+    if (cartError) { setCartMessage(cartError); return; }
     setOrdering(true);
     setError("");
     const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
@@ -545,20 +590,20 @@ export default function AgrimarketPage() {
     <main className="min-h-screen bg-slate-50 px-3 py-5 text-slate-900 sm:px-5">
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-wrap items-start justify-between gap-4">
-          <div><p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p><h1 className="text-3xl font-bold">Buy directly from local farmers</h1><p className="mt-1 text-sm text-slate-600">Farmer identities and exact pickup locations stay protected. Seller town and exact routed distance are shown so you can compare delivery options.</p></div>
+          <div><p className="text-sm font-semibold uppercase tracking-widest text-emerald-700">JRide Agrimarket</p><h1 className="text-3xl font-bold">Buy directly from local farmers</h1><p className="mt-1 text-sm text-slate-600">Compare products by town and delivery distance, then open a store to build your order. Farmer contact details and exact pickup locations stay private.</p></div>
           <div className="flex flex-wrap items-center justify-end gap-2"><span className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold">{session?.user?.full_name || session?.user?.name || session?.user?.email || "Signed in"}</span><Link href="/agrimarket/order" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Track order</Link><Link href="/passenger" className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Passenger home</Link><button type="button" onClick={async () => { await signOutPassenger(); window.location.replace("/passenger"); }} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Sign out</button></div>
         </header>
 
         {error ? <div className="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
-        {cartMessage ? <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{cartMessage}</div> : null}
+        {cartMessage ? <div role="status" className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{cartMessage}</div> : null}
         {placed ? <div className="mt-4 rounded-2xl bg-emerald-50 p-5 text-emerald-950"><p className="font-bold">Order placed: {placed.order_code}</p><p className="mt-1 text-sm">{placed.fulfillment_mode === "scheduled_harvest" ? "Waiting for the farmer to confirm your reservation." : "Waiting for farmer confirmation."}</p><Link href={`/agrimarket/order?code=${encodeURIComponent(placed.order_code)}`} className="mt-3 inline-flex rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white">Track this order</Link></div> : null}
 
         {crossTownPending ? (
-          <section className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5 text-amber-950">
+          <section id="agrimarket-cross-town" className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-5 text-amber-950">
             <h2 className="text-lg font-bold">Cross-Town Order</h2>
             <p className="mt-2 text-sm">This product is from <strong>{crossTownPending.producer_town}</strong>. Your selected delivery location is in <strong>{deliveryTown || "an unresolved town"}</strong>, {exactRoadDistance(crossTownPending.road_distance_km)} by road from this farmer.</p>
             <p className="mt-2 text-sm">Cross-town delivery may cost more and may take longer than ordering from a nearby farmer. Delivery fare and applicable load/handling charges will be shown before you confirm the order.</p>
-            <p className="mt-2 text-xs">Fulfillment is JRide delivery to your selected pin only. Farmer identity and exact pickup location remain private.</p>
+            <p className="mt-2 text-xs">Fulfillment is JRide delivery to your selected pin only. Farmer contact details and the exact pickup location remain private.</p>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" onClick={continueCrossTown} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Continue with this farmer</button>
               <button type="button" onClick={viewCloserOptions} className="rounded-xl border border-amber-700 bg-white px-4 py-2 font-bold text-amber-900">View closer options</button>
@@ -567,19 +612,19 @@ export default function AgrimarketPage() {
         ) : null}
 
         <section id="agrimarket-search" className="mt-5 rounded-2xl border bg-white p-4 shadow-sm">
-          <label className="text-sm font-semibold">Deliver to<select value={addressId} onChange={(e) => { setAddressId(e.target.value); void loadCatalog(e.target.value); }} className="mt-2 w-full rounded-xl border bg-white px-3 py-3"><option value="">Select delivery address</option>{addresses.filter((row) => row.has_valid_pin).map((address) => <option key={address.id} value={address.id}>{address.label || address.address_text}{address.is_primary ? " (Primary)" : ""}</option>)}</select></label>
+          <label className="text-sm font-semibold">Deliver to<select disabled={quoting || ordering} value={addressId} onChange={(e) => { setAddressId(e.target.value); void loadCatalog(e.target.value); }} className="mt-2 w-full rounded-xl border bg-white px-3 py-3"><option value="">Select delivery address</option>{addresses.filter((row) => row.has_valid_pin).map((address) => <option key={address.id} value={address.id}>{address.label || address.address_text}{address.is_primary ? " (Primary)" : ""}</option>)}</select></label>
           <p className="mt-2 text-xs text-slate-500">Delivery town: <strong>{deliveryTownResolved ? deliveryTown : "Unable to resolve from this pin"}</strong></p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]"><input value={query} onChange={(e) => setQuery(e.target.value)} className="rounded-xl border px-3 py-3" placeholder="Search products"/><select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-xl border bg-white px-3 py-3"><option value="all">All categories</option><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other</option></select></div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]"><input value={query} onChange={(e) => { setStoreProductId(null); setQuery(e.target.value); }} className="rounded-xl border px-3 py-3" placeholder="Search products"/><select value={category} onChange={(e) => { setStoreProductId(null); setCategory(e.target.value); }} className="rounded-xl border bg-white px-3 py-3"><option value="all">All categories</option><option value="produce">Produce</option><option value="grain">Rice / Grain</option><option value="aquatic">Aquatic</option><option value="poultry">Poultry</option><option value="livestock">Livestock</option><option value="meat">Meat</option><option value="eggs">Eggs</option><option value="other_agri">Other</option></select></div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">Browse by product first. Open a listing to see other current products from that same farmer.</p>
+            <p className="text-xs text-slate-500">Browse products, then open a store. Add to cart is available inside that store only.</p>
             {!exploreOpen ? <button type="button" onClick={openExplore} className="rounded-xl border border-emerald-700 bg-white px-4 py-2 text-sm font-bold text-emerald-800">Explore other towns</button> : <button type="button" onClick={closeExplore} className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold">Close town comparison</button>}
           </div>
 
           {exploreOpen ? (
             <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4">
               <div className="grid gap-3 md:grid-cols-2">
-                <label className="text-sm font-semibold">Search area<select value={searchArea} onChange={(e) => setSearchArea(e.target.value as SearchArea)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2"><option value="near_me">Near me</option><option value="my_town" disabled={!deliveryTownResolved}>My town</option><option value="nearby_towns" disabled={!deliveryTownResolved}>Nearby towns</option><option value="all_ifugao">All Ifugao</option></select></label>
-                <label className="text-sm font-semibold">Sort by<select value={sortMode} onChange={(e) => setSortMode(e.target.value as SortMode)} className="mt-1 w-full rounded-xl border bg-white px-3 py-2"><option value="closest_recommended">Closest / Recommended</option><option value="lowest_price">Lowest price</option><option value="availability">Availability</option><option value="price_distance">Price + distance</option></select></label>
+                <label className="text-sm font-semibold">Search area<select value={searchArea} onChange={(e) => { setStoreProductId(null); setSearchArea(e.target.value as SearchArea); }} className="mt-1 w-full rounded-xl border bg-white px-3 py-2"><option value="near_me">Near me</option><option value="my_town" disabled={!deliveryTownResolved}>My town</option><option value="nearby_towns" disabled={!deliveryTownResolved}>Nearby towns</option><option value="all_ifugao">All Ifugao</option></select></label>
+                <label className="text-sm font-semibold">Sort by<select value={sortMode} onChange={(e) => { setStoreProductId(null); setSortMode(e.target.value as SortMode); }} className="mt-1 w-full rounded-xl border bg-white px-3 py-2"><option value="closest_recommended">Closest / Recommended</option><option value="lowest_price">Lowest price</option><option value="availability">Availability</option><option value="price_distance">Price + distance</option></select></label>
               </div>
               <p className="mt-2 text-xs text-slate-600">Near me keeps the full location-aware catalog ranked from your delivery pin. My town shows same-town farmers only. Nearby towns shows other Ifugao towns without a distance cap. All Ifugao removes the town filter. Price + distance is a comparison ranking only; it does not calculate a final delivered total.</p>
               {!deliveryTownResolved ? <p className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">My town and Nearby towns require a delivery municipality resolved from your map pin.</p> : null}
@@ -597,7 +642,11 @@ export default function AgrimarketPage() {
 
         <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_380px]">
           <div className="min-w-0">
-            {selectedProduct ? (
+            {storeProduct ? <StoreProfile key={storeProduct.id} productId={storeProduct.id} products={storeProducts}
+              cartProducts={cart.map(line => line.product)} busy={quoting || ordering}
+              otherStoreName={cart.length && cart[0].product.cart_group_key !== storeProduct.cart_group_key ? cartStore?.name || "another store" : null}
+              onAdd={addStoreItem} onClose={() => setStoreProductId(null)} onReviewCart={reviewCart} /> : null}
+            {selectedProduct && !storeProduct ? (
               <section id="agrimarket-product-detail" className="mb-5 rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm">
                 <ProductPhoto url={selectedProduct.photo_urls?.[0]} name={selectedProduct.name} className="mb-4 max-w-lg" />
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -619,13 +668,13 @@ export default function AgrimarketPage() {
                 {selectedProduct.is_cross_town ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">Cross-town listing. JRide will deliver to your selected pin; customer pickup or farmer meet-up is not available.</p> : null}
                 {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([selectedProduct])}</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)}{selectedProduct.harvest_end_at ? ` to ${formatDate(selectedProduct.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
                 {selectedProduct.vehicle_requirement === "tricycle" ? <p className="mt-3 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
-                <button disabled={!selectedProduct.can_order_now} onClick={() => addToCart(selectedProduct)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white disabled:bg-slate-300">{selectedProduct.can_order_now ? (selectedProduct.availability_mode === "scheduled_harvest" ? "Reserve in cart" : "Add to cart") : "Reservation closed"}</button>
+                <button type="button" onClick={() => setStoreProductId(selectedProduct.id)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Shop this store</button>
 
                 {moreFromSelectedFarmer.length ? (
                   <div className="mt-6 border-t pt-5">
                     <div>
                       <h3 className="text-lg font-bold">More from this farmer</h3>
-                      <p className="mt-1 text-sm text-slate-600">Other current listings from this same farmer. The farmer's real identity and exact pickup location remain private.</p>
+                      <p className="mt-1 text-sm text-slate-600">Other current listings from this same farmer. Open the store profile to see its name and shop its products. Personal contact details and the exact pickup location stay private.</p>
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {moreFromSelectedFarmer.map((product) => (
@@ -647,7 +696,7 @@ export default function AgrimarketPage() {
               </section>
             ) : null}
 
-            <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {!storeProduct && <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {loading ? <div className="rounded-2xl border bg-white p-6">Loading Agrimarket...</div> : null}
               {!loading && !visibleProducts.length ? <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">No products match this search area.</div> : null}
               {!loading && visibleProducts.map((product) => (
@@ -663,21 +712,26 @@ export default function AgrimarketPage() {
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setStoreProductId(product.id)} className="rounded-xl border px-3 py-3 font-semibold">View store profile</button>
                     <button type="button" onClick={() => openProduct(product)} className="rounded-xl border border-emerald-700 bg-white px-3 py-3 font-bold text-emerald-800">View product</button>
-                    <button disabled={!product.can_order_now} onClick={() => addToCart(product)} className="rounded-xl bg-emerald-700 px-3 py-3 font-bold text-white disabled:bg-slate-300">{product.can_order_now ? (product.availability_mode === "scheduled_harvest" ? "Reserve" : "Add to cart") : "Closed"}</button>
                   </div>
                 </article>
               ))}
-            </section>
+            </section>}
           </div>
 
-          <aside className="h-fit rounded-3xl border bg-white p-5 shadow-sm xl:sticky xl:top-4">
+          <aside id="agrimarket-cart" className="h-fit rounded-3xl border bg-white p-5 shadow-sm xl:sticky xl:top-4">
+            <fieldset disabled={quoting || ordering}>
             <div className="flex items-center justify-between"><h2 className="text-xl font-bold">Cart</h2>{cart.length ? <button onClick={clearCart} className="text-sm font-semibold text-red-700">Clear</button> : null}</div>
-            {!cart.length ? <p className="mt-4 text-sm text-slate-500">Add products from one farmer. Multiple products from that same farmer share one delivery charge.</p> : <>
+            {!cart.length ? <p className="mt-4 text-sm text-slate-500">Open a store to add products. Items from the same store and delivery group share one order and delivery quote.</p> : <>
+              <h3 className="mt-3 break-words text-lg font-bold text-emerald-800">{cartStore?.name || "Selected store"}</h3>
+              <p className="mt-1 text-sm text-slate-600">{cart[0].product.producer_town} - {cargoGroupLabel(cart[0].product.cargo_class)}</p>
+              <button type="button" onClick={() => setStoreProductId(cart[0].product.id)} className="mt-2 rounded-lg border px-3 py-2 text-sm font-semibold">Add more from this store</button>
+              {cartError && <p role="alert" className="mt-3 text-sm text-red-800">{cartError}</p>}
               <p className="mt-2 text-xs text-slate-500">{cartMode === "scheduled_harvest" ? `${scheduledTitle(cart.map(item => item.product))} cart` : "Always Available cart"} - one farmer only</p>
               {cartCrossTownProduct ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Cross-town order</strong><br/>{cartCrossTownProduct.producer_town} to {deliveryTown}: {exactRoadDistance(cartCrossTownProduct.road_distance_km)} by road.<br/>JRide delivery to this selected pin only; no customer pickup or farmer meet-up.</div> : null}
               {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
-              <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{line.product.producer_alias} - {line.product.producer_town}</p></div><strong>{money(line.product.unit_price * line.quantity)}</strong></div><div className="mt-2 flex items-center gap-2"><input type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
+              <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{money(line.product.unit_price)} / {line.product.selling_unit}</p></div><strong>{money(line.product.unit_price * line.quantity)}</strong></div><div className="mt-2 flex items-center gap-2"><input aria-label={`Quantity for ${line.product.name}`} type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
               <div className="mt-4 flex justify-between border-t pt-3"><span>Products</span><strong>{money(cartSubtotal)}</strong></div>
+              <p className="mt-2 text-sm text-slate-600">Combined estimated cargo: {cartWeight == null ? "Farmer confirmation required" : `${cartWeight} kg`}</p>
               <label className="mt-4 block text-sm font-semibold">
                 Preferred eligible vehicle
                 <select
@@ -698,7 +752,7 @@ export default function AgrimarketPage() {
               ) : cartRequiredVehicle === "tricycle" ? (
                 <p className="mt-1 text-xs text-blue-800">This cart requires a Tricycle or Kolong-Kolong.</p>
               ) : null}
-              <button onClick={getQuote} disabled={quoting || !addressId} className="mt-4 w-full rounded-xl border-2 border-emerald-700 px-4 py-3 font-bold text-emerald-800 disabled:border-slate-300 disabled:text-slate-400">{quoting ? "Calculating..." : "Review delivery quote"}</button>
+              <button onClick={getQuote} disabled={quoting || ordering || !addressId || Boolean(cartError)} className="mt-4 w-full rounded-xl border-2 border-emerald-700 px-4 py-3 font-bold text-emerald-800 disabled:border-slate-300 disabled:text-slate-400">{quoting ? "Calculating..." : "Review delivery quote"}</button>
             </>}
 
             {quote ? (
@@ -728,10 +782,10 @@ export default function AgrimarketPage() {
                 <button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve scheduled order" : "Place order"}</button>
               </div>
             ) : null}
+            </fieldset>
           </aside>
         </div>
       </div>
-    {storeProductId ? <StoreProfile productId={storeProductId} onClose={() => setStoreProductId(null)} /> : null}
     </main>
   );
 }
