@@ -81,10 +81,10 @@ async function main() {
   assert(weight('approximate','','over_200'));assert(weight('approximate','-1','16_25'));
   console.log('PASS visible weight blockers cover missing band, measured weight and the 200 kg limit');
 
-  const profile=load('app/agrimarket/StoreProfile.tsx',{'@/lib/passenger/browserSession':{},'./ProductPhoto':{ProductPhoto:()=>null},react:{...React,useState:value=>[value===null?{name:'Test Farm',town:'Lamut'}:value,()=>{}],useEffect(){}}}).default;
+  const profile=load('app/agrimarket/StoreProfile.tsx',{'@/lib/passenger/browserSession':{},'./ProductPhoto':{ProductPhoto:()=>null},react:{...React,useState:value=>[value===null?{name:'Test Farm',town:'Lamut',store_status:'open',store_status_label:'Accepting orders'}:value,()=>{}],useEffect(){}}}).default;
   const props={productId:eggs.id,products:[eggs,tomatoes,rice],cartProducts:[eggs],otherStoreName:null,busy:false,onAdd(){},onClose(){},onReviewCart(){}};
   const html=renderToStaticMarkup(React.createElement(profile,props));
-  for(const text of ['Test Farm','Produce and fragile produce','Sacks','10 tray available','separate orders','Review cart (1)','aria-describedby="store-blocker-'+rice.id+'"']) assert(html.includes(text),text);
+  for(const text of ['Test Farm','Produce and fragile produce','Sacks','10 tray listed','separate orders','Review cart (1)','aria-describedby="store-blocker-'+rice.id+'"']) assert(html.includes(text),text);
   assert.equal((html.match(/disabled=""/g)||[]).length,1);
   const other=renderToStaticMarkup(React.createElement(profile,{...props,otherStoreName:'Existing farm'}));
   assert.equal((other.match(/disabled=""/g)||[]).length,3);assert(other.includes('Your cart belongs to Existing farm'));

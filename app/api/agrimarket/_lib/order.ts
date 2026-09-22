@@ -394,7 +394,7 @@ export async function loadAgrimarketOrderContext(
     !producerRes.data ||
     String((producerRes.data as any).status || "").toLowerCase() !== "active" ||
     (producerRes.data as any).accepting_orders !== true ||
-    (producerRes.data as any).store_open === false
+    (producerRes.data as any).store_open !== true
   ) {
     throw new AgrimarketRequestError(
       "AGRIMARKET_PRODUCER_UNAVAILABLE",

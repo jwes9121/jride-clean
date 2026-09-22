@@ -1,3 +1,4 @@
+import { CLOSED_CATALOG_VERSION, listingAvailability } from "@/lib/agrimarket/storeAvailability";
 import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import { randomUUID } from "crypto";
 import { NextRequest } from "next/server";
@@ -49,6 +50,8 @@ type ProducerRow = {
   pickup_lng: number;
   status: string;
   accepting_orders: boolean;
+  store_open: boolean;
+  catalog_approved_at?: string | null;
 };
 
 type ProducerRoadMetric = {
@@ -130,6 +133,7 @@ export async function GET(req: NextRequest) {
     const passengerAuth = await requireAgrimarketPassenger(req);
     if (passengerAuth.ok === false) return passengerAuth.response;
 
+    const includeClosed = req.nextUrl.searchParams.get("store_visibility") === CLOSED_CATALOG_VERSION;
     const admin = createServiceSupabase();
     const requestedAddressId = cleanUuid(req.nextUrl.searchParams.get("address_id"));
     if (requestedAddressId === "INVALID") {
@@ -222,6 +226,7 @@ export async function GET(req: NextRequest) {
 
     const baseResponse = {
       ok: true,
+      catalog_visibility_version: includeClosed ? CLOSED_CATALOG_VERSION : "legacy",
       ordering_enabled: Boolean(deliveryTown),
       ordering_blocker: deliveryTown ? null : "AGRIMARKET_DELIVERY_TOWN_UNRESOLVED",
       address: {
@@ -251,13 +256,17 @@ export async function GET(req: NextRequest) {
       return jsonNoStore(200, { ...baseResponse, products: [] });
     }
 
-    const producerRes = await admin
+    let producerQuery = admin
       .from("agrimarket_producers")
-      .select("id,town,pickup_lat,pickup_lng,status,accepting_orders")
+      .select("id,town,pickup_lat,pickup_lng,status,accepting_orders,store_open,catalog_approved_at")
       .in("id", producerIds)
-      .eq("status", "active")
-      .eq("accepting_orders", true)
-      .eq("store_open", true);
+      .eq("status", "active");
+    // Older native clients do not understand closed-store cards. Preserve their
+    // existing contract until they explicitly request the new visibility model.
+    producerQuery = includeClosed
+      ? producerQuery.not("catalog_approved_at", "is", null)
+      : producerQuery.eq("accepting_orders", true).eq("store_open", true);
+    const producerRes = await producerQuery;
 
     if (producerRes.error) {
       return jsonNoStore(500, {
@@ -351,12 +360,12 @@ export async function GET(req: NextRequest) {
           vehicle_requirement: row.vehicle_requirement,
           handling_eligible: row.handling_eligible,
           photo_urls: Array.isArray(row.photo_urls) ? row.photo_urls : [],
-          can_order_now: reservationOpen,
+          ...listingAvailability(producer, reservationOpen),
           order_action: scheduledHarvest ? "Reserve" : "Add to cart",
-          order_blocker: reservationOpen ? null : "AGRIMARKET_HARVEST_ORDER_CUTOFF_PASSED",
         };
       })
       .sort((a, b) => {
+        if (a.can_order_now !== b.can_order_now) return a.can_order_now ? -1 : 1;
         const byName = a.name.localeCompare(b.name);
         if (byName !== 0) return byName;
         if (a.proximity_rank !== b.proximity_rank) return a.proximity_rank - b.proximity_rank;
