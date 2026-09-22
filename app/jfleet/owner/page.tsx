@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 
 type Inquiry = {
   id: string;
@@ -141,15 +142,6 @@ type Dashboard = {
   message?: string;
 };
 
-type QuoteDraft = {
-  total_amount: string;
-  valid_until: string;
-  inclusions: string;
-  exclusions: string;
-  pricing_notes: string;
-  fuel_basis_note: string;
-};
-
 type PaymentDraft = {
   payment_kind: "reservation" | "balance" | "full_payment";
   amount: string;
@@ -200,19 +192,12 @@ function title(value: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function defaultValidUntil(): string {
-  const date = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
-  return local.toISOString().slice(0, 16);
-}
-
 export default function JFleetOwnerPage() {
   const [data, setData] = React.useState<Dashboard | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [busyKey, setBusyKey] = React.useState("");
   const [error, setError] = React.useState("");
   const [message, setMessage] = React.useState("");
-  const [quoteDrafts, setQuoteDrafts] = React.useState<Record<string, QuoteDraft>>({});
   const [paymentDrafts, setPaymentDrafts] = React.useState<Record<string, PaymentDraft>>({});
   const [assignmentDrafts, setAssignmentDrafts] = React.useState<Record<string, AssignmentDraft>>({});
   const [addonDrafts, setAddonDrafts] = React.useState<Record<string, AddonDraft>>({});
@@ -269,19 +254,6 @@ export default function JFleetOwnerPage() {
       .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   }
 
-  function quoteDraft(inquiryId: string): QuoteDraft {
-    return (
-      quoteDrafts[inquiryId] ?? {
-        total_amount: "",
-        valid_until: defaultValidUntil(),
-        inclusions: "Vehicle, professional driver, fuel for the approved itinerary",
-        exclusions: "",
-        pricing_notes: "",
-        fuel_basis_note: "Quotation is based on the submitted itinerary and current fuel cost.",
-      }
-    );
-  }
-
   function paymentDraft(bookingId: string): PaymentDraft {
     return (
       paymentDrafts[bookingId] ?? {
@@ -324,45 +296,6 @@ export default function JFleetOwnerPage() {
         notes: "",
       }
     );
-  }
-
-  async function sendQuote(inquiry: Inquiry) {
-    const draft = quoteDraft(inquiry.id);
-    setBusyKey("quote:" + inquiry.id);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch("/api/jfleet/owner/quotes", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inquiry_id: inquiry.id,
-          total_amount: Number(draft.total_amount),
-          valid_until: new Date(draft.valid_until).toISOString(),
-          inclusions: draft.inclusions,
-          exclusions: draft.exclusions,
-          pricing_notes: draft.pricing_notes,
-          fuel_basis_note: draft.fuel_basis_note,
-          items: [],
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) throw new Error(body?.message || "Quotation failed.");
-      setMessage(
-        "Quotation v" +
-          body.version_no +
-          " sent for " +
-          inquiry.inquiry_code +
-          ": " +
-          money(body.total_amount)
-      );
-      await load();
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Quotation failed.");
-    } finally {
-      setBusyKey("");
-    }
   }
 
   async function confirmPayment(booking: Booking) {
@@ -598,7 +531,7 @@ export default function JFleetOwnerPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold">Quote Requests</h2>
-              <p className="text-sm text-slate-600">Respond within the 3-hour JFleet turnaround target.</p>
+              <p className="text-sm text-slate-600">Open Route Review for the exact inquiry, approve its itinerary, then send the quotation within the 3-hour response window.</p>
             </div>
             <button type="button" onClick={() => void load()} className="rounded-xl border px-4 py-2 text-sm font-semibold">
               Refresh
@@ -609,7 +542,6 @@ export default function JFleetOwnerPage() {
             {(data.inquiries ?? []).map((inquiry) => {
               const stops = itineraryFor(inquiry.id);
               const quote = latestQuote(inquiry.id);
-              const draft = quoteDraft(inquiry.id);
               const closed = ["declined", "expired", "cancelled", "converted"].includes(inquiry.status);
               return (
                 <article key={inquiry.id} className="rounded-2xl border border-slate-200 p-4">
@@ -653,102 +585,12 @@ export default function JFleetOwnerPage() {
                   ) : null}
 
                   {!closed ? (
-                    <div className="mt-4 grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
-                      <label className="text-sm font-medium">
-                        Total quotation
-                        <input
-                          type="number"
-                          min="1"
-                          step="0.01"
-                          value={draft.total_amount}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, total_amount: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <label className="text-sm font-medium">
-                        Quote valid until
-                        <input
-                          type="datetime-local"
-                          value={draft.valid_until}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, valid_until: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <label className="text-sm font-medium sm:col-span-2">
-                        Inclusions
-                        <textarea
-                          rows={2}
-                          value={draft.inclusions}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, inclusions: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <label className="text-sm font-medium sm:col-span-2">
-                        Exclusions
-                        <textarea
-                          rows={2}
-                          value={draft.exclusions}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, exclusions: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <label className="text-sm font-medium">
-                        Fuel basis
-                        <textarea
-                          rows={2}
-                          value={draft.fuel_basis_note}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, fuel_basis_note: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <label className="text-sm font-medium">
-                        Pricing notes
-                        <textarea
-                          rows={2}
-                          value={draft.pricing_notes}
-                          onChange={(event) =>
-                            setQuoteDrafts((current) => ({
-                              ...current,
-                              [inquiry.id]: { ...draft, pricing_notes: event.target.value },
-                            }))
-                          }
-                          className="mt-1 w-full rounded-lg border px-3 py-2"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        disabled={busyKey === "quote:" + inquiry.id || !draft.total_amount}
-                        onClick={() => void sendQuote(inquiry)}
-                        className="rounded-xl bg-slate-950 px-4 py-3 font-bold text-white disabled:opacity-50 sm:col-span-2"
-                      >
-                        {busyKey === "quote:" + inquiry.id ? "Sending..." : quote ? "Send Revised Quote" : "Send Quote"}
-                      </button>
-                    </div>
+                    <Link
+                      href={"/jfleet/owner/routes?inquiry_id=" + encodeURIComponent(inquiry.id)}
+                      className="mt-4 inline-block rounded-xl bg-slate-950 px-4 py-3 font-bold text-white"
+                    >
+                      Review route and prepare quotation
+                    </Link>
                   ) : null}
                 </article>
               );
