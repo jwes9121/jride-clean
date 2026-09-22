@@ -232,7 +232,7 @@ begin
   return query
   select v_application_id,p_producer_id,v_credential.access_code,false,v_now;
 end;
-$function$
+$function$;
 
 
 REVOKE EXECUTE ON FUNCTION public.agrimarket_farmer_complete_profile_v1(uuid,text,text,text,text,text,text,double precision,double precision,boolean,boolean,boolean,text,text,timestamp with time zone) FROM PUBLIC, anon, authenticated;

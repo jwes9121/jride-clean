@@ -230,7 +230,9 @@ async function run() {
     const after = read('supabase/migrations/20260922115740_agrimarket_farmer_profile_audit_contract_v1.sql');
     const expected = before.replace("    'profile_completed_by_farmer',\n    'farmer',", "    'profile_updated',\n    'applicant',")
       .replace("    jsonb_build_object(\n      'producer_id',p_producer_id,", "    jsonb_build_object(\n      'action','profile_completed_by_farmer',\n      'producer_id',p_producer_id,");
-    assert.notEqual(before, expected); assert.equal(after, expected);
+    assert.notEqual(before, expected);
+    assert(after.includes('end;\n$function$;\n'), 'Terminate CREATE FUNCTION before permission statements');
+    assert.equal(after.replace('end;\n$function$;\n', 'end;\n$function$\n'), expected);
     assert(after.includes('accepting_orders=false')); assert(after.includes('store_open=false'));
     assert(!/ALTER TABLE|DROP CONSTRAINT|DISABLE TRIGGER/i.test(after));
   });
