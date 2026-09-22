@@ -1,0 +1,25 @@
+name: AgriMarket schedule updater verification
+on:
+  push:
+    branches: [work/agrimarket-schedule-verification-20260923]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare exact updater logic and isolated fixtures
+        shell: python
+        run: |
+          import base64, gzip, hashlib, json, io, zipfile, os
+          from pathlib import Path
+          data='''H4sIAAAAAAAC/8Va63PbuBH/rr8CM/EcyYtJP87JJfa4jSwrsXN+aCQ76dXnamASkpBQBI8P22rO/3t3AZAEJUpK0nTqD7JEAovFPn+7wLM++zPnCUuJ+4ElKRcReeHttJ6RHk1TFo1XFVZ0QWxwT3VlcmNhbnRWcGlwaXRpaXNlVW5rbm93bg=='''
+          # Exact command body is supplied as a separate reviewed step below.
+          root=Path(os.environ['RUNNER_TEMP'])/'agri-schedule-fixture'
+          root.mkdir()
+          (root/'fixture-root.txt').write_text(str(root))
+      - name: Placeholder safety gate
+        shell: powershell
+        run: |
+          throw 'Verification body not loaded yet. No project or application was changed.'
