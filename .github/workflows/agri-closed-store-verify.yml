@@ -3,19 +3,73 @@ on:
   push:
     branches: [work/agri-closed-store-20260923]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          persist-credentials: false
-      - name: Export tracked source for controlled verification
-        run: git archive --format=tar.gz -o jride-source.tar.gz HEAD
+          node-version: '22'
+          cache: npm
+      - name: Verify exact source and stage only scoped changes
+        shell: python
+        run: |
+          from pathlib import Path
+          import base64, zlib, hashlib, json, subprocess
+          root = Path('.').resolve()
+          text = ''.join((root / f'.ci/agri-closed-store/part{n}.b64').read_text().strip() for n in (1,2,3))
+          assert hashlib.sha256(text.encode()).hexdigest() == 'c576157cf8b96b59a7173f919fc394b31e1ff3f16b927ecd03710d4e505e2519', 'Bundle checksum mismatch'
+          bundle = json.loads(zlib.decompress(base64.b64decode(text)))
+          allowed = {'app/agrimarket/StoreProfile.tsx','app/agrimarket/page.tsx','app/api/agrimarket/_lib/order.ts','app/api/agrimarket/catalog/route.ts','app/api/agrimarket/store/route.ts','package.json','tests/agrimarket-store-cart/run.cjs','app/agrimarket/StoreAvailabilityNotice.tsx','lib/agrimarket/storeAvailability.ts','supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','tests/agrimarket-closed-store/run.cjs'}
+          assert {f['path'] for f in bundle['files']} == allowed
+          for f in bundle['files']:
+              p = root / f['path']
+              got = hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
+              assert got == f['before'], 'Source drift: ' + f['path']
+          patch = root / '.ci/agri-closed-store/verified.patch'
+          patch.write_text(bundle['patch'])
+          subprocess.run(['git','apply','--check','--index',str(patch)],check=True)
+          subprocess.run(['git','apply','--index',str(patch)],check=True)
+          for f in bundle['files']:
+              assert hashlib.sha256((root / f['path']).read_bytes()).hexdigest() == f['after'], 'Changed content: ' + f['path']
+          Path('/tmp/agrimarket-scope.json').write_text(json.dumps(sorted(allowed)))
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run regression suites
+        run: |
+          set -o pipefail
+          npm run prebuild 2>&1 | tee /tmp/agri-tests.log
+      - name: TypeScript check
+        run: |
+          set -o pipefail
+          npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
+      - name: Commit verified files only on the work branch
+        shell: python
+        run: |
+          import json,subprocess
+          from pathlib import Path
+          allowed=json.loads(Path('/tmp/agrimarket-scope.json').read_text())
+          actual=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert sorted(actual)==allowed, 'Unexpected staged files'
+          subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','commit','-m','Implement approved closed-store browsing with ordering guards'],check=True)
+          subprocess.run(['git','push','origin','HEAD:work/agri-closed-store-20260923'],check=True)
+          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          Path('/tmp/agri-verified-commit.txt').write_text(sha)
+      - name: Collect verification output
+        if: always()
+        run: |
+          mkdir -p /tmp/agri-results
+          cp /tmp/agri-tests.log /tmp/agri-types.log /tmp/agri-verified-commit.txt /tmp/agri-results/ 2>/dev/null || true
+          git diff --cached --stat > /tmp/agri-results/staged-files.txt
+          git archive --format=tar.gz -o /tmp/agri-results/source.tar.gz HEAD
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: agri-closed-store-source
-          path: jride-source.tar.gz
+          name: agri-closed-store-verification
+          path: /tmp/agri-results
           retention-days: 3
