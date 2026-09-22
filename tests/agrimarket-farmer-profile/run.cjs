@@ -227,7 +227,7 @@ async function run() {
   });
   await test('audit migration changes only compatible event labels and adds action detail', () => {
     const before = read('supabase/migrations/20260922012406_agrimarket_preassigned_farmer_profile_completion_v1.sql');
-    const after = read('supabase/migrations/20260922115000_agrimarket_farmer_profile_audit_contract_v1.sql');
+    const after = read('supabase/migrations/20260922115740_agrimarket_farmer_profile_audit_contract_v1.sql');
     const expected = before.replace("    'profile_completed_by_farmer',\n    'farmer',", "    'profile_updated',\n    'applicant',")
       .replace("    jsonb_build_object(\n      'producer_id',p_producer_id,", "    jsonb_build_object(\n      'action','profile_completed_by_farmer',\n      'producer_id',p_producer_id,");
     assert.notEqual(before, expected); assert.equal(after, expected);
