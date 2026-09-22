@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowLeft, ArrowUpRight, Check, ClipboardList, Leaf, LockKeyhole, Package, RefreshCw, Sprout } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Check, ClipboardList, Leaf, LockKeyhole, Package, RefreshCw, Sprout, UserRound } from "lucide-react";
 import styles from "./farmer.module.css";
 import FarmerOrderAlerts from "./FarmerOrderAlerts";
 import FarmerStoreStatus from "./FarmerStoreStatus";
 
 export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onReviewOrder, accountCode = "", loading = false, guest = false }: {
-  section: "orders" | "products";
+  section: "orders" | "products" | "profile";
   children: ReactNode;
   onRefresh?: () => void;
   onSignOut?: () => void;
@@ -33,6 +33,7 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onRev
           <div className={styles.tabs}>
             <Link href="/agrimarket/producer" className={`${styles.tab} ${section === "orders" ? styles.selectedTab : ""}`} aria-current={section === "orders" ? "page" : undefined}><ClipboardList size={18} /> Orders</Link>
             <Link href="/agrimarket/producer/products" className={`${styles.tab} ${section === "products" ? styles.selectedTab : ""}`} aria-current={section === "products" ? "page" : undefined}><Package size={18} /> Products</Link>
+            <Link href="/agrimarket/producer/profile" className={`${styles.tab} ${section === "profile" ? styles.selectedTab : ""}`} aria-current={section === "profile" ? "page" : undefined}><UserRound size={18} /> Profile</Link>
           </div>
           <button type="button" onClick={onRefresh} disabled={loading} className={styles.refresh} aria-label={loading ? "Refreshing" : `Refresh ${section}`}><RefreshCw size={18} className={loading ? styles.spinning : ""} /></button>
           {onSignOut && <button type="button" onClick={onSignOut} disabled={loading} className={styles.tab}>Sign out</button>}
@@ -47,7 +48,7 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onRev
 }
 
 export function FarmerLogin({ section, accessCode, pin, onCodeChange, onPinChange, onSubmit, loading, error }: {
-  section: "orders" | "products";
+  section: "orders" | "products" | "profile";
   accessCode: string;
   pin: string;
   onCodeChange: (value: string) => void;
@@ -79,6 +80,6 @@ export function FarmerFeedback({ error, message }: { error?: string; message?: s
   return <>{error && <div className={styles.error} role="alert">{error}</div>}{message && <div className={styles.success} role="status"><Check size={17} />{message}</div>}</>;
 }
 
-export function FarmerUnavailable({ section }: { section: "orders" | "products" }) {
+export function FarmerUnavailable({ section }: { section: "orders" | "products" | "profile" }) {
   return <FarmerWorkspace section={section} guest><section className={styles.emptyCard}><span className={styles.emptyIcon}><Sprout size={38} /></span><h1>We’re getting things ready.</h1><p>The farmer workspace is not open yet. Please check back soon.</p><Link href="/passenger" className={styles.primaryButton}>Back to JRide <ArrowUpRight size={18} /></Link></section></FarmerWorkspace>;
 }
