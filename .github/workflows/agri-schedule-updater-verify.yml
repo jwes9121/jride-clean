@@ -14,5 +14,93 @@ jobs:
         run: |
           import base64,gzip,hashlib,json,io,zipfile,os
           from pathlib import Path
-          data='''H4sIAAAAAAAC/8Va63PbuBH/rr8CM/EcyYtJP87JJfa4jSwrsXN+aCQ76dXnamASkpBQBI8P22rO/3t3AZAEJUpK0nTqD7JEAovFPn+7wLM++zPnCUuJ+4ElKRcReeHttJ6RHk1TFo1XFVZ0QWxwT3VlcmNhbnRWcGlwaXRpaXNlVW5rbm93bg=='''
-          raise RuntimeError('Exact payload verification required before workflow execution')
+          data="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"
+          body=gzip.decompress(base64.b64decode(data))
+          assert hashlib.sha256(body).hexdigest()=='aa506875d22444b4f115e64c74684a0a4d3bbf1f21584aca878f6c98426b9fe1'
+          root=Path(os.environ['RUNNER_TEMP'])/'agri-schedule-fixture'
+          root.mkdir()
+          project=root/'project'
+          prefix='app/src/main/java/com/jride/app/passenger/agrimarket/'
+          names=['PassengerAgrimarketActivity.kt','PassengerAgrimarketOrderActivity.kt','AgrimarketPassengerRules.kt','AgrimarketScheduleText.kt']
+          extras=['PassengerAgrimarketModels.kt','PassengerAgrimarketClient.kt','AgrimarketStoreAvailability.kt']
+          sha=lambda b:hashlib.sha256(b).hexdigest().upper()
+          manifest={'files':[],'required_unchanged':[]}
+          stream=io.BytesIO()
+          with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as z:
+              for i,n in enumerate(names):
+                  p=project/prefix/n
+                  p.parent.mkdir(parents=True,exist_ok=True)
+                  before=('BEFORE '+n).encode() if i<3 else None
+                  after=('AFTER '+n).encode()
+                  if before is not None:p.write_bytes(before)
+                  manifest['files'].append({'path':prefix+n,'before_sha256':sha(before) if before is not None else None,'after_sha256':sha(after)})
+                  z.writestr('source/'+prefix+n,after)
+              for n in extras:
+                  b=('UNCHANGED '+n).encode()
+                  (project/prefix/n).write_bytes(b)
+                  manifest['required_unchanged'].append({'path':prefix+n,'sha256':sha(b)})
+              z.writestr('update-manifest.json',json.dumps(manifest))
+              z.writestr('changes.diff','Fixture content only; no real app source.')
+          payload=stream.getvalue()
+          script=body.decode().replace('__PAYLOAD__',base64.b64encode(payload).decode()).replace('__PAYLOAD_HASH__',sha(payload))
+          (root/'updater.ps1').write_bytes(script.encode())
+          (root/'manifest.json').write_text(json.dumps(manifest))
+          (project/'gradlew.bat').write_text('@echo off\nexit /b 93\n')
+          p=project/'app/src/main/java/com/jride/app/driver/Protected.kt'
+          p.parent.mkdir(parents=True)
+          p.write_text('DO NOT CHANGE DRIVER')
+          (project/'app/build.gradle').write_text('versionCode 500000100')
+      - name: Windows PowerShell 5.1 guarded updater tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($PSVersionTable.PSVersion.Major -ne 5) { throw 'Expected Windows PowerShell 5.1' }
+          $root = Join-Path $env:RUNNER_TEMP 'agri-schedule-fixture'
+          $script = Join-Path $root 'updater.ps1'
+          $project = Join-Path $root 'project'
+          $manifest = Get-Content -LiteralPath (Join-Path $root 'manifest.json') -Raw | ConvertFrom-Json
+          $tokens = $null; $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($script,[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { $errors | Format-List; throw 'Parser failed' }
+          Write-Host 'PASS Windows PowerShell 5.1 parser'
+          function Read-Result([string]$Folder) {
+            $found = @(Get-ChildItem -LiteralPath $Folder -Filter 'RESULT.json' -Recurse -File)
+            if ($found.Count -ne 1) { throw 'Expected one result report' }
+            return (Get-Content -LiteralPath $found[0].FullName -Raw | ConvertFrom-Json)
+          }
+          $readonly = Join-Path $root 'readonly'
+          & $script -ProjectRoot $project -OutputDirectory $readonly
+          $r = Read-Result $readonly
+          if (!$r.source_check_passed -or $r.source_changed -or $r.failure) { throw 'Read-only test failed' }
+          Write-Host 'PASS read-only checks without project writes'
+          $apply = Join-Path $root 'apply'
+          & $script -ProjectRoot $project -OutputDirectory $apply -Apply
+          $r = Read-Result $apply
+          if (!$r.source_check_passed -or !$r.source_changed -or $r.failure -or $r.protected_violations.Count -ne 0) { throw 'Apply test failed' }
+          foreach ($f in $manifest.files) { if ((Get-FileHash -LiteralPath (Join-Path $project $f.path)).Hash -ne $f.after_sha256) { throw 'Output hash mismatch' } }
+          if ($r.build_requested -or $r.apk_installed -or $r.version_changes_requested) { throw 'Unexpected action' }
+          Write-Host 'PASS scoped apply and Windows path normalization; no build or install'
+          $repeat = Join-Path $root 'repeat'
+          & $script -ProjectRoot $project -OutputDirectory $repeat -Apply
+          $r = Read-Result $repeat
+          if ($r.source_changed -or $r.failure) { throw 'Repeat test failed' }
+          Write-Host 'PASS already-applied files are not rewritten'
+          $driftFile = Join-Path $project $manifest.files[1].path
+          [IO.File]::WriteAllText($driftFile,'NEWER UNRELATED LOCAL EDIT')
+          $before = (Get-FileHash -LiteralPath $driftFile).Hash
+          $drift = Join-Path $root 'drift'
+          $caught = $false
+          try { & $script -ProjectRoot $project -OutputDirectory $drift -Apply } catch { $caught = $true }
+          $r = Read-Result $drift
+          if (!$caught -or !$r.failure -or $r.source_changed -or $r.source_check_passed) { throw 'Source drift gate failed' }
+          if ((Get-FileHash -LiteralPath $driftFile).Hash -ne $before) { throw 'Newer edit overwritten' }
+          Write-Host 'PASS source drift stops without overwriting local edits and exports result'
+          $driver = Join-Path $project 'app/src/main/java/com/jride/app/driver/Protected.kt'
+          if ((Get-Content -LiteralPath $driver -Raw) -ne 'DO NOT CHANGE DRIVER') { throw 'Driver changed' }
+          if ((Get-Content -LiteralPath (Join-Path $project 'app/build.gradle') -Raw) -ne 'versionCode 500000100') { throw 'Version changed' }
+          Write-Host 'PASS driver and version settings unchanged'
+          $caught = $false
+          try { & $script -ProjectRoot $project -OutputDirectory (Join-Path $root 'invalid-build') -Build } catch { $caught = $true }
+          if (!$caught) { throw 'Build accepted without Apply' }
+          Write-Host 'PASS Build requires explicit Apply'
+          Write-Host 'PASS 7 updater checks; synthetic project only; no real APK or source modified.'
