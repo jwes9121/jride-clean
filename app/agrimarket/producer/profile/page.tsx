@@ -329,7 +329,16 @@ export default function AgrimarketProducerProfilePage() {
             </fieldset>
 
             <div className="rounded-xl border bg-white p-3 text-sm">
-              Saving this profile does not automatically open the store. JRide must still approve readiness before customer orders can be received.
+              {profile.accepting_orders ? (
+                <>
+                  <p>Changing only the farm / store name or driver directions keeps your approval and current Open / Closed setting.</p>
+                  <p className="mt-2 rounded-lg bg-amber-50 p-3 text-amber-950">
+                    <strong>Review required:</strong> Changing the farmer name, mobile number, barangay, pickup pin, or vehicle-access / roadside settings will close the store and pause new orders until JRide approves readiness again. Your products remain saved.
+                  </p>
+                </>
+              ) : (
+                "Saving this profile does not automatically open the store. JRide must still approve readiness before customer orders can be received."
+              )}
             </div>
 
             <button

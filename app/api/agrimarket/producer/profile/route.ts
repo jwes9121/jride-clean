@@ -236,13 +236,18 @@ export async function POST(req: NextRequest) {
 
     const completedRows = Array.isArray(completed.data) ? completed.data : [];
     const completion: any = completedRows[0] || null;
+    const savedProfile = payload(result.data);
 
     return jsonNoStore(200, {
       ok: true,
-      profile: payload(result.data),
+      profile: savedProfile,
       application_id: completion?.application_id || null,
-      readiness_review_pending: true,
-      message: "Farm profile saved. Add your products next. Customer orders stay blocked until JRide approves readiness.",
+      readiness_review_pending: !savedProfile.accepting_orders,
+      message: savedProfile.accepting_orders
+        ? savedProfile.store_open
+          ? "Farm profile saved. Your approval is unchanged and your store remains open."
+          : "Farm profile saved. Your approval is unchanged. Your store remains closed; open it when ready."
+        : "Farm profile saved. New orders are paused until JRide approves readiness. Your products have not been deleted.",
     });
   } catch (error: any) {
     return jsonNoStore(500, {
