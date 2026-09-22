@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { philippinesTime } from "@/lib/jfleet/routeReview";
 import {
   passengerAuthHeaders,
   passengerLoginHref,
@@ -18,47 +20,6 @@ type JFleetStatus = {
   free_cancel_hours?: number;
   late_cancel_percent?: number;
   reason?: string;
-};
-
-type RouteStop = {
-  label: string;
-  notes: string;
-};
-
-type Inquiry = {
-  id: string;
-  inquiry_code: string;
-  purpose: string;
-  requested_vehicle_type: string;
-  trip_mode: string;
-  pickup_label: string;
-  scheduled_start_at: string;
-  scheduled_end_at?: string | null;
-  status: string;
-  submitted_at: string;
-  quote_due_at: string;
-  current_itinerary_version: number;
-  jfleet_itineraries?: Array<{
-    id: string;
-    version_no: number;
-    status: string;
-    source: string;
-    jfleet_itinerary_stops?: Array<{
-      sequence_no: number;
-      stop_type: string;
-      location_label: string;
-    }>;
-  }>;
-  jfleet_quotes?: Array<{
-    id: string;
-    version_no: number;
-    status: string;
-    total_amount: number | string;
-    currency: string;
-    valid_until: string;
-    sent_at: string;
-    accepted_at?: string | null;
-  }>;
 };
 
 type JFleetBooking = {
@@ -111,29 +72,6 @@ type JFleetBooking = {
   }>;
 };
 
-const PURPOSE_OPTIONS = [
-  ["tour_leisure", "Tour / Leisure"],
-  ["family", "Family trip"],
-  ["business", "Business trip"],
-  ["event", "Event"],
-  ["cargo_delivery", "Cargo / Delivery"],
-  ["moving_hauling", "Moving / Hauling"],
-  ["other", "Other"],
-] as const;
-
-const VEHICLE_OPTIONS = [
-  ["recommend", "Let the operator recommend"],
-  ["van", "Van"],
-  ["pickup", "Pickup truck"],
-  ["truck", "Truck"],
-] as const;
-
-const TRIP_OPTIONS = [
-  ["one_way", "One-way"],
-  ["round_trip", "Round trip"],
-  ["multi_day", "Multi-day"],
-] as const;
-
 function readable(value: string): string {
   return value
     .replace(/_/g, " ")
@@ -144,7 +82,7 @@ function formatDate(value?: string | null): string {
   if (!value) return "-";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "-";
-  return date.toLocaleString();
+  return philippinesTime(value);
 }
 
 function money(value: unknown): string {
@@ -156,79 +94,38 @@ function money(value: unknown): string {
   });
 }
 
-function latestQuote(inquiry: Inquiry) {
-  const quotes = Array.isArray(inquiry.jfleet_quotes) ? inquiry.jfleet_quotes : [];
-  return [...quotes].sort((a, b) => b.version_no - a.version_no)[0] ?? null;
-}
-
-function currentStops(inquiry: Inquiry) {
-  const itineraries = Array.isArray(inquiry.jfleet_itineraries)
-    ? inquiry.jfleet_itineraries
-    : [];
-  const current =
-    itineraries.find((itinerary) => itinerary.status === "current") ??
-    [...itineraries].sort((a, b) => b.version_no - a.version_no)[0];
-  return [...(current?.jfleet_itinerary_stops ?? [])].sort(
-    (a, b) => a.sequence_no - b.sequence_no
-  );
-}
-
 export default function JFleetPage() {
   const router = useRouter();
   const [status, setStatus] = React.useState<JFleetStatus | null>(null);
   const [authed, setAuthed] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
-  const [inquiries, setInquiries] = React.useState<Inquiry[]>([]);
   const [bookings, setBookings] = React.useState<JFleetBooking[]>([]);
   const [reading, setReading] = React.useState(false);
+  const [bookingsLoaded, setBookingsLoaded] = React.useState(false);
   const [actionBusy, setActionBusy] = React.useState("");
   const [cancelReasons, setCancelReasons] = React.useState<Record<string, string>>({});
-  const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
 
-  const [purpose, setPurpose] = React.useState("tour_leisure");
-  const [vehicleType, setVehicleType] = React.useState("recommend");
-  const [tripMode, setTripMode] = React.useState("round_trip");
-  const [pickupLabel, setPickupLabel] = React.useState("");
-  const [scheduledStart, setScheduledStart] = React.useState("");
-  const [scheduledEnd, setScheduledEnd] = React.useState("");
-  const [passengerCount, setPassengerCount] = React.useState("");
-  const [cargoDescription, setCargoDescription] = React.useState("");
-  const [cargoWeightKg, setCargoWeightKg] = React.useState("");
-  const [luggageNotes, setLuggageNotes] = React.useState("");
-  const [specialNotes, setSpecialNotes] = React.useState("");
-  const [stops, setStops] = React.useState<RouteStop[]>([
-    { label: "", notes: "" },
-  ]);
-
-  const loadInquiries = React.useCallback(async () => {
-    setReading(true);
-    try {
-      const response = await fetch("/api/jfleet/inquiries", {
-        cache: "no-store",
-        headers: passengerAuthHeaders(),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (response.ok && body?.ok) {
-        setInquiries(Array.isArray(body.inquiries) ? body.inquiries : []);
-      }
-    } finally {
-      setReading(false);
-    }
-  }, []);
-
   const loadBookings = React.useCallback(async () => {
+    setReading(true);
+    setError("");
     try {
       const response = await fetch("/api/jfleet/bookings", {
         cache: "no-store",
         headers: passengerAuthHeaders(),
       });
       const body = await response.json().catch(() => ({}));
-      if (response.ok && body?.ok) {
-        setBookings(Array.isArray(body.bookings) ? body.bookings : []);
+      if (!response.ok || !body?.ok || !Array.isArray(body.bookings)) {
+        throw new Error(body?.message || "Could not load your JFleet bookings. Please retry.");
       }
-    } catch {}
+      setBookings(body.bookings);
+      setBookingsLoaded(true);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not load your JFleet bookings. Please retry.");
+    } finally {
+      setReading(false);
+    }
   }, []);
 
   React.useEffect(() => {
@@ -245,7 +142,7 @@ export default function JFleetPage() {
         setAuthed(session?.authed === true);
 
         if (statusBody?.enabled && session?.authed === true) {
-          await Promise.all([loadInquiries(), loadBookings()]);
+          await loadBookings();
         }
       } catch {
         if (alive) setError("JFleet could not be loaded. Try again.");
@@ -256,163 +153,7 @@ export default function JFleetPage() {
     return () => {
       alive = false;
     };
-  }, [loadBookings, loadInquiries]);
-
-  function updateStop(index: number, patch: Partial<RouteStop>) {
-    setStops((current) =>
-      current.map((stop, stopIndex) =>
-        stopIndex === index ? { ...stop, ...patch } : stop
-      )
-    );
-  }
-
-  function addStop() {
-    if (stops.length >= 20) return;
-    setStops((current) => [...current, { label: "", notes: "" }]);
-  }
-
-  function removeStop(index: number) {
-    setStops((current) =>
-      current.length <= 1
-        ? current
-        : current.filter((_, stopIndex) => stopIndex !== index)
-    );
-  }
-
-  async function submitInquiry(event: React.FormEvent) {
-    event.preventDefault();
-    if (submitting) return;
-    setError("");
-    setSuccess("");
-
-    if (!authed) {
-      router.push(passengerLoginHref("/jfleet"));
-      return;
-    }
-
-    if (!pickupLabel.trim()) {
-      setError("Enter the pickup location.");
-      return;
-    }
-
-    if (!scheduledStart) {
-      setError("Enter the trip departure date and time.");
-      return;
-    }
-
-    if (!scheduledEnd) {
-      setError("Enter the expected trip end date and time.");
-      return;
-    }
-
-    if (stops.some((stop) => !stop.label.trim())) {
-      setError("Complete every itinerary stop before requesting a quote.");
-      return;
-    }
-
-    const startDate = new Date(scheduledStart);
-    const endDate = scheduledEnd ? new Date(scheduledEnd) : null;
-    if (!Number.isFinite(startDate.getTime()) || startDate.getTime() <= Date.now()) {
-      setError("The departure date and time must be in the future.");
-      return;
-    }
-    if (
-      endDate &&
-      (!Number.isFinite(endDate.getTime()) || endDate.getTime() < startDate.getTime())
-    ) {
-      setError("The expected trip end cannot be before departure.");
-      return;
-    }
-
-    const finalStopType = tripMode === "round_trip" ? "return" : "destination";
-    const itinerary = stops.map((stop, index) => ({
-      label: stop.label.trim(),
-      stop_type: index === stops.length - 1 ? finalStopType : "stop",
-      lat: null,
-      lng: null,
-      notes: stop.notes.trim() || null,
-    }));
-
-    setSubmitting(true);
-    try {
-      const response = await fetch("/api/jfleet/inquiries", {
-        method: "POST",
-        headers: passengerAuthHeaders(true),
-        body: JSON.stringify({
-          purpose,
-          requested_vehicle_type: vehicleType,
-          trip_mode: tripMode,
-          pickup_label: pickupLabel.trim(),
-          pickup_lat: null,
-          pickup_lng: null,
-          scheduled_start_at: startDate.toISOString(),
-          scheduled_end_at: endDate?.toISOString() ?? null,
-          passenger_count: passengerCount ? Number(passengerCount) : null,
-          cargo_description: cargoDescription.trim() || null,
-          cargo_weight_kg: cargoWeightKg ? Number(cargoWeightKg) : null,
-          luggage_notes: luggageNotes.trim() || null,
-          special_notes: specialNotes.trim() || null,
-          stops: itinerary,
-        }),
-      });
-
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) {
-        throw new Error(body?.message || "The quote request could not be submitted.");
-      }
-
-      setSuccess(
-        "Quote request " +
-          body.inquiry_code +
-          " submitted. Expected response is within " +
-          Math.round(Number(body.quote_tat_minutes || 180) / 60) +
-          " hours."
-      );
-      await loadInquiries();
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "The quote request could not be submitted."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function acceptQuote(inquiry: Inquiry, quoteId: string) {
-    if (actionBusy) return;
-    setActionBusy("accept:" + quoteId);
-    setError("");
-    setSuccess("");
-    try {
-      const response = await fetch("/api/jfleet/quotes/accept", {
-        method: "POST",
-        headers: passengerAuthHeaders(true),
-        body: JSON.stringify({ inquiry_id: inquiry.id, quote_id: quoteId }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) {
-        throw new Error(body?.message || "The quotation could not be accepted.");
-      }
-      setSuccess(
-        "Booking " +
-          body.booking_code +
-          " created. Minimum reservation required: " +
-          money(body.reservation_required_amount) +
-          "."
-      );
-      await Promise.all([loadInquiries(), loadBookings()]);
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "The quotation could not be accepted."
-      );
-    } finally {
-      setActionBusy("");
-    }
-  }
+  }, [loadBookings]);
 
   async function respondAddon(addonId: string, responseValue: "accept" | "decline") {
     if (actionBusy) return;
@@ -484,7 +225,7 @@ export default function JFleetPage() {
               money(body.refund_amount) +
               "."
       );
-      await Promise.all([loadInquiries(), loadBookings()]);
+      await loadBookings();
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "The booking could not be cancelled."
@@ -583,391 +324,50 @@ export default function JFleetPage() {
           </div>
         </header>
 
-        <form
-          onSubmit={submitInquiry}
-          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold">Request a Quote</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                This is an inquiry, not yet a confirmed booking.
-              </p>
-            </div>
-            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
-              Quote TAT: max {quoteHours} hours
-            </span>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-label="JFleet quote actions">
+          <h2 className="text-xl font-bold">Plan a hire or review your quotations</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Pin the complete itinerary before requesting a price. Review the full quotation,
+            inclusions, exclusions and payment terms before accepting. An inquiry is not a reservation.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href="/jfleet/request" className="rounded-xl bg-slate-950 px-5 py-3 font-bold text-white">
+              Request a quote
+            </Link>
+            <Link href="/jfleet/inquiries" className="rounded-xl border border-slate-300 px-5 py-3 font-semibold">
+              View quotations and revisions
+            </Link>
           </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-medium text-slate-700">
-              Purpose of hire
-              <select
-                value={purpose}
-                onChange={(event) => setPurpose(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-              >
-                {PURPOSE_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Vehicle
-              <select
-                value={vehicleType}
-                onChange={(event) => setVehicleType(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-              >
-                {VEHICLE_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Trip type
-              <select
-                value={tripMode}
-                onChange={(event) => {
-                  setTripMode(event.target.value);
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-              >
-                {TRIP_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Number of passengers
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={passengerCount}
-                onChange={(event) => setPassengerCount(event.target.value)}
-                placeholder="Optional"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3"
-              />
-            </label>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="font-bold">Trip schedule and itinerary</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              The transport company will quote against this exact itinerary. Fuel prices,
-              distance, duration, vehicle requirements, and side trips can affect the price.
-            </p>
-
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-medium text-slate-700 sm:col-span-2">
-                Pickup location
-                <input
-                  value={pickupLabel}
-                  onChange={(event) => setPickupLabel(event.target.value)}
-                  placeholder="Example: Lagawe, Ifugao"
-                  maxLength={180}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-                />
-              </label>
-
-              <label className="text-sm font-medium text-slate-700">
-                Departure date and time
-                <input
-                  type="datetime-local"
-                  value={scheduledStart}
-                  onChange={(event) => setScheduledStart(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-                />
-              </label>
-
-              <label className="text-sm font-medium text-slate-700">
-                Expected trip end
-                <input
-                  type="datetime-local"
-                  value={scheduledEnd}
-                  onChange={(event) => setScheduledEnd(event.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"
-                />
-              </label>
-            </div>
-
-            <div className="mt-5 space-y-3">
-              {stops.map((stop, index) => {
-                const isLast = index === stops.length - 1;
-                const label = isLast
-                  ? tripMode === "round_trip"
-                    ? "Final return point"
-                    : "Final destination"
-                  : "Stop " + (index + 1);
-                return (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-slate-200 bg-white p-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <strong className="text-sm">{label}</strong>
-                      {stops.length > 1 ? (
-                        <button
-                          type="button"
-                          onClick={() => removeStop(index)}
-                          className="text-xs font-semibold text-red-700"
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </div>
-                    <input
-                      value={stop.label}
-                      onChange={(event) =>
-                        updateStop(index, { label: event.target.value })
-                      }
-                      placeholder={
-                        isLast && tripMode === "round_trip"
-                          ? "Example: Return to Lagawe"
-                          : "Enter town, landmark, or destination"
-                      }
-                      maxLength={180}
-                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2"
-                    />
-                    <input
-                      value={stop.notes}
-                      onChange={(event) =>
-                        updateStop(index, { notes: event.target.value })
-                      }
-                      placeholder="Optional instructions for this stop"
-                      maxLength={500}
-                      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-                );
-              })}
-
-              <button
-                type="button"
-                onClick={addStop}
-                disabled={stops.length >= 20}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              >
-                + Add destination / stop
-              </button>
-            </div>
-
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-              Include all planned destinations now. A destination added after the trip has
-              started may require an additional fuel, vehicle, and driver charge.
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-medium text-slate-700">
-              Cargo description
-              <textarea
-                value={cargoDescription}
-                onChange={(event) => setCargoDescription(event.target.value)}
-                placeholder="Optional for passenger trips"
-                maxLength={1000}
-                rows={3}
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Estimated cargo weight (kg)
-              <input
-                type="number"
-                min="0.001"
-                step="0.001"
-                value={cargoWeightKg}
-                onChange={(event) => setCargoWeightKg(event.target.value)}
-                placeholder="Optional"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Luggage details
-              <textarea
-                value={luggageNotes}
-                onChange={(event) => setLuggageNotes(event.target.value)}
-                maxLength={1000}
-                rows={3}
-                placeholder="Bags, equipment, bulky items, etc."
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3"
-              />
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Special requests
-              <textarea
-                value={specialNotes}
-                onChange={(event) => setSpecialNotes(event.target.value)}
-                maxLength={1500}
-                rows={3}
-                placeholder="Accessibility, waiting, event requirements, and other details"
-                className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-3"
-              />
-            </label>
-          </div>
-
-          <div className="mt-5 rounded-xl bg-slate-100 p-4 text-sm text-slate-700">
-            After you accept a quotation, at least{" "}
-            <strong>{Number(status.reservation_percent || 20)}%</strong> is required to
-            reserve the vehicle. Cancellations made at least{" "}
-            <strong>{Number(status.free_cancel_hours || 48)} hours</strong> before departure
-            are refundable. Cancellations later than that forfeit{" "}
-            <strong>{Number(status.late_cancel_percent || 10)}% of the total accepted quotation</strong>.
-            The original quotation must be fully paid before the trip can start.
-          </div>
-
-          {error ? (
-            <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-              {error}
-            </p>
-          ) : null}
-          {success ? (
-            <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">
-              {success}
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-5 w-full rounded-xl bg-slate-950 px-5 py-3 font-bold text-white disabled:opacity-60"
-          >
-            {submitting ? "Submitting..." : "Request Quote"}
-          </button>
-        </form>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-bold">Your JFleet Inquiries</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Canvassing inquiries stay separate from confirmed bookings.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void loadInquiries()}
-              disabled={reading}
-              className="rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
-            >
-              {reading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-
-          {inquiries.length === 0 ? (
-            <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-              You have no JFleet inquiries yet.
-            </p>
-          ) : (
-            <div className="mt-5 space-y-4">
-              {inquiries.map((inquiry) => {
-                const quote = latestQuote(inquiry);
-                const route = currentStops(inquiry);
-                return (
-                  <article
-                    key={inquiry.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          {inquiry.inquiry_code}
-                        </p>
-                        <h3 className="mt-1 font-bold">
-                          {readable(inquiry.requested_vehicle_type)} - {readable(inquiry.trip_mode)}
-                        </h3>
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">
-                        {readable(inquiry.status)}
-                      </span>
-                    </div>
-
-                    <p className="mt-3 text-sm">
-                      <strong>Departure:</strong> {formatDate(inquiry.scheduled_start_at)}
-                    </p>
-                    {inquiry.scheduled_end_at ? (
-                      <p className="mt-1 text-sm">
-                        <strong>Expected end:</strong> {formatDate(inquiry.scheduled_end_at)}
-                      </p>
-                    ) : null}
-                    <p className="mt-1 text-sm">
-                      <strong>Route:</strong>{" "}
-                      {route.length
-                        ? route.map((stop) => stop.location_label).join(" -> ")
-                        : inquiry.pickup_label}
-                    </p>
-
-                    {inquiry.status === "quote_requested" ||
-                    inquiry.status === "under_review" ? (
-                      <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
-                        Response due by <strong>{formatDate(inquiry.quote_due_at)}</strong>.
-                      </div>
-                    ) : null}
-
-                    {quote ? (
-                      <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">
-                        <div className="flex items-center justify-between gap-3">
-                          <span>Latest quotation v{quote.version_no}</span>
-                          <strong>{money(quote.total_amount)}</strong>
-                        </div>
-                        <p className="mt-1 text-xs">
-                          Status: {readable(quote.status)} | Valid until:{" "}
-                          {formatDate(quote.valid_until)}
-                        </p>
-                        {quote.status === "sent" && inquiry.status === "quote_ready" ? (
-                          <button
-                            type="button"
-                            disabled={actionBusy === "accept:" + quote.id}
-                            onClick={() => void acceptQuote(inquiry, quote.id)}
-                            className="mt-3 w-full rounded-lg bg-emerald-800 px-4 py-2 font-bold text-white disabled:opacity-50"
-                          >
-                            {actionBusy === "accept:" + quote.id
-                              ? "Accepting..."
-                              : "Accept Quote"}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          )}
         </section>
+
+        {error ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}</p> : null}
+        {success ? <p role="status" className="rounded-xl bg-emerald-50 p-4 text-emerald-900">{success}</p> : null}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-bold">Your JFleet Bookings</h2>
               <p className="mt-1 text-sm text-slate-600">
-                A booking appears here only after you accept a quotation.
+                Accepted quotations appear here as reservation pending. A vehicle is reserved only after the required payment is confirmed.
               </p>
             </div>
             <button
               type="button"
               onClick={() => void loadBookings()}
-              className="rounded-xl border px-3 py-2 text-sm font-semibold"
+              disabled={reading}
+              className="rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
             >
-              Refresh
+              {reading ? "Refreshing..." : "Refresh bookings"}
             </button>
           </div>
 
-          {bookings.length === 0 ? (
+          {!bookingsLoaded ? (
             <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-              You have no confirmed JFleet booking yet.
+              {reading ? "Loading bookings..." : "Bookings could not be loaded. Use Refresh bookings to retry."}
+            </p>
+          ) : bookings.length === 0 ? (
+            <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+              No accepted quotations or bookings yet. Your canvassing requests are under Quotations and revisions.
             </p>
           ) : (
             <div className="mt-5 space-y-4">
@@ -977,6 +377,7 @@ export default function JFleetPage() {
                   "cancelled_customer",
                   "cancelled_operator",
                 ].includes(booking.status);
+                const canCancel = active && booking.status !== "on_trip" && Date.parse(booking.scheduled_start_at) > Date.now();
                 return (
                   <article key={booking.id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1082,7 +483,11 @@ export default function JFleetPage() {
                       </div>
                     ) : null}
 
-                    {active ? (
+                    <Link href={"/jfleet/inquiries/" + encodeURIComponent(booking.inquiry_id)} className="mt-4 inline-block text-sm font-semibold underline">
+                      View accepted quotation and itinerary history
+                    </Link>
+
+                    {canCancel ? (
                       <div className="mt-4 rounded-xl border border-slate-200 p-3">
                         <label className="text-sm font-medium text-slate-700">
                           Cancellation reason (optional)

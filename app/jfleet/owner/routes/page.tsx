@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { REVIEW_ACK, REVIEW_NOTICE, philippinesTime, type RouteContext, type Decision } from "@/lib/jfleet/routeReview";
+import { REVIEW_ACK, REVIEW_NOTICE, UUID, philippinesTime, type RouteContext, type Decision } from "@/lib/jfleet/routeReview";
 const RouteMap=dynamic(()=>import("@/components/jfleet/ReviewedRouteMap"),{ssr:false,loading:()=> <p>Loading route map...</p>});
 type Inquiry={id:string;inquiry_code:string;status:string;pickup_label:string;requested_vehicle_type:string;scheduled_start_at:string;quote_due_at:string};
 type Context=RouteContext & {map_token:string | null};
@@ -12,7 +13,9 @@ async function request(url:string,body?:unknown) {
   if(!r.ok || !b.ok) throw new Error(b.message || "Request could not be completed.");
   return b;
 }
-export default function OwnerRouteReviewsPage() {
+function OwnerRouteReviewsContent() {
+  const searchParams = useSearchParams();
+  const requestedInquiry = searchParams.get("inquiry_id");
   const [inquiries,setInquiries]=useState<Inquiry[]>([]);
   const [hasMore,setHasMore]=useState(false);
   const [ctx,setCtx]=useState<Context | null>(null);
@@ -37,7 +40,7 @@ export default function OwnerRouteReviewsPage() {
     setInquiries(b.inquiries || []); setHasMore(b.has_more===true);
   },[]);
   useEffect(()=>{ void loadList().catch(e=>setError(e.message)); return ()=>{selectionRef.current+=1;}; },[loadList]);
-  async function open(inquiryId:string) {
+  const open = useCallback(async (inquiryId:string) => {
     const generation=++selectionRef.current;
     setCtx(null); setMapReady(false); setAck(false); setNotes(""); setPrice(""); setValidUntil("");
     setInclusions(""); setExclusions(""); setPricingNotes(""); setFuelNote(""); setConfirmQuote(false); setError(""); setNotice("");
@@ -45,7 +48,18 @@ export default function OwnerRouteReviewsPage() {
       const b=await request("/api/jfleet/owner/routes?inquiry_id="+encodeURIComponent(inquiryId));
       if(generation===selectionRef.current) setCtx(b);
     } catch(e) { if(generation===selectionRef.current) setError(e instanceof Error?e.message:"Could not load the route."); }
-  }
+  }, []);
+  useEffect(() => {
+    if (!requestedInquiry) return;
+    if (!UUID.test(requestedInquiry)) {
+      selectionRef.current += 1;
+      setCtx(null);
+      setError("Invalid inquiry link. Choose an inquiry from the list.");
+      return;
+    }
+    void open(requestedInquiry);
+    return () => { selectionRef.current += 1; };
+  }, [requestedInquiry, open]);
   async function review(decision:Decision) {
     if(!ctx || mutationRef.current) return;
     mutationRef.current=true; setBusy(true); setError(""); setNotice("");
@@ -132,4 +146,8 @@ export default function OwnerRouteReviewsPage() {
       </section>}
     </div>
   </main>;
+}
+
+export default function OwnerRouteReviewsPage() {
+  return <Suspense fallback={<main className="p-6">Loading route review...</main>}><OwnerRouteReviewsContent /></Suspense>;
 }
