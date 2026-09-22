@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { philippinesTime } from "@/lib/jfleet/routeReview";
 
 type Inquiry = {
   id: string;
@@ -181,9 +182,7 @@ function money(value: unknown): string {
 }
 
 function dateTime(value?: string | null): string {
-  if (!value) return "-";
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toLocaleString() : "-";
+  return value ? philippinesTime(value) : "-";
 }
 
 function title(value: string): string {
