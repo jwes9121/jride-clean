@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { agrimarketOnboardingEnabled, agrimarketOnboardingDisabledResponse, jsonNoStore, requireAgrimarketStaff } from "../_lib/server";
+import { agrimarketOnboardingEnabled, agrimarketOnboardingDisabledResponse, jsonNoStore, requireAgrimarketProducer, requireAgrimarketStaff } from "../_lib/server";
 import { reverseGeocodeFarmerPin, searchFarmerLocations } from "../_lib/admin-farmer-location";
 import { FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
 
@@ -8,8 +8,11 @@ export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   if (!agrimarketOnboardingEnabled()) {
-    const staff = await requireAgrimarketStaff(false);
-    if (!staff.ok) return agrimarketOnboardingDisabledResponse();
+    const producer = await requireAgrimarketProducer(req);
+    if (!producer.ok) {
+      const staff = await requireAgrimarketStaff(false);
+      if (!staff.ok) return agrimarketOnboardingDisabledResponse();
+    }
   }
   const params = req.nextUrl.searchParams;
   const query = (params.get("q") || "").trim();

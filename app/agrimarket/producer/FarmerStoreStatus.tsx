@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 import styles from "./farmer.module.css";
@@ -63,11 +64,14 @@ export default function FarmerStoreStatus({ accountCode }: { accountCode: string
         {store && <p>{store.town} - Signed-in store</p>}
         {store && <p>{!store.ready ? "Awaiting JRide readiness approval" : store.open ? "OPEN - Accepting new orders" : "CLOSED - New orders paused"}</p>}
       </div>
-      {store && <button type="button" role="switch" aria-checked={store.ready && store.open}
-        aria-label="Open store for new orders" disabled={busy || !store.ready || !!error}
-        onClick={() => void toggle()} className={store.ready && store.open ? styles.primaryButton : styles.secondaryButton}>
-        {busy ? "Saving..." : store.ready && store.open ? "Turn off" : "Turn on"}
-      </button>}
+      {store && <div className="flex flex-wrap items-center gap-2">
+        <Link href="/agrimarket/producer/profile" className={styles.secondaryButton}>Farm profile</Link>
+        <button type="button" role="switch" aria-checked={store.ready && store.open}
+          aria-label="Open store for new orders" disabled={busy || !store.ready || !!error}
+          onClick={() => void toggle()} className={store.ready && store.open ? styles.primaryButton : styles.secondaryButton}>
+          {busy ? "Saving..." : store.ready && store.open ? "Turn off" : "Turn on"}
+        </button>
+      </div>}
     </div>
     <p className={styles.fieldHint}>Closing pauses new bookings. Existing orders still need your response and fulfillment.</p>
     {message && <p role="status">{message}</p>}
