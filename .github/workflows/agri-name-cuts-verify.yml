@@ -24,12 +24,8 @@ jobs:
           assert hashlib.sha256(p.read_bytes()).hexdigest()=='3ec0313d1b87d8c72dcfc889782a9ca880f7b819481f3149ad05b13f3c7d12fd'
           s=p.read_text().replace('cancel_reason?: string | null }','cancel_reason?: string | null; fulfillment_mode?: string }')
           assert s.count('  return null;')==1
-          s=s.replace('  return null;', '''  if (order.status === "cancelled" && order.fulfillment_mode === "scheduled_harvest") return {
-              title: "Reservation cancelled",
-              message: order.cancel_reason?.replace(/_/g, " ").trim() || "This reservation was cancelled. Return to AgriMarket to choose available products.",
-            };
-            return null;'''.replace('\n    ', '\n'))
-          p.write_text(s)
+          addition='\n'.join(['  if (order.status === "cancelled" && order.fulfillment_mode === "scheduled_harvest") return {','    title: "Reservation cancelled",','    message: order.cancel_reason?.replace(/_/g, " ").trim() || "This reservation was cancelled. Return to AgriMarket to choose available products.",','  };','  return null;'])
+          p.write_text(s.replace('  return null;',addition))
           assert hashlib.sha256(p.read_bytes()).hexdigest()=='652969741fece7f346a192da372f5bb99bea0fb08e38e3ea9d936803bd85034d'
           t=Path('tests/agrimarket-reservation-cancel/run.cjs')
           assert hashlib.sha256(t.read_bytes()).hexdigest()=='0c8058a9b6ebf776efd5906b6e48d54778182944215dacb8881f2427629cfc84'
