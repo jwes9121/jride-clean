@@ -1,13 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 import styles from "./farmer.module.css";
 
-type Store = { name: string | null; town: string; ready: boolean; open: boolean };
+type Store = {
+  name: string | null;
+  town: string;
+  ready: boolean;
+  open: boolean;
+  profile_complete: boolean;
+  setup_required: boolean;
+};
 
 export default function FarmerStoreStatus({ accountCode }: { accountCode: string }) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [store, setStore] = useState<Store | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,6 +39,12 @@ export default function FarmerStoreStatus({ accountCode }: { accountCode: string
       if (mounted.current) setError(failure instanceof Error ? failure.message : "Store status unavailable. Tap Retry.");
     } finally { flight.current = false; }
   }, [accountCode]);
+
+  useEffect(() => {
+    if (store?.setup_required && pathname !== "/agrimarket/producer/profile") {
+      router.replace("/agrimarket/producer/profile");
+    }
+  }, [store?.setup_required, pathname, router]);
 
   useEffect(() => {
     mounted.current = true;
