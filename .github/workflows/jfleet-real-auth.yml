@@ -14,9 +14,12 @@ jobs:
     timeout-minutes: 25
     env:
       NEXT_TELEMETRY_DISABLED: '1'
-      JFLEET_LOCAL_STACK: ${{ runner.temp }}/jfleet-auth-isolated-${{ github.run_id }}
-      JFLEET_LOCAL_STATUS: ${{ runner.temp }}/jfleet-auth-status.json
     steps:
+      - name: Initialize disposable runner paths
+        shell: bash
+        run: |
+          echo "JFLEET_LOCAL_STACK=$RUNNER_TEMP/jfleet-auth-isolated-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          echo "JFLEET_LOCAL_STATUS=$RUNNER_TEMP/jfleet-auth-status.json" >> "$GITHUB_ENV"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
