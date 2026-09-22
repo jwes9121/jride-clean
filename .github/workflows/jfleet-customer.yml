@@ -1,0 +1,31 @@
+name: JFleet customer revision checks
+on:
+  pull_request:
+    paths:
+      - 'app/**/jfleet/**'
+      - 'components/jfleet/**'
+      - 'lib/jfleet/**'
+      - 'tests/jfleet-customer/**'
+      - '.github/workflows/jfleet-customer.yml'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify staged source checksums
+        run: sha256sum -c tests/jfleet-customer/source-sha256.txt
+      - name: Run JFleet regression checks
+        run: node tests/jfleet-routing/run.cjs && node tests/jfleet-owner-review/run.cjs && node tests/jfleet-customer/run.cjs
+      - name: Check full-project TypeScript
+        run: npx --no-install tsc --noEmit --pretty false
