@@ -22,12 +22,9 @@ jobs:
           old='supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql'
           new='supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql'
           assert Path(old).is_file() and not Path(new).exists()
+          test=Path('tests/agrimarket-closed-store/run.cjs').read_text()
+          assert "n.endsWith('_agrimarket_catalog_visibility_v1.sql')" in test
           subprocess.run(['git','mv',old,new],check=True)
-          test=Path('tests/agrimarket-closed-store/run.cjs')
-          source=test.read_text()
-          assert source.count(old)==1
-          test.write_text(source.replace(old,new))
-          subprocess.run(['git','add',str(test)],check=True)
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Run regression suites
@@ -38,13 +35,13 @@ jobs:
         run: |
           set -o pipefail
           npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
-      - name: Commit only the verified migration identity changes
+      - name: Commit only the verified migration identity change
         shell: python
         run: |
           import subprocess
           from pathlib import Path
-          actual=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          expected={'supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql','tests/agrimarket-closed-store/run.cjs'}
+          actual=subprocess.check_output(['git','diff','--cached','--no-renames','--name-only'],text=True).splitlines()
+          expected={'supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql'}
           assert set(actual)==expected,actual
           subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
