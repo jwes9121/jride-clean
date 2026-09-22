@@ -149,11 +149,8 @@ export async function POST(req: NextRequest) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_STORE_NAME_REQUIRED", message: "Save your required store name in Farm details before publishing products." });
     }
     if (action === "set_vendor_name") {
-      const value = typeof body.vendor_name === "string" ? body.vendor_name.trim().replace(/\s+/g, " ") : "";
-      if (value.length < 2 || value.length > 60 || /[\u0000-\u001f\u007f]/.test(value)) return jsonNoStore(400, { ok: false, message: "Enter a store name between 2 and 60 characters." });
-      const saved = await admin.from("agrimarket_producers").update({ vendor_name: value, updated_at: new Date().toISOString() }).eq("id", producerAuth.producer.id).select("id,vendor_name").maybeSingle();
-      if (saved.error || !saved.data) return jsonNoStore(409, { ok: false, message: "The vendor name could not be saved. Refresh and try again." });
-      vendorName = saved.data.vendor_name;
+      return jsonNoStore(409, { ok: false, error: "AGRIMARKET_FARM_NAME_PROFILE_REQUIRED",
+        message: "Open Farm profile to confirm your name. A confirmed farm/store name cannot be changed here." });
     } else if (action === "set_active") {
       const productId = uuid(body?.product_id || body?.productId);
       if (!productId || typeof body?.is_active !== "boolean") {

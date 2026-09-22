@@ -6,6 +6,8 @@ import FarmerPickupMap, {
 } from "@/components/agrimarket/FarmerPickupMap";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   FarmerFeedback,
   FarmerLogin,
@@ -21,6 +23,7 @@ type Profile = {
   town: string;
   barangay: string;
   vendor_name: string;
+  vendor_name_locked: boolean;
   pickup_label: string;
   pickup_lat: number | null;
   pickup_lng: number | null;
@@ -46,6 +49,10 @@ const blank = {
 };
 
 export default function AgrimarketProducerProfilePage() {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [confirmingName, setConfirmingName] = useState(false);
+  const saveFlight = useRef(false);
   const {
     accessCode,
     setAccessCode,
@@ -79,7 +86,7 @@ export default function AgrimarketProducerProfilePage() {
   }, [sessionCode]);
 
   async function loadProfile() {
-    if (!sessionCode || flight.current) return;
+    if (!sessionCode || flight.current || saveFlight.current) return;
     flight.current = true;
     setLoading(true);
     setError("");
@@ -104,6 +111,8 @@ export default function AgrimarketProducerProfilePage() {
 
       const next: Profile = body.profile;
       setProfile(next);
+      setEditing(!next.profile_complete);
+      setConfirmingName(false);
       setForm({
         contact_name: next.contact_name || "",
         contact_phone: next.contact_phone || "",
@@ -137,7 +146,14 @@ export default function AgrimarketProducerProfilePage() {
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (!sessionCode || saving) return;
+    if (!sessionCode || saving || saveFlight.current || flight.current) return;
+    if (!profile?.vendor_name_locked) { setConfirmingName(true); return; }
+    await persistProfile(false);
+  }
+
+  async function persistProfile(confirmName: boolean) {
+    if (!sessionCode || saveFlight.current || flight.current) return;
+    saveFlight.current = true;
     setSaving(true);
     setError("");
     setMessage("");
@@ -147,6 +163,7 @@ export default function AgrimarketProducerProfilePage() {
         headers: farmerSessionHeaders(sessionCode, true),
         body: JSON.stringify({
           ...form,
+          confirm_vendor_name: confirmName,
           pickup_lat: pickup.lat,
           pickup_lng: pickup.lng,
         }),
@@ -160,12 +177,25 @@ export default function AgrimarketProducerProfilePage() {
       if (!response.ok || !body?.profile) {
         throw new Error(body?.message || "Your farm profile could not be saved.");
       }
+      if (body.profile.vendor_name_locked !== true) {
+        throw new Error("The saved name lock could not be confirmed. Refresh your farm profile before continuing.");
+      }
       setProfile(body.profile);
+      setEditing(false);
+      setConfirmingName(false);
       setMessage(body.message || "Farm profile saved.");
+      try {
+        sessionStorage.setItem(`JRIDE_FARM_PROFILE_SAVED:${sessionCode}`, JSON.stringify({
+          message: "Farm profile saved. Your farm/store name is locked. " + (body.message || ""),
+          at: Date.now(),
+        }));
+      } catch { /* Saving succeeds even when the optional dashboard notice cannot be stored. */ }
+      router.replace("/agrimarket/producer");
       window.dispatchEvent(new Event("agrimarket-store-updated"));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Your farm profile could not be saved.");
     } finally {
+      saveFlight.current = false;
       setSaving(false);
     }
   }
@@ -216,13 +246,48 @@ export default function AgrimarketProducerProfilePage() {
               ? profile.accepting_orders
                 ? "Profile complete and JRide readiness approved."
                 : "Profile complete. JRide readiness approval is still required before customer orders are enabled."
-              : "Complete the required fields below. Customer orders remain disabled while setup is incomplete."}
+              : profile.accepting_orders
+                ? "Your profile needs completion. Current order approval is shown above; saving sensitive changes may require review."
+                : "Complete the required fields below. Customer orders remain disabled while setup is incomplete."}
           </div>
         )}
 
         <FarmerFeedback error={error || authError} message={message} />
 
-        {profile && (
+        {profile && !editing && (
+          <section aria-label="Saved farm profile" className="mt-4 space-y-4">
+            <h2 className="text-xl font-bold">{profile.vendor_name}</h2>
+            <p className="rounded-xl bg-slate-50 p-3 text-sm">{profile.vendor_name_locked
+              ? "Farm/store name locked. You cannot change this name in the app. Contact JRide for a correction."
+              : "This farm/store name has not been confirmed yet. Review it carefully before confirming."}</p>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              <div><dt className="font-semibold">Farmer</dt><dd>{profile.contact_name}</dd></div>
+              <div><dt className="font-semibold">Mobile number</dt><dd>{profile.contact_phone}</dd></div>
+              <div><dt className="font-semibold">Municipality / barangay</dt><dd>{profile.town} / {profile.barangay}</dd></div>
+              <div><dt className="font-semibold">Pickup point</dt><dd>{profile.pickup_label}</dd></div>
+              <div><dt className="font-semibold">Driver directions</dt><dd>{profile.pickup_driver_directions}</dd></div>
+            </dl>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" className={styles.secondaryButton} onClick={() => setEditing(true)}>
+                {profile.vendor_name_locked ? "Update contact / pickup details" : "Review and confirm farm/store name"}
+              </button>
+              <Link className={styles.primaryButton} href="/agrimarket/producer">Back to my farm</Link>
+            </div>
+          </section>
+        )}
+        {profile && editing && confirmingName && (
+          <section aria-label="Confirm farm name" className="mt-4 space-y-4 rounded-xl border p-4">
+            <h2 className="text-xl font-bold">Confirm your farm/store name</h2>
+            <p className="break-words text-xl font-semibold">{form.vendor_name.trim().replace(/\s+/g, " ")}</p>
+            <p>Check the spelling carefully. Once saved, you cannot change this name in the app.</p>
+            <p className="text-sm">Your name is locked only after the complete profile saves successfully.</p>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" disabled={saving} className={styles.secondaryButton} onClick={() => setConfirmingName(false)}>Go back</button>
+              <button type="button" disabled={saving} className={styles.primaryButton} onClick={() => void persistProfile(true)}>{saving ? "Saving..." : "Confirm and save"}</button>
+            </div>
+          </section>
+        )}
+        {profile && editing && !confirmingName && (
           <form onSubmit={save} className="mt-4 space-y-5">
             <fieldset className={styles.formSection}>
               <legend><span>01</span> Farmer and farm</legend>
@@ -272,11 +337,17 @@ export default function AgrimarketProducerProfilePage() {
                     required
                     minLength={2}
                     maxLength={60}
+                    readOnly={profile.vendor_name_locked}
                     value={form.vendor_name}
                     onChange={(event) => setForm({ ...form, vendor_name: event.target.value })}
                     className="mt-1 w-full rounded-xl border px-3 py-3"
                     placeholder="Name customers will see"
                   />
+                  <span className="mt-2 block rounded-lg bg-amber-50 p-3 text-sm font-normal text-amber-950">
+                    {profile.vendor_name_locked
+                      ? "This confirmed farm/store name is locked. Contact JRide for a correction."
+                      : "Choose your farm/store name carefully. This is the name customers will see. Check the spelling: once saved, you cannot change this name in the app."}
+                  </span>
                 </label>
               </div>
             </fieldset>
@@ -331,7 +402,7 @@ export default function AgrimarketProducerProfilePage() {
             <div className="rounded-xl border bg-white p-3 text-sm">
               {profile.accepting_orders ? (
                 <>
-                  <p>Changing only the farm / store name or driver directions keeps your approval and current Open / Closed setting.</p>
+                  <p>Changing only driver directions keeps your approval and current Open / Closed setting. Your confirmed farm/store name cannot be changed here.</p>
                   <p className="mt-2 rounded-lg bg-amber-50 p-3 text-amber-950">
                     <strong>Review required:</strong> Changing the farmer name, mobile number, barangay, pickup pin, or vehicle-access / roadside settings will close the store and pause new orders until JRide approves readiness again. Your products remain saved.
                   </p>
@@ -341,10 +412,11 @@ export default function AgrimarketProducerProfilePage() {
               )}
             </div>
 
+            {profile.profile_complete && <button type="button" disabled={saving} className={styles.secondaryButton} onClick={() => void loadProfile()}>Cancel editing</button>}
             <button
               type="submit"
               disabled={
-                saving ||
+                saving || loading ||
                 pickup.resolving ||
                 !pickup.launch_eligible ||
                 pickup.resolved_town !== profile.town ||

@@ -57,7 +57,7 @@ export function ButcheringForm({ accessCode, headers, onSaved, onClose }: { acce
           <label>Accept reservations until<input required type="datetime-local" max={draft.butcher_start_at || undefined} value={draft.order_cutoff_at} onChange={event => setDraft({ ...draft, order_cutoff_at: event.target.value })} /></label>
           <p className={`${styles.fieldHint} self-center`}>All times are Philippine time. Reservations close before butchering starts. Confirm the actual meat and load before a driver is assigned.</p>
         </div></fieldset>
-        <fieldset className={styles.formSection}><legend>02 Parts & prices</legend><p className="mb-4 text-sm text-slate-600">Add cuts such as belly, ribs, leg, shoulder or liver. Each cut is sold and reserved by kilo.</p>
+        <fieldset className={styles.formSection}><legend>02 Parts & prices</legend><p className="mb-4 text-sm text-slate-600">Add cuts such as belly, ribs, leg, shoulder or liver. Each cut is sold and reserved by kilo. Customers can add several cuts from the same schedule and delivery group to one cart. List only the quantity you can set aside for JRide reservations.</p>
           <div className="space-y-4">{draft.cuts.map((cut, index) => <fieldset key={cut.id} className="rounded-2xl border border-[#dfe5d7] bg-[#fafbf7] p-4">
             <legend className="px-2 text-sm font-semibold">Cut {index + 1}</legend><div className="grid gap-3 sm:grid-cols-3">
               <label className="text-sm font-semibold">Part / meat cut<input aria-label={`Cut ${index + 1} name`} required minLength={2} maxLength={80} value={cut.name} placeholder="e.g. Belly / Liempo" onChange={event => updateCut(cut.id, "name", event.target.value)} className="mt-2 w-full rounded-xl border bg-white p-3" /></label>
