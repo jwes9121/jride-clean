@@ -1,0 +1,75 @@
+/* Runs without HTTP calls, tokens, test users, or production writes. */
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const ts = require('typescript');
+const root = path.resolve(__dirname, '../..');
+const source = fs.readFileSync(path.join(root, 'lib/jfleet/routePlanning.ts'), 'utf8');
+const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+const box = { exports: {}, URLSearchParams, AbortController, setTimeout, clearTimeout, fetch };
+vm.runInNewContext(js, box, { filename: 'routePlanning.js' });
+const api = box.exports;
+let count = 0;
+function test(name, run) { run(); count++; console.log('PASS ' + name); }
+const pts = [{label:'Pickup', lat:16.8, lng:121.1, notes:''}, {label:'Stop',lat:16.81,lng:121.11,notes:''}];
+const good = () => ({code:'Ok', routes:[{distance:1900,duration:300,geometry:{type:'LineString',coordinates:[[121.1,16.8],[121.11,16.81]]},legs:[{}]}],waypoints:pts.map(p=>({location:[p.lng,p.lat],distance:0}))});
+const reject = (fn, code) => assert.throws(fn, e => e.code === code);
+test('requires at least pickup and destination',()=>reject(()=>api.parseRoutePoints([]),'JFLEET_ROUTE_POINTS_REQUIRED'));
+for (const value of [null, '', false, true, NaN, Infinity, '16.8']) {
+ test('rejects malformed pin ' + String(value),()=>reject(()=>api.parseRoutePoints([{...pts[0],lat:value},pts[1]]),'JFLEET_ROUTE_PIN_REQUIRED'));
+}
+test('rejects out of range coordinates',()=>reject(()=>api.parseRoutePoints([{...pts[0],lng:181},pts[1]]),'JFLEET_ROUTE_PIN_REQUIRED'));
+test('does not invent a pin for an address',()=>reject(()=>api.parseRoutePoints([{label:'Lagawe'},pts[1]]),'JFLEET_ROUTE_PIN_REQUIRED'));
+test('rejects consecutive duplicate pins',()=>reject(()=>api.parseRoutePoints([pts[0],pts[0]]),'JFLEET_ROUTE_DUPLICATE_POINT'));
+test('allows round-trip return to pickup',()=>assert.equal(api.parseRoutePoints([...pts,pts[0]]).length,3));
+test('enforces max 21 points',()=>reject(()=>api.parseRoutePoints(Array.from({length:22},(_,i)=>({...pts[0],lat:16+i/100}))),'JFLEET_ROUTE_POINTS_REQUIRED'));
+test('road route summary retained',()=>assert.equal(api.parseDirections(good(),pts).distance_m,1900));
+test('geometry uses longitude latitude order',()=>assert.equal(api.parseDirections(good(),pts).geometry.coordinates[0][0],121.1));
+for (const code of ['NoRoute','NoSegment']) test('no fallback for '+code,()=>reject(()=>api.parseDirections({code},pts),'JFLEET_NO_ROAD_ROUTE'));
+test('rejects missing stop leg',()=>{const x=good();x.routes[0].legs=[];reject(()=>api.parseDirections(x,pts),'JFLEET_ROUTE_SUMMARY_INVALID')});
+test('rejects missing waypoint',()=>{const x=good();x.waypoints.pop();reject(()=>api.parseDirections(x,pts),'JFLEET_ROUTE_WAYPOINTS_INVALID')});
+test('rejects excessive reported snap',()=>{const x=good();x.waypoints[0].distance=251;reject(()=>api.parseDirections(x,pts),'JFLEET_ROUTE_PIN_TOO_FAR')});
+test('independently verifies snap distance',()=>{const x=good();x.waypoints[0].location=[120.5,16.4];reject(()=>api.parseDirections(x,pts),'JFLEET_ROUTE_PIN_TOO_FAR')});
+test('rejects invalid geometry coordinate',()=>{const x=good();x.routes[0].geometry.coordinates[1][0]=null;reject(()=>api.parseDirections(x,pts),'JFLEET_ROUTE_GEOMETRY_INVALID')});
+test('source ASCII',()=>assert.ok(!/[^\x00-\x7f]/.test(source)));
+const details = {purpose:'family',requested_vehicle_type:'van',trip_mode:'round_trip',scheduled_start_at:'2030-10-10T08:00:00+08:00',scheduled_end_at:'2030-10-10T20:00:00+08:00',passenger_count:8,cargo_weight_kg:null,cargo_description:null,luggage_notes:'Bags',special_notes:null};
+const before = Date.parse('2030-10-01T00:00:00Z');
+test('explicit Philippines schedule',()=>assert.equal(api.parseInquiryDetails(details,before).scheduled_start_at,details.scheduled_start_at));
+test('rejects device-local ambiguous time',()=>reject(()=>api.parseInquiryDetails({...details,scheduled_start_at:'2030-10-10T08:00'},before),'JFLEET_SCHEDULE_INVALID'));
+test('rejects equal trip start and end',()=>reject(()=>api.parseInquiryDetails({...details,scheduled_end_at:details.scheduled_start_at},before),'JFLEET_SCHEDULE_INVALID'));
+test('rejects impossible calendar dates',()=>reject(()=>api.parseInquiryDetails({...details,scheduled_start_at:'2030-02-31T08:00:00+08:00'},before),'JFLEET_SCHEDULE_INVALID'));
+test('rejects past departure',()=>reject(()=>api.parseInquiryDetails(details,Date.parse('2030-10-11')),'JFLEET_SCHEDULE_INVALID'));
+test('rejects fractional passenger count',()=>reject(()=>api.parseInquiryDetails({...details,passenger_count:1.5},before),'JFLEET_DETAILS_INVALID'));
+test('rejects string numeric cargo value',()=>reject(()=>api.parseInquiryDetails({...details,cargo_weight_kg:'500'},before),'JFLEET_DETAILS_INVALID'));
+(async()=>{
+ let called=0;
+ const route=await api.requestRoadRoute(pts,'TEST_ONLY',async(url,options)=>{called++;assert.ok(url.includes('121.1,16.8;121.11,16.81'));assert.ok(url.includes('radiuses=250%3B250'));assert.equal(options.cache,'no-store');return {ok:true,json:async()=>good()}});
+ assert.equal(called,1); assert.equal(route.duration_s,300); count++; console.log('PASS provider URL, order and no-store');
+ await assert.rejects(api.requestRoadRoute(pts,'',async()=>{throw new Error('MUST_NOT_CALL')}),e=>e.code==='JFLEET_ROUTING_NOT_CONFIGURED');count++;console.log('PASS missing token blocks provider call');
+ await assert.rejects(api.requestRoadRoute(pts,'SECRET',async()=>{throw new Error('SECRET')}),e=>e.status===503&&!e.message.includes('SECRET'));count++;console.log('PASS provider exceptions sanitized');
+ const apiSource=fs.readFileSync(path.join(root,'app/api/jfleet/planner/route.ts'),'utf8');
+ const apiJs=ts.transpileModule(apiSource,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+ let enabled=false,authenticated=false,dbCalls=0;
+ const apiBox={exports:{},Buffer,process:{env:{MAPBOX_TOKEN:'sk.NEVER_EXPOSE'}},require:(name)=>{
+  if(name==='next/server')return {NextResponse:{json:(body,options)=>Response.json(body,options)}};
+  if(name==='@/lib/jfleet/routePlanning')return api;
+  if(name==='@/lib/jfleet/server')return {jfleetFeatureFlagEnabled:()=>enabled,requireJfleetPassenger:async()=>authenticated?{ok:true,user:{id:'TEST-USER'}}:{ok:false,status:401,code:'NOT_AUTHED',message:'Sign in'}};
+  if(name==='@/lib/supabaseAdmin')return {supabaseAdmin:()=>{dbCalls++;throw new Error('Unexpected database access')}};
+  throw new Error('Unexpected import '+name);
+ }};
+ vm.runInNewContext(apiJs,apiBox,{filename:'planner-route.js'});
+ const getReq=new Request('https://test.invalid/api/jfleet/planner');
+ assert.equal((await apiBox.exports.GET(getReq)).status,503);count++;console.log('PASS feature-off GET denied');
+ const post=()=>new Request('https://test.invalid/api/jfleet/planner',{method:'POST',body:'{}'});
+ assert.equal((await apiBox.exports.POST(post())).status,503);count++;console.log('PASS feature-off POST denied');
+ enabled=true;
+ assert.equal((await apiBox.exports.GET(getReq)).status,401);count++;console.log('PASS unauthenticated GET denied');
+ assert.equal((await apiBox.exports.POST(post())).status,401);count++;console.log('PASS unauthenticated POST denied');
+ authenticated=true;
+ const secret=await apiBox.exports.GET(getReq);
+ assert.equal(secret.status,503);assert.ok(!(await secret.text()).includes('NEVER_EXPOSE'));count++;console.log('PASS secret map token never exposed');
+ const bad=await apiBox.exports.POST(new Request('https://test.invalid/api/jfleet/planner',{method:'POST',body:JSON.stringify({action:'preview',points:[{label:'Address only'},pts[1]]})}));
+ assert.equal(bad.status,400);assert.equal(dbCalls,0);count++;console.log('PASS unpinned request blocked before DB and provider');
+ console.log('JFleet route planning: '+count+' tests passed.');
+})().catch(e=>{console.error(e);process.exitCode=1});
