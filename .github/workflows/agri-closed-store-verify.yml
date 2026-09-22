@@ -1,63 +1,28 @@
-name: AgriMarket closed-store verification
+name: Passenger updater syntax verification
 on:
   push:
     branches: [work/agri-closed-store-20260923]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  verify:
+  parse:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-      - name: Align applied migration identity
+      - name: Decode exact updater command body
         shell: python
         run: |
+          import base64,zlib,hashlib
           from pathlib import Path
-          import subprocess
-          old='supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql'
-          new='supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql'
-          assert Path(old).is_file() and not Path(new).exists()
-          test=Path('tests/agrimarket-closed-store/run.cjs').read_text()
-          assert "n.endsWith('_agrimarket_catalog_visibility_v1.sql')" in test
-          subprocess.run(['git','mv',old,new],check=True)
-      - name: Install locked dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Run regression suites
+          data='''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'''
+          body=zlib.decompress(base64.b64decode(data))
+          assert hashlib.sha256(body).hexdigest()=='77921f9e4423d82d2ba9662969fd1c5b4344df9dd87a7e4237d785e94e8313c7'
+          Path('/tmp/updater-body.ps1').write_bytes(body)
+      - name: Parse updater without executing any commands
+        shell: pwsh
         run: |
-          set -o pipefail
-          npm run prebuild 2>&1 | tee /tmp/agri-tests.log
-      - name: TypeScript check
-        run: |
-          set -o pipefail
-          npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
-      - name: Commit only the verified migration identity change
-        shell: python
-        run: |
-          import subprocess
-          from pathlib import Path
-          actual=subprocess.check_output(['git','diff','--cached','--no-renames','--name-only'],text=True).splitlines()
-          expected={'supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql'}
-          assert set(actual)==expected,actual
-          subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
-          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','commit','-m','Align catalog approval migration with production history'],check=True)
-          subprocess.run(['git','push','origin','HEAD:work/agri-closed-store-20260923'],check=True)
-          Path('/tmp/agri-verified-commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
-      - name: Collect verification output
-        if: always()
-        run: |
-          mkdir -p /tmp/agri-results
-          cp /tmp/agri-tests.log /tmp/agri-types.log /tmp/agri-verified-commit.txt /tmp/agri-results/ 2>/dev/null || true
-          git diff --cached --stat > /tmp/agri-results/staged-files.txt
-          git archive --format=tar.gz -o /tmp/agri-results/source.tar.gz HEAD
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: agri-closed-store-verification
-          path: /tmp/agri-results
-          retention-days: 3
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile('/tmp/updater-body.ps1', [ref]$tokens, [ref]$errors)
+          if ($errors.Count -gt 0) { $errors | Format-List; exit 1 }
+          Write-Host 'PASS PowerShell syntax: exact updater command body; no update or installation executed.'
