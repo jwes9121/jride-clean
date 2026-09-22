@@ -1,0 +1,28 @@
+name: JFleet entry-point checks
+on:
+  push:
+    branches: [work/jfleet-entrypoint-review-20260923]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Export tracked JFleet review sources only
+        shell: bash
+        run: |
+          mkdir -p /tmp/jfleet-review
+          git rev-parse HEAD > /tmp/jfleet-review/commit.txt
+          git archive --format=tar HEAD app/jfleet app/api/jfleet components/jfleet lib/jfleet lib/passenger/browserSession.ts utils/supabase/server.ts lib/supabaseAdmin.ts tests/jfleet-routing tests/jfleet-owner-review tests/jfleet-customer package.json package-lock.json tsconfig.json middleware.ts app/layout.tsx > /tmp/jfleet-review/source.tar
+          sha256sum /tmp/jfleet-review/source.tar > /tmp/jfleet-review/source.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jfleet-entrypoint-review-source
+          path: /tmp/jfleet-review/
+          retention-days: 1
+          if-no-files-found: error
