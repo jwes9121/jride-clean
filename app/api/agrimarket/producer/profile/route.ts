@@ -13,7 +13,7 @@ export const revalidate = 0;
 export const runtime = "nodejs";
 
 const COLUMNS =
-  "id,contact_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng,status,accepting_orders,store_open,vendor_name,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions";
+  "id,contact_name,contact_phone,town,barangay,pickup_label,pickup_lat,pickup_lng,status,accepting_orders,store_open,vendor_name,vendor_name_locked_at,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_roadside_handoff_required,pickup_driver_directions";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim().replace(/\s+/g, " ");
@@ -28,6 +28,14 @@ function normalizePhilippineMobile(value: unknown): string | null {
 }
 
 function saveFailure(message: string) {
+  if (message.includes("FARM_NAME_LOCKED")) {
+    return jsonNoStore(409, { ok: false, error: "AGRIMARKET_FARM_NAME_LOCKED",
+      message: "Your confirmed farm/store name is locked. Refresh to see the saved name. Contact JRide for a correction." });
+  }
+  if (message.includes("FARM_NAME_CONFIRMATION_REQUIRED")) {
+    return jsonNoStore(409, { ok: false, error: "AGRIMARKET_FARM_NAME_CONFIRMATION_REQUIRED",
+      message: "Review and confirm your farm/store name before saving. Once saved, you cannot change this name in the app." });
+  }
   if (message.includes("FARMER_PHONE_ALREADY_REGISTERED")) {
     return jsonNoStore(409, {
       ok: false,
@@ -66,6 +74,7 @@ function payload(row: any) {
   const namePending = contactName.toLowerCase().includes("profile pending");
   const pickupVerified =
     !pickupPending &&
+    row.pickup_lat != null && row.pickup_lng != null &&
     Number.isFinite(Number(row.pickup_lat)) &&
     Number.isFinite(Number(row.pickup_lng)) &&
     Boolean(pickupLabel);
@@ -81,6 +90,7 @@ function payload(row: any) {
     town: clean(row.town),
     barangay,
     vendor_name: vendorName,
+    vendor_name_locked: Boolean(row.vendor_name_locked_at),
     pickup_label: pickupPending ? "" : pickupLabel,
     pickup_lat: pickupVerified ? Number(row.pickup_lat) : null,
     pickup_lng: pickupVerified ? Number(row.pickup_lng) : null,
@@ -92,7 +102,7 @@ function payload(row: any) {
     profile_complete:
       !namePending &&
       contactName.length >= 2 &&
-      phone.length >= 10 &&
+      Boolean(normalizePhilippineMobile(phone)) &&
       barangay.length >= 2 &&
       vendorName.length >= 2 &&
       pickupVerified &&
@@ -159,8 +169,8 @@ export async function POST(req: NextRequest) {
     const barangay = clean(body.barangay);
     const vendorName = clean(body.vendor_name);
     const directions = clean(body.pickup_driver_directions);
-    const lat = Number(body.pickup_lat);
-    const lng = Number(body.pickup_lng);
+    const lat = body.pickup_lat == null || body.pickup_lat === "" ? NaN : Number(body.pickup_lat);
+    const lng = body.pickup_lng == null || body.pickup_lng === "" ? NaN : Number(body.pickup_lng);
     const motorcycle = body.pickup_motorcycle_accessible === true;
     const tricycle = body.pickup_tricycle_accessible === true;
     const roadside = body.pickup_roadside_handoff_required === true;
@@ -203,7 +213,8 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const completed = await admin.rpc("agrimarket_farmer_complete_profile_v1", {
+    const completed = await admin.rpc("agrimarket_farmer_save_profile_v2", {
+      p_confirm_vendor_name: body.confirm_vendor_name === true,
       p_producer_id: auth.producer.id,
       p_contact_name: contactName,
       p_phone_display: contactPhone,

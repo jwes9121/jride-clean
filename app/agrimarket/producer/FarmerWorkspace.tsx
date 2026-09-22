@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowUpRight, Check, ClipboardList, Leaf, LockKeyhole, Packa
 import styles from "./farmer.module.css";
 import FarmerOrderAlerts from "./FarmerOrderAlerts";
 import FarmerStoreStatus from "./FarmerStoreStatus";
+import ProfileSavedNotice from "./ProfileSavedNotice";
 
 export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onReviewOrder, accountCode = "", loading = false, guest = false }: {
   section: "orders" | "products" | "profile";
@@ -40,6 +41,7 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onRev
         </nav>}
         {!guest && accountCode && <FarmerStoreStatus key={accountCode} accountCode={accountCode} />}
         {!guest && <FarmerOrderAlerts key={accountCode} accountCode={accountCode} onReviewOrder={onReviewOrder} />}
+        {!guest && section === "orders" && <ProfileSavedNotice accountCode={accountCode} />}
         {children}
         <footer className={styles.footer}><Sprout size={15} /> Grown locally. Connected by JRide.</footer>
       </main>

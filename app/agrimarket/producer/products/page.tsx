@@ -4,6 +4,7 @@ import { useFarmerSession } from "../useFarmerSession";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { ArrowUpRight, Bird, Egg, Fish, Leaf, Package, Pause, Plus, Search, Sprout, Wheat, X } from "lucide-react";
 import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from "../FarmerWorkspace";
 import styles from "../farmer.module.css";
@@ -85,7 +86,6 @@ export default function AgrimarketProducerProductsPage() {
   const [disabled, setDisabled] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [vendorName, setVendorName] = useState("");
-  const [vendorNameDraft, setVendorNameDraft] = useState("");
   const [form, setForm] = useState(initialForm);
   const [stockDraft, setStockDraft] = useState<Record<string, string>>({});
   const [weightDraft, setWeightDraft] = useState<Record<string, string>>({});
@@ -161,7 +161,7 @@ export default function AgrimarketProducerProductsPage() {
     } else {
       const rows = Array.isArray(payload?.products) ? payload.products : [];
       setProducts(rows);
-      setVendorName(payload.vendor_name || ""); setVendorNameDraft(payload.vendor_name || "");
+      setVendorName(payload.vendor_name || "");
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
       setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
       setConnected(true);
@@ -191,11 +191,10 @@ export default function AgrimarketProducerProductsPage() {
     } else {
       const rows = Array.isArray(payload?.products) ? payload.products : [];
       setProducts(rows);
-      setVendorName(payload.vendor_name || ""); setVendorNameDraft(payload.vendor_name || "");
+      setVendorName(payload.vendor_name || "");
       setStockDraft(Object.fromEntries(rows.map((row: Product) => [row.id, String(row.remaining_quantity)])));
       setWeightDraft(Object.fromEntries(rows.map((row: Product) => [row.id, row.unit_weight_kg == null ? "" : String(row.unit_weight_kg)])));
-      if (busyKey === "vendor-name") window.dispatchEvent(new Event("agrimarket-store-updated"));
-      setMessage(busyKey === "vendor-name" ? "Your store name is saved." : "Product list updated.");
+      setMessage("Product list updated.");
       if (busyKey === "create" && newPhoto) {
         if (payload.created_product_id) {
           try { await savePhoto(payload.created_product_id, newPhoto); setMessage("Product and photo saved."); }
@@ -331,7 +330,7 @@ export default function AgrimarketProducerProductsPage() {
               </div>
               <div className={styles.stockControls}>
                   <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_available_quantity", product_id: product.id, available_quantity: Number(stockDraft[product.id]) }, `stock-${product.id}`); }}><label>Available now ({product.selling_unit})<input aria-label={`Available ${product.selling_unit} for ${product.name}`} required type="number" min="0" step="0.01" value={stockDraft[product.id] ?? ""} onChange={(event) => setStockDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `stock-${product.id}` ? "Saving..." : "Save stock"}</button></form>
-                  <p className={styles.fieldHint}>Enter the quantity still available for new JRide orders. Reserved and sold stock stay separate. Set 0 when sold out.</p>
+                  <p className={styles.fieldHint}>Enter the quantity still available for new JRide orders. Reserved and sold stock stay separate. Set 0 when sold out. After a walk-in sale, update this unreserved quantity immediately. Do not sell stock already reserved for JRide. If you cannot supply a reservation, open Orders and record the affected cuts and reason.</p>
                   <button type="button" role="switch" aria-checked={product.is_active} aria-label={`Offer ${product.name} for new orders`} disabled={Boolean(busy)} onClick={() => void productAction({ action: "set_active", product_id: product.id, is_active: !product.is_active }, `active-${product.id}`)} className={styles.secondaryButton}>{busy === `active-${product.id}` ? "Updating..." : product.is_active ? "Turn product off" : "Turn product on"}</button>
               </div>
               <details className={styles.editDetails}>
@@ -345,11 +344,11 @@ export default function AgrimarketProducerProductsPage() {
         </section>
         <details id="farm-details" className={styles.farmDetails} open={!vendorName.trim() || undefined}>
           <summary>Farm details</summary>
-          <form className={styles.farmDetailsBody} onSubmit={event => { event.preventDefault(); void productAction({ action: "set_vendor_name", vendor_name: vendorNameDraft }, "vendor-name"); }}>
-            <label htmlFor="vendor-name" className="text-sm font-semibold">Store name (required)</label>
-            <div className="mt-2 flex flex-wrap gap-3"><input id="vendor-name" required minLength={2} maxLength={60} value={vendorNameDraft} onChange={event => setVendorNameDraft(event.target.value)} placeholder="Enter your vendor or farm name" className="min-w-0 flex-1 rounded-xl border px-3 py-3" /><button type="submit" disabled={!!busy || vendorNameDraft.trim().length < 2} className={styles.secondaryButton}>{busy === "vendor-name" ? "Saving..." : "Save store name"}</button></div>
-            <p className="mt-2 text-xs text-slate-600">Customers see this name when they open your store profile. A store name is required before publishing products or receiving orders. Your private contact details and pickup pin stay restricted.</p>
-          </form>
+          <div className={styles.farmDetailsBody}>
+            <p className="font-semibold">{vendorName || "Farm/store name not set"}</p>
+            <p className="mt-2 text-sm">Review and confirm your farm/store name in Farm profile. Once confirmed and saved, you cannot change it in the app.</p>
+            <Link href="/agrimarket/producer/profile" className={styles.secondaryButton}>Open Farm profile</Link>
+          </div>
         </details>
     </FarmerWorkspace>
   );
