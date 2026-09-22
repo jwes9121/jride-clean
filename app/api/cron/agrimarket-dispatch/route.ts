@@ -43,6 +43,20 @@ export async function GET(req: NextRequest) {
   const now = new Date();
   const nowIso = now.toISOString();
 
+  // Backup to the independent database cron. Safe to run concurrently: the
+  // expiry RPC row-locks only overdue awaiting_producer orders and is idempotent.
+  const producerExpiry = await admin.rpc("agrimarket_expire_pending_orders_v1", {
+    p_now: nowIso,
+    p_limit: 200,
+  });
+  if (producerExpiry.error) {
+    return NextResponse.json(
+      { ok: false, error: "AGRIMARKET_PRODUCER_TIMEOUT_SWEEP_FAILED" },
+      { status: 503, headers: headers() }
+    );
+  }
+  const expiredProducerOrders = Array.isArray(producerExpiry.data) ? producerExpiry.data.length : 0;
+
   const approvalExpiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1");
   if (approvalExpiry.error) return NextResponse.json({ ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" }, { status: 503, headers: headers() });
 
@@ -159,6 +173,7 @@ export async function GET(req: NextRequest) {
       ok: failures === 0,
       enabled: true,
       generated_at: nowIso,
+      expired_producer_orders: expiredProducerOrders,
       settlement_retry_error: settlementRes.error?.message || null,
       settlement_retried: settlementRows.length,
       settlement_completed: settlementCompleted,
