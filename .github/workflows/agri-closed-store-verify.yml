@@ -35,6 +35,13 @@ jobs:
           subprocess.run(['git','apply','--index',str(patch)],check=True)
           for f in bundle['files']:
               assert hashlib.sha256((root / f['path']).read_bytes()).hexdigest() == f['after'], 'Changed content: ' + f['path']
+          test_path = root / 'tests/agrimarket-closed-store/run.cjs'
+          test_source = test_path.read_text()
+          old = "assert(guard.includes('BEFORE INSERT ON public.agrimarket_orders'))"
+          new = "assert(/before\\s+insert\\s+on\\s+public\\.agrimarket_orders/i.test(guard))"
+          assert test_source.count(old) == 1
+          test_path.write_text(test_source.replace(old,new))
+          subprocess.run(['git','add',str(test_path)],check=True)
           Path('/tmp/agrimarket-scope.json').write_text(json.dumps(sorted(allowed)))
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
