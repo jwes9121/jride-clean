@@ -1,0 +1,21 @@
+name: AgriMarket closed-store verification
+on:
+  push:
+    branches: [work/agri-closed-store-20260923]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export tracked source for controlled verification
+        run: git archive --format=tar.gz -o jride-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agri-closed-store-source
+          path: jride-source.tar.gz
+          retention-days: 3
