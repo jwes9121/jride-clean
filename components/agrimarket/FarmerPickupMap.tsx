@@ -4,6 +4,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
+import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 
 export type FarmerPickupPin = {
   lat: number | null; lng: number | null; resolved_town: string | null;
@@ -15,12 +16,14 @@ type SearchResult = { lat: number; lng: number; town: string; barangay: string |
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN || "";
 mapboxgl.accessToken = TOKEN;
 
-export default function FarmerPickupMap({ selectedTown, value, onChange }: { selectedTown: string; value: FarmerPickupPin; onChange: (pin: FarmerPickupPin) => void }) {
+export default function FarmerPickupMap({ selectedTown, value, onChange, farmerCode }: { selectedTown: string; value: FarmerPickupPin; onChange: (pin: FarmerPickupPin) => void; farmerCode?: string }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const farmerCodeRef = useRef(farmerCode);
+  farmerCodeRef.current = farmerCode;
   const currentTown = useRef(selectedTown);
   const generation = useRef(0);
   const searchGeneration = useRef(0);
@@ -30,6 +33,19 @@ export default function FarmerPickupMap({ selectedTown, value, onChange }: { sel
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  function fetchLocation(params: URLSearchParams) {
+    const code = farmerCodeRef.current;
+    // Existing farmer sessions are scoped to /api/agrimarket/producer.
+    // Public applications retain their separate endpoint and access gate.
+    const endpoint = code ? "/api/agrimarket/producer/location" : "/api/agrimarket/farmer-location";
+    return fetch(`${endpoint}?${params}`, {
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: code ? farmerSessionHeaders(code) : { Accept: "application/json" },
+      signal: AbortSignal.timeout(12000),
+    });
+  }
 
   function clearPin() {
     generation.current += 1;
@@ -48,7 +64,7 @@ export default function FarmerPickupMap({ selectedTown, value, onChange }: { sel
     onChangeRef.current({ ...base, resolving: true });
     setError(""); setNotice("");
     try {
-      const response = await fetch(`/api/agrimarket/farmer-location?lat=${lat}&lng=${lng}`, { cache: "no-store" });
+      const response = await fetchLocation(new URLSearchParams({ lat: String(lat), lng: String(lng) }));
       const payload = await response.json();
       if (generation.current !== request) return;
       if (!response.ok || !payload.location) throw new Error(payload.message || "Move the pin to a pickup point JRide can verify.");
@@ -101,7 +117,7 @@ export default function FarmerPickupMap({ selectedTown, value, onChange }: { sel
     setSearching(true); setError(""); setResults([]);
     try {
       const params = new URLSearchParams({ q: query.trim(), town: currentTown.current });
-      const response = await fetch(`/api/agrimarket/farmer-location?${params}`, { cache: "no-store" });
+      const response = await fetchLocation(params);
       const payload = await response.json();
       if (request !== searchGeneration.current) return;
       if (!response.ok) throw new Error(payload.message || "Location search is unavailable.");
@@ -128,15 +144,15 @@ export default function FarmerPickupMap({ selectedTown, value, onChange }: { sel
     <p className="mt-2 text-sm">Pin the actual handoff point, such as a farm gate or roadside meeting point. It does not have to be your home. Only the assigned driver receives this location.</p>
     <div className="mt-4 flex flex-wrap gap-2">
       <input aria-label="Search pickup location" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void search(); } }} placeholder={`Barangay or landmark in ${selectedTown}`} maxLength={180} className="w-full min-w-0 rounded-xl border bg-white p-3 sm:w-auto sm:flex-1" />
-      <button type="button" disabled={searching} onClick={() => void search()} className="rounded-xl border bg-white px-4 py-3 font-semibold">{searching ? "Searching…" : "Search map"}</button>
+      <button type="button" disabled={searching} onClick={() => void search()} className="rounded-xl border bg-white px-4 py-3 font-semibold">{searching ? "Searching..." : "Search map"}</button>
       <button type="button" onClick={locate} className="rounded-xl border bg-white px-4 py-3">Use my location</button>
     </div>
     {results.length > 0 && <div className="mt-2 max-h-48 overflow-auto rounded-xl border bg-white p-2">{results.map((result) => <button key={`${result.lat}:${result.lng}:${result.label}`} type="button" className="block w-full rounded-lg p-3 text-left hover:bg-emerald-50" onClick={() => { clearPin(); map.current?.flyTo({ center: [result.lng, result.lat], zoom: 16 }); setResults([]); setQuery(result.label); setNotice("Map moved to the search result. Tap the exact handoff point to set your pickup pin."); }}>{result.label}</button>)}</div>}
     <div ref={container} className="mt-4 h-80 overflow-hidden rounded-xl border bg-slate-100" />
-    <p className="mt-2 text-xs">Search moves the map only. Tap to place your pin, or drag it to adjust.</p>
+    <p className="mt-2 text-xs">Search is optional and only moves the map. Tap the actual pickup point, then enter your driver directions or landmark below.</p>
     {notice && <p className="mt-3 text-sm" role="status">{notice}</p>}
     {error && <p className="mt-3 text-sm text-red-800" role="alert">{error}</p>}
-    {value.resolving && <p className="mt-3 text-sm" role="status">Checking the pickup municipality…</p>}
+    {value.resolving && <p className="mt-3 text-sm" role="status">Checking the pickup municipality...</p>}
     {value.lat != null && !value.resolving && <p className={`mt-3 rounded-xl bg-white p-3 text-sm ${matches ? "text-emerald-900" : "text-red-800"}`} role="status">{matches ? `Pickup municipality verified: ${value.resolved_barangay ? `${value.resolved_barangay}, ` : ""}${value.resolved_town}.` : `This pin ${value.resolved_town ? `is in ${value.resolved_town}` : "could not be verified"}. Place it in ${selectedTown} before continuing.`}</p>}
   </section>;
 }

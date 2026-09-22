@@ -283,7 +283,7 @@ export default function AgrimarketProducerProfilePage() {
 
             <fieldset className={styles.formSection}>
               <legend><span>02</span> Actual pickup point</legend>
-              <FarmerPickupMap selectedTown={profile.town} value={pickup} onChange={setPickup} />
+              <FarmerPickupMap selectedTown={profile.town} value={pickup} onChange={setPickup} farmerCode={sessionCode} />
             </fieldset>
 
             <fieldset className={styles.formSection}>
