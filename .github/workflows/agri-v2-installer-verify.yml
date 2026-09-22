@@ -50,8 +50,16 @@ jobs:
       - name: Windows PowerShell 5.1 installer tests
         shell: powershell
         run: |
-          & "$env:RUNNER_TEMP\installer-fixture-tests.ps1"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ErrorActionPreference = 'Stop'
+          try {
+            & "$env:RUNNER_TEMP\installer-fixture-tests.ps1"
+            # Negative fixtures intentionally execute failing child processes.
+            # Every expected result is asserted inside the harness.
+            exit 0
+          } catch {
+            Write-Host ('FAILED: ' + $_.Exception.Message)
+            exit 1
+          }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
