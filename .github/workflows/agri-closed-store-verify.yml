@@ -14,35 +14,20 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Verify exact source and stage only scoped changes
+      - name: Align applied migration identity
         shell: python
         run: |
           from pathlib import Path
-          import base64, zlib, hashlib, json, subprocess
-          root = Path('.').resolve()
-          text = ''.join((root / f'.ci/agri-closed-store/part{n}.b64').read_text().strip() for n in (1,2,3))
-          assert hashlib.sha256(text.encode()).hexdigest() == 'c576157cf8b96b59a7173f919fc394b31e1ff3f16b927ecd03710d4e505e2519', 'Bundle checksum mismatch'
-          bundle = json.loads(zlib.decompress(base64.b64decode(text)))
-          allowed = {'app/agrimarket/StoreProfile.tsx','app/agrimarket/page.tsx','app/api/agrimarket/_lib/order.ts','app/api/agrimarket/catalog/route.ts','app/api/agrimarket/store/route.ts','package.json','tests/agrimarket-store-cart/run.cjs','app/agrimarket/StoreAvailabilityNotice.tsx','lib/agrimarket/storeAvailability.ts','supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','tests/agrimarket-closed-store/run.cjs'}
-          assert {f['path'] for f in bundle['files']} == allowed
-          for f in bundle['files']:
-              p = root / f['path']
-              got = hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-              assert got == f['before'], 'Source drift: ' + f['path']
-          patch = root / '.ci/agri-closed-store/verified.patch'
-          patch.write_text(bundle['patch'])
-          subprocess.run(['git','apply','--check','--index',str(patch)],check=True)
-          subprocess.run(['git','apply','--index',str(patch)],check=True)
-          for f in bundle['files']:
-              assert hashlib.sha256((root / f['path']).read_bytes()).hexdigest() == f['after'], 'Changed content: ' + f['path']
-          test_path = root / 'tests/agrimarket-closed-store/run.cjs'
-          test_source = test_path.read_text()
-          old = "assert(guard.includes('BEFORE INSERT ON public.agrimarket_orders'))"
-          new = "assert(/before\\s+insert\\s+on\\s+public\\.agrimarket_orders/i.test(guard))"
-          assert test_source.count(old) == 1
-          test_path.write_text(test_source.replace(old,new))
-          subprocess.run(['git','add',str(test_path)],check=True)
-          Path('/tmp/agrimarket-scope.json').write_text(json.dumps(sorted(allowed)))
+          import subprocess
+          old='supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql'
+          new='supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql'
+          assert Path(old).is_file() and not Path(new).exists()
+          subprocess.run(['git','mv',old,new],check=True)
+          test=Path('tests/agrimarket-closed-store/run.cjs')
+          source=test.read_text()
+          assert source.count(old)==1
+          test.write_text(source.replace(old,new))
+          subprocess.run(['git','add',str(test)],check=True)
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Run regression suites
@@ -53,20 +38,19 @@ jobs:
         run: |
           set -o pipefail
           npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
-      - name: Commit verified files only on the work branch
+      - name: Commit only the verified migration identity changes
         shell: python
         run: |
-          import json,subprocess
+          import subprocess
           from pathlib import Path
-          allowed=json.loads(Path('/tmp/agrimarket-scope.json').read_text())
           actual=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert sorted(actual)==allowed, 'Unexpected staged files'
+          expected={'supabase/migrations/20260923183000_agrimarket_catalog_visibility_v1.sql','supabase/migrations/20260922183725_agrimarket_catalog_visibility_v1.sql','tests/agrimarket-closed-store/run.cjs'}
+          assert set(actual)==expected,actual
           subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','commit','-m','Implement approved closed-store browsing with ordering guards'],check=True)
+          subprocess.run(['git','commit','-m','Align catalog approval migration with production history'],check=True)
           subprocess.run(['git','push','origin','HEAD:work/agri-closed-store-20260923'],check=True)
-          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          Path('/tmp/agri-verified-commit.txt').write_text(sha)
+          Path('/tmp/agri-verified-commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
       - name: Collect verification output
         if: always()
         run: |
