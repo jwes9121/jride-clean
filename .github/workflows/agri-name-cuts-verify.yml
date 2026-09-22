@@ -15,30 +15,30 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Validate transport and exact source before applying reviewed diff
+      - name: Verify and add reservation cancellation notice
         shell: python
         run: |
           from pathlib import Path
-          import hashlib,base64,zlib,json,subprocess
-          text=''.join(Path(f'.ci/agri-name-cuts/part{i}.b64').read_text().strip() for i in (1,2,3))
-          for old,new in [('nm/Zz7cC','nm/ZHcC'),('qGfrfbdVbFr','qGfrfVbFr')]:
-              assert text.count(old)==1, 'Transport marker missing: '+old
-              text=text.replace(old,new)
-          assert hashlib.sha256(text.encode()).hexdigest()=='037bebf80f5a93313a150b259a26b66430298c5db629aaec94bffd92302eab97', 'Transport checksum mismatch'
-          data=json.loads(zlib.decompress(base64.b64decode(text)))
-          paths={f['path'] for f in data['files']}
-          assert len(paths)==16
-          assert all(p.startswith(('app/agrimarket/producer/','app/api/agrimarket/producer/','lib/agrimarket/','supabase/migrations/','tests/agrimarket-')) or p=='package.json' for p in paths)
-          for f in data['files']:
-              p=Path(f['path'])
-              actual=hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-              assert actual==f['before'], 'Source changed: '+str(p)
-          Path('/tmp/reviewed.patch').write_text(data['patch'])
-          subprocess.run(['git','apply','--check','--unidiff-zero','--index','/tmp/reviewed.patch'],check=True)
-          subprocess.run(['git','apply','--unidiff-zero','--index','/tmp/reviewed.patch'],check=True)
-          for f in data['files']:
-              assert hashlib.sha256(Path(f['path']).read_bytes()).hexdigest()==f['after'],f['path']
-          Path('/tmp/agri-scope.json').write_text(json.dumps(sorted(paths)))
+          import hashlib,subprocess
+          p=Path('lib/agrimarket/orderExpiry.ts')
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='3ec0313d1b87d8c72dcfc889782a9ca880f7b819481f3149ad05b13f3c7d12fd'
+          s=p.read_text().replace('cancel_reason?: string | null }','cancel_reason?: string | null; fulfillment_mode?: string }')
+          assert s.count('  return null;')==1
+          s=s.replace('  return null;', '''  if (order.status === "cancelled" && order.fulfillment_mode === "scheduled_harvest") return {
+              title: "Reservation cancelled",
+              message: order.cancel_reason?.replace(/_/g, " ").trim() || "This reservation was cancelled. Return to AgriMarket to choose available products.",
+            };
+            return null;'''.replace('\n    ', '\n'))
+          p.write_text(s)
+          assert hashlib.sha256(p.read_bytes()).hexdigest()=='652969741fece7f346a192da372f5bb99bea0fb08e38e3ea9d936803bd85034d'
+          t=Path('tests/agrimarket-reservation-cancel/run.cjs')
+          assert hashlib.sha256(t.read_bytes()).hexdigest()=='0c8058a9b6ebf776efd5906b6e48d54778182944215dacb8881f2427629cfc84'
+          old=" console.log('Reservation cancellation/parts: '+passed+' groups passed.');"
+          add=" await test('passenger web shows cancelled reservation reason instead of preparation/payment instructions',()=>{const f=load('lib/agrimarket/orderExpiry.ts').agrimarketExpiryNotice;const reason='Reserved cut no longer available - sold outside JRide. Affected cuts: Pig - Belly';const x=f({status:'cancelled',fulfillment_mode:'scheduled_harvest',cancel_reason:reason});assert.equal(x.title,'Reservation cancelled');assert.equal(x.message,reason);assert.equal(f({status:'awaiting_harvest',fulfillment_mode:'scheduled_harvest'}),null);assert.match(f({status:'cancelled',cancel_reason:'customer_reapproval_timeout',fulfillment_mode:'scheduled_harvest'}).title,/Approval time expired/);const page=read('app/agrimarket/order/page.tsx');assert(page.indexOf('{expiryNotice ? <>')<page.indexOf('Cash due now'));assert(page.includes('expiryNotice.message'));});\n"
+          s=t.read_text();assert s.count(old)==1
+          t.write_text(s.replace(old,add+old))
+          assert hashlib.sha256(t.read_bytes()).hexdigest()=='3074b5196506bb204dffa7b4640b007f5a6468b2762962821547f3cbddcc9b07'
+          subprocess.run(['git','add',str(p),str(t)],check=True)
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Run all regression groups
@@ -49,18 +49,17 @@ jobs:
         run: |
           set -o pipefail
           npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
-      - name: Commit only the reviewed files to the isolated branch
+      - name: Commit only two reviewed files
         shell: python
         run: |
-          import json,subprocess
+          import subprocess
           from pathlib import Path
-          paths=json.loads(Path('/tmp/agri-scope.json').read_text())
           actual=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert sorted(actual)==paths,actual
+          assert set(actual)=={'lib/agrimarket/orderExpiry.ts','tests/agrimarket-reservation-cancel/run.cjs'}
           subprocess.run(['git','diff','--cached','--check'],check=True)
           subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','commit','-m','Confirm farm name once and support audited reserved-cut cancellation'],check=True)
+          subprocess.run(['git','commit','-m','Show supplier cancellation reason without active reservation instructions'],check=True)
           subprocess.run(['git','push','origin','HEAD:work/agri-profile-name-cuts-20260923'],check=True)
           Path('/tmp/agri-commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
       - name: Export results
