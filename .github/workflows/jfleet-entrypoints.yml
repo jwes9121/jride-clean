@@ -6,23 +6,58 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      JRIDE_JFLEET_ENABLED: 'false'
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:9
+      SUPABASE_URL: http://127.0.0.1:9
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: jfleet-browser-fixture-not-a-real-key
+      SUPABASE_SERVICE_ROLE_KEY: jfleet-browser-fixture-not-a-real-key
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Export tracked JFleet review sources only
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install locked application dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run existing and new JFleet regression checks
+        run: |
+          node tests/jfleet-routing/run.cjs
+          node tests/jfleet-owner-review/run.cjs
+          node tests/jfleet-customer/run.cjs
+          node tests/jfleet-entrypoints/run.cjs
+      - name: Check full-project TypeScript
+        run: npx --no-install tsc --noEmit --pretty false
+      - name: Install isolated browser test tools
+        run: |
+          npm install --prefix /tmp/jfleet-playwright --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.62.0
+          /tmp/jfleet-playwright/node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise desktop and mobile navigation with fixture APIs only
         shell: bash
         run: |
-          mkdir -p /tmp/jfleet-review
-          git rev-parse HEAD > /tmp/jfleet-review/commit.txt
-          git archive --format=tar HEAD app/jfleet app/api/jfleet components/jfleet lib/jfleet lib/passenger/browserSession.ts utils/supabase/server.ts lib/supabaseAdmin.ts tests/jfleet-routing tests/jfleet-owner-review tests/jfleet-customer package.json package-lock.json tsconfig.json middleware.ts app/layout.tsx > /tmp/jfleet-review/source.tar
-          sha256sum /tmp/jfleet-review/source.tar > /tmp/jfleet-review/source.sha256
+          mkdir -p test-results/jfleet-entrypoints
+          git rev-parse HEAD > test-results/jfleet-entrypoints/commit.txt
+          ./node_modules/.bin/next dev --hostname 127.0.0.1 --port 3100 > test-results/jfleet-entrypoints/next-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for attempt in $(seq 1 90); do
+            if curl --max-time 5 --silent --fail http://127.0.0.1:3100/jfleet > /dev/null; then ready=1; break; fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then cat test-results/jfleet-entrypoints/next-server.log; exit 1; fi
+          NODE_PATH=/tmp/jfleet-playwright/node_modules node tests/jfleet-entrypoints/browser.cjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
-          name: jfleet-entrypoint-review-source
-          path: /tmp/jfleet-review/
-          retention-days: 1
-          if-no-files-found: error
+          name: jfleet-entrypoint-browser-evidence
+          path: test-results/jfleet-entrypoints/
+          retention-days: 3
+          if-no-files-found: warn
