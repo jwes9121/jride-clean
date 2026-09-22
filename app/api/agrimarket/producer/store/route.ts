@@ -6,11 +6,46 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-const COLUMNS = "id,vendor_name,town,status,accepting_orders,store_open";
+const COLUMNS = "id,vendor_name,town,status,accepting_orders,store_open,contact_name,contact_phone,barangay,pickup_label,pickup_lat,pickup_lng,pickup_motorcycle_accessible,pickup_tricycle_accessible,pickup_driver_directions";
+
+function completeProfile(store: any) {
+  const name = String(store.contact_name || "").trim();
+  const pickup = String(store.pickup_label || "").trim();
+  const vendor = String(store.vendor_name || "").trim();
+  const phone = String(store.contact_phone || "").trim();
+  const barangay = String(store.barangay || "").trim();
+  const directions = String(store.pickup_driver_directions || "").trim();
+  const pickupReady =
+    pickup.length >= 2 &&
+    !pickup.toUpperCase().startsWith("PROFILE PENDING") &&
+    Number.isFinite(Number(store.pickup_lat)) &&
+    Number.isFinite(Number(store.pickup_lng));
+  const accessReady =
+    store.pickup_motorcycle_accessible === true ||
+    store.pickup_tricycle_accessible === true;
+
+  return (
+    name.length >= 2 &&
+    !name.toLowerCase().includes("profile pending") &&
+    vendor.length >= 2 &&
+    phone.length >= 10 &&
+    barangay.length >= 2 &&
+    pickupReady &&
+    accessReady &&
+    directions.length >= 5
+  );
+}
+
 function payload(store: any) {
-  return { name: store.vendor_name || null, town: store.town,
+  const profileComplete = completeProfile(store);
+  return {
+    name: store.vendor_name || null,
+    town: store.town,
     ready: store.status === "active" && store.accepting_orders === true,
-    open: store.store_open === true };
+    open: store.store_open === true,
+    profile_complete: profileComplete,
+    setup_required: !profileComplete,
+  };
 }
 
 export async function GET(req: NextRequest) {

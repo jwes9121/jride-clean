@@ -19,6 +19,43 @@ function clean(value: unknown): string {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
+function normalizePhilippineMobile(value: unknown): string | null {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (/^09\d{9}$/.test(digits)) return `+63${digits.slice(1)}`;
+  if (/^9\d{9}$/.test(digits)) return `+63${digits}`;
+  if (/^639\d{9}$/.test(digits)) return `+${digits}`;
+  return null;
+}
+
+function saveFailure(message: string) {
+  if (message.includes("FARMER_PHONE_ALREADY_REGISTERED")) {
+    return jsonNoStore(409, {
+      ok: false,
+      error: "AGRIMARKET_FARMER_PHONE_ALREADY_REGISTERED",
+      message: "This mobile number is already registered to another AgriMarket farmer account.",
+    });
+  }
+  if (message.includes("PICKUP_DIRECTIONS_REQUIRED")) {
+    return jsonNoStore(400, {
+      ok: false,
+      error: "AGRIMARKET_PICKUP_DIRECTIONS_REQUIRED",
+      message: "Enter clear private driver directions or a landmark of at least 5 characters.",
+    });
+  }
+  if (message.includes("INVALID") || message.includes("REQUIRED") || message.includes("NOT_ACTIVE")) {
+    return jsonNoStore(400, {
+      ok: false,
+      error: "AGRIMARKET_FARMER_PROFILE_INVALID",
+      message: "Check the farmer name, mobile number, barangay, farm name, pickup point, vehicle access, and driver directions.",
+    });
+  }
+  return jsonNoStore(409, {
+    ok: false,
+    error: "AGRIMARKET_FARMER_PROFILE_SAVE_FAILED",
+    message: "Your farm profile could not be saved. Refresh and try again.",
+  });
+}
+
 function payload(row: any) {
   const contactName = clean(row.contact_name);
   const pickupLabel = clean(row.pickup_label);
@@ -35,6 +72,7 @@ function payload(row: any) {
   const accessReady =
     row.pickup_motorcycle_accessible === true ||
     row.pickup_tricycle_accessible === true;
+  const directions = clean(row.pickup_driver_directions);
 
   return {
     id: row.id,
@@ -49,7 +87,7 @@ function payload(row: any) {
     pickup_motorcycle_accessible: row.pickup_motorcycle_accessible === true,
     pickup_tricycle_accessible: row.pickup_tricycle_accessible === true,
     pickup_roadside_handoff_required: row.pickup_roadside_handoff_required === true,
-    pickup_driver_directions: clean(row.pickup_driver_directions),
+    pickup_driver_directions: directions,
     pickup_verified: pickupVerified,
     profile_complete:
       !namePending &&
@@ -58,7 +96,8 @@ function payload(row: any) {
       barangay.length >= 2 &&
       vendorName.length >= 2 &&
       pickupVerified &&
-      accessReady,
+      accessReady &&
+      directions.length >= 5,
     accepting_orders: row.accepting_orders === true,
     store_open: row.store_open === true,
   };
@@ -129,8 +168,9 @@ export async function POST(req: NextRequest) {
     if (contactName.length < 2 || contactName.length > 120) {
       return jsonNoStore(400, { ok: false, message: "Enter the farmer's full name." });
     }
-    if (contactPhone.length < 10 || contactPhone.length > 30) {
-      return jsonNoStore(400, { ok: false, message: "Enter a valid mobile number." });
+    const normalizedPhone = normalizePhilippineMobile(contactPhone);
+    if (!normalizedPhone || contactPhone.length < 10 || contactPhone.length > 30) {
+      return jsonNoStore(400, { ok: false, message: "Enter a valid Philippine mobile number." });
     }
     if (barangay.length < 2 || barangay.length > 120) {
       return jsonNoStore(400, { ok: false, message: "Enter the farmer's barangay." });
@@ -147,10 +187,10 @@ export async function POST(req: NextRequest) {
         message: "Choose at least one vehicle that can reach the pickup point.",
       });
     }
-    if (directions && (directions.length < 5 || directions.length > 1000)) {
+    if (directions.length < 5 || directions.length > 1000) {
       return jsonNoStore(400, {
         ok: false,
-        message: "Pickup directions must be at least 5 characters when provided.",
+        message: "Enter private driver directions or a landmark between 5 and 1000 characters.",
       });
     }
 
@@ -163,40 +203,46 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const update = await admin
-      .from("agrimarket_producers")
-      .update({
-        contact_name: contactName,
-        contact_phone: contactPhone,
-        barangay,
-        vendor_name: vendorName,
-        pickup_label: resolved.label,
-        pickup_lat: lat,
-        pickup_lng: lng,
-        pickup_motorcycle_accessible: motorcycle,
-        pickup_tricycle_accessible: tricycle,
-        pickup_roadside_handoff_required: roadside,
-        pickup_driver_directions: directions || null,
-        store_open: false,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", auth.producer.id)
-      .eq("status", "active")
-      .select(COLUMNS)
-      .maybeSingle();
+    const completed = await admin.rpc("agrimarket_farmer_complete_profile_v1", {
+      p_producer_id: auth.producer.id,
+      p_contact_name: contactName,
+      p_phone_display: contactPhone,
+      p_phone_normalized: normalizedPhone,
+      p_barangay: barangay,
+      p_vendor_name: vendorName,
+      p_pickup_label: resolved.label,
+      p_pickup_lat: lat,
+      p_pickup_lng: lng,
+      p_pickup_motorcycle_accessible: motorcycle,
+      p_pickup_tricycle_accessible: tricycle,
+      p_pickup_roadside_handoff_required: roadside,
+      p_pickup_driver_directions: directions,
+      p_actor: auth.accessCode,
+      p_now: new Date().toISOString(),
+    });
 
-    if (update.error || !update.data) {
-      return jsonNoStore(409, {
+    if (completed.error) {
+      return saveFailure(String(completed.error.message || ""));
+    }
+
+    const result = await readProfile(admin, auth.producer.id);
+    if (result.error || !result.data) {
+      return jsonNoStore(503, {
         ok: false,
-        error: "AGRIMARKET_FARMER_PROFILE_SAVE_FAILED",
-        message: update.error?.message || "Your farm profile could not be saved.",
+        error: "AGRIMARKET_FARMER_PROFILE_READ_FAILED",
+        message: "Your profile was saved, but JRide could not reload it. Tap Refresh.",
       });
     }
 
+    const completedRows = Array.isArray(completed.data) ? completed.data : [];
+    const completion: any = completedRows[0] || null;
+
     return jsonNoStore(200, {
       ok: true,
-      profile: payload(update.data),
-      message: "Farm profile saved. JRide will review readiness before customer orders are enabled.",
+      profile: payload(result.data),
+      application_id: completion?.application_id || null,
+      readiness_review_pending: true,
+      message: "Farm profile saved. Add your products next. Customer orders stay blocked until JRide approves readiness.",
     });
   } catch (error: any) {
     return jsonNoStore(500, {

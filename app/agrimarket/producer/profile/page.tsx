@@ -316,6 +316,9 @@ export default function AgrimarketProducerProfilePage() {
                 <label className="text-sm font-semibold md:col-span-2">
                   Driver directions / landmark
                   <textarea
+                    required
+                    minLength={5}
+                    maxLength={1000}
                     value={form.pickup_driver_directions}
                     onChange={(event) => setForm({ ...form, pickup_driver_directions: event.target.value })}
                     className="mt-1 min-h-24 w-full rounded-xl border px-3 py-3"
@@ -336,7 +339,8 @@ export default function AgrimarketProducerProfilePage() {
                 pickup.resolving ||
                 !pickup.launch_eligible ||
                 pickup.resolved_town !== profile.town ||
-                (!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible)
+                (!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible) ||
+                form.pickup_driver_directions.trim().length < 5
               }
               className={styles.primaryButton}
             >
