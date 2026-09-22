@@ -1,0 +1,36 @@
+name: JFleet owner review checks
+on:
+  push:
+    branches:
+      - feature/jfleet-owner-route-review-v1
+  pull_request:
+    paths:
+      - 'app/api/jfleet/**'
+      - 'app/jfleet/**'
+      - 'components/jfleet/**'
+      - 'lib/jfleet/**'
+      - 'tests/jfleet-*/**'
+      - '.github/workflows/jfleet-owner-review.yml'
+permissions:
+  contents: read
+concurrency:
+  group: jfleet-owner-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run JFleet offline regression checks
+        run: node tests/jfleet-routing/run.cjs && node tests/jfleet-owner-review/run.cjs
+      - name: Check full-project TypeScript
+        run: npx --no-install tsc --noEmit --pretty false
