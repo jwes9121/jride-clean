@@ -135,7 +135,7 @@ async function main() {
     await sqlResult(admin.from('jfleet_route_plans').update({status:'ready', route: geometry}).eq('id', b.id));
     return b.id;
   }
-  const details = {purpose:'family',requested_vehicle_type:'van',trip_mode:'round_trip',scheduled_start_at:new Date(Date.now()+10*86400000).toISOString(),scheduled_end_at:new Date(Date.now()+11*86400000).toISOString(),passenger_count:8,cargo_weight_kg:null,cargo_description:null,luggage_notes:'8 bags',special_notes:'LOCAL AUTH INTEGRATION ONLY'};
+  const details = {purpose:'family',requested_vehicle_type:'van',trip_mode:'round_trip',scheduled_start_at:new Date(Date.now()+10*86400000+28800000).toISOString().slice(0,16)+':00+08:00',scheduled_end_at:new Date(Date.now()+11*86400000+28800000).toISOString().slice(0,16)+':00+08:00',passenger_count:8,cargo_weight_kg:null,cargo_description:null,luggage_notes:'8 bags',special_notes:'LOCAL AUTH INTEGRATION ONLY'};
   const planId = await plan(user.customer, points);
   stage = 'inquiry and owner review';
   await api(foreign, 'POST', '/api/jfleet/planner', {action:'submit',plan_id:planId,points,details}, 404);
