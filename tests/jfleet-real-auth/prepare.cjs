@@ -49,3 +49,36 @@ fs.writeFileSync(config, contents);
 fs.mkdirSync('test-results/jfleet-real-auth', {recursive: true});
 fs.writeFileSync('test-results/jfleet-real-auth/migrations.json', JSON.stringify({scope: 'disposable local stack only', migrations: hashes}, null, 2));
 console.log('Prepared seven unmodified JFleet migrations and minimal ancillary test profiles. No hosted project linked.');
+
+// Regression for the owner display defect found by real-session screenshots.
+// Evaluate the actual shared helper and the actual owner wrapper, not a fixture.
+const ts = require('typescript');
+const {execFileSync} = require('node:child_process');
+const ownerSource = fs.readFileSync('app/jfleet/owner/page.tsx', 'utf8');
+const helperSource = fs.readFileSync('lib/jfleet/routeReview.ts', 'utf8');
+const wrapper = ownerSource.match(/function dateTime\(value\?: string \| null\): string \{[\s\S]*?\n\}/);
+assert.ok(wrapper, 'Expected owner dateTime wrapper not found');
+const compiled = ts.transpileModule(helperSource + '\n' + wrapper[0], {
+  compilerOptions: {target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS}
+}).outputText;
+const program = compiled + '\nconsole.log(JSON.stringify([' +
+  'dateTime("2026-10-03T06:59:00+08:00"),' +
+  'dateTime("2026-09-30T22:59:00Z"),dateTime(null),dateTime("invalid")' +
+  ']));';
+const expected = ['Oct 3, 2026, 6:59 AM PHT', 'Oct 1, 2026, 6:59 AM PHT', '-', '-'];
+const timezoneChecks = [];
+for (const zone of ['UTC', 'Asia/Manila', 'America/Los_Angeles']) {
+  const actual = JSON.parse(execFileSync(process.execPath, ['-e', program], {
+    encoding: 'utf8', env: {...process.env, TZ: zone}, timeout: 10000
+  }).trim());
+  assert.deepEqual(actual, expected, 'Owner schedule and cancellation cutoff must be Philippines time under ' + zone);
+  timezoneChecks.push({browser_host_timezone: zone, actual, passed: true});
+}
+fs.writeFileSync('test-results/jfleet-real-auth/timezones.json', JSON.stringify({
+  scope: 'actual owner dateTime wrapper and shared formatter executed in separate Node processes',
+  passed: timezoneChecks.length,
+  checks: timezoneChecks,
+  owner_source_sha256: crypto.createHash('sha256').update(ownerSource).digest('hex'),
+  shared_helper_sha256: crypto.createHash('sha256').update(helperSource).digest('hex')
+}, null, 2));
+console.log('PASS owner dates and cancellation cutoff match Philippines time in three host timezones');
