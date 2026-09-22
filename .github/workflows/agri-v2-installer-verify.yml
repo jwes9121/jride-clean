@@ -1,0 +1,62 @@
+name: AgriMarket V2 verified installer test
+on:
+  push:
+    branches: [work/agri-schedule-v2-installer-a0204175]
+    paths: [.github/workflows/agri-v2-installer-verify.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Recover exact fixture payload with checksum verification
+        shell: python
+        run: |
+          import base64,gzip,json,hashlib,os,re
+          from pathlib import Path
+          workflow=Path('.github/workflows/agri-v2-installer-fixtures.yml').read_text()
+          text=re.search("data='''(.*?)'''",workflow,re.S).group(1)
+          text=re.sub(r'\s+','',text)
+          replacements=[
+            ('BQxnmcW3FHzIQ','BQxnmcWHzIQ'),
+            ('N3rdA3c7R3s','N3rdA87R3s'),
+            ('P3LfdA472Bv3X','P3LfdA73Bv3X'),
+            ('G9V1Os7TuvDxwI','G9V1Os7bN3wI'),
+            ('87HRv+hlc','87HRv+vhlc'),
+            ('HSfJVGpOkeJA','HSfJVGpPkeJA'),
+            ('h75kWoyqB+/PNK','h75kWoyq/BPNK'),
+            ('C639FhYz','C639hYz'),
+            ('nrvu+INr77ze2zXhch','nrvu+INr77ze2zch'),
+            ('gosIS6Cyemx','gosIS6emx'),
+            ('E8dlE1N4QR','E8dlE1QR')
+          ]
+          for old,new in replacements:
+              assert text.count(old)==1,old
+              text=text.replace(old,new)
+          p=Path(os.environ['RUNNER_TEMP'])
+          (p/'recovered-fixture-payload.txt').write_text(text)
+          raw=gzip.decompress(base64.b64decode(text))
+          assert hashlib.sha256(raw).hexdigest()=='8d4120373bfc04d757edd4b841d307b3c75677466abdff9f6be0265d44ecfa37'
+          bundle=json.loads(raw)
+          b=bundle['installer'].encode('ascii')
+          assert hashlib.sha256(b).hexdigest().upper()=='141B5A80B46A28965D83B3FE68927A184E2028FD4B269409C3E1D01F38D42BE0'
+          (p/'reviewed-v2-installer.ps1').write_bytes(b)
+          (p/'installer-fixture-tests.ps1').write_bytes(bundle['tests'].encode('ascii'))
+          print('PASS: exact original installer and test harness recovered; both checksums matched')
+      - name: Windows PowerShell 5.1 installer tests
+        shell: powershell
+        run: |
+          & "$env:RUNNER_TEMP\installer-fixture-tests.ps1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installer-fixture-transport
+          path: |
+            ${{ runner.temp }}/recovered-fixture-payload.txt
+            ${{ runner.temp }}/reviewed-v2-installer.ps1
+          retention-days: 1
