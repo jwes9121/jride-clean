@@ -189,7 +189,11 @@ export async function POST(req: NextRequest) {
           : code.includes("REQUIRED") || code.includes("INVALID")
             ? 400
             : 409;
-      return jsonNoStore(status, { ok: false, error: code, result });
+      return jsonNoStore(status, { ok: false, error: code, result,
+        ...(code === "AGRIMARKET_SCHEDULE_NOT_READY" ? {
+          message: "This reservation is not due for preparation yet. Wait until the agreed preparation date and time. An earlier schedule requires customer approval first.",
+        } : {}),
+      });
     }
 
     return jsonNoStore(200, { ok: true, result });
