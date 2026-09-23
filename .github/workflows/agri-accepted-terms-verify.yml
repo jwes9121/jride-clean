@@ -15,38 +15,30 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Verify bundle and exact baseline before applying scoped changes
+      - name: Verify previously tested source and apply exact final web refinement
         shell: python
         run: |
           from pathlib import Path
           import base64,zlib,hashlib,json,subprocess
-          root=Path('.').resolve()
-          data=''.join((root/f'.ci/agri-accepted-terms/part{n}.b64').read_text().strip() for n in (1,2,3,4))
-          # Correct one identified transcription omission in the staged transport.
-          # The independent full checksum below remains mandatory before decoding.
+          data=''.join(Path(f'.ci/agri-accepted-terms/part{n}.b64').read_text().strip() for n in (1,2,3,4))
           if 'WK5MWyMdc' in data:
               assert data.count('WK5MWyMdc')==1
               data=data.replace('WK5MWyMdc','WK5MWy1/GxpTMrmVdc')
-          assert hashlib.sha256(data.encode()).hexdigest()=='8118aa80b99e8f6e2eef43b2fc183e86e91c1e4612fe2c657c9e5c683f104076','Transport checksum mismatch'
-          b=json.loads(zlib.decompress(base64.b64decode(data)))
-          assert b['base']=='84159ec7e63fa574e70aa2ba0007e311714fa9b1'
-          allowed={'app/agrimarket/order/page.tsx','app/agrimarket/page.tsx','app/api/agrimarket/_lib/order.ts','app/api/agrimarket/order-harvest-response/route.ts','app/api/agrimarket/order-status/route.ts','app/api/agrimarket/orders/route.ts','app/api/agrimarket/quote/route.ts','lib/agrimarket/checkoutMoney.ts','lib/agrimarket/checkoutQuote.ts','package.json','supabase/migrations/20260923153554_agrimarket_accepted_terms_v1.sql','tests/agrimarket-accepted-terms/run.cjs','tests/agrimarket-closed-store/run.cjs'}
-          assert {f['path'] for f in b['files']}==allowed
+          assert hashlib.sha256(data.encode()).hexdigest()=='8118aa80b99e8f6e2eef43b2fc183e86e91c1e4612fe2c657c9e5c683f104076'
+          files=json.loads(zlib.decompress(base64.b64decode(data)))['files']
+          assert len(files)==13
+          for f in files:
+              assert hashlib.sha256(Path(f['path']).read_bytes()).hexdigest()==f['after'],'Previously tested source changed: '+f['path']
           tracked=subprocess.check_output(['git','ls-files','-z']).decode().split('\0')
-          snapshot={p:hashlib.sha256((root/p).read_bytes()).hexdigest() for p in tracked if p and (root/p).is_file()}
-          for f in b['files']:
-              p=root/f['path']
-              got=hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None
-              assert got==f['before'],'Source drift: '+f['path']
-              if f['before_blob']:
-                  assert subprocess.check_output(['git','rev-parse','HEAD:'+f['path']],text=True).strip()==f['before_blob'],'Git blob drift: '+f['path']
-          Path('/tmp/agri-accepted-terms.patch').write_text(b['patch'])
-          subprocess.run(['git','apply','--check','--index','/tmp/agri-accepted-terms.patch'],check=True)
-          subprocess.run(['git','apply','--index','/tmp/agri-accepted-terms.patch'],check=True)
-          for f in b['files']:
-              assert hashlib.sha256((root/f['path']).read_bytes()).hexdigest()==f['after'],'After hash: '+f['path']
-          Path('/tmp/agri-manifest.json').write_text(json.dumps(b['files']))
-          Path('/tmp/agri-source-before.json').write_text(json.dumps(snapshot))
+          before={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in tracked if p and Path(p).is_file()}
+          subprocess.run(['python','.ci/agri-accepted-terms/refine_web.py'],check=True)
+          changed={'app/agrimarket/page.tsx':'e04c924bf7b57e67edb41f2e6a021c8434b9803ba05ae3af1f6197a2d6f0aa72','tests/agrimarket-accepted-terms/run.cjs':'17d3951742518b7bdbf81dc35aff36b08ca1c588b130843ef700afe9b79cdd56'}
+          for f in files:
+              if f['path'] in changed:f['after']=changed[f['path']]
+              assert hashlib.sha256(Path(f['path']).read_bytes()).hexdigest()==f['after']
+          subprocess.run(['git','add',*changed],check=True)
+          Path('/tmp/agri-manifest.json').write_text(json.dumps(files))
+          Path('/tmp/agri-source-before.json').write_text(json.dumps(before))
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
       - name: Full regression suites
@@ -57,26 +49,25 @@ jobs:
         run: |
           set -o pipefail
           npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-types.log
-      - name: Verify exact source preservation and commit scoped files
+      - name: Verify source preservation and commit exact web refinement
         shell: python
         run: |
           from pathlib import Path
           import hashlib,json,subprocess
           files=json.loads(Path('/tmp/agri-manifest.json').read_text())
-          allowed={f['path'] for f in files}
+          changed={'app/agrimarket/page.tsx','tests/agrimarket-accepted-terms/run.cjs'}
           before=json.loads(Path('/tmp/agri-source-before.json').read_text())
           for p,h in before.items():
-              if p not in allowed: assert hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,'Unrelated source changed: '+p
-          for f in files: assert hashlib.sha256(Path(f['path']).read_bytes()).hexdigest()==f['after'],'Test modified source: '+f['path']
-          actual=set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())
-          assert actual==allowed,actual
+              if p not in changed:assert hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,'Unrelated source changed: '+p
+          for f in files:assert hashlib.sha256(Path(f['path']).read_bytes()).hexdigest()==f['after'],'Test modified source: '+f['path']
+          assert set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())==changed
           subprocess.run(['git','config','user.name','JRide verification bot'],check=True)
           subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
-          subprocess.run(['git','commit','-m','Verify exact quote approval, decimal line totals and proposal identity'],check=True)
+          subprocess.run(['git','commit','-m','Align web cart line totals with accepted server quote and disclose expiry'],check=True)
           subprocess.run(['git','push','origin','HEAD:work/agri-accepted-terms-20260923'],check=True)
           sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
           verified=[{'path':f['path'],'sha':subprocess.check_output(['git','rev-parse','HEAD:'+f['path']],text=True).strip(),'sha256':f['after']} for f in files]
-          Path('/tmp/verified-files.json').write_text(json.dumps({'commit':sha,'files':verified,'unchanged_source_files':len(before)-len([f for f in files if f['before']])},indent=2))
+          Path('/tmp/verified-files.json').write_text(json.dumps({'commit':sha,'files':verified,'unchanged_source_files':len(before)-len(changed)},indent=2))
           print(Path('/tmp/verified-files.json').read_text())
       - name: Collect exact verification output
         if: always()
