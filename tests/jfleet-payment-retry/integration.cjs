@@ -50,6 +50,11 @@ async function main(){
  async function slot(p=page){return p.evaluate(({scope})=>new Promise((resolve,reject)=>{const r=indexedDB.open('jride-jfleet-owner-payments-v1',1);r.onerror=()=>reject(Error('IDB read failed'));r.onsuccess=()=>{const d=r.result,t=d.transaction('requests','readonly'),q=t.objectStore('requests').get(scope);q.onsuccess=()=>resolve(q.result);t.oncomplete=()=>d.close();};}),{scope:users.owner.id+':'+partner.id+':'+bid});}
  async function confirmed(p=page){await p.getByTestId('payment-form-'+bid).getByText(/Confirmed receipt:/).waitFor({timeout:90000});}
  async function another(p=page){p.once('dialog',d=>d.accept());await p.getByTestId('payment-form-'+bid).getByRole('button',{name:'Record another payment',exact:true}).click();await p.getByTestId('payment-form-'+bid).getByRole('button',{name:'Confirm Payment',exact:true}).waitFor();}
+ stage='storage unavailable';
+ const unavailable=await context(390);await login(unavailable,'owner');await unavailable.addInitScript(()=>Object.defineProperty(window,'indexedDB',{value:undefined}));
+ const blocked=await unavailable.newPage();let postCount=0;blocked.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/api/jfleet/owner/payments'))postCount++;});
+ await open(blocked);await blocked.getByTestId('payment-form-'+bid).getByRole('alert').waitFor();assert.equal(postCount,0);assert.equal((await ledger()).length,0);check('Unavailable storage blocks a NEW payment on an open unpaid booking before any POST');
+ await unavailable.close();
  await open();await fill(page,1200,'BEFORE-COMMIT');
  stage='lost request before server';
  await page.route(BASE+'/api/jfleet/owner/payments',r=>r.abort('failed'),{times:1});
@@ -68,11 +73,13 @@ async function main(){
  stage='lost response after commit';
  await another();assert.equal(await form().getByLabel('Amount received (PHP)',{exact:true}).inputValue(),'');
  check('Explicit different-payment action opens a blank form');
- await fill(page,1200,'AFTER-COMMIT');let committedResponse;
- await page.route(BASE+'/api/jfleet/owner/payments',async r=>{const actual=await r.fetch();assert.equal(actual.status(),200);committedResponse=await actual.json();await r.abort('failed');},{times:1});
+ await fill(page,1200,'AFTER-COMMIT');let committedResponse;const timeoutStarted=Date.now();
+ await page.route(BASE+'/api/jfleet/owner/payments',async r=>{const actual=await r.fetch();assert.equal(actual.status(),200);committedResponse=await actual.json();await sleep(24000);await r.abort('failed').catch(()=>{});},{times:1});
  await form().getByRole('button',{name:'Confirm Payment',exact:true}).click();await form().getByRole('alert').waitFor();assert.ok(committedResponse.receipt);assert.equal((await ledger()).length,2);
  const second=await slot();assert.equal(second.phase,'pending');assert.notEqual(second.request.idempotency_key,first.request.idempotency_key);
- check('Server committed payment while browser lost response; saved intent remains unresolved');
+ assert.ok(Date.now()-timeoutStarted>=19000);assert.ok((await form().getByRole('alert').innerText()).includes('timed out'));
+ check('Actual 20-second client timeout preserves a payment committed by the server');
+ fs.mkdirSync(OUT,{recursive:true});await form().screenshot({path:path.join(OUT,'pending-payment-timeout.png')});
  await page.reload();await form().getByRole('button',{name:'Retry saved payment',exact:true}).waitFor();await form().getByRole('button',{name:'Retry saved payment',exact:true}).click();await confirmed();
  const rows=await ledger();assert.equal(rows.length,2);assert.equal(rows.reduce((n,r)=>n+Number(r.amount),0),2400);assert.equal((await slot()).request.idempotency_key,second.request.idempotency_key);
  check('Lost-response reload and retry keeps two legitimate payments, not a third');
@@ -108,10 +115,6 @@ async function main(){
  const recovered=await api(owner,'POST','/api/jfleet/owner/payments',fourth.request);assert.equal(recovered.replayed,true);assert.equal((await ledger()).length,4);
  check('Payment committed before cancellation can still be recovered without a new credit');
  assert.equal(await form().getByRole('button',{name:'Record another payment',exact:true}).count(),0);check('Closed booking permits receipt recovery but no new payment form');
- stage='storage unavailable';
- const unavailable=await context(390);await login(unavailable,'owner');await unavailable.addInitScript(()=>Object.defineProperty(window,'indexedDB',{value:undefined}));
- const blocked=await unavailable.newPage();let postCount=0;blocked.on('request',r=>{if(r.method()==='POST'&&r.url().includes('/api/jfleet/owner/payments'))postCount++;});
- await open(blocked);await blocked.getByTestId('payment-form-'+bid).getByRole('alert').waitFor();assert.equal(postCount,0);check('Unavailable durable storage fails closed without a payment POST');
  assert.equal(pageErrors.length,0);check('No uncaught errors in the tested owner page');
  fs.mkdirSync(OUT,{recursive:true});await page.screenshot({path:path.join(OUT,'owner-recovered-payment-desktop.png'),fullPage:true});await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(OUT,'owner-recovered-payment-mobile.png'),fullPage:true});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));check('Recovered payment form fits the 390px mobile viewport');
@@ -122,5 +125,9 @@ async function main(){
 (async()=>{let failure=null;try{await main();}catch(e){failure={stage,message:String(e.message).slice(0,1200)};process.exitCode=1;console.error('FAIL '+stage+': '+failure.message);}finally{
  if(browser)await browser.close().catch(()=>{});if(server){server.kill('SIGTERM');await sleep(500);if(server.exitCode===null)server.kill('SIGKILL');}
  fs.mkdirSync(OUT,{recursive:true});const commit=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+ const sourcePaths=['app/jfleet/owner/page.tsx','app/api/jfleet/owner/dashboard/route.ts','app/api/jfleet/owner/payments/route.ts','lib/jfleet/ownerPayment.ts','lib/jfleet/ownerPaymentStore.ts','components/jfleet/OwnerPaymentForm.tsx','tests/jfleet-payment-retry/run.cjs','tests/jfleet-payment-retry/integration.cjs','tests/jfleet-entrypoints/run.cjs','.github/workflows/jfleet-payment-retry.yml'];
+ const hashes=sourcePaths.map(file=>({path:file,sha256:crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')}));
+ fs.writeFileSync(path.join(OUT,'source-hashes.json'),JSON.stringify({commit,files:hashes},null,2));
+ for(const name of ['migrations.json','timezones.json']){const from=path.resolve('test-results/jfleet-real-auth',name);if(fs.existsSync(from))fs.copyFileSync(from,path.join(OUT,name));}
  fs.writeFileSync(path.join(OUT,'report.json'),JSON.stringify({commit,passed:checks.length,checks,failures:failure?[failure]:[],requests,auth:'actual isolated Supabase Auth and existing JRide login',database:'actual isolated PostgreSQL/PostgREST; existing seven migrations unchanged',browser:'Chromium desktop and 390px viewport; not physical Android',fault_injection:'drop before server or after actual commit; successful local responses not mocked',maps:'saved simulated geometry; no map-provider use',limits:['Recovery depends on this browser storage; clearing it destroys saved request identity','Independent new entries on different devices need operational reconciliation','Side-trip payment form is not modified by this increment','No actual money transfer or production mutation']},null,2));
  console.log('JFleet payment retry integration: '+checks.length+' checks passed; '+(failure?1:0)+' failures.');}})();
