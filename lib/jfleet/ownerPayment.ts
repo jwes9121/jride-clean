@@ -31,7 +31,7 @@ function text(value: unknown, max: number): string {
 export function paymentFields(value: unknown): PaymentFields {
   const v = record(value), amount = v.amount;
   if (!["reservation", "balance", "full_payment"].includes(String(v.payment_kind))) throw new Error("Choose a valid payment type.");
-  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount > 100000000 ||
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0.01 || amount > 100000000 ||
       Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) throw new Error("Enter a positive amount with at most two decimal places.");
   return {payment_kind: v.payment_kind as PaymentKind, amount: Math.round(amount * 100) / 100,
     payment_channel: text(v.payment_channel, 80), payment_reference: text(v.payment_reference, 180), notes: text(v.notes, 1000)};

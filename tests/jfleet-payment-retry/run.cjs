@@ -11,7 +11,7 @@ const req={...fields,booking_id:scope.booking_id,idempotency_key:'JFP-stable-pay
 const receipt={...fields,...scope,idempotency_key:req.idempotency_key,payment_id:'44444444-4444-4444-4444-444444444444',status:'confirmed',confirmed_at:'2026-09-23T00:00:00Z'};
 check('valid frozen request parsed',()=>assert.equal(m.paymentRequest(req).idempotency_key,req.idempotency_key));
 for(const v of ['',undefined,null,'short','abc defghi','x'.repeat(121)])check('reject invalid key '+String(v).slice(0,12),()=>assert.throws(()=>m.paymentRequest({...req,idempotency_key:v})));
-for(const v of [0,-1,Infinity,NaN,'1200',true,1.001,100000001])check('reject invalid amount '+String(v),()=>assert.throws(()=>m.paymentFields({...fields,amount:v})));
+for(const v of [0,-1,0.00000001,0.00999999,Infinity,NaN,'1200',true,1.001,100000001])check('reject invalid amount '+String(v),()=>assert.throws(()=>m.paymentFields({...fields,amount:v})));
 check('normalize approved text whitespace consistently',()=>assert.equal(m.paymentFields({...fields,payment_channel:' Cash\n payment '}).payment_channel,'Cash payment'));
 check('do not truncate payment reference',()=>assert.throws(()=>m.paymentFields({...fields,payment_reference:'x'.repeat(181)})));
 check('scope separates owner identity',()=>assert.notEqual(m.paymentScopeKey(scope),m.paymentScopeKey({...scope,owner_user_id:scope.partner_id})));
