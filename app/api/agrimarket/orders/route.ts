@@ -1,3 +1,4 @@
+import { quoteFailure } from "@/lib/agrimarket/checkoutQuote";
 import { NextRequest } from "next/server";
 import {
   RIDE_PICKUP_BLOCK_KM,
@@ -16,7 +17,6 @@ import {
   normalizeAgrimarketItems,
   normalizeAgrimarketPreferredVehicle,
 } from "../_lib/order";
-import { fetchAgrimarketDrivingRoute } from "../_lib/routing";
 import {
   agrimarketDisabledResponse,
   agrimarketEnabled,
@@ -185,7 +185,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (existingRes.data) {
+    const acceptedQuoteId = String(body?.accepted_quote_id || "").trim();
+    if (existingRes.data && !acceptedQuoteId) {
       return jsonNoStore(200, {
         ok: true,
         idempotent_replay: true,
@@ -200,64 +201,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const context = await loadAgrimarketOrderContext(
-      admin,
-      passengerAuth.user.id,
-      addressId,
-      items,
-      preferredVehicleType
-    );
-
-    const farmerToCustomer = await fetchAgrimarketDrivingRoute(
-      context.producer.pickup_lat,
-      context.producer.pickup_lng,
-      context.address.lat,
-      context.address.lng
-    );
-
-    const cashFirst = context.productSubtotal > AGRIMARKET_CASH_FIRST_THRESHOLD;
-    const customerToFarmer = cashFirst
-      ? await fetchAgrimarketDrivingRoute(
-          context.address.lat,
-          context.address.lng,
-          context.producer.pickup_lat,
-          context.producer.pickup_lng
-        )
-      : null;
-
-    const orderRes = await admin.rpc("agrimarket_create_reserved_order_v4", {
-      p_customer_user_id: passengerAuth.user.id,
-      p_client_request_id: clientRequestId,
-      p_delivery_address_id: addressId,
-      p_items: items,
-      p_farmer_to_customer_distance_km: farmerToCustomer.distanceKm,
-      p_farmer_to_customer_duration_seconds: farmerToCustomer.durationSeconds,
-      p_customer_to_farmer_distance_km: customerToFarmer?.distanceKm ?? null,
-      p_customer_to_farmer_duration_seconds: customerToFarmer?.durationSeconds ?? null,
-      p_preferred_vehicle_type: preferredVehicleType,
-      p_route_provider: farmerToCustomer.provider,
+    if (!existingRes.data) await loadAgrimarketOrderContext(admin, passengerAuth.user.id, addressId, items, preferredVehicleType);
+    if (!isUuid(acceptedQuoteId)) return jsonNoStore(426, {
+      ok:false, error:"AGRIMARKET_REVIEWED_QUOTE_REQUIRED",
+      message:"A reviewed price quote is required. Update the passenger app, then get a fresh quote. Existing orders are unchanged.",
     });
-
-    if (orderRes.error) {
-      const message = String(orderRes.error.message || "");
-      return jsonNoStore(rpcFailureStatus(message), {
-        ok: false,
-        error: "AGRIMARKET_ORDER_CREATE_FAILED",
-        message: message.includes("AGRIMARKET_PRODUCER_UNAVAILABLE_STORE_CLOSED")
-          ? "This store has closed for new orders. Refresh AgriMarket to choose an available store." : message,
-      });
+    const orderRes = await admin.rpc("agrimarket_create_quoted_order_v1", {
+      p_customer_user_id: passengerAuth.user.id, p_client_request_id: clientRequestId,
+      p_quote_id: acceptedQuoteId, p_address_id: addressId, p_items: items, p_vehicle: preferredVehicleType,
+    });
+    if (orderRes.error || orderRes.data?.ok !== true) {
+      const failure = quoteFailure(orderRes.error?.message || orderRes.data?.error);
+      return jsonNoStore(failure.status, {ok:false,error:failure.error,message:failure.message});
     }
-
-    const rows = Array.isArray(orderRes.data) ? orderRes.data : [];
-    const created: any = rows[0] || orderRes.data || null;
-    if (!created) {
-      return jsonNoStore(500, {
-        ok: false,
-        error: "AGRIMARKET_ORDER_CREATE_EMPTY",
-        message: "Agrimarket checkout did not return an order.",
-      });
-    }
-
+    const created = orderRes.data;
     const readBackRes = await admin
       .from("agrimarket_orders")
       .select(ORDER_READ_COLUMNS)
@@ -276,11 +233,13 @@ export async function POST(req: NextRequest) {
     const payload = orderPayload(readBackRes.data);
     // Best effort immediate delivery; the independent cron recovers unsent jobs.
     // A push outage must never turn a successfully created order into a checkout error.
-    try { await sendFarmerBrowserAlerts(admin, context.producer.id); }
-    catch { console.warn("AGRIMARKET_BROWSER_ALERT_DEFERRED"); }
-    return jsonNoStore(201, {
+    if (!created.idempotent_replay) {
+      try { await sendFarmerBrowserAlerts(admin, created.producer_id); }
+      catch { console.warn("AGRIMARKET_BROWSER_ALERT_DEFERRED"); }
+    }
+    return jsonNoStore(created.idempotent_replay ? 200 : 201, {
       ok: true,
-      idempotent_replay: false,
+      idempotent_replay: created.idempotent_replay === true,
       order: payload,
       harvest_reservation:
         payload.fulfillment_mode === "scheduled_harvest"

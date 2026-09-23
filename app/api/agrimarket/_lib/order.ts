@@ -1,3 +1,4 @@
+import { lineCents, moneyFromCents, scaledDecimal } from "@/lib/agrimarket/checkoutMoney";
 import { coordinate, hasValidPin } from "@/lib/agrimarket/coordinates";
 import { cargoConflict } from "@/lib/agrimarket/cartCompatibility";
 import { PICKUP_ACCESS_COLUMNS, pickupAccessError } from "@/lib/agrimarket/pickupAccess";
@@ -46,6 +47,7 @@ export type AgrimarketOrderContext = {
   address: any;
   producer: any;
   items: RequestedAgrimarketItem[];
+  products: any[];
   itemSnapshots: Array<{
     product_id: string;
     name: string;
@@ -122,6 +124,9 @@ export function normalizeAgrimarketItems(body: any): RequestedAgrimarketItem[] {
     }
     if (!Number.isFinite(quantity) || quantity <= 0) {
       throw new AgrimarketRequestError("AGRIMARKET_INVALID_QUANTITY", 400, "Every Agrimarket quantity must be greater than zero.");
+    }
+    try { scaledDecimal(quantity, 3); } catch {
+      throw new AgrimarketRequestError("AGRIMARKET_INVALID_QUANTITY", 400, "Use a positive quantity with at most three decimal places.");
     }
     if (seen.has(productId)) {
       throw new AgrimarketRequestError("AGRIMARKET_DUPLICATE_PRODUCT", 400, "Duplicate product lines are not allowed.");
@@ -230,6 +235,7 @@ export async function loadAgrimarketOrderContext(
   const harvestEnds = new Set<string>();
   const itemSnapshots: AgrimarketOrderContext["itemSnapshots"] = [];
   let productSubtotal = 0;
+  let subtotalCents = BigInt(0);
   let estimatedCargoWeightKg = 0;
   let cargoWeightEstimateComplete = true;
   let handlingEligible = false;
@@ -307,9 +313,16 @@ export async function loadAgrimarketOrderContext(
       requiredVehicleType = productVehicle;
     }
 
-    const unitPrice = money(product.unit_price);
-    const lineTotal = money(unitPrice * requested.quantity);
-    productSubtotal = money(productSubtotal + lineTotal);
+    let unitPrice: number, lineTotal: number;
+    try {
+      unitPrice = moneyFromCents(scaledDecimal(product.unit_price, 2));
+      const cents = lineCents(product.unit_price, requested.quantity);
+      subtotalCents += cents;
+      lineTotal = moneyFromCents(cents);
+      productSubtotal = moneyFromCents(subtotalCents);
+    } catch {
+      throw new AgrimarketRequestError("AGRIMARKET_ITEM_PRICE_INVALID", 409, "An item price or quantity cannot be quoted. Refresh the product details.");
+    }
 
     const unitWeightKg =
       product.unit_weight_kg === null || product.unit_weight_kg === undefined
@@ -431,6 +444,7 @@ export async function loadAgrimarketOrderContext(
     producer: producerRes.data,
     items,
     itemSnapshots,
+    products,
     productSubtotal,
     estimatedCargoWeightKg: cargoWeightEstimateComplete
       ? Math.round(estimatedCargoWeightKg * 1000) / 1000

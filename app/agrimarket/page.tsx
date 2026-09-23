@@ -560,13 +560,16 @@ export default function AgrimarketPage() {
     if (cartError) { setCartMessage(cartError); return; }
     setOrdering(true);
     setError("");
-    const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
-    if (checkoutAttempt.current?.body !== requestBody) {
-      checkoutAttempt.current = { body: requestBody, id: crypto.randomUUID() };
+    const quoteId = quote?.checkout_quote?.quote_id;
+    if (!quoteId) { setOrdering(false); setError("Request and review a fresh price quote before checkout."); return; }
+    const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle, accepted_quote_id: quoteId });
+    const cartIdentity = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
+    if (checkoutAttempt.current?.body !== cartIdentity) {
+      checkoutAttempt.current = { body: cartIdentity, id: crypto.randomUUID() };
     }
     const requestId = checkoutAttempt.current.id;
     try {
-    if (!await refreshCartStore()) return;
+    // The atomic checkout rechecks store/stock and accepted terms; retain this token on network uncertainty.
     const response = await fetch("/api/agrimarket/orders", {
       method: "POST",
       headers: { ...authHeaders(true), "x-idempotency-key": requestId },
@@ -574,7 +577,8 @@ export default function AgrimarketPage() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false || !payload?.order?.order_code) {
-      setError(payload?.message || payload?.error || "Unable to confirm the order response. Retry to recover this checkout attempt.");
+      setError(payload?.message || "Unable to confirm the order response. Retry to recover this checkout attempt.");
+      if (["AGRIMARKET_QUOTE_CHANGED", "AGRIMARKET_QUOTE_EXPIRED"].includes(payload?.error)) { setQuote(null); checkoutAttempt.current = null; }
     } else {
       setPlaced(payload.order);
       setQuote(null);

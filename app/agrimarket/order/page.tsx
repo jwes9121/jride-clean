@@ -35,6 +35,8 @@ type OrderStatus = {
   harvest_expected_end_at?: string | null;
   harvest_ready_at?: string | null;
   pending_harvest_proposal?: {
+    id: string;
+    updated_at: string;
     proposal_type: string;
     proposed_items: Array<{
       product_name?: string;
@@ -208,14 +210,19 @@ export default function AgrimarketOrderTrackingPage() {
   }
 
   async function respondHarvest(responseValue: "accept" | "reject") {
-    if (!order) return;
-    setResponding(true);
-    setError("");
-    const response = await fetch("/api/agrimarket/order-harvest-response", { method: "POST", headers: authHeaders(true), body: JSON.stringify({ order_code: order.order_code, response: responseValue }) });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) setError(payload?.message || payload?.error || "Unable to respond to the schedule change.");
-    else await loadOrder(order.order_code, true);
-    setResponding(false);
+    const proposal = order?.pending_harvest_proposal;
+    if (!order || responding || !proposal?.id || !proposal.updated_at) return;
+    if (!window.confirm(responseValue === "reject" ? "Reject this displayed change and cancel the entire reservation?" : "Accept this displayed date or quantity change?")) return;
+    const code = order.order_code;
+    setResponding(true); setError("");
+    try {
+      const response = await fetch("/api/agrimarket/order-harvest-response", { method: "POST", headers: authHeaders(true),
+        body: JSON.stringify({ order_code: code, response: responseValue, proposal_id: proposal.id, expected_updated_at: proposal.updated_at }) });
+      const payload = await response.json().catch(() => ({}));
+      await loadOrder(code, true);
+      if (!response.ok || payload?.ok === false) setError(payload?.message || "Refresh and review the current proposal before responding.");
+    } catch { setError("Response not confirmed. Refresh to check the reservation before retrying."); }
+    finally { setResponding(false); }
   }
 
   async function respondReapproval(responseValue: "accept" | "reject") {
