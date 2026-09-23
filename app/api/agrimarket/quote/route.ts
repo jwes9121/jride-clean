@@ -1,3 +1,4 @@
+import { quoteBasis, QUOTE_COLUMNS } from "@/lib/agrimarket/checkoutQuote";
 import { scheduledActivity } from "@/lib/agrimarket/schedule";
 import {
   RIDE_PICKUP_BLOCK_KM,
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
       admin
         .from("agrimarket_pricing_settings")
         .select(
-          "heavy_load_exact_tier1_max_kg,heavy_load_exact_tier2_max_kg,heavy_load_exact_tier3_max_kg,heavy_load_exact_tier4_max_kg,kolong_kolong_max_kg,heavy_load_tier1_fee,heavy_load_tier2_fee,heavy_load_tier3_fee,heavy_load_tier4_fee,special_handling_standard_fee,special_handling_bulky_fee,special_handling_live_single_fee,special_handling_live_difficult_fee"
+          QUOTE_COLUMNS.pricing
         )
         .eq("id", 1)
         .eq("is_active", true)
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
       first_pickup: cashCollectionRequired ? "customer" : "farmer",
     };
 
-    return jsonNoStore(200, {
+    const payload = {
       ok: true,
       pricing_version: Number(quote.pricing_version || 1),
       currency: String(quote.currency || "PHP"),
@@ -268,7 +269,21 @@ export async function POST(req: NextRequest) {
       required_vehicle_type: context.requiredVehicleType,
       producer_location_disclosure: "hidden",
       producer_marketplace_commission_charged_to_customer: false,
+    };
+    const captured = await admin.rpc("agrimarket_capture_checkout_quote_v1", {
+      p_customer_user_id: passengerAuth.user.id, p_address_id: addressId, p_items: items,
+      p_vehicle: preferredVehicleType, p_expected_basis: quoteBasis(passengerAuth.user.id, context, pricing),
+      p_quoted_payload: payload, p_routes: { provider: farmerToCustomer.provider,
+        farmer_km: farmerToCustomer.distanceKm, farmer_seconds: farmerToCustomer.durationSeconds,
+        customer_km: customerToFarmer?.distanceKm ?? null, customer_seconds: customerToFarmer?.durationSeconds ?? null },
     });
+    if (captured.error || captured.data?.ok !== true) return jsonNoStore(captured.error ? 503 : 409, {
+      ok:false, error:"AGRIMARKET_QUOTE_CHANGED", message:"A quoted detail changed or could not be verified. Request a fresh quote; your cart has not been changed.",
+    });
+    const receipt = captured.data;
+    return jsonNoStore(200, { ...payload, checkout_quote: {
+      contract: receipt.contract, quote_id: receipt.quote_id, created_at: receipt.created_at, expires_at: receipt.expires_at,
+    } });
   } catch (error: any) {
     if (error instanceof AgrimarketRequestError) {
       return jsonNoStore(error.status, {

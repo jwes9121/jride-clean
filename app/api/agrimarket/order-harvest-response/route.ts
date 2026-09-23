@@ -33,19 +33,26 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const proposalId = String(body?.proposal_id || "").trim();
+    const expectedRevision = String(body?.expected_updated_at || "").trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proposalId) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(expectedRevision) || !Number.isFinite(Date.parse(expectedRevision))) {
+      return jsonNoStore(409, {ok:false,error:"AGRIMARKET_HARVEST_REVISION_REQUIRED",message:"Refresh and review the exact farmer proposal before responding. An app update may be required."});
+    }
     const admin = createServiceSupabase();
-    const actionRes = await admin.rpc("agrimarket_customer_respond_harvest_v1", {
+    const actionRes = await admin.rpc("agrimarket_customer_respond_harvest_v2", {
       p_order_code: orderCode,
       p_customer_user_id: passengerAuth.user.id,
       p_response: response,
-      p_now: new Date().toISOString(),
+      p_proposal_id: proposalId,
+      p_expected_updated_at: expectedRevision,
     });
 
     if (actionRes.error) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_HARVEST_RESPONSE_FAILED",
-        message: actionRes.error.message,
+        message: "Your response could not be confirmed. Refresh this reservation before retrying.",
       });
     }
 
@@ -57,7 +64,7 @@ export async function POST(req: NextRequest) {
         : code.includes("INVALID")
           ? 400
           : 409;
-      return jsonNoStore(status, { ok: false, error: code, result });
+      return jsonNoStore(status, { ok: false, error: code, message: "This proposal changed or is no longer pending. Refresh and review the current details. Your response was not applied to a different proposal." });
     }
 
     return jsonNoStore(200, {
@@ -69,7 +76,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore(500, {
       ok: false,
       error: "AGRIMARKET_HARVEST_RESPONSE_FAILED",
-      message: String(error?.message || error),
+      message: "Your response could not be confirmed. Refresh this reservation before retrying.",
     });
   }
 }

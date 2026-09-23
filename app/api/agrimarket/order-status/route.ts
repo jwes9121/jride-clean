@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: true }),
       admin
         .from("agrimarket_harvest_proposals")
-        .select("id,proposal_type,status,proposed_items,proposed_harvest_start_at,proposed_harvest_end_at,producer_reason,proposed_at")
+        .select("id,proposal_type,status,proposed_items,proposed_harvest_start_at,proposed_harvest_end_at,producer_reason,proposed_at,updated_at")
         .eq("order_id", order.id)
         .eq("status", "pending_customer")
         .order("proposed_at", { ascending: false })
@@ -176,6 +176,7 @@ export async function GET(req: NextRequest) {
               proposed_harvest_end_at: proposal.proposed_harvest_end_at,
               reason: proposal.producer_reason,
               proposed_at: proposal.proposed_at,
+              updated_at: proposal.updated_at,
               customer_response_required: true,
             }
           : null,

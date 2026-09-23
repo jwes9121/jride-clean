@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs && node tests/unified-dispatch-center/run.cjs && node tests/operations-orientation-notes/run.cjs && node tests/kolong-kolong/run.cjs && node tests/agrimarket-order-history/run.cjs && node tests/agrimarket-order-details/run.cjs && node tests/agrimarket-operations/run.cjs && node tests/agrimarket-vendor-availability/run.cjs && node tests/agrimarket-vendor-availability/passenger.cjs && node tests/agrimarket-store-cart/run.cjs && node tests/agrimarket-farmer-profile/run.cjs && node tests/agrimarket-profile-availability/run.cjs && node tests/agrimarket-closed-store/run.cjs && node tests/agrimarket-producer-expiry/run.cjs && node tests/agrimarket-farm-name/run.cjs && node tests/agrimarket-reservation-cancel/run.cjs && node tests/agrimarket-passenger-history/run.cjs && node tests/agrimarket-scheduled-readiness/run.cjs && node tests/agrimarket-order-sections/run.cjs",
+    "prebuild": "node scripts/check-livetrips-ascii.js && node tests/vendor-workflow/run.cjs && node tests/driver-duty/run.cjs && node tests/passenger-access/run.cjs && node tests/agrimarket-browser/run.cjs && node tests/takeout-confirmation/run.cjs && node tests/takeout-fare-decline/run.cjs && node tests/takeout-expiry-recovery/run.cjs && node tests/regular-ride-fare-response/run.cjs && node tests/regular-ride-expiry-notification/run.cjs && node tests/unified-dispatch-center/run.cjs && node tests/operations-orientation-notes/run.cjs && node tests/kolong-kolong/run.cjs && node tests/agrimarket-order-history/run.cjs && node tests/agrimarket-order-details/run.cjs && node tests/agrimarket-operations/run.cjs && node tests/agrimarket-vendor-availability/run.cjs && node tests/agrimarket-vendor-availability/passenger.cjs && node tests/agrimarket-store-cart/run.cjs && node tests/agrimarket-farmer-profile/run.cjs && node tests/agrimarket-profile-availability/run.cjs && node tests/agrimarket-closed-store/run.cjs && node tests/agrimarket-producer-expiry/run.cjs && node tests/agrimarket-farm-name/run.cjs && node tests/agrimarket-reservation-cancel/run.cjs && node tests/agrimarket-passenger-history/run.cjs && node tests/agrimarket-scheduled-readiness/run.cjs && node tests/agrimarket-order-sections/run.cjs && node tests/agrimarket-accepted-terms/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -33,7 +33,8 @@
     "test:agrimarket-reservation-cancel": "node tests/agrimarket-reservation-cancel/run.cjs",
     "test:agrimarket-passenger-history": "node tests/agrimarket-passenger-history/run.cjs",
     "test:agrimarket-scheduled-readiness": "node tests/agrimarket-scheduled-readiness/run.cjs",
-    "test:agrimarket-order-sections": "node tests/agrimarket-order-sections/run.cjs"
+    "test:agrimarket-order-sections": "node tests/agrimarket-order-sections/run.cjs",
+    "test:agrimarket-accepted-terms": "node tests/agrimarket-accepted-terms/run.cjs"
   },
   "dependencies": {
     "@supabase/auth-helpers-nextjs": "^0.10.0",

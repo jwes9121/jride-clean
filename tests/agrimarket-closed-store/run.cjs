@@ -137,7 +137,11 @@ async function main(){
   await test('web cart refresh preserves cart and quote/place paths recheck fresh store status',()=>{
     const s=read('app/agrimarket/page.tsx');const refresh=s.slice(s.indexOf('async function refreshCartStore'),s.indexOf('async function getQuote'));
     assert(!refresh.includes('setCart([])'));assert(refresh.includes('scope !== cartScope.current'));assert(refresh.includes('setQuote(null)'));assert(refresh.includes('setCart(current => current.map'));
-    assert.equal((s.match(/if \(!await refreshCartStore\(\)\) return;/g)||[]).length,2);
+    assert.equal((s.match(/if \(!await refreshCartStore\(\)\) return;/g)||[]).length,1);
+    assert(s.includes('accepted_quote_id: quoteId'));
+    const checkout=read('app/api/agrimarket/orders/route.ts');
+    assert(checkout.includes('agrimarket_create_quoted_order_v1'));
+    assert(checkout.includes('loadAgrimarketOrderContext(admin, passengerAuth.user.id'));
     assert(s.includes('Refresh store availability'));assert(s.includes('products listed;'));
     assert(s.includes('store_visibility: CLOSED_CATALOG_VERSION'));
   });

@@ -4,6 +4,7 @@ import StoreProfile, { type StoreIdentity } from "./StoreProfile";
 import StoreAvailabilityNotice from "./StoreAvailabilityNotice";
 import { CLOSED_CATALOG_VERSION, isStoreUnavailable, listingAvailability, productOrderBlocker, type StoreAvailability } from "@/lib/agrimarket/storeAvailability";
 import { cartConflict, cargoGroupLabel } from "@/lib/agrimarket/cartCompatibility";
+import { lineCents, moneyFromCents } from "@/lib/agrimarket/checkoutMoney";
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -84,8 +85,17 @@ function authHeaders(json = false): Record<string, string> {
 }
 
 function money(value: unknown): string {
-  const amount = Number(value || 0);
-  return `PHP ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? `PHP ${amount.toFixed(2)}` : "Amount unavailable";
+}
+
+function cartLineAmount(line: CartLine): number {
+  try { return moneyFromCents(lineCents(line.product.unit_price, line.quantity)); }
+  catch { return Number.NaN; }
+}
+function cartProductsAmount(lines: CartLine[]): number {
+  try { return moneyFromCents(lines.reduce((sum, line) => sum + lineCents(line.product.unit_price, line.quantity), BigInt(0))); }
+  catch { return Number.NaN; }
 }
 
 function formatDate(value: unknown): string {
@@ -325,7 +335,7 @@ export default function AgrimarketPage() {
   }
 
   const cartSubtotal = useMemo(
-    () => cart.reduce((sum, line) => sum + line.product.unit_price * line.quantity, 0),
+    () => cartProductsAmount(cart),
     [cart]
   );
   const cartRequiredVehicle = useMemo(() => {
@@ -557,16 +567,18 @@ export default function AgrimarketPage() {
 
   async function placeOrder() {
     if (!quote || !addressId || !cart.length || ordering || quoting) return;
-    if (cartError) { setCartMessage(cartError); return; }
     setOrdering(true);
     setError("");
-    const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
-    if (checkoutAttempt.current?.body !== requestBody) {
-      checkoutAttempt.current = { body: requestBody, id: crypto.randomUUID() };
+    const quoteId = quote?.checkout_quote?.quote_id;
+    if (!quoteId) { setOrdering(false); setError("Request and review a fresh price quote before checkout."); return; }
+    const requestBody = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle, accepted_quote_id: quoteId });
+    const cartIdentity = JSON.stringify({ address_id: addressId, items: cartPayload(), preferred_vehicle_type: preferredVehicle });
+    if (checkoutAttempt.current?.body !== cartIdentity) {
+      checkoutAttempt.current = { body: cartIdentity, id: crypto.randomUUID() };
     }
     const requestId = checkoutAttempt.current.id;
     try {
-    if (!await refreshCartStore()) return;
+    // The atomic checkout rechecks store/stock and accepted terms; retain this token on network uncertainty.
     const response = await fetch("/api/agrimarket/orders", {
       method: "POST",
       headers: { ...authHeaders(true), "x-idempotency-key": requestId },
@@ -574,7 +586,8 @@ export default function AgrimarketPage() {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || payload?.ok === false || !payload?.order?.order_code) {
-      setError(payload?.message || payload?.error || "Unable to confirm the order response. Retry to recover this checkout attempt.");
+      setError(payload?.message || "Unable to confirm the order response. Retry to recover this checkout attempt.");
+      if (["AGRIMARKET_QUOTE_CHANGED", "AGRIMARKET_QUOTE_EXPIRED"].includes(payload?.error)) { setQuote(null); checkoutAttempt.current = null; }
     } else {
       setPlaced(payload.order);
       setQuote(null);
@@ -776,7 +789,7 @@ export default function AgrimarketPage() {
               <p className="mt-2 text-xs text-slate-500">{cartMode === "scheduled_harvest" ? `${scheduledTitle(cart.map(item => item.product))} cart` : "Always Available cart"} - one farmer only</p>
               {cartCrossTownProduct ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Cross-town order</strong><br/>{cartCrossTownProduct.producer_town} to {deliveryTown}: {exactRoadDistance(cartCrossTownProduct.road_distance_km)} by road.<br/>JRide delivery to this selected pin only; no customer pickup or farmer meet-up.</div> : null}
               {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
-              <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{money(line.product.unit_price)} / {line.product.selling_unit}</p></div><strong>{money(line.product.unit_price * line.quantity)}</strong></div><div className="mt-2 flex items-center gap-2"><input aria-label={`Quantity for ${line.product.name}`} type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
+              <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{money(line.product.unit_price)} / {line.product.selling_unit}</p></div><strong>{money(cartLineAmount(line))}</strong></div><div className="mt-2 flex items-center gap-2"><input aria-label={`Quantity for ${line.product.name}`} type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
               <div className="mt-4 flex justify-between border-t pt-3"><span>Products</span><strong>{money(cartSubtotal)}</strong></div>
               <p className="mt-2 text-sm text-slate-600">Combined estimated cargo: {cartWeight == null ? "Farmer confirmation required" : `${cartWeight} kg`}</p>
               <label className="mt-4 block text-sm font-semibold">
@@ -817,7 +830,7 @@ export default function AgrimarketPage() {
                   <div className="flex justify-between gap-3"><span>Heavy Load Fee</span><strong className="text-right">{quote.heavy_load_fee?.estimate_exceeds_v1_limit ? "Farmer confirmation required" : quote.heavy_load_fee?.estimated_fee == null ? "Pending farmer confirmation" : `${money(quote.heavy_load_fee.estimated_fee)} estimated`}</strong></div>
                   <div className="flex justify-between gap-3"><span>Special Handling Fee</span><strong className="text-right">Pending farmer confirmation</strong></div>
                   <div className="flex justify-between gap-3"><span>Driver Approach Fee</span><strong className="text-right">Pending driver assignment</strong></div>
-                  <div className="flex justify-between border-t pt-2 text-base"><span>Initial approved amount</span><strong>{money(quote.initial_approved_total ?? quote.total_before_driver_pickup_surcharge)}</strong></div>
+                  <div className="flex justify-between border-t pt-2 text-base"><span>Current quoted total</span><strong>{money(quote.initial_approved_total ?? quote.total_before_driver_pickup_surcharge)}</strong></div>
                 </div>
                 {quote.heavy_load_fee?.estimate_exceeds_v1_limit ? <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-800">The listing-based weight estimate is above the 200 kg JRide cargo limit. The farmer must confirm the actual load; orders above 200 kg are not supported.</p> : null}
                 {Array.isArray(quote.heavy_load_fee?.tiers) ? <p className="mt-3 text-xs text-slate-600">Heavy Load tiers: {quote.heavy_load_fee.tiers.map((tier: any) => `up to ${tier.max_kg} kg = ${money(tier.fee)}`).join(" / ")}. The farmer's exact weight or selected weight band is authoritative.</p> : null}
@@ -826,6 +839,7 @@ export default function AgrimarketPage() {
                 <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Driver Approach Fee: the first {quote.driver_approach_fee?.first_km_free ?? 1.5} km has no raw pickup charge. From 1.5 to 6.5 km, approach pricing increases by {money(quote.driver_approach_fee?.tier_one_fee_per_block ?? 20)} per started 0.5 km; above 6.5 km through 10 km, by {money(quote.driver_approach_fee?.tier_two_fee_per_block ?? 10)} per started 0.5 km. The {money(quote.driver_approach_fee?.base_delivery_fee_credit ?? quote.delivery?.base_fee ?? 40)} delivery base is credited against that approach charge, so it is not charged twice. The normal approach charge is capped at {money(quote.driver_approach_fee?.max_approach_charge ?? 270)} and normal assignment is limited to {quote.driver_approach_fee?.normal_assignment_max_km ?? 10} km.</p>
                 {quote.fulfillment?.is_scheduled_harvest ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">This reserves the expected quantity. No driver is assigned until the farmer confirms the products are ready. Any delay or shortfall needs your approval.</p> : null}
                 {quote.cash_collection?.required ? <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-900">Product subtotal is above PHP 500. The assigned driver will collect {money(quote.cash_collection.amount)} product cash from you before going to the farmer.</p> : null}
+                <p className="mt-3 text-xs text-slate-600">Price quote valid until {formatDate(quote.checkout_quote?.expires_at)} (Philippine time). This does not change the preparation schedule or the farmer confirmation window.</p>
                 <button onClick={placeOrder} disabled={ordering} className="mt-4 w-full rounded-xl bg-emerald-700 px-4 py-3 font-bold text-white">{ordering ? "Placing..." : quote.fulfillment?.is_scheduled_harvest ? "Reserve scheduled order" : "Place order"}</button>
               </div>
             ) : null}
