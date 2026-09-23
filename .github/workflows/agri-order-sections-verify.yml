@@ -1,0 +1,59 @@
+name: Passenger order sections verification
+on:
+  push:
+    branches: [work/agri-order-sections-verify-20260923]
+    paths: [.github/workflows/agri-order-sections-verify.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 84159ec7e63fa574e70aa2ba0007e311714fa9b1
+          persist-credentials: false
+      - name: Record exact baseline bytes
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess,json,hashlib
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='84159ec7e63fa574e70aa2ba0007e311714fa9b1'
+          paths=subprocess.check_output(['git','ls-files','-z']).decode().strip('\0').split('\0')
+          hashes={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths}
+          Path('/tmp/agri-sections-before.json').write_text(json.dumps(hashes))
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Full regression suites
+        run: |
+          set -o pipefail
+          npm run prebuild 2>&1 | tee /tmp/agri-sections-tests.log
+      - name: TypeScript
+        run: |
+          set -o pipefail
+          npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-sections-types.log
+      - name: Verify exact source preservation
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess,json,hashlib
+          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert sha=='84159ec7e63fa574e70aa2ba0007e311714fa9b1'
+          before=json.loads(Path('/tmp/agri-sections-before.json').read_text())
+          for p,h in before.items(): assert hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,p
+          for p in ['app/api/agrimarket/orders/sections/route.ts','supabase/migrations/20260923124023_agrimarket_passenger_order_sections_v1.sql','tests/agrimarket-order-sections/run.cjs','package.json']:
+              assert Path(p).read_bytes()==subprocess.check_output(['git','show',sha+':'+p]),p
+          Path('/tmp/agri-sections-preservation.txt').write_text('PASS '+str(len(before))+' tracked files byte-identical; release files match Git objects; tested commit '+sha+'\n')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: passenger-order-sections-verification
+          path: |
+            /tmp/agri-sections-tests.log
+            /tmp/agri-sections-types.log
+            /tmp/agri-sections-preservation.txt
+          retention-days: 3
