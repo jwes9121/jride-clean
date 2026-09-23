@@ -14,6 +14,17 @@ jobs:
         with:
           ref: c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d
           persist-credentials: false
+      - name: Snapshot all checked-out source bytes
+        shell: python
+        run: |
+          import subprocess,hashlib,json
+          from pathlib import Path
+          files=subprocess.check_output(['git','ls-files','-z']).decode().strip('\0').split('\0')
+          before={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in files}
+          Path('/tmp/agri-source-before.json').write_text(json.dumps(before))
+          for p in ['app/api/agrimarket/orders/history/route.ts','tests/agrimarket-passenger-history/run.cjs','package.json']:
+              assert Path(p).read_bytes()==subprocess.check_output(['git','show','HEAD:'+p]),p
+          print('Exact release files verified; all checked-out source bytes snapshotted.')
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -27,11 +38,17 @@ jobs:
         run: |
           set -o pipefail
           npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-history-types.log
-      - name: Confirm tested commit and unmodified tracked source
+      - name: Confirm tested commit and exact source preservation
+        shell: python
         run: |
-          test "$(git rev-parse HEAD)" = c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d
-          git diff --exit-code
-          git rev-parse HEAD > /tmp/agri-history-tested-commit.txt
+          import subprocess,hashlib,json
+          from pathlib import Path
+          sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          assert sha=='c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d'
+          before=json.loads(Path('/tmp/agri-source-before.json').read_text())
+          for p,h in before.items():
+              assert Path(p).is_file() and hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,p
+          Path('/tmp/agri-history-tested-commit.txt').write_text(sha+'\nPASS: all '+str(len(before))+' tracked files unchanged byte-for-byte during tests.\n')
       - uses: actions/upload-artifact@v4
         if: always()
         with:
