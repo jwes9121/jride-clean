@@ -153,6 +153,7 @@ export async function GET(req: Request) {
   return NextResponse.json(
     {
       ok: true,
+      owner_user_id: auth.user.id,
       partner: auth.partner,
       inquiries: inquiryRows,
       itineraries: itineraryRows,

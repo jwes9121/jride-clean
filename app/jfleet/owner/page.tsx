@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import OwnerPaymentForm from "@/components/jfleet/OwnerPaymentForm";
 import { philippinesTime } from "@/lib/jfleet/routeReview";
 
 type Inquiry = {
@@ -123,6 +124,7 @@ type Driver = {
 
 type Dashboard = {
   ok: boolean;
+  owner_user_id?: string;
   partner?: {
     id: string;
     partner_code: string;
@@ -141,14 +143,6 @@ type Dashboard = {
   vehicles?: Vehicle[];
   drivers?: Driver[];
   message?: string;
-};
-
-type PaymentDraft = {
-  payment_kind: "reservation" | "balance" | "full_payment";
-  amount: string;
-  payment_channel: string;
-  payment_reference: string;
-  notes: string;
 };
 
 type AssignmentDraft = {
@@ -197,7 +191,6 @@ export default function JFleetOwnerPage() {
   const [busyKey, setBusyKey] = React.useState("");
   const [error, setError] = React.useState("");
   const [message, setMessage] = React.useState("");
-  const [paymentDrafts, setPaymentDrafts] = React.useState<Record<string, PaymentDraft>>({});
   const [assignmentDrafts, setAssignmentDrafts] = React.useState<Record<string, AssignmentDraft>>({});
   const [addonDrafts, setAddonDrafts] = React.useState<Record<string, AddonDraft>>({});
   const [addonPaymentDrafts, setAddonPaymentDrafts] = React.useState<Record<string, AddonPaymentDraft>>({});
@@ -253,18 +246,6 @@ export default function JFleetOwnerPage() {
       .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   }
 
-  function paymentDraft(bookingId: string): PaymentDraft {
-    return (
-      paymentDrafts[bookingId] ?? {
-        payment_kind: "reservation",
-        amount: "",
-        payment_channel: "",
-        payment_reference: "",
-        notes: "",
-      }
-    );
-  }
-
   function assignmentDraft(bookingId: string): AssignmentDraft {
     return assignmentDrafts[bookingId] ?? { vehicle_id: "", driver_id: "" };
   }
@@ -295,42 +276,6 @@ export default function JFleetOwnerPage() {
         notes: "",
       }
     );
-  }
-
-  async function confirmPayment(booking: Booking) {
-    const draft = paymentDraft(booking.id);
-    setBusyKey("payment:" + booking.id);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch("/api/jfleet/owner/payments", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          booking_id: booking.id,
-          payment_kind: draft.payment_kind,
-          amount: Number(draft.amount),
-          payment_channel: draft.payment_channel,
-          payment_reference: draft.payment_reference,
-          notes: draft.notes,
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) throw new Error(body?.message || "Payment confirmation failed.");
-      setMessage(
-        booking.booking_code +
-          " payment confirmed. Total original-quote payments: " +
-          money(body.confirmed_original_payments)
-      );
-      await load();
-    } catch (failure) {
-      setError(
-        failure instanceof Error ? failure.message : "Payment confirmation failed."
-      );
-    } finally {
-      setBusyKey("");
-    }
   }
 
   async function assign(booking: Booking) {
@@ -603,7 +548,6 @@ export default function JFleetOwnerPage() {
 
           <div className="mt-5 space-y-5">
             {(data.bookings ?? []).map((booking) => {
-              const payment = paymentDraft(booking.id);
               const assignment = assignmentDraft(booking.id);
               const totalPaid = paidAmount(booking.id);
               const bookingAddons = addonsFor(booking.id);
@@ -807,74 +751,20 @@ export default function JFleetOwnerPage() {
                     </div>
                   ) : null}
 
+                  {closed ? <OwnerPaymentForm
+                    key={(data.owner_user_id || "") + ":" + booking.id}
+                    scope={{owner_user_id: data.owner_user_id || "", partner_id: data.partner?.id || "", booking_id: booking.id}}
+                    canRecord={false} onSaved={load}
+                  /> : null}
+
                   {!closed ? (
                     <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                      <div className="rounded-xl bg-slate-50 p-3">
-                        <h4 className="font-bold">Confirm payment received</h4>
-                        <div className="mt-3 grid gap-2">
-                          <select
-                            value={payment.payment_kind}
-                            onChange={(event) =>
-                              setPaymentDrafts((current) => ({
-                                ...current,
-                                [booking.id]: {
-                                  ...payment,
-                                  payment_kind: event.target.value as PaymentDraft["payment_kind"],
-                                },
-                              }))
-                            }
-                            className="rounded-lg border bg-white px-3 py-2"
-                          >
-                            <option value="reservation">Reservation</option>
-                            <option value="balance">Balance</option>
-                            <option value="full_payment">Full payment</option>
-                          </select>
-                          <input
-                            type="number"
-                            min="0.01"
-                            step="0.01"
-                            placeholder="Amount received"
-                            value={payment.amount}
-                            onChange={(event) =>
-                              setPaymentDrafts((current) => ({
-                                ...current,
-                                [booking.id]: { ...payment, amount: event.target.value },
-                              }))
-                            }
-                            className="rounded-lg border bg-white px-3 py-2"
-                          />
-                          <input
-                            placeholder="Channel: cash, bank, GCash, etc."
-                            value={payment.payment_channel}
-                            onChange={(event) =>
-                              setPaymentDrafts((current) => ({
-                                ...current,
-                                [booking.id]: { ...payment, payment_channel: event.target.value },
-                              }))
-                            }
-                            className="rounded-lg border bg-white px-3 py-2"
-                          />
-                          <input
-                            placeholder="Reference number, if any"
-                            value={payment.payment_reference}
-                            onChange={(event) =>
-                              setPaymentDrafts((current) => ({
-                                ...current,
-                                [booking.id]: { ...payment, payment_reference: event.target.value },
-                              }))
-                            }
-                            className="rounded-lg border bg-white px-3 py-2"
-                          />
-                          <button
-                            type="button"
-                            disabled={busyKey === "payment:" + booking.id || !payment.amount}
-                            onClick={() => void confirmPayment(booking)}
-                            className="rounded-lg bg-emerald-700 px-4 py-2 font-bold text-white disabled:opacity-50"
-                          >
-                            {busyKey === "payment:" + booking.id ? "Saving..." : "Confirm Payment"}
-                          </button>
-                        </div>
-                      </div>
+                      <OwnerPaymentForm
+                        key={(data.owner_user_id || "") + ":" + booking.id}
+                        scope={{owner_user_id: data.owner_user_id || "", partner_id: data.partner?.id || "", booking_id: booking.id}}
+                        canRecord={booking.status !== "on_trip" && booking.payment_status !== "fully_paid"}
+                        onSaved={load}
+                      />
 
                       <div className="rounded-xl bg-slate-50 p-3">
                         <h4 className="font-bold">Assign vehicle and driver</h4>
