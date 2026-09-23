@@ -1,0 +1,43 @@
+name: Passenger history recovery verification
+on:
+  push:
+    branches: [work/agri-passenger-history-verify-20260923]
+    paths: [.github/workflows/agri-passenger-history-verify.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: All regression groups
+        run: |
+          set -o pipefail
+          npm run prebuild 2>&1 | tee /tmp/agri-history-tests.log
+      - name: TypeScript
+        run: |
+          set -o pipefail
+          npx tsc --noEmit --incremental false 2>&1 | tee /tmp/agri-history-types.log
+      - name: Confirm tested commit and unmodified tracked source
+        run: |
+          test "$(git rev-parse HEAD)" = c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d
+          git diff --exit-code
+          git rev-parse HEAD > /tmp/agri-history-tested-commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: passenger-history-verification
+          path: |
+            /tmp/agri-history-tests.log
+            /tmp/agri-history-types.log
+            /tmp/agri-history-tested-commit.txt
+          retention-days: 3
