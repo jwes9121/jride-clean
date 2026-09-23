@@ -55,8 +55,8 @@ check('owner review and quote acknowledgments retained', () => {
   assert.ok(reviews.includes('route_review_id:ctx.approved_review_id'));
   assert.ok(reviews.includes('busy||!confirmQuote'));
 });
+check("owner base payment uses durable form instead of legacy sender", () => {assert.ok(owner.includes("<OwnerPaymentForm"));assert.ok(!owner.includes("async function confirmPayment("));});
 const preserved = {
-  "confirmPayment": "31f94b2f5c03eeb9ea668f262d3dbba6a1008b3b973016cfe0aa9b17afc7123f",
   "assign": "c31972d574c58fe4c17e438feaffb78ffe26dabbd31733cc907e3efccd83e27c",
   "proposeAddon": "25d78bbd3f49ccb85c4280a6c517fedbda830065abf5b88be16520e3cd78c4cd",
   "confirmAddonPayment": "6cb88e48df3485dff66bce1f12f1f5280a1eb0ee27f4e1d3227dc23891d03d28"

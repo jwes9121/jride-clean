@@ -5,24 +5,92 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: jfleet-payment-retry-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  source-review:
+  isolated-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
+      - name: Initialize disposable runner paths
+        shell: bash
+        run: |
+          echo "JFLEET_LOCAL_STACK=$RUNNER_TEMP/jfleet-auth-isolated-$GITHUB_RUN_ID" >> "$GITHUB_ENV"
+          echo "JFLEET_LOCAL_STATUS=$RUNNER_TEMP/jfleet-auth-status.json" >> "$GITHUB_ENV"
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
-      - name: Export tracked JFleet source for review
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install locked application dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validate harness and existing JFleet regressions
+        run: |
+          node --check tests/jfleet-real-auth/prepare.cjs
+          node --check tests/jfleet-payment-retry/integration.cjs
+          node tests/jfleet-payment-retry/run.cjs
+          node tests/jfleet-routing/run.cjs
+          node tests/jfleet-owner-review/run.cjs
+          node tests/jfleet-customer/run.cjs
+          node tests/jfleet-entrypoints/run.cjs
+          npx --no-install tsc --noEmit --pretty false
+      - name: Install isolated official CLI and browser tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/jfleet-real-tools" --no-audit --no-fund supabase@2.117.0 playwright@1.62.0
+          "$RUNNER_TEMP/jfleet-real-tools/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Start disposable unlinked Supabase stack on loopback
         shell: bash
         run: |
-          mkdir -p /tmp/jfleet-payment-review
-          git rev-parse HEAD > /tmp/jfleet-payment-review/commit.txt
-          git archive --format=tar HEAD app/jfleet app/api/jfleet components/jfleet lib/jfleet lib/passenger/browserSession.ts utils/supabase/server.ts lib/supabaseAdmin.ts tests/jfleet-routing tests/jfleet-owner-review tests/jfleet-customer tests/jfleet-entrypoints tests/jfleet-real-auth .github/workflows/jfleet-real-auth.yml package.json package-lock.json tsconfig.json supabase/migrations > /tmp/jfleet-payment-review/source.tar
-          sha256sum /tmp/jfleet-payment-review/source.tar > /tmp/jfleet-payment-review/source.sha256
+          set -euo pipefail
+          cli="$RUNNER_TEMP/jfleet-real-tools/node_modules/.bin/supabase"
+          mkdir -p "$JFLEET_LOCAL_STACK"
+          "$cli" --workdir "$JFLEET_LOCAL_STACK" init --yes
+          node tests/jfleet-real-auth/prepare.cjs
+          docker network create -o 'com.docker.network.bridge.host_binding_ipv4=127.0.0.1' jfleet-auth-private
+          if ! "$cli" --workdir "$JFLEET_LOCAL_STACK" start --network-id jfleet-auth-private -x studio,imgproxy,storage-api,realtime,postgres-meta,logflare,vector,edge-runtime,supavisor > "$RUNNER_TEMP/jfleet-stack-start.log" 2>&1; then
+            tail -n 50 "$RUNNER_TEMP/jfleet-stack-start.log" | sed -E 's/eyJ[A-Za-z0-9_.-]+/[REDACTED_JWT]/g'
+            exit 1
+          fi
+          umask 077
+          "$cli" --workdir "$JFLEET_LOCAL_STACK" status -o json > "$JFLEET_LOCAL_STATUS"
+      - name: Exercise real login cookies and JFleet APIs with local database
+        env:
+          NODE_PATH: ${{ runner.temp }}/jfleet-real-tools/node_modules
+        run: node tests/jfleet-payment-retry/integration.cjs
+      - name: Show sanitized application diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/jfleet-next-auth-private.log" ]; then
+            tail -n 45 "$RUNNER_TEMP/jfleet-next-auth-private.log" | sed -E 's/eyJ[A-Za-z0-9_.-]+/[REDACTED_JWT]/g'
+          fi
+      - name: Destroy isolated database, Auth users and runtime keys
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli="$RUNNER_TEMP/jfleet-real-tools/node_modules/.bin/supabase"
+          if [ -x "$cli" ] && [ -f "$JFLEET_LOCAL_STACK/supabase/config.toml" ]; then
+            "$cli" --workdir "$JFLEET_LOCAL_STACK" stop --no-backup > "$RUNNER_TEMP/jfleet-stack-stop.log" 2>&1
+          fi
+          if docker ps -a --format '{{.Names}}' | grep -q 'jfleet-auth-isolated'; then
+            echo 'Isolated stack teardown incomplete'; exit 1
+          fi
+          docker network rm jfleet-auth-private >/dev/null 2>&1 || true
+          rm -f "$JFLEET_LOCAL_STATUS"
+          mkdir -p test-results/jfleet-payment-retry
+          printf '%s\n' '{"isolated_containers_removed":true,"runtime_key_file_removed":true,"hosted_project_linked":false}' > test-results/jfleet-payment-retry/cleanup.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
         with:
-          name: jfleet-payment-review-source
-          path: /tmp/jfleet-payment-review/
-          retention-days: 1
-          if-no-files-found: error
+          name: jfleet-payment-retry-evidence
+          path: |
+            test-results/jfleet-payment-retry/*.json
+            test-results/jfleet-payment-retry/*.png
+          retention-days: 3
+          if-no-files-found: warn
