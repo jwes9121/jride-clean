@@ -59,5 +59,16 @@ const body={address_id:address,items:[{product_id:product,quantity:1}],preferred
  await test('proposal denial happens before any database call',async()=>{const h=harness({denied:true});assert.equal((await h.proposal(proposal)).status,401);assert.equal(h.calls.length,0);});
  await test('status feed exports exact database proposal revision for both clients',()=>{const s=fs.readFileSync(path.join(root,'app/api/agrimarket/order-status/route.ts'),'utf8');assert(s.includes('producer_reason,proposed_at,updated_at'));assert(s.includes('updated_at: proposal.updated_at'));});
  await test('web checkout and proposal writers carry reviewed identities',()=>{const s=fs.readFileSync(path.join(root,'app/agrimarket/page.tsx'),'utf8');assert(s.includes('accepted_quote_id: quoteId'));assert(s.includes('checkoutAttempt.current?.body !== cartIdentity'));const p=fs.readFileSync(path.join(root,'app/agrimarket/order/page.tsx'),'utf8');assert(p.includes('proposal_id: proposal.id, expected_updated_at: proposal.updated_at'));assert(p.includes('finally { setResponding(false); }'));});
+ await test('web cart display uses exact per-line decimal totals and names its quote expiry',()=>{
+  const source=fs.readFileSync(path.join(root,'app/agrimarket/page.tsx'),'utf8');
+  const start=source.indexOf('function cartLineAmount('),end=source.indexOf('function formatDate(',start);
+  const module={exports:{}};const code=ts.transpileModule(source.slice(start,end)+'\nmodule.exports={cartLineAmount,cartProductsAmount}',{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+  vm.runInNewContext(code,{module,exports:module.exports,...money});
+  const rows=[{product:{unit_price:55},quantity:.555},{product:{unit_price:65},quantity:.555}];
+  assert.equal(module.exports.cartLineAmount(rows[0]),30.53);assert.equal(module.exports.cartLineAmount(rows[1]),36.08);assert.equal(module.exports.cartProductsAmount(rows),66.61);
+  assert(Number.isNaN(module.exports.cartProductsAmount([{product:{unit_price:1},quantity:.0001}])));
+  assert(source.includes('Current quoted total'));assert(source.includes('Price quote valid until'));
+  assert(!source.slice(source.indexOf('  async function placeOrder()'),source.indexOf('  if (loading')).includes('if (cartError)'));
+ });
  console.log(`PASS: ${count} accepted-terms test groups. Mocked I/O, no real orders.`);
 })().catch(e=>{console.error(e);process.exitCode=1});
