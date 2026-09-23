@@ -1,0 +1,28 @@
+name: JFleet payment retry checks
+on:
+  push:
+    branches: [work/jfleet-payment-retry-20260923]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Export tracked JFleet source for review
+        shell: bash
+        run: |
+          mkdir -p /tmp/jfleet-payment-review
+          git rev-parse HEAD > /tmp/jfleet-payment-review/commit.txt
+          git archive --format=tar HEAD app/jfleet app/api/jfleet components/jfleet lib/jfleet lib/passenger/browserSession.ts utils/supabase/server.ts lib/supabaseAdmin.ts tests/jfleet-routing tests/jfleet-owner-review tests/jfleet-customer tests/jfleet-entrypoints tests/jfleet-real-auth .github/workflows/jfleet-real-auth.yml package.json package-lock.json tsconfig.json supabase/migrations > /tmp/jfleet-payment-review/source.tar
+          sha256sum /tmp/jfleet-payment-review/source.tar > /tmp/jfleet-payment-review/source.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jfleet-payment-review-source
+          path: /tmp/jfleet-payment-review/
+          retention-days: 1
+          if-no-files-found: error
