@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d
+          ref: 7189058a33a1e04542262b1672de5fec849df78b
           persist-credentials: false
       - name: Snapshot all checked-out source bytes
         shell: python
@@ -22,7 +22,8 @@ jobs:
           files=subprocess.check_output(['git','ls-files','-z']).decode().strip('\0').split('\0')
           before={p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in files}
           Path('/tmp/agri-source-before.json').write_text(json.dumps(before))
-          for p in ['app/api/agrimarket/orders/history/route.ts','tests/agrimarket-passenger-history/run.cjs','package.json']:
+          paths=['app/api/agrimarket/orders/history/route.ts','tests/agrimarket-passenger-history/run.cjs','package.json','app/api/agrimarket/producer/orders/harvest/route.ts','tests/agrimarket-scheduled-readiness/run.cjs','supabase/migrations/20260923080500_agrimarket_scheduled_preparation_guard_v1.sql']
+          for p in paths:
               assert Path(p).read_bytes()==subprocess.check_output(['git','show','HEAD:'+p]),p
           print('Exact release files verified; all checked-out source bytes snapshotted.')
       - uses: actions/setup-node@v4
@@ -44,7 +45,7 @@ jobs:
           import subprocess,hashlib,json
           from pathlib import Path
           sha=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
-          assert sha=='c2e8c546a346b25bae428fe63b00ec4e5d1a2c0d'
+          assert sha=='7189058a33a1e04542262b1672de5fec849df78b'
           before=json.loads(Path('/tmp/agri-source-before.json').read_text())
           for p,h in before.items():
               assert Path(p).is_file() and hashlib.sha256(Path(p).read_bytes()).hexdigest()==h,p
