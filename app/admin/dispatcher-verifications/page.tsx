@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import PassengerEvidence from "@/app/components/PassengerEvidence";
 
 type Row = {
   passenger_id: string;
@@ -9,10 +10,10 @@ type Row = {
   status: string | null;
   submitted_at: string | null;
   admin_notes: string | null;
-  id_front_path?: string | null;
-  selfie_with_id_path?: string | null;
-  id_front_signed_url?: string | null;
-  selfie_signed_url?: string | null;
+  can_view_evidence?: boolean;
+  has_id_front?: boolean;
+  has_id_back?: boolean;
+  has_selfie?: boolean;
 };
 
 function fmt(s: any) {
@@ -114,8 +115,7 @@ export default function DispatcherVerificationPage() {
                     <td className="p-3">{r.town || ""}</td>
                     <td className="p-3">{fmt(r.submitted_at)}</td>
                     <td className="p-3">
-                      <Thumb url={r.id_front_signed_url} label="Valid ID" />
-                      <Thumb url={r.selfie_signed_url} label="Selfie with ID" />
+                      <PassengerEvidence passengerId={r.passenger_id} canView={!!r.can_view_evidence} hasId={!!r.has_id_front} hasBack={!!r.has_id_back} hasSelfie={!!r.has_selfie} />
                     </td>
                   </tr>
                 ))}
@@ -128,19 +128,3 @@ export default function DispatcherVerificationPage() {
   );
 }
 
-function Thumb({ url, label }: { url: string | null | undefined; label: string }) {
-  if (!url) return <div className="text-xs opacity-60">{label}: (no preview)</div>;
-  return (
-    <div className="mt-2">
-      <div className="text-xs opacity-80">{label}:</div>
-      <a href={url} target="_blank" rel="noreferrer" className="inline-block mt-1">
-        <img
-          src={url}
-          alt={label}
-          className="rounded-lg border border-black/10"
-          style={{ width: 160, height: 110, objectFit: "cover" }}
-        />
-      </a>
-    </div>
-  );
-}

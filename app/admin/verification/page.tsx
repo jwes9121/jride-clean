@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import PassengerEvidence from "@/app/components/PassengerEvidence";
 
 type Row = {
   passenger_id: string;
@@ -11,11 +12,10 @@ type Row = {
   reviewed_at?: string | null;
   reviewed_by?: string | null;
   admin_notes: string | null;
-  id_front_path?: string | null;
-  selfie_with_id_path?: string | null;
-  id_front_signed_url?: string | null;
-  selfie_signed_url?: string | null;
-  signed_url_note?: string | null;
+  can_view_evidence?: boolean;
+  has_id_front?: boolean;
+  has_id_back?: boolean;
+  has_selfie?: boolean;
 };
 
 type Payload = {
@@ -51,19 +51,6 @@ function StatCard(props: { label: string; value: string }) {
   );
 }
 
-function Thumb(props: { url: string | null | undefined; label: string }) {
-  if (!props.url) return <div className="text-xs opacity-60">{props.label}: (no preview)</div>;
-  return (
-    <div className="mt-2">
-      <div className="text-xs opacity-80">{props.label}:</div>
-      <a href={props.url} target="_blank" rel="noreferrer" className="mt-1 inline-block">
-        <img src={props.url} alt={props.label} className="rounded-lg border border-black/10" style={{ width: 160, height: 110, objectFit: "cover" }} />
-      </a>
-      <div className="mt-1 text-xs"><a href={props.url} target="_blank" rel="noreferrer" className="underline">Open</a></div>
-    </div>
-  );
-}
-
 function RowItem(props: {
   row: Row;
   busy: boolean;
@@ -87,8 +74,7 @@ function RowItem(props: {
         <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes; required when declining" className="w-full rounded-xl border border-black/10 px-3 py-2" />
       </td>
       <td className="p-3">
-        <Thumb url={row.id_front_signed_url} label="Valid ID" />
-        <Thumb url={row.selfie_signed_url} label="Selfie with ID" />
+        <PassengerEvidence passengerId={row.passenger_id} canView={!!row.can_view_evidence} hasId={!!row.has_id_front} hasBack={!!row.has_id_back} hasSelfie={!!row.has_selfie} />
       </td>
       <td className="p-3">
         <div className="flex flex-wrap gap-2">
