@@ -214,6 +214,15 @@ function harness(options = {}) {
       const r = await api.GET({ url: "https://app.example.test/api?bucket=" + bucket + "&path=" + uid + "/id.jpg" });
       assert.equal(r.status, 410); assert.match(r.headers["Cache-Control"], /no-store/);
     }
+    for (const [bucket, objectPath] of [
+      ["passenger%2dids", uid + "/id.jpg"],
+      ["other", "../passenger-ids/" + uid + "/id.jpg"],
+      ["other", "%2e%2e/passenger-ids/" + uid + "/id.jpg"],
+      ["other/../passenger-ids", uid + "/id.jpg"],
+    ]) {
+      const r = await api.GET({ url: "https://app.example.test/api?bucket=" + encodeURIComponent(bucket) + "&path=" + encodeURIComponent(objectPath) });
+      assert.equal(r.status, 400);
+    }
     assert.equal(clients, 0);
   });
   console.log("PASS passenger lookup: " + count + " checks");

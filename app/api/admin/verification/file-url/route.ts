@@ -73,6 +73,17 @@ export async function GET(req: Request) {
       );
     }
 
+    // Reject URL syntax and traversal before constructing any storage request.
+    // Otherwise alternate path spellings could evade the bucket restriction.
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(bucket) ||
+        /[\\%?#\u0000-\u001f\u007f]/.test(path) ||
+        path.split("/").some((part) => !part || part === "." || part === "..")) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid storage location." },
+        { status: 400, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     // Passenger evidence must use the subject-bound, audited admin action.
     if (bucket === "passenger-ids" || bucket === "passenger-selfies") {
       return NextResponse.json(
