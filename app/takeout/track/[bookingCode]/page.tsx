@@ -195,6 +195,18 @@ function isVendorAcceptTimeout(order: TakeoutOrder): boolean {
   return Boolean(order.vendor_accept_expired) || reason.includes("did not respond within 5 minutes");
 }
 
+function cancelledHeadline(order: TakeoutOrder): string {
+  if (isVendorAcceptTimeout(order)) return "Vendor did not respond in time.";
+  const reason = cancelReason(order).toLowerCase();
+  if (reason.includes("driver did not submit a delivery fee within 5 minutes")) {
+    return "Driver did not submit a delivery fee in time.";
+  }
+  if (reason.includes("proposed fare was not confirmed within 5 minutes")) {
+    return "Fare confirmation expired.";
+  }
+  return order.vendor_cancel_reason ? "Order cancelled by vendor." : "Order cancelled.";
+}
+
 export default function TakeoutTrackPage() {
   const params = useParams<{ bookingCode?: string }>();
   const trackingKey = useMemo(() => decodeURIComponent(normText(params?.bookingCode)), [params?.bookingCode]);
@@ -826,7 +838,7 @@ export default function TakeoutTrackPage() {
             {state.isCancelled ? (
               <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                 <div className="font-semibold">
-                  {isVendorAcceptTimeout(order) ? "Vendor did not respond in time." : "Order cancelled by vendor."}
+                  {cancelledHeadline(order)}
                 </div>
 
                 <div className="mt-2">
@@ -860,7 +872,6 @@ export default function TakeoutTrackPage() {
     </div>
   );
 }
-
 
 
 
