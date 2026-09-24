@@ -19,6 +19,12 @@ export default function AnalyticsV3Layout({ children }: { children: React.ReactN
             >
               Passenger Growth
             </Link>
+            <Link
+              href="/admin/analytics-v3/passengers"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Passenger Lookup
+            </Link>
           </nav>
         </div>
       </div>
