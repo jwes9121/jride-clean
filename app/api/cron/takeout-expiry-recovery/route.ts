@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  cancelExpiredTakeoutDriverFeeProposal,
+  notifyTakeoutDriverFeeTimeout,
+  recordTakeoutDriverFeeTimeoutLifecycleEvent,
+} from "@/lib/takeout-driver-fee-timeout";
+import {
   markTakeoutDriverUnavailable,
   openTakeoutDriverUnavailableOperationsCase,
   reachedTakeoutUniqueDriverOfferLimit,
@@ -74,6 +79,8 @@ export async function GET(req: NextRequest) {
   let driverAcceptResetCount = 0;
   let driverAcceptReassignedCount = 0;
   let driverUnavailableCount = 0;
+  let driverFeeCancelledCount = 0;
+  let driverFeeDriverNotifiedCount = 0;
   let feeProposalCancelledCount = 0;
   let feeProposalDriverNotifiedCount = 0;
 
@@ -307,6 +314,95 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // An accepted driver who never submitted a delivery fee has no passenger
+  // proposal. The passenger fare-confirmation sweep below cannot see this
+  // state, so close it at the original five-minute submission deadline.
+  const { data: driverFeeCandidateRows, error: driverFeeScanError } =
+    await supabase
+      .from("bookings")
+      .select(
+        "id,booking_code,created_by_user_id,status,assigned_driver_id,driver_fee_proposal_expires_at,town"
+      )
+      .eq("service_type", "takeout")
+      .in("status", ["assigned", "accepted"])
+      .eq("takeout_pricing_status", "pricing_pending")
+      .not("assigned_driver_id", "is", null)
+      .not("driver_fee_proposal_expires_at", "is", null)
+      .lte("driver_fee_proposal_expires_at", nowIso)
+      .is("takeout_customer_confirmed_at", null)
+      .is("takeout_fee_proposed_at", null)
+      .is("takeout_fee_expires_at", null)
+      .is("takeout_delivery_fee", null)
+      .order("driver_fee_proposal_expires_at", { ascending: true })
+      .limit(50);
+
+  if (driverFeeScanError) {
+    errors.push({
+      bookingId: "",
+      bookingCode: null,
+      error: `TAKEOUT_DRIVER_FEE_EXPIRY_SCAN_FAILED: ${driverFeeScanError.message}`,
+    });
+  }
+  const driverFeeRows = driverFeeScanError ? [] : driverFeeCandidateRows ?? [];
+  for (const row of driverFeeRows) {
+    const bookingId = String(row?.id || "");
+    const bookingCode = row?.booking_code ? String(row.booking_code) : null;
+    const expiredDriverId = String(row?.assigned_driver_id || "");
+    const expiresAt = String(row?.driver_fee_proposal_expires_at || "");
+    if (!bookingId || !expiredDriverId || !expiresAt) continue;
+
+    try {
+      const result = await cancelExpiredTakeoutDriverFeeProposal(supabase, {
+        bookingId,
+        bookingCode,
+        expiredDriverId,
+        expectedDriverFeeProposalExpiresAt: expiresAt,
+      });
+      if (result.error) {
+        errors.push({ bookingId, bookingCode, error: result.error });
+        continue;
+      }
+      if (!result.didCancel) continue;
+
+      driverFeeCancelledCount += 1;
+      await recordTakeoutDriverFeeTimeoutLifecycleEvent(supabase, {
+        bookingId,
+        bookingCode: result.bookingCode,
+        passengerId: row?.created_by_user_id
+          ? String(row.created_by_user_id)
+          : null,
+        expiredDriverId,
+        townRaw: row?.town ? String(row.town) : null,
+        statusBefore: String(row?.status || "unknown"),
+        expiresAt,
+      });
+      const notification = await notifyTakeoutDriverFeeTimeout(supabase, {
+        expiredDriverId,
+        bookingCode: result.bookingCode,
+      });
+      if (notification.sent) {
+        driverFeeDriverNotifiedCount += 1;
+      } else {
+        errors.push({
+          bookingId,
+          bookingCode,
+          error: notification.error || "TAKEOUT_DRIVER_FEE_TIMEOUT_NOTIFICATION_FAILED",
+        });
+      }
+      console.log("[JRIDE_TAKEOUT_DRIVER_FEE_PROPOSAL_TIMEOUT]", {
+        bookingCode: result.bookingCode,
+        expiredAt: expiresAt,
+        cancelled: true,
+      });
+    } catch (err: any) {
+      errors.push({
+        bookingId,
+        bookingCode,
+        error: String(err?.message ?? err),
+      });
+    }
+  }
+
   const { data: candidateRows, error: scanError } = await supabase
     .from("bookings")
     .select(
@@ -431,11 +527,14 @@ export async function GET(req: NextRequest) {
 
   console.log("[takeout-expiry-recovery] cron completed", {
     generatedAt: nowIso,
-    expiredCandidates: driverAcceptRows.length + rows.length,
+    expiredCandidates: driverAcceptRows.length + driverFeeRows.length + rows.length,
     driverAcceptExpiredCandidates: driverAcceptRows.length,
     driverAcceptReset: driverAcceptResetCount,
     driverAcceptReassigned: driverAcceptReassignedCount,
     driverUnavailable: driverUnavailableCount,
+    driverFeeExpiredCandidates: driverFeeRows.length,
+    driverFeeCancelled: driverFeeCancelledCount,
+    driverFeeDriverNotified: driverFeeDriverNotifiedCount,
     feeProposalExpiredCandidates: rows.length,
     feeProposalCancelled: feeProposalCancelledCount,
     feeProposalDriverNotified: feeProposalDriverNotifiedCount,
@@ -448,11 +547,14 @@ export async function GET(req: NextRequest) {
     {
       ok: errors.length === 0,
       generatedAt: nowIso,
-      expiredCandidates: driverAcceptRows.length + rows.length,
+      expiredCandidates: driverAcceptRows.length + driverFeeRows.length + rows.length,
       driverAcceptExpiredCandidates: driverAcceptRows.length,
       driverAcceptReset: driverAcceptResetCount,
       driverAcceptReassigned: driverAcceptReassignedCount,
       driverUnavailable: driverUnavailableCount,
+      driverFeeExpiredCandidates: driverFeeRows.length,
+      driverFeeCancelled: driverFeeCancelledCount,
+      driverFeeDriverNotified: driverFeeDriverNotifiedCount,
       feeProposalExpiredCandidates: rows.length,
       feeProposalCancelled: feeProposalCancelledCount,
       feeProposalDriverNotified: feeProposalDriverNotifiedCount,

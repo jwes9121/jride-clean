@@ -5,8 +5,6 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const ALLOWED = new Set([
-  "requested",
-  "driver_assigned",
   "driver_accepted",
   "cash_collected",
   "rider_arrived_vendor",
@@ -131,7 +129,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -152,6 +150,20 @@ export async function POST(req: NextRequest) {
     return json(409, { ok: false, error: "TAKEOUT_ORDER_CLOSED" });
   }
 
+  const postAcceptanceProgress = new Set([
+    "cash_collected", "rider_arrived_vendor", "picked_up", "delivering", "completed",
+  ]);
+  if (
+    postAcceptanceProgress.has(nextStatus) &&
+    !(existing.data as any).takeout_customer_confirmed_at
+  ) {
+    return json(409, {
+      ok: false,
+      error: "TAKEOUT_FARE_NOT_CONFIRMED",
+      message: "The passenger must confirm the delivery fee before this step.",
+    });
+  }
+
   const isPrePickupProgress = nextStatus === "cash_collected" || nextStatus === "rider_arrived_vendor";
   if (isPrePickupProgress) {
     const states = [current, normStatus((existing.data as any).driver_status), normStatus((existing.data as any).customer_status)];
@@ -162,6 +174,24 @@ export async function POST(req: NextRequest) {
   }
 
   if (nextStatus === "driver_accepted") {
+    const currentDriverStatus = normStatus((existing.data as any).driver_status);
+    if (currentDriverStatus === "driver_accepted") {
+      // A retry must never restart the driver's five-minute proposal clock.
+      const proposalDeadline = Date.parse(
+        String((existing.data as any).driver_fee_proposal_expires_at || "")
+      );
+      if (Number.isFinite(proposalDeadline) && proposalDeadline <= Date.now()) {
+        return json(409, {
+          ok: false,
+          error: "TAKEOUT_FEE_PROPOSAL_EXPIRED",
+          message: "The delivery fee deadline passed. This order will be cancelled.",
+        });
+      }
+      return json(200, { ok: true, order: existing.data, already_accepted: true });
+    }
+    if (currentDriverStatus !== "driver_assigned") {
+      return json(409, { ok: false, error: "TAKEOUT_STEP_CHANGED" });
+    }
     const expiryRaw = String(
       (existing.data as any).driver_accept_expires_at ||
         (existing.data as any).takeout_driver_accept_expires_at ||
@@ -170,6 +200,9 @@ export async function POST(req: NextRequest) {
 
     const expiryMs = expiryRaw ? new Date(expiryRaw).getTime() : NaN;
 
+    if (!Number.isFinite(expiryMs)) {
+      return json(409, { ok: false, error: "TAKEOUT_ASSIGNMENT_WINDOW_MISSING" });
+    }
     if (Number.isFinite(expiryMs) && expiryMs <= Date.now()) {
       return json(409, {
         ok: false,
@@ -239,16 +272,6 @@ export async function POST(req: NextRequest) {
     
   }
 
-  if (nextStatus === "requested") {
-    patch.driver_accept_expires_at = null;
-    patch.takeout_driver_accept_expires_at = null;
-    patch.takeout_fee_proposal_expires_at = null;
-    patch.driver_fee_proposal_expires_at = null;
-    patch.assigned_driver_id = null;
-    patch.driver_id = null;
-    patch.driver_status = null;
-  }
-
   let updateQuery = admin
     .from("bookings")
     .update(patch)
@@ -263,6 +286,17 @@ export async function POST(req: NextRequest) {
       const value = (existing.data as any)[field];
       updateQuery = value == null ? updateQuery.is(field, null) : updateQuery.eq(field, value);
     }
+  }
+  if (nextStatus === "driver_accepted") {
+    // Another accept, cancellation or reassignment between read and write
+    // cannot extend an expired window or restore an old assignment.
+    updateQuery = updateQuery
+      .in("status", ["assigned", "accepted"])
+      .eq("driver_status", "driver_assigned")
+      .eq("driver_accept_expires_at", (existing.data as any).driver_accept_expires_at)
+      .gt("driver_accept_expires_at", new Date().toISOString())
+      .is("takeout_fee_proposed_at", null)
+      .is("takeout_delivery_fee", null);
   }
   const up = await updateQuery
     .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,updated_at")

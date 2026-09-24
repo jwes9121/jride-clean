@@ -83,7 +83,11 @@ export async function cancelExpiredTakeoutPassengerFareConfirmation(
     .eq("service_type", "takeout")
     .in("status", ["assigned", "accepted"])
     .eq("assigned_driver_id", expiredDriverId)
-    .eq("takeout_fee_proposed_by_driver_id", expiredDriverId)
+    // Older proposal writes did not record this owner. The assigned driver
+    // and exact proposal timestamps still identify the quote in that case.
+    .or(
+      `takeout_fee_proposed_by_driver_id.eq.${expiredDriverId},takeout_fee_proposed_by_driver_id.is.null`
+    )
     .in("takeout_pricing_status", ["driver_fee_proposed", "expired"])
     .is("takeout_customer_confirmed_at", null)
     .eq("takeout_fee_proposed_at", expectedTakeoutFeeProposedAt)

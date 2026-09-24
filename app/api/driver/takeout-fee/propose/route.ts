@@ -427,8 +427,11 @@ export async function POST(req: NextRequest) {
 
     const assignedDriverId = text(order.assigned_driver_id);
     if (!assignedDriverId) {
-      const driverOk = await assertDriverCanPropose(serviceSupabase, driverAuth.driverId);
-      if (!driverOk.ok) return json(409, { ok: false, error: driverOk.error, message: driverOk.message });
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_DRIVER_ASSIGNMENT_REQUIRED",
+        message: "Wait for this takeout order to be assigned before proposing a delivery fee.",
+      });
     } else if (assignedDriverId !== driverAuth.driverId) {
       return json(403, { ok: false, error: "TAKEOUT_ASSIGNED_TO_DIFFERENT_DRIVER", message: "Only the assigned driver can propose this takeout delivery fee." });
     } else {
@@ -555,7 +558,7 @@ const passengerLng =
       // Persist pickup excess breakdown so read routes and UIs can display the hidden total line item.
     };
 
-        const updateRes = await serviceSupabase
+    let updateQuery = serviceSupabase
       .from("bookings")
       .update({
         takeout_pricing_status: "driver_fee_proposed",
@@ -564,6 +567,7 @@ const passengerLng =
         takeout_total_payable: totalPayable,
         takeout_cash_collection_required: cashRequired,
         takeout_fee_proposed_at: nowIso,
+        takeout_fee_proposed_by_driver_id: driverAuth.driverId,
         takeout_fee_expires_at: expiresIso,
         takeout_fee_proposal_expires_at: expiresIso,
         driver_fee_proposal_expires_at: expiresIso,
@@ -574,10 +578,32 @@ const passengerLng =
       })
       .eq("id", order.id)
       .eq("service_type", "takeout")
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_pricing_snapshot")
-      .single();
+      .is("takeout_fee_proposed_at", null)
+      .is("takeout_delivery_fee", null)
+      .is("takeout_customer_confirmed_at", null);
+
+    // Check the original driver deadline at the write, after any road
+    // distance work. A concurrent cancellation or reassignment wins safely.
+    updateQuery = updateQuery
+      .in("status", ["assigned", "accepted"])
+      .eq("assigned_driver_id", driverAuth.driverId)
+      .eq("driver_status", "driver_accepted")
+      .eq("takeout_pricing_status", "pricing_pending")
+      .eq("driver_fee_proposal_expires_at", feeProposalExpiryRaw)
+      .gt("driver_fee_proposal_expires_at", new Date().toISOString());
+
+    const updateRes = await updateQuery
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_fee_proposed_by_driver_id,takeout_pricing_snapshot")
+      .maybeSingle();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
+    if (!updateRes.data) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_FEE_PROPOSAL_EXPIRED",
+        message: "The assignment or fee proposal window changed. Refresh your current order.",
+      });
+    }
 
     return json(200, {
       ok: true,
@@ -590,9 +616,6 @@ const passengerLng =
     return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_FAILED", message: err?.message || "Failed to propose takeout delivery fee." });
   }
 }
-
-
-
 
 
 

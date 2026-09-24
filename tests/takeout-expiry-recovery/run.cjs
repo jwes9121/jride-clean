@@ -82,6 +82,19 @@ function makeDb(initialRow) {
           );
           return query;
         },
+        gt(key, value) {
+          checks.push(
+            (candidate) => Date.parse(candidate[key]) > Date.parse(value),
+          );
+          return query;
+        },
+        or(filter) {
+          const match = /^takeout_fee_proposed_by_driver_id.eq.([^,]+),takeout_fee_proposed_by_driver_id.is.null$/.exec(filter);
+          assert(match, 'unexpected owner filter');
+          checks.push((candidate) => candidate.takeout_fee_proposed_by_driver_id == null ||
+            String(candidate.takeout_fee_proposed_by_driver_id) === match[1]);
+          return query;
+        },
         select() {
           return query;
         },
@@ -108,7 +121,79 @@ function makeDb(initialRow) {
   };
 }
 
+function makeCronDb(initialRow) {
+  const row = { ...initialRow };
+  const notifications = [];
+  const rpcCalls = [];
+  let writes = 0;
+  return {
+    row,
+    notifications,
+    rpcCalls,
+    get writes() { return writes; },
+    from(table) {
+      if (table === 'driver_notifications') {
+        return { async insert(value) {
+          notifications.push(value);
+          return { error: null };
+        } };
+      }
+      assert.equal(table, 'bookings');
+      const checks = [];
+      let patch = null;
+      const query = {
+        select() { return query; },
+        update(value) { patch = value; return query; },
+        eq(key, value) {
+          checks.push((candidate) => String(candidate[key]) === String(value));
+          return query;
+        },
+        in(key, values) {
+          checks.push((candidate) => values.includes(candidate[key]));
+          return query;
+        },
+        is(key, value) {
+          checks.push((candidate) => candidate[key] == value);
+          return query;
+        },
+        not(key, operator, value) {
+          assert.equal(operator, 'is');
+          assert.equal(value, null);
+          checks.push((candidate) => candidate[key] != null);
+          return query;
+        },
+        lte(key, value) {
+          checks.push((candidate) => Date.parse(candidate[key]) <= Date.parse(value));
+          return query;
+        },
+        or(filter) {
+          const match = /^takeout_fee_proposed_by_driver_id.eq.([^,]+),takeout_fee_proposed_by_driver_id.is.null$/.exec(filter);
+          assert(match, 'unexpected owner filter');
+          checks.push((candidate) => candidate.takeout_fee_proposed_by_driver_id == null ||
+            String(candidate.takeout_fee_proposed_by_driver_id) === match[1]);
+          return query;
+        },
+        order() { return query; },
+        async limit() {
+          if (!checks.every((check) => check(row))) return { data: [], error: null };
+          if (patch) {
+            writes += 1;
+            Object.assign(row, patch);
+          }
+          return { data: [{ ...row }], error: null };
+        },
+      };
+      return query;
+    },
+    async rpc(name, args) {
+      rpcCalls.push({ name, args });
+      return { data: null, error: null };
+    },
+  };
+}
+
 const timeout = load('lib/takeout-passenger-fare-timeout.ts');
+const driverFeeTimeout = load('lib/takeout-driver-fee-timeout.ts');
 const recovery = load('lib/takeout-expiry-recovery.ts');
 const expiredAt = '2020-01-01T00:00:00.000Z';
 const proposedAt = '2019-12-31T23:55:00.000Z';
@@ -146,6 +231,54 @@ function cancelParams(row, overrides = {}) {
     expectedDriverFeeProposalExpiresAt: expiredAt,
     ...overrides,
   };
+}
+
+function unproposedBooking(overrides = {}) {
+  return booking({
+    status: 'assigned',
+    driver_status: 'driver_accepted',
+    takeout_pricing_status: 'pricing_pending',
+    takeout_fee_proposed_at: null,
+    takeout_fee_expires_at: null,
+    takeout_delivery_fee: null,
+    takeout_fee_proposed_by_driver_id: null,
+    ...overrides,
+  });
+}
+
+function driverFeeParams(row, overrides = {}) {
+  return {
+    bookingId: row.id,
+    bookingCode: row.booking_code,
+    expiredDriverId: row.assigned_driver_id,
+    expectedDriverFeeProposalExpiresAt: expiredAt,
+    ...overrides,
+  };
+}
+
+function loadCron(db) {
+  const module = { exports: {} };
+  const code = ts.transpileModule(
+    fs.readFileSync(path.join(root, 'app/api/cron/takeout-expiry-recovery/route.ts'), 'utf8'),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } },
+  ).outputText;
+  const dependencies = {
+    'next/server': { NextResponse: { json: (body, options) =>
+      ({ body, status: options.status }) } },
+    '@/lib/supabaseAdmin': { supabaseAdmin: () => db },
+    '@/lib/takeout-driver-fee-timeout': driverFeeTimeout,
+    '@/lib/takeout-expiry-recovery': recovery,
+    '@/lib/takeout-passenger-fare-timeout': timeout,
+  };
+  vm.runInNewContext(code, {
+    module, exports: module.exports, Date, console,
+    process: { env: { CRON_SECRET: 'test-secret' } },
+    require: (name) => {
+      assert(dependencies[name], 'unexpected cron dependency ' + name);
+      return dependencies[name];
+    },
+  }, { filename: 'app/api/cron/takeout-expiry-recovery/route.ts' });
+  return module.exports;
 }
 
 (async () => {
@@ -248,6 +381,142 @@ function cancelParams(row, overrides = {}) {
     );
     assert.equal(result.didCancel, true);
     assert.equal(db.writes, 1);
+  });
+
+  await test('legacy quote without owner still expires, but another recorded owner is protected', async () => {
+    const old = makeDb(booking({ takeout_fee_proposed_by_driver_id: null }));
+    const result = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
+      old, cancelParams(old.row),
+    );
+    assert.equal(result.didCancel, true);
+    assert.equal(old.row.status, 'cancelled');
+
+    const otherOwner = makeDb(booking({
+      takeout_fee_proposed_by_driver_id: '33333333-3333-4333-8333-333333333333',
+    }));
+    const mismatch = await timeout.cancelExpiredTakeoutPassengerFareConfirmation(
+      otherOwner, cancelParams(otherOwner.row),
+    );
+    assert.equal(mismatch.didCancel, false);
+    assert.equal(otherOwner.writes, 0);
+  });
+
+  await test('accepted driver with no submitted fee cancels once at expired deadline', async () => {
+    const db = makeDb(unproposedBooking());
+    const result = await driverFeeTimeout.cancelExpiredTakeoutDriverFeeProposal(
+      db, driverFeeParams(db.row),
+    );
+    assert.equal(result.didCancel, true);
+    assert.equal(db.writes, 1);
+    assert.equal(db.row.status, 'cancelled');
+    assert.equal(db.row.vendor_status, 'cancelled');
+    assert.equal(db.row.customer_status, 'cancelled');
+    assert.equal(db.row.driver_status, 'cancelled');
+    assert.equal(db.row.assigned_driver_id, null);
+    assert.equal(db.row.takeout_pricing_status, 'expired');
+    assert.equal(db.row.driver_fee_proposal_expires_at, expiredAt);
+    assert.match(db.row.cancel_reason, /driver did not submit a delivery fee/);
+
+    const again = await driverFeeTimeout.cancelExpiredTakeoutDriverFeeProposal(
+      db, driverFeeParams(unproposedBooking()),
+    );
+    assert.equal(again.didCancel, false);
+    assert.equal(db.writes, 1);
+  });
+
+  await test('fee, passenger confirmation, new deadline, new driver, and terminal status prevent stale cancellation', async () => {
+    const cases = [
+      unproposedBooking({ takeout_fee_proposed_at: proposedAt }),
+      unproposedBooking({ takeout_delivery_fee: 90 }),
+      unproposedBooking({ takeout_fee_expires_at: expiredAt }),
+      unproposedBooking({ takeout_customer_confirmed_at: proposedAt }),
+      unproposedBooking({ driver_fee_proposal_expires_at: '2999-01-01T00:00:00.000Z' }),
+      unproposedBooking({ status: 'cancelled' }),
+    ];
+    for (const row of cases) {
+      const db = makeDb(row);
+      const result = await driverFeeTimeout.cancelExpiredTakeoutDriverFeeProposal(
+        db, driverFeeParams(db.row),
+      );
+      assert.equal(result.didCancel, false);
+      assert.equal(db.writes, 0);
+    }
+
+    const reassigned = makeDb(unproposedBooking());
+    const result = await driverFeeTimeout.cancelExpiredTakeoutDriverFeeProposal(
+      reassigned,
+      driverFeeParams(reassigned.row, {
+        expiredDriverId: '33333333-3333-4333-8333-333333333333',
+      }),
+    );
+    assert.equal(result.didCancel, false);
+    assert.equal(reassigned.writes, 0);
+
+    const staleDisplayStatus = makeDb(unproposedBooking({ driver_status: 'rider_arrived_vendor' }));
+    const staleResult = await driverFeeTimeout.cancelExpiredTakeoutDriverFeeProposal(
+      staleDisplayStatus, driverFeeParams(staleDisplayStatus.row),
+    );
+    assert.equal(staleResult.didCancel, true);
+  });
+
+  await test('driver timeout notification and lifecycle record name the correct timeout owner', async () => {
+    const db = makeDb(unproposedBooking());
+    const notification = await driverFeeTimeout.notifyTakeoutDriverFeeTimeout(db, {
+      expiredDriverId: db.row.assigned_driver_id,
+      bookingCode: db.row.booking_code,
+    });
+    assert.equal(notification.sent, true);
+    assert.equal(db.notifications[0].type, 'takeout_fee_proposal_timeout');
+    assert.match(db.notifications[0].message, /you did not submit/);
+
+    await driverFeeTimeout.recordTakeoutDriverFeeTimeoutLifecycleEvent(db, {
+      bookingId: db.row.id,
+      bookingCode: db.row.booking_code,
+      passengerId: null,
+      expiredDriverId: db.row.assigned_driver_id,
+      townRaw: 'Banaue',
+      statusBefore: 'assigned',
+      expiresAt: expiredAt,
+    });
+    assert.equal(db.rpcCalls[0].args.p_status_after, 'cancelled');
+    assert.equal(db.rpcCalls[0].args.p_meta.timeout_owner, 'driver');
+    assert.equal(db.rpcCalls[0].args.p_meta.reason, 'driver_fee_proposal_timeout');
+  });
+
+  await test('cron selects an accepted driver without a quote, cancels once, and does not notify twice', async () => {
+    const db = makeCronDb(unproposedBooking({ created_by_user_id: null }));
+    const cron = loadCron(db);
+    const req = { headers: { get: () => 'Bearer test-secret' } };
+    const first = await cron.GET(req);
+    assert.equal(first.status, 200);
+    assert.equal(first.body.driverFeeExpiredCandidates, 1);
+    assert.equal(first.body.driverFeeCancelled, 1);
+    assert.equal(db.row.status, 'cancelled');
+    assert.equal(db.writes, 1);
+    assert.equal(db.notifications.length, 1);
+    assert.equal(db.rpcCalls.length, 1);
+
+    const again = await cron.GET(req);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.driverFeeCancelled, 0);
+    assert.equal(db.writes, 1);
+    assert.equal(db.notifications.length, 1);
+  });
+
+  await test('cron cancels an expired passenger quote from the legacy null-owner proposal route', async () => {
+    const db = makeCronDb(booking({
+      status: 'assigned',
+      takeout_fee_proposed_by_driver_id: null,
+      created_by_user_id: null,
+    }));
+    const cron = loadCron(db);
+    const result = await cron.GET({ headers: { get: () => 'Bearer test-secret' } });
+    assert.equal(result.status, 200);
+    assert.equal(result.body.driverFeeCancelled, 0);
+    assert.equal(result.body.feeProposalCancelled, 1);
+    assert.equal(db.row.status, 'cancelled');
+    assert.equal(db.notifications[0].type, 'fare_confirmation_timeout');
+    assert.equal(db.rpcCalls[0].args.p_meta.timeout_owner, 'passenger');
   });
 
   await test('driver receives a timeout notification only after cancellation path calls notifier', async () => {
@@ -507,10 +776,17 @@ function cancelParams(row, overrides = {}) {
     const feeSection = cron.split(
       'const { data: candidateRows, error: scanError }',
     )[1];
+    const driverFeeSection = cron.split(
+      'const { data: driverFeeCandidateRows, error: driverFeeScanError }',
+    )[1]?.split('const { data: candidateRows, error: scanError }')[0];
 
     assert(cron.includes('resetExpiredTakeoutDriverAcceptance'));
     assert(cron.includes('driver_accept_expired_cron_sweep'));
     assert(cron.includes('triggerTakeoutFeeProposalReassign'));
+    assert(driverFeeSection?.includes('cancelExpiredTakeoutDriverFeeProposal'));
+    assert(driverFeeSection?.includes('.eq("takeout_pricing_status", "pricing_pending")'));
+    assert(driverFeeSection?.includes('.is("takeout_fee_proposed_at", null)'));
+    assert(cron.includes('driverFeeCancelled: driverFeeCancelledCount'));
     assert(feeSection.includes('cancelExpiredTakeoutPassengerFareConfirmation'));
     assert(feeSection.includes('notifyTakeoutFareTimeoutDriver'));
     assert(feeSection.includes('expectedTakeoutFeeProposedAt'));
@@ -519,6 +795,26 @@ function cancelParams(row, overrides = {}) {
     assert(!feeSection.includes('resetExpiredTakeoutFeeProposal'));
     assert(!feeSection.includes('fee_proposal_expired_cron_sweep'));
     assert(!feeSection.includes('triggerTakeoutFeeProposalReassign('));
+  });
+
+  await test('driver writes cannot extend a repeated accept or revive an expired proposal', () => {
+    const statusRoute = fs.readFileSync(
+      path.join(root, 'app/api/driver/takeout-status/route.ts'), 'utf8',
+    );
+    const proposeRoute = fs.readFileSync(
+      path.join(root, 'app/api/driver/takeout-fee/propose/route.ts'), 'utf8',
+    );
+    const driverPostStates = statusRoute.split('const ALLOWED = new Set([')[1].split(']);')[0];
+    assert(!driverPostStates.includes('"requested"'));
+    assert(!driverPostStates.includes('"driver_assigned"'));
+    assert(statusRoute.includes('already_accepted: true'));
+    assert(statusRoute.includes('TAKEOUT_FARE_NOT_CONFIRMED'));
+    assert(statusRoute.includes('.eq("driver_status", "driver_assigned")'));
+    assert(statusRoute.includes('.gt("driver_accept_expires_at", new Date().toISOString())'));
+    assert(proposeRoute.includes('takeout_fee_proposed_by_driver_id: driverAuth.driverId'));
+    assert(proposeRoute.includes('.eq("assigned_driver_id", driverAuth.driverId)'));
+    assert(proposeRoute.includes('.gt("driver_fee_proposal_expires_at", new Date().toISOString())'));
+    assert(proposeRoute.includes('.maybeSingle()'));
   });
 
   await test('late passenger confirmation remains server-rejected after cancellation or deadline expiry', () => {
