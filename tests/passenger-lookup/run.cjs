@@ -203,4 +203,11 @@ function harness(options = {}) {
     assert.equal(html.includes(uid), false);
   });
   console.log("PASS passenger lookup: " + count + " checks");
+  // A public, non-sensitive build receipt makes hosted test execution verifiable.
+  if (process.env.VERCEL_GIT_COMMIT_SHA) {
+    fs.writeFileSync(path.join(root, "public/passenger-lookup-build.json"), JSON.stringify({
+      suite: "passenger-lookup", status: "passed", checks: count,
+      source_sha: process.env.VERCEL_GIT_COMMIT_SHA,
+    }) + "\n");
+  }
 })().catch((error) => { console.error(error); process.exitCode = 1; });
