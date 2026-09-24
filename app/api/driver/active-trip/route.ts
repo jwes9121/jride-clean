@@ -8,6 +8,11 @@ import {
   resetExpiredTakeoutFeeProposal,
   triggerTakeoutFeeProposalReassign,
 } from "@/lib/takeout-expiry-recovery";
+import {
+  SHORT_TRIP_AUTOMATIC_DRIVER_BODY,
+  SHORT_TRIP_AUTOMATIC_DRIVER_HEADING,
+  SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+} from "@/lib/shortTripAutomaticFare";
 
 
 // JRIDE_ACTIVE_TRIP_TAKEOUT_STATUS_SHAPE_V1
@@ -936,6 +941,8 @@ export async function GET(req: NextRequest) {
     const promoStatus = s((booking as any).promo_status);
     const promoProgramCode = s((booking as any).promo_program_code);
     const platformFee = 15;
+    const fareMode = s((booking as any).ride_fare_mode);
+    const shortTripAutomaticFare = fareMode === SHORT_TRIP_AUTOMATIC_FARE_VERSION;
 
     const fare = verifiedFare ?? proposedFare;
     const subtotalBeforeDiscount =
@@ -1103,6 +1110,17 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       total_fare: payableTotal,
       total_amount: payableTotal,
       grand_total: payableTotal,
+      fare_mode: fareMode || null,
+      fare_pricing_version: s((booking as any).ride_fare_pricing_version),
+      fare_provenance: s((booking as any).ride_fare_provenance),
+      short_trip_automatic_fare: shortTripAutomaticFare,
+      fare_notice_heading: shortTripAutomaticFare
+        ? SHORT_TRIP_AUTOMATIC_DRIVER_HEADING
+        : null,
+      fare_notice_body: shortTripAutomaticFare
+        ? SHORT_TRIP_AUTOMATIC_DRIVER_BODY
+        : null,
+      short_trip_fare_evaluation: (booking as any).short_trip_fare_evaluation ?? null,
       fare_ready: hints.fare_ready,
       pickup_metrics_ready: hints.pickup_metrics_ready,
       waiting_for_driver_proposal: hints.waiting_for_driver_proposal,

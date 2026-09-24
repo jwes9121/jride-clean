@@ -3,7 +3,7 @@
 // Shared Mapbox road-routing helpers for JRide backend decisions.
 // Billing and assignment helpers never fall back to straight-line/Haversine distance.
 
-import { hasUsableLocationCoordinates } from "../location/coordinateValidity";
+import { hasUsableLocationCoordinates } from "@/lib/location/coordinateValidity";
 
 export type RoadPoint = {
   lat: number;
@@ -23,6 +23,8 @@ export type RoadLineGeometry = {
 export type RoadMetricWithGeometry = RoadMetric & {
   geometry: RoadLineGeometry | null;
 };
+
+export type RoadGeometryOverview = "simplified" | "full";
 
 export type RoadOrigin = RoadPoint & {
   id: string;
@@ -163,7 +165,8 @@ export async function getDrivingRoadRoute(
 
 export async function getDrivingRoadRouteWithGeometry(
   from: RoadPoint,
-  to: RoadPoint
+  to: RoadPoint,
+  options: { overview?: RoadGeometryOverview } = {}
 ): Promise<RoadMetricWithGeometry | null> {
   if (!validPoint(from) || !validPoint(to)) return null;
 
@@ -173,7 +176,7 @@ export async function getDrivingRoadRouteWithGeometry(
   const url =
     "https://api.mapbox.com/directions/v5/mapbox/driving/" +
     `${from.lng},${from.lat};${to.lng},${to.lat}` +
-    `?alternatives=false&geometries=geojson&overview=simplified&steps=false&access_token=${encodeURIComponent(token)}`;
+    `?alternatives=false&geometries=geojson&overview=${options.overview ?? "simplified"}&steps=false&access_token=${encodeURIComponent(token)}`;
 
   try {
     const response = await fetch(url, { cache: "no-store" });

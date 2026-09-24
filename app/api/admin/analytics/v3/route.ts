@@ -267,7 +267,7 @@ export async function GET(req: NextRequest) {
     admin
       .from("analytics_v3_bookings_v1")
       .select(
-        "id,booking_code,service_type,status,vendor_status,customer_status,driver_status,takeout_pricing_status,town,created_at,updated_at,completed_at,assigned_driver_id,driver_id,created_by_user_id,passenger_name,from_label,to_label,verified_fare,proposed_fare,takeout_total_payable,total_errand_fare,takeout_delivery_fee,company_cut,driver_payout,wallet_settlement_status,wallet_settled_at"
+        "id,booking_code,service_type,status,vendor_status,customer_status,driver_status,takeout_pricing_status,town,created_at,updated_at,completed_at,assigned_driver_id,driver_id,created_by_user_id,passenger_name,from_label,to_label,verified_fare,proposed_fare,takeout_total_payable,total_errand_fare,takeout_delivery_fee,company_cut,driver_payout,wallet_settlement_status,wallet_settled_at,ride_fare_mode,ride_fare_pricing_version,ride_fare_provenance,short_trip_road_distance_km,short_trip_validated_elevation_gain_m,short_trip_free_elevation_allowance_m,short_trip_chargeable_elevation_gain_m,short_trip_distance_component,short_trip_elevation_premium,short_trip_ride_minimum_applied,short_trip_passenger_minimum_applied,short_trip_automatic_ride_fare,short_trip_convenience_fee,short_trip_total,short_trip_elevation_source,short_trip_elevation_status,short_trip_elevation_validation_reason,short_trip_fare_evaluation"
       )
       .gte("created_at", window.startAt)
       .order("created_at", { ascending: false })
@@ -536,12 +536,41 @@ export async function GET(req: NextRequest) {
   const monthly: Record<string, any> = {};
   const towns: Record<string, any> = {};
   const drivers: Record<string, any> = {};
+  const shortTripPilot = {
+    evaluated: 0,
+    automatic: 0,
+    fallback: 0,
+    automatic_completed: 0,
+    automatic_cancelled: 0,
+    automatic_active: 0,
+    automatic_ride_fare_total: 0,
+    automatic_passenger_total: 0,
+  };
 
   const operatingTowns = ["Banaue", "Hingyon", "Lagawe", "Lamut"];
   for (const town of operatingTowns) addBucket(towns, town);
 
   for (const row of bookings as any[]) {
     const svc = serviceType(row);
+    const evaluation =
+      row?.short_trip_fare_evaluation &&
+      typeof row.short_trip_fare_evaluation === "object"
+        ? row.short_trip_fare_evaluation
+        : null;
+    const isAutomaticShortTrip =
+      s(row?.ride_fare_mode) === "short_trip_automatic_v1";
+    if (evaluation) {
+      shortTripPilot.evaluated += 1;
+      if (s(evaluation.outcome) === "automatic") shortTripPilot.automatic += 1;
+      if (s(evaluation.outcome) === "fallback") shortTripPilot.fallback += 1;
+    }
+    if (isAutomaticShortTrip) {
+      shortTripPilot.automatic_ride_fare_total += n(row?.short_trip_automatic_ride_fare);
+      shortTripPilot.automatic_passenger_total += n(row?.short_trip_total);
+      if (isCompleted(row)) shortTripPilot.automatic_completed += 1;
+      else if (isCancelled(row)) shortTripPilot.automatic_cancelled += 1;
+      else shortTripPilot.automatic_active += 1;
+    }
     if (isCompleted(row)) {
       summary.completed += 1;
       summary[`${svc}_completed` as "ride_completed"] += 1;
@@ -688,6 +717,10 @@ export async function GET(req: NextRequest) {
       to_label: row.to_label,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      ride_fare_mode: row.ride_fare_mode,
+      ride_fare_pricing_version: row.ride_fare_pricing_version,
+      ride_fare_provenance: row.ride_fare_provenance,
+      short_trip_fare_evaluation: row.short_trip_fare_evaluation,
     }));
 
   let driver_detail: any = null;
@@ -977,6 +1010,7 @@ export async function GET(req: NextRequest) {
     },
     generated_at: new Date().toISOString(),
     summary,
+    short_trip_pilot: shortTripPilot,
     periods: {
       daily: Object.values(daily).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),
       weekly: Object.values(weekly).sort((a: any, b: any) => String(b.key).localeCompare(String(a.key))),

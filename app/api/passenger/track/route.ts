@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import {
+  SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_BODY,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING,
+} from "@/lib/shortTripAutomaticFare";
 
 function n(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -233,6 +238,8 @@ if (!ratingRes.error && Array.isArray(ratingRes.data)) {
     const promoApplied = promoAppliedAmount > 0;
     const platformFee = 15;
     const fare = verifiedFare ?? proposedFare;
+    const fareMode = s((booking as any).ride_fare_mode);
+    const shortTripAutomaticFare = fareMode === SHORT_TRIP_AUTOMATIC_FARE_VERSION;
     const subtotalBeforeDiscount =
       fare == null
         ? null
@@ -282,6 +289,17 @@ if (!ratingRes.error && Array.isArray(ratingRes.data)) {
       promo_status: promoStatus,
       promo_program_code: promoProgramCode,
       total_fare: totalFare,
+      fare_mode: fareMode,
+      fare_pricing_version: s((booking as any).ride_fare_pricing_version),
+      fare_provenance: s((booking as any).ride_fare_provenance),
+      short_trip_automatic_fare: shortTripAutomaticFare,
+      fare_notice_heading: shortTripAutomaticFare
+        ? SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING
+        : null,
+      fare_notice_body: shortTripAutomaticFare
+        ? SHORT_TRIP_AUTOMATIC_PASSENGER_BODY
+        : null,
+      short_trip_fare_evaluation: (booking as any).short_trip_fare_evaluation ?? null,
 
       // === JRIDE TRANSPARENCY FIELDS (SAFE ADD) ===
       submitted_regular_fare: n((booking as any).submitted_regular_fare),

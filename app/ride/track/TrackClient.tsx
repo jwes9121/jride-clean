@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_BODY,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING,
+} from "@/lib/shortTripAutomaticFare";
 
 const TOKEN_KEY = "jride_access_token";
 
@@ -28,6 +33,13 @@ type TrackResponse = {
   completed_at?: string | null;
   cancelled_at?: string | null;
   message?: string | null;
+  fare_mode?: string | null;
+  fare_pricing_version?: string | null;
+  fare_provenance?: string | null;
+  short_trip_automatic_fare?: boolean;
+  fare_notice_heading?: string | null;
+  fare_notice_body?: string | null;
+  short_trip_fare_evaluation?: Record<string, unknown> | null;
 
   driver?: {
     id?: string | null;
@@ -344,6 +356,15 @@ export default function TrackClient({ code }: { code?: string }) {
   }, [code]);
   const liveStatus = normStatus(data?.status);
   const fareResponseText = String(data?.passenger_fare_response || "").trim().toLowerCase();
+  const isShortTripAutomaticFare =
+    data?.short_trip_automatic_fare === true ||
+    data?.fare_mode === SHORT_TRIP_AUTOMATIC_FARE_VERSION;
+  const shortTripNoticeHeading =
+    (isShortTripAutomaticFare && data?.fare_notice_heading) ||
+    SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING;
+  const shortTripNoticeBody =
+    (isShortTripAutomaticFare && data?.fare_notice_body) ||
+    SHORT_TRIP_AUTOMATIC_PASSENGER_BODY;
 
   const rideProposalAlertKey =
     liveStatus === "fare_proposed" && !fareResponseText
@@ -532,6 +553,13 @@ export default function TrackClient({ code }: { code?: string }) {
           <div className="font-semibold">Current trip status</div>
           <div className="mt-1">{statusMessage(liveStatus, data?.passenger_fare_response)}</div>
           <div className="mt-2 text-[11px] opacity-75">Status: {liveStatus || "--"}</div>
+        </div>
+      ) : null}
+
+      {data && isShortTripAutomaticFare ? (
+        <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950 shadow-sm">
+          <div className="font-semibold">{shortTripNoticeHeading}</div>
+          <div className="mt-1">{shortTripNoticeBody}</div>
         </div>
       ) : null}
 

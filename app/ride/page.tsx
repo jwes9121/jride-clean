@@ -18,6 +18,11 @@
  */
 
 import * as React from "react";
+import {
+  SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_BODY,
+  SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING,
+} from "@/lib/shortTripAutomaticFare";
 
 const STORAGE_KEY = "jride_active_booking_code";
 const TOKEN_KEY = "jride_access_token";
@@ -162,6 +167,13 @@ type TrackPayload = {
   updated_at?: string | null;
   id?: string | null;
   booking_id?: string | null;
+  fare_mode?: string | null;
+  fare_pricing_version?: string | null;
+  fare_provenance?: string | null;
+  short_trip_automatic_fare?: boolean;
+  fare_notice_heading?: string | null;
+  fare_notice_body?: string | null;
+  short_trip_fare_evaluation?: Record<string, unknown> | null;
 };
 
 type RatingSnapshot = {
@@ -2172,6 +2184,15 @@ if (mapRef.current) {
 
   const lb = liveBooking as TrackPayload | null;
   const bannerMsg = activeCode ? statusMessage(liveStatus, lb?.passenger_fare_response) : "";
+  const isShortTripAutomaticFare =
+    lb?.short_trip_automatic_fare === true ||
+    lb?.fare_mode === SHORT_TRIP_AUTOMATIC_FARE_VERSION;
+  const shortTripNoticeHeading =
+    (isShortTripAutomaticFare && lb?.fare_notice_heading) ||
+    SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING;
+  const shortTripNoticeBody =
+    (isShortTripAutomaticFare && lb?.fare_notice_body) ||
+    SHORT_TRIP_AUTOMATIC_PASSENGER_BODY;
 
   const proposedFareValue = numValue(lb?.proposed_fare);
   const verifiedFareValue = numValue(lb?.verified_fare);
@@ -2370,6 +2391,13 @@ if (mapRef.current) {
             <div className="mt-2 text-[11px] opacity-75">
               Booking code: <span className="font-mono">{activeCode}</span>
             </div>
+          </div>
+        )}
+
+        {activeCode && isShortTripAutomaticFare && (
+          <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-950 shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
+            <div className="font-semibold">{shortTripNoticeHeading}</div>
+            <div className="mt-1">{shortTripNoticeBody}</div>
           </div>
         )}
 
@@ -3318,5 +3346,4 @@ if (mapRef.current) {
     </main>
   );
 }
-
 

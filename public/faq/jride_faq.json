@@ -1116,7 +1116,43 @@
         "tl": "Ang AgriMarket driver delivery payout ay delivery fee plus additional pickup-distance fee, minus PHP 20 delivery company cut, pagkatapos ay plus ang applicable Heavy Load Fee at Special Handling Fee. Ang pickup-distance fee na ginagamit sa payout ay additional amount lamang pagkatapos ng PHP 40 delivery-base credit, kaya hindi nadodoble ang base. Hiwalay ang settlement ng product marketplace fee at hindi ito bahagi ng driver delivery payout.",
         "ilo": "Ti AgriMarket driver delivery payout ket delivery fee plus additional pickup-distance fee, minus PHP 20 delivery company cut, kalpasanna plus dagiti applicable Heavy Load Fee ken Special Handling Fee. Ti pickup-distance fee a maus-usar iti payout ket ti additional amount laeng kalpasan ti PHP 40 delivery-base credit, isu a saan a mamindua ti base. Sabali ti settlement ti product marketplace fee ken saan daytoy a paset ti driver delivery payout."
       }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "Fare and Pickup",
+        "tl": "Fare at Pickup",
+        "ilo": "Fare ken Pickup"
+      },
+      "question": {
+        "en": "What is the Short Trip - Automatic Fare pilot?",
+        "tl": "Ano ang Short Trip - Automatic Fare pilot?",
+        "ilo": "Ania ti Short Trip - Automatic Fare pilot?"
+      },
+      "answer": {
+        "en": "For regular rides with an authoritative Mapbox driving-road distance of 3.0 km or less, the pilot ride fare is max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free. The elevation premium is proportional, not rounded up into 100 metre blocks, and endpoint elevation difference is not used. JRide does not charge fabricated or unvalidated elevation; if routing or elevation cannot be validated, the normal Proposed Fare flow is used. The PHP15 convenience fee remains separate, applicable pickup-distance fees remain separate, and the passenger total is at least PHP40. If the road distance is over 3.0 km, the driver submits the normal Proposed Fare and the passenger must accept it before the ride proceeds.",
+        "tl": "For regular rides with an authoritative Mapbox driving-road distance of 3.0 km or less, the pilot ride fare is max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free. The elevation premium is proportional, not rounded up into 100 metre blocks, and endpoint elevation difference is not used. JRide does not charge fabricated or unvalidated elevation; if routing or elevation cannot be validated, the normal Proposed Fare flow is used. The PHP15 convenience fee remains separate, applicable pickup-distance fees remain separate, and the passenger total is at least PHP40. If the road distance is over 3.0 km, the driver submits the normal Proposed Fare and the passenger must accept it before the ride proceeds.",
+        "ilo": "For regular rides with an authoritative Mapbox driving-road distance of 3.0 km or less, the pilot ride fare is max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free. The elevation premium is proportional, not rounded up into 100 metre blocks, and endpoint elevation difference is not used. JRide does not charge fabricated or unvalidated elevation; if routing or elevation cannot be validated, the normal Proposed Fare flow is used. The PHP15 convenience fee remains separate, applicable pickup-distance fees remain separate, and the passenger total is at least PHP40. If the road distance is over 3.0 km, the driver submits the normal Proposed Fare and the passenger must accept it before the ride proceeds."
+      }
+    },
+    {
+      "role": "driver",
+      "category": {
+        "en": "Driver Fare",
+        "tl": "Driver Fare",
+        "ilo": "Driver Fare"
+      },
+      "question": {
+        "en": "What happens when a regular ride is within 3 km?",
+        "tl": "Ano ang mangyayari kapag ang regular ride ay nasa loob ng 3 km?",
+        "ilo": "Ania ti mapasamak no ti regular ride ket adda iti uneg ti 3 km?"
+      },
+      "answer": {
+        "en": "During the Short Trip - Automatic Fare pilot, a regular ride with an authoritative Mapbox driving-road distance of 3.0 km or less uses the automatic formula: max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free and the premium is proportional. Once you accept, proceed to the passenger pickup location; no Proposed Fare is needed. If routing or elevation is missing or invalid, JRide falls back to the normal Proposed Fare flow. Trips over 3.0 km keep the normal Proposed Fare flow.",
+        "tl": "During the Short Trip - Automatic Fare pilot, a regular ride with an authoritative Mapbox driving-road distance of 3.0 km or less uses the automatic formula: max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free and the premium is proportional. Once you accept, proceed to the passenger pickup location; no Proposed Fare is needed. If routing or elevation is missing or invalid, JRide falls back to the normal Proposed Fare flow. Trips over 3.0 km keep the normal Proposed Fare flow.",
+        "ilo": "During the Short Trip - Automatic Fare pilot, a regular ride with an authoritative Mapbox driving-road distance of 3.0 km or less uses the automatic formula: max(PHP25, PHP20 x road distance in km + PHP0.10 x max(0, validated cumulative positive elevation gain in metres - 25)). The first 25 metres of cumulative uphill gain are free and the premium is proportional. Once you accept, proceed to the passenger pickup location; no Proposed Fare is needed. If routing or elevation is missing or invalid, JRide falls back to the normal Proposed Fare flow. Trips over 3.0 km keep the normal Proposed Fare flow."
+      }
     }
   ],
-  "generated_note": "JRide Help & FAQ v7. Retains v6 content and adds AgriMarket delivery pricing, Errand-parity Driver Approach pricing with the PHP 40 delivery-base credit, and AgriMarket driver delivery earnings."
+  "generated_note": "JRide Help & FAQ v8. Retains v7 content and adds the Short Trip - Automatic Fare pilot formula, validation fallback, and the over-3-km Proposed Fare rule."
 }
