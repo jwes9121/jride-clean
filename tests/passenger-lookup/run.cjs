@@ -202,6 +202,20 @@ function harness(options = {}) {
     assert.match(html, /Passenger Lookup/); assert.match(html, /passenger-search/); assert.match(html, /booking\/order code/);
     assert.equal(html.includes(uid), false);
   });
+  await test("legacy raw-path signer cannot bypass passenger evidence auditing", async () => {
+    let clients = 0;
+    const api = load("app/api/admin/verification/file-url/route.ts", {
+      "@/auth": { auth: async () => ({ user: { role: "admin" } }) },
+      "../../../../../auth": { auth: async () => ({ user: { role: "admin" } }) },
+      "@supabase/supabase-js": { createClient: () => { clients++; throw new Error("Must not create a signer"); } },
+      "next/server": { NextResponse: { json: (body, init) => ({ body, status: init.status, headers: init.headers }) } },
+    });
+    for (const bucket of ["passenger-ids", "passenger-selfies"]) {
+      const r = await api.GET({ url: "https://app.example.test/api?bucket=" + bucket + "&path=" + uid + "/id.jpg" });
+      assert.equal(r.status, 410); assert.match(r.headers["Cache-Control"], /no-store/);
+    }
+    assert.equal(clients, 0);
+  });
   console.log("PASS passenger lookup: " + count + " checks");
   // A public, non-sensitive build receipt makes hosted test execution verifiable.
   if (process.env.VERCEL_GIT_COMMIT_SHA) {

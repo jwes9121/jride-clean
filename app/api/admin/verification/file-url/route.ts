@@ -73,6 +73,14 @@ export async function GET(req: Request) {
       );
     }
 
+    // Passenger evidence must use the subject-bound, audited admin action.
+    if (bucket === "passenger-ids" || bucket === "passenger-selfies") {
+      return NextResponse.json(
+        { ok: false, error: "Use the audited passenger verification evidence action." },
+        { status: 410, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     const supabase = adminSupabase();
 
     const s = await supabase.storage
