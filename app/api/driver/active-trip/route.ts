@@ -12,6 +12,7 @@ import {
   SHORT_TRIP_AUTOMATIC_DRIVER_BODY,
   SHORT_TRIP_AUTOMATIC_DRIVER_HEADING,
   SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+  isRegularRideServiceType,
 } from "@/lib/shortTripAutomaticFare";
 
 
@@ -936,7 +937,7 @@ export async function GET(req: NextRequest) {
     const proposedFare = n((booking as any).proposed_fare);
     const verifiedFare = n((booking as any).verified_fare);
     const submittedRegularFare = n((booking as any).submitted_regular_fare);
-    const pickupDistanceFee = n((booking as any).pickup_distance_fee) ?? 0;
+    const storedPickupDistanceFee = n((booking as any).pickup_distance_fee);
     const promoAppliedAmount = n((booking as any).promo_applied_amount) ?? 0;
     const promoStatus = s((booking as any).promo_status);
     const promoProgramCode = s((booking as any).promo_program_code);
@@ -945,10 +946,18 @@ export async function GET(req: NextRequest) {
     const shortTripAutomaticFare = fareMode === SHORT_TRIP_AUTOMATIC_FARE_VERSION;
 
     const fare = verifiedFare ?? proposedFare;
+    const regularRide = isRegularRideServiceType((booking as any).service_type);
+    const pickupDistanceFeeFinalized = !regularRide || fare != null;
+    const pickupDistanceFee = pickupDistanceFeeFinalized
+      ? storedPickupDistanceFee ?? 0
+      : null;
+    const pickupDistanceFeeStatus = pickupDistanceFeeFinalized
+      ? "final"
+      : "pending_acceptance";
     const subtotalBeforeDiscount =
       fare == null
         ? null
-        : Number((fare + pickupDistanceFee + platformFee).toFixed(2));
+        : Number((fare + (pickupDistanceFee ?? 0) + platformFee).toFixed(2));
 
     const payableTotal =
       subtotalBeforeDiscount == null
@@ -1101,6 +1110,8 @@ vendor_address: takeoutReceipt.vendorLocationLabel,
       submitted_regular_fare: submittedRegularFare,
       fare,
       pickup_distance_fee: pickupDistanceFee,
+      pickup_distance_fee_status: pickupDistanceFeeStatus,
+      pickup_distance_fee_provisional: !pickupDistanceFeeFinalized,
       platform_fee: platformFee,
       promo_applied_amount: promoAppliedAmount,
       promo_status: promoStatus,
