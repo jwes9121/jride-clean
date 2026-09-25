@@ -1,4 +1,7 @@
 export const SHORT_TRIP_AUTOMATIC_FARE_VERSION = "short_trip_automatic_v1";
+// The lifecycle/formula version stays compatible with existing bookings.
+// Each new evaluation also records this monetary rounding policy.
+export const SHORT_TRIP_FARE_ROUNDING_VERSION = "ride_fare_nearest_peso_half_up_v1";
 export const SHORT_TRIP_AUTOMATIC_PASSENGER_HEADING = "Short Trip - Automatic Fare";
 export const SHORT_TRIP_AUTOMATIC_PASSENGER_BODY =
   "This trip is within 3 km. Once a driver accepts, your trip proceeds automatically. No need to wait for a Proposed Fare.";
@@ -29,6 +32,9 @@ export type ShortTripFareResult = {
   elevationPremium: number;
   rideFareBeforeMinimum: number;
   automaticRideFare: number;
+  rideFareBeforeRounding: number;
+  rideFareRoundingAdjustment: number;
+  roundingVersion: string;
   rideMinimumApplied: boolean;
   convenienceFee: number;
   pickupDistanceFee: number;
@@ -80,9 +86,11 @@ export function computeShortTripAutomaticFare(
   const rideFareBeforeMinimum = roundMoney(
     distanceComponent + elevationPremium
   );
-  const automaticRideFare = roundMoney(
-    Math.max(SHORT_TRIP_MIN_RIDE_FARE, rideFareBeforeMinimum)
-  );
+  const rawRideFare = distanceComponent + elevationPremium;
+  const rideFareBeforeRounding = Math.max(SHORT_TRIP_MIN_RIDE_FARE, rawRideFare);
+  // Round once, after the minimum. Do not first round to cents: 29.499 must
+  // remain 29, and the road-distance eligibility boundary stays unrounded.
+  const automaticRideFare = Math.round(rideFareBeforeRounding);
   const passengerTotalBeforeMinimum = roundMoney(
     automaticRideFare + pickupDistanceFee + SHORT_TRIP_CONVENIENCE_FEE
   );
@@ -99,14 +107,17 @@ export function computeShortTripAutomaticFare(
     elevationPremium: roundMoney(elevationPremium),
     rideFareBeforeMinimum,
     automaticRideFare,
-    rideMinimumApplied: automaticRideFare > rideFareBeforeMinimum,
+    rideFareBeforeRounding: Number(rideFareBeforeRounding.toFixed(6)),
+    rideFareRoundingAdjustment: Number((automaticRideFare - rideFareBeforeRounding).toFixed(6)),
+    roundingVersion: SHORT_TRIP_FARE_ROUNDING_VERSION,
+    rideMinimumApplied: rawRideFare < SHORT_TRIP_MIN_RIDE_FARE,
     convenienceFee: SHORT_TRIP_CONVENIENCE_FEE,
     pickupDistanceFee: roundMoney(pickupDistanceFee),
     passengerTotalBeforeMinimum,
     total,
     passengerTotalMinimumApplied: total > passengerTotalBeforeMinimum,
     minimumApplied:
-      automaticRideFare > rideFareBeforeMinimum ||
+      rawRideFare < SHORT_TRIP_MIN_RIDE_FARE ||
       total > passengerTotalBeforeMinimum,
   };
 }
@@ -115,4 +126,3 @@ export function isRegularRideServiceType(value: unknown): boolean {
   const serviceType = String(value ?? "").trim().toLowerCase();
   return serviceType === "motorcycle" || serviceType === "tricycle";
 }
-

@@ -249,6 +249,25 @@ assert.strictEqual(proportionalPremium.elevationPremium, 10);
 assert.strictEqual(proportionalPremium.automaticRideFare, 30);
 assert.strictEqual(proportionalPremium.total, 45);
 
+for (const [rawFare, expected] of [[29.499, 29], [29.5, 30], [29.501, 30], [29.75, 30], [25.49, 25], [25.5, 26]]) {
+  const rounded = fare.computeShortTripAutomaticFare({ roadDistanceKm: rawFare / 20, validatedCumulativePositiveElevationGainM: 0 });
+  assert.strictEqual(rounded.automaticRideFare, expected);
+  assert.strictEqual(rounded.total, expected + 15);
+  assert.strictEqual(rounded.rideMinimumApplied, false, "Rounding is not minimum application");
+  closeTo(rounded.rideFareRoundingAdjustment, expected - rawFare, "rounding audit");
+  assert.strictEqual(rounded.roundingVersion, "ride_fare_nearest_peso_half_up_v1");
+}
+const recordedRoute = fare.computeShortTripAutomaticFare({ roadDistanceKm: 1.487257, validatedCumulativePositiveElevationGainM: 14, pickupDistanceFee: 100 });
+assert.strictEqual(recordedRoute.automaticRideFare, 30);
+assert.strictEqual(recordedRoute.total, 145);
+assert.strictEqual(recordedRoute.chargeableElevationGainM, 0);
+assert.strictEqual(recordedRoute.minimumApplied, false);
+closeTo(recordedRoute.rideFareBeforeRounding, 29.74514, "unrounded formula audit");
+const fractionalUphill = fare.computeShortTripAutomaticFare({ roadDistanceKm: 1.5, validatedCumulativePositiveElevationGainM: 29.9 });
+assert.strictEqual(fractionalUphill.elevationPremium, 0.49);
+assert.strictEqual(fractionalUphill.automaticRideFare, 30);
+assert.strictEqual(fare.computeShortTripAutomaticFare({ roadDistanceKm: 1.5, validatedCumulativePositiveElevationGainM: 30 }).automaticRideFare, 31);
+
 const noisy = elevation.validateElevationValues([0, 100, 0], 3, 0.2);
 assert.strictEqual(noisy.status, "validated");
 assert.strictEqual(noisy.filteredOutlierCount, 1);
@@ -392,6 +411,9 @@ assert.strictEqual(evaluatedFare.outcome,"automatic");
 assert.strictEqual(evaluatedFare.fare.automaticRideFare,65);
 assert.strictEqual(evaluatedFare.fare.total,80);
 assert.strictEqual(evaluatedFare.snapshot.elevation_version,elevation.MAPBOX_ELEVATION_VERSION);
+assert.strictEqual(evaluatedFare.snapshot.rounding_version,fare.SHORT_TRIP_FARE_ROUNDING_VERSION);
+assert.strictEqual(evaluatedFare.snapshot.ride_fare_before_rounding,evaluatedFare.fare.rideFareBeforeRounding);
+assert.strictEqual(evaluatedFare.snapshot.ride_fare_rounding_adjustment,evaluatedFare.fare.rideFareRoundingAdjustment);
 assert.strictEqual(evaluatedFare.snapshot.validated_cumulative_positive_elevation_gain_m,75);
 assert.strictEqual(evaluatedFare.snapshot.free_elevation_allowance_m,25);
 assert.strictEqual(evaluatedFare.snapshot.chargeable_elevation_gain_m,50);
@@ -554,6 +576,41 @@ assert.ok(dispatchStatus.includes("accepted_without_proposed_fare"));
 assert.ok(dispatchStatus.includes("updatePayload.status = \"ready\""));
 assert.ok(dispatchStatus.includes("updatePayload.driver_fee_proposal_expires_at = null"));
 
+// Exercise the actual private completion-receipt reader with a read-only DB
+// fixture. Receipt failures must never manufacture zero deductions or change
+// a completed ride's settlement.
+const receiptSource = dispatchStatus.slice(dispatchStatus.indexOf("async function readRideCompletionReceipt("), dispatchStatus.indexOf("export async function POST("));
+const receiptJs = ts.transpileModule(receiptSource, {compilerOptions:{target:ts.ScriptTarget.ES2020,module:ts.ModuleKind.CommonJS}}).outputText;
+const receiptReader = new Function("isRegularRideServiceType", "clean", receiptJs + "\nreturn readRideCompletionReceipt;")(fare.isRegularRideServiceType, value => String(value ?? "").trim());
+async function readReceipt(changes = {}) {
+  const filters = [];
+  const row = {id:"booking-1",status:"completed",driver_id:"driver-1",verified_fare:30,pickup_distance_fee:100,promo_applied_amount:0,wallet_settlement_status:"settled",wallet_settlement_id:"settlement-1",...(changes.row || {})};
+  const entries = changes.entries || [{amount:-15,reason:"ride_platform_cut_15"}];
+  const db = {from(table) {
+    const answer = {data:table === "bookings" ? row : entries,error:changes.error || null};
+    return {select(){return this;},eq(column,value){filters.push({table,column,value});return this;},maybeSingle:async()=>answer,then(resolve,reject){return Promise.resolve(answer).then(resolve,reject);}};
+  }};
+  const result = await receiptReader(db,{id:"booking-1",service_type:changes.service || "tricycle",driver_id:"driver-1"});
+  return {result,filters};
+}
+const receipt = await readReceipt();
+assert.strictEqual(receipt.result.customer_total,145);
+assert.strictEqual(receipt.result.wallet_deduction,15);
+assert.strictEqual(receipt.result.cash_after_wallet_deduction,130);
+assert.ok(receipt.filters.some(x=>x.table==="driver_wallet_transactions" && x.column==="driver_id" && x.value==="driver-1"));
+assert.ok(receipt.filters.some(x=>x.column==="wallet_settlement_id" && x.value==="settlement-1"));
+assert.strictEqual((await readReceipt({row:{verified_fare:29.75}})).result.customer_total,144.75,"Historical fare cents are preserved");
+assert.strictEqual((await readReceipt({row:{promo_applied_amount:40}})).result.customer_total,105);
+assert.strictEqual((await readReceipt({row:{promo_applied_amount:145}})).result.cash_after_wallet_deduction,-15,"A fully discounted cash trip is not represented as positive cash earnings");
+for (const changes of [
+  {row:{driver_id:"another-driver"}}, {row:{status:"on_trip"}},
+  {row:{wallet_settlement_status:"pending"}}, {row:{wallet_settlement_id:null}},
+  {row:{verified_fare:null}}, {row:{pickup_distance_fee:null}},
+  {row:{verified_fare:"NaN"}}, {entries:[]}, {entries:[{amount:15,reason:"ride_platform_cut_15"}]},
+  {entries:[{amount:-15,reason:"unknown"}]}, {entries:[{amount:-15,reason:"ride_platform_cut_15"},{amount:-15,reason:"ride_platform_cut_15"}]},
+  {error:{message:"fixture failure"}}, {service:"errand"}
+]) assert.strictEqual((await readReceipt(changes)).result,null);
+console.log("PASS recorded completion receipt: ownership, ledger scope, promo, legacy cents, missing data");
 console.log("short-trip-automatic-fare: ok");
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : error);
