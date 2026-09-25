@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { recoveryPhoneSuffix } from "@/lib/passenger/passwordRecovery";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
       return bad("Invalid or expired reset token.", 400);
     }
 
-    const { error: updateUserError } = await admin.auth.admin.updateUserById(
+    const { data: updatedUser, error: updateUserError } = await admin.auth.admin.updateUserById(
       row.user_id,
       { password: newPassword }
     );
@@ -82,9 +83,12 @@ export async function POST(req: NextRequest) {
       return bad(markUsedError.message || "Password updated but token finalization failed.", 500);
     }
 
+    const phoneSuffix = recoveryPhoneSuffix(updatedUser?.user?.email);
     return NextResponse.json({
       ok: true,
-      message: "Password has been reset successfully."
+      message: phoneSuffix
+        ? `Password updated for the account with mobile number ending ${phoneSuffix}. Sign in using that mobile number and your new password.`
+        : "Password has been reset successfully. Sign in with this account's registered mobile number."
     });
   } catch (e: any) {
     return NextResponse.json(
