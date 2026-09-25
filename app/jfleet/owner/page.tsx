@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import OwnerPaymentForm from "@/components/jfleet/OwnerPaymentForm";
+import OwnerAddonPaymentForm from "@/components/jfleet/OwnerAddonPaymentForm";
 import { philippinesTime } from "@/lib/jfleet/routeReview";
 
 type Inquiry = {
@@ -160,12 +161,6 @@ type AddonDraft = {
   notes: string;
 };
 
-type AddonPaymentDraft = {
-  payment_channel: string;
-  payment_reference: string;
-  notes: string;
-};
-
 function money(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "PHP 0.00";
@@ -193,7 +188,6 @@ export default function JFleetOwnerPage() {
   const [message, setMessage] = React.useState("");
   const [assignmentDrafts, setAssignmentDrafts] = React.useState<Record<string, AssignmentDraft>>({});
   const [addonDrafts, setAddonDrafts] = React.useState<Record<string, AddonDraft>>({});
-  const [addonPaymentDrafts, setAddonPaymentDrafts] = React.useState<Record<string, AddonPaymentDraft>>({});
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -263,16 +257,6 @@ export default function JFleetOwnerPage() {
         fuel_vehicle_fee: "",
         driver_fee: "",
         other_fee: "",
-        notes: "",
-      }
-    );
-  }
-
-  function addonPaymentDraft(addonId: string): AddonPaymentDraft {
-    return (
-      addonPaymentDrafts[addonId] ?? {
-        payment_channel: "",
-        payment_reference: "",
         notes: "",
       }
     );
@@ -357,45 +341,6 @@ export default function JFleetOwnerPage() {
         failure instanceof Error
           ? failure.message
           : "Additional trip charge could not be proposed."
-      );
-    } finally {
-      setBusyKey("");
-    }
-  }
-
-  async function confirmAddonPayment(addon: Addon) {
-    const draft = addonPaymentDraft(addon.id);
-    setBusyKey("addon-pay:" + addon.id);
-    setError("");
-    setMessage("");
-    try {
-      const response = await fetch("/api/jfleet/owner/addons/confirm-payment", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          addon_id: addon.id,
-          payment_channel: draft.payment_channel,
-          payment_reference: draft.payment_reference,
-          notes: draft.notes || null,
-        }),
-      });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok || !body?.ok) {
-        throw new Error(body?.message || "Additional-charge payment could not be confirmed.");
-      }
-      setMessage(
-        "Additional charge paid. Current trip value: " +
-          money(body.final_trip_value) +
-          " | JRide commission: " +
-          money(body.jride_commission_amount)
-      );
-      await load();
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Additional-charge payment could not be confirmed."
       );
     } finally {
       setBusyKey("");
@@ -583,7 +528,6 @@ export default function JFleetOwnerPage() {
                           "label" in item.additional_route
                             ? String((item.additional_route as { label?: string }).label || "")
                             : "";
-                        const payDraft = addonPaymentDraft(item.id);
                         return (
                           <div key={item.id} className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
                             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -603,41 +547,19 @@ export default function JFleetOwnerPage() {
                             </div>
                             {item.status === "proposed" ? (
                               <p className="mt-2 font-semibold">Waiting for customer approval.</p>
-                            ) : item.status === "accepted" ? (
-                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                <input
-                                  placeholder="Payment channel"
-                                  value={payDraft.payment_channel}
-                                  onChange={(event) =>
-                                    setAddonPaymentDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: { ...payDraft, payment_channel: event.target.value },
-                                    }))
-                                  }
-                                  className="rounded-lg border bg-white px-3 py-2"
-                                />
-                                <input
-                                  placeholder="Reference number, if any"
-                                  value={payDraft.payment_reference}
-                                  onChange={(event) =>
-                                    setAddonPaymentDrafts((current) => ({
-                                      ...current,
-                                      [item.id]: { ...payDraft, payment_reference: event.target.value },
-                                    }))
-                                  }
-                                  className="rounded-lg border bg-white px-3 py-2"
-                                />
-                                <button
-                                  type="button"
-                                  disabled={busyKey === "addon-pay:" + item.id}
-                                  onClick={() => void confirmAddonPayment(item)}
-                                  className="rounded-lg bg-violet-800 px-4 py-2 font-bold text-white disabled:opacity-50 sm:col-span-2"
-                                >
-                                  {busyKey === "addon-pay:" + item.id
-                                    ? "Saving..."
-                                    : "Confirm Additional Fee Paid"}
-                                </button>
-                              </div>
+                            ) : item.status === "accepted" || item.status === "paid" ? (
+                              <OwnerAddonPaymentForm
+                                key={(data.owner_user_id || "") + ":" + item.id}
+                                scope={{
+                                  owner_user_id: data.owner_user_id || "",
+                                  partner_id: data.partner?.id || "",
+                                  booking_id: booking.id,
+                                  addon_id: item.id,
+                                }}
+                                amount={Number(item.total_amount)}
+                                canRecord={item.status === "accepted" && booking.status === "on_trip"}
+                                onSaved={load}
+                              />
                             ) : null}
                           </div>
                         );
