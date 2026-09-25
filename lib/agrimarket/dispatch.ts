@@ -504,15 +504,19 @@ export async function offerAgrimarketDriver(input: {
     .sort((a, b) => (a.metric?.distanceKm || 0) - (b.metric?.distanceKm || 0));
 
   if (!ranked.length) {
+    const allRoutesVerified = locations.every((row: any) => {
+      const metric = roadMetrics.get(text(row.driver_id));
+      return metric != null && metric.durationSeconds != null &&
+        Number.isFinite(metric.distanceKm) && metric.distanceKm >= 0;
+    });
     return {
       ok: true,
       order_id: resolvedOrderId,
       order_code: resolvedOrderCode,
       offered: false,
-      error:
-        roadMetrics.size === 0
-          ? "ROAD_DISTANCE_UNAVAILABLE"
-          : "NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT",
+      error: allRoutesVerified
+        ? "NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT"
+        : "ROAD_DISTANCE_UNAVAILABLE",
       assignment_anchor: assignmentAnchor,
     };
   }

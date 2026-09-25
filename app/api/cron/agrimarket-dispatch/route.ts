@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { offerAgrimarketDriver } from "@/lib/agrimarket/dispatch";
+import { dispatchWaitCode } from "@/lib/agrimarket/dispatchWait";
 import { agrimarketEnabled } from "@/app/api/agrimarket/_lib/server";
 
 export const dynamic = "force-dynamic";
@@ -98,7 +99,7 @@ export async function GET(req: NextRequest) {
 
   const pendingRes = await admin
     .from("agrimarket_orders")
-    .select("id,order_code,status,ready_at,assigned_driver_id")
+    .select("id,order_code,status,ready_at,assigned_driver_id,preferred_vehicle_type")
     .is("assigned_driver_id", null)
     .in("status", ["preparing", "ready_for_dispatch", "dispatching"])
     .order("ready_at", { ascending: true, nullsFirst: true })
@@ -121,6 +122,7 @@ export async function GET(req: NextRequest) {
   let offered = 0;
   let waitingForPrep = 0;
   let noDriver = 0;
+  let routingUnavailable = 0;
   let failures = settlementRes.error ? 1 : 0;
 
   for (const row of rows as any[]) {
@@ -141,23 +143,43 @@ export async function GET(req: NextRequest) {
     try {
       const result = await offerAgrimarketDriver({ orderId: text(row.id) });
       results.push(result);
+      const waitCode = dispatchWaitCode(result);
+      const diagnosticRes = await admin.from("agrimarket_orders").update({
+        dispatch_wait_code: waitCode,
+        dispatch_wait_vehicle_type: text(row.preferred_vehicle_type),
+        dispatch_checked_at: new Date().toISOString(),
+      }).eq("id", row.id)
+        .eq("preferred_vehicle_type", row.preferred_vehicle_type)
+        .is("assigned_driver_id", null)
+        .in("status", ["preparing", "ready_for_dispatch", "dispatching"]);
+      if (diagnosticRes.error) failures += 1;
       if (result.offered) {
         offered += 1;
       } else if (result.error === "AGRIMARKET_DISPATCH_TOO_EARLY") {
         waitingForPrep += 1;
       } else if (
         result.error === "NO_PREFERRED_VEHICLE_DRIVER_AVAILABLE" ||
+        result.error === "NO_APPROVED_AGRIMARKET_DRIVER_AVAILABLE" ||
         result.error === "NO_ELIGIBLE_DRIVER_AVAILABLE" ||
-        result.error === "NO_DRIVER_WITHIN_NORMAL_PICKUP_RANGE" ||
-        result.error === "ROAD_DISTANCE_UNAVAILABLE" ||
+        result.error === "NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT" ||
         result.error === "AGRIMARKET_DRIVER_OFFER_RACE_LOST"
       ) {
         noDriver += 1;
+      } else if (result.error === "ROAD_DISTANCE_UNAVAILABLE") {
+        routingUnavailable += 1;
       } else if (!result.ok) {
         failures += 1;
       }
     } catch (error: any) {
       failures += 1;
+      await admin.from("agrimarket_orders").update({
+        dispatch_wait_code: "search_unavailable",
+        dispatch_wait_vehicle_type: text(row.preferred_vehicle_type),
+        dispatch_checked_at: new Date().toISOString(),
+      }).eq("id", row.id)
+        .eq("preferred_vehicle_type", row.preferred_vehicle_type)
+        .is("assigned_driver_id", null)
+        .in("status", ["preparing", "ready_for_dispatch", "dispatching"]);
       results.push({
         ok: false,
         order_id: text(row.id),
@@ -183,6 +205,7 @@ export async function GET(req: NextRequest) {
       offered,
       waiting_for_preparation: waitingForPrep,
       no_driver_available: noDriver,
+      routing_unavailable: routingUnavailable,
       failures,
       results,
     },
