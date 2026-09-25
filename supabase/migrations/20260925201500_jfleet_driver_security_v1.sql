@@ -133,7 +133,7 @@ declare
   ax double precision;
   ay double precision;
   bx double precision;
-  by double precision;
+  b_y double precision;
   dx double precision;
   dy double precision;
   denom double precision;
@@ -188,9 +188,9 @@ begin
     ax := (a_lng-p_lng)*meters_lng;
     ay := (a_lat-p_lat)*meters_lat;
     bx := (b_lng-p_lng)*meters_lng;
-    by := (b_lat-p_lat)*meters_lat;
+    b_y := (b_lat-p_lat)*meters_lat;
     dx := bx-ax;
-    dy := by-ay;
+    dy := b_y-ay;
     denom := dx*dx + dy*dy;
 
     if denom <= 0 then
