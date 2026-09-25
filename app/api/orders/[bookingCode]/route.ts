@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requirePassenger } from "@/lib/passenger/serverAuth";
+
+export const dynamic = "force-dynamic";
 
 function n(value: any): number {
   const out = Number(value ?? 0);
@@ -24,18 +26,21 @@ export async function GET(
   req: Request,
   { params }: { params: { bookingCode: string } }
 ) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const passenger = await requirePassenger(req);
+  if (passenger.ok === false) return passenger.response;
+  const supabase = supabaseAdmin({ noStore: true });
   const { bookingCode } = params;
 
   const { data, error } = await supabase
     .from("bookings")
     .select("*")
     .eq("booking_code", bookingCode)
+    .eq("created_by_user_id", passenger.user.id)
     .single();
 
   if (error || !data || typeof data !== "object") {
     return NextResponse.json(
-      { error: error?.message ?? "Booking not found" },
+      { error: "Booking not found" },
       { status: 404 }
     );
   }
@@ -123,5 +128,5 @@ export async function GET(
     created_at: booking.created_at,
     updated_at: booking.updated_at,
     vendor_driver_arrived_at: booking.vendor_driver_arrived_at,
-  });
+  }, { headers: { "Cache-Control": "private, no-store", Vary: "Authorization, Cookie" } });
 }

@@ -1,3 +1,4 @@
+import { requirePassenger } from "@/lib/passenger/serverAuth";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -14,6 +15,8 @@ export async function POST(
   context: { params: { bookingCode: string } }
 ) {
   try {
+    const passenger = await requirePassenger(request);
+    if (passenger.ok === false) return passenger.response;
     if (!supabase) {
       return NextResponse.json(
         { error: "Supabase not configured" },
@@ -39,6 +42,11 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const owned = await supabase.from("bookings").select("id")
+      .eq("booking_code", bookingCode).eq("created_by_user_id", passenger.user.id).maybeSingle();
+    if (owned.error) return NextResponse.json({ error: "Unable to verify order ownership." }, { status: 503 });
+    if (!owned.data) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
     const { error } = await supabase.from("order_ratings").insert({
       booking_code: bookingCode,

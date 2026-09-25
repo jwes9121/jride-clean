@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
   if (!agrimarketEnabled()) return agrimarketDisabledResponse();
 
   try {
-    const passengerAuth = await requireAgrimarketPassenger(req);
+    const passengerAuth = await requireAgrimarketPassenger(req, true);
     if (passengerAuth.ok === false) return passengerAuth.response;
 
     const body = await req.json().catch(() => ({}));

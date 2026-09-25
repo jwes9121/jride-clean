@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
 import { useEffect, useState } from "react";
 import { getDisplayStatus, isActive } from "./historyStatus";
 
@@ -76,6 +77,7 @@ export default function TakeoutOrdersPage() {
 
         const res = await fetch("/api/takeout/orders-list", {
           method: "GET",
+          headers: passengerAuthHeaders(),
           cache: "no-store",
         });
 

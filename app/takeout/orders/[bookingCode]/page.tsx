@@ -1,4 +1,5 @@
 "use client";
+import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
 
 import { useEffect, useState, useMemo } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -200,7 +201,7 @@ export default function TakeoutOrderStatusPage({ params }: PageProps) {
       if (showSpinner) setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/orders/${encodeURIComponent(bookingCode)}`);
+      const res = await fetch(`/api/orders/${encodeURIComponent(bookingCode)}`, { cache: "no-store", headers: passengerAuthHeaders() });
       if (!res.ok) {
         throw new Error(`Failed to load order: ${res.status}`);
       }

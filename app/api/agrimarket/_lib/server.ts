@@ -1,3 +1,4 @@
+import { requirePassengerVerification } from "@/lib/passenger/requireVerification";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { createClient as createCookieSupabase } from "@/utils/supabase/server";
@@ -106,7 +107,7 @@ function passengerDeviceId(req: NextRequest): string | null {
   return value || null;
 }
 
-export async function requireAgrimarketPassenger(req: NextRequest): Promise<PassengerAuthResult> {
+export async function requireAgrimarketPassenger(req: NextRequest, verifiedOnly = false): Promise<PassengerAuthResult> {
   const token = bearerToken(req);
   const deviceId = passengerDeviceId(req);
 
@@ -156,6 +157,10 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
       }
     }
 
+    if (verifiedOnly) {
+      const denial = await requirePassengerVerification(createServiceSupabase(), user.id);
+      if (denial) return { ok: false, response: denial };
+    }
     return { ok: true, user };
   }
 
@@ -174,7 +179,11 @@ export async function requireAgrimarketPassenger(req: NextRequest): Promise<Pass
     };
   }
 
-  return { ok: true, user };
+  if (verifiedOnly) {
+      const denial = await requirePassengerVerification(createServiceSupabase(), user.id);
+      if (denial) return { ok: false, response: denial };
+    }
+    return { ok: true, user };
 }
 
 export async function requireAgrimarketStaff(adminOnly = false): Promise<StaffAuthResult> {
