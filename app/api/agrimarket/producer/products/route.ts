@@ -246,7 +246,10 @@ export async function POST(req: NextRequest) {
       const availableQuantity = finiteNumber(body?.available_quantity ?? body?.availableQuantity ?? body?.listed_quantity);
       const availabilityMode = lower(body?.availability_mode || body?.availabilityMode || "always_available");
       const harvestStartAt = isoOrNull(body?.harvest_start_at || body?.harvestStartAt);
-      const harvestEndAt = isoOrNull(body?.harvest_end_at || body?.harvestEndAt);
+      const submittedHarvestEndAt = body?.harvest_end_at || body?.harvestEndAt;
+      const harvestEndAt = submittedHarvestEndAt
+        ? isoOrNull(submittedHarvestEndAt)
+        : harvestStartAt && new Date(Date.parse(harvestStartAt) + 60 * 60 * 1000).toISOString();
       const harvestOrderCutoffAt = isoOrNull(body?.harvest_order_cutoff_at || body?.harvestOrderCutoffAt);
       const prepMinutes = finiteNumber(body?.default_prep_minutes ?? body?.preparation_minutes ?? 15);
       let vehicleRequirement = lower(body?.vehicle_requirement || body?.vehicleRequirement || "either");
@@ -283,7 +286,7 @@ export async function POST(req: NextRequest) {
             message: "The reservation cutoff must be before the expected harvest starts.",
           });
         }
-        if (harvestEndAt && Date.parse(harvestEndAt) < Date.parse(harvestStartAt)) {
+        if (!harvestEndAt || Date.parse(harvestEndAt) < Date.parse(harvestStartAt)) {
           return jsonNoStore(400, {
             ok: false,
             error: "AGRIMARKET_HARVEST_WINDOW_INVALID",

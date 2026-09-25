@@ -9,7 +9,7 @@ import { lineCents, moneyFromCents } from "@/lib/agrimarket/checkoutMoney";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ProductPhoto } from "./ProductPhoto";
-import { scheduledTitle } from "@/lib/agrimarket/schedule";
+import { estimatedHarvestEnd, scheduledTitle } from "@/lib/agrimarket/schedule";
 import {
   passengerAuthHeaders,
   passengerLoginHref,
@@ -724,7 +724,7 @@ export default function AgrimarketPage() {
                   <div><p className="text-xs uppercase text-slate-500">Cargo</p><p className="font-bold">{titleCase(selectedProduct.cargo_class)}</p></div>
                 </div>
                 {selectedProduct.is_cross_town ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">Cross-town listing. JRide will deliver to your selected pin; customer pickup or farmer meet-up is not available.</p> : null}
-                {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([selectedProduct])}</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)}{selectedProduct.harvest_end_at ? ` to ${formatDate(selectedProduct.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
+                {selectedProduct.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([selectedProduct])}</strong><br/>Expected: {formatDate(selectedProduct.harvest_start_at)} to {formatDate(estimatedHarvestEnd(selectedProduct.harvest_start_at, selectedProduct.harvest_end_at))}{!selectedProduct.harvest_end_at ? " (estimated one-hour window)" : ""}<br/>Reserve by: {formatDate(selectedProduct.harvest_order_cutoff_at)}</div> : null}
                 {selectedProduct.vehicle_requirement === "tricycle" ? <p className="mt-3 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
                 <button type="button" onClick={() => setStoreProductId(selectedProduct.id)} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-bold text-white">Shop this store</button>
 
@@ -765,7 +765,7 @@ export default function AgrimarketPage() {
                   <div className="mt-3 flex items-end justify-between"><div><strong className="text-lg">{money(product.unit_price)}</strong><span className="text-sm text-slate-500"> / {product.selling_unit}</span></div><span className="text-xs text-slate-500">{product.remaining_quantity} listed</span></div>
                   {comparisonHint(product) ? <p className="mt-2 text-xs font-semibold text-emerald-700">{comparisonHint(product)}</p> : null}
                   {product.is_cross_town ? <p className="mt-2 text-xs font-semibold text-amber-800">Cross-town option</p> : null}
-                  {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([product])}</strong><br/>Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
+                  {product.availability_mode === "scheduled_harvest" ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>{scheduledTitle([product])}</strong><br/>Expected: {formatDate(product.harvest_start_at)} to {formatDate(estimatedHarvestEnd(product.harvest_start_at, product.harvest_end_at))}{!product.harvest_end_at ? " (estimated one-hour window)" : ""}<br/>Reserve by: {formatDate(product.harvest_order_cutoff_at)}</div> : null}
                   {product.vehicle_requirement === "tricycle" ? <p className="mt-2 text-xs font-semibold text-blue-800">Tricycle required</p> : null}
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setStoreProductId(product.id)} className="rounded-xl border px-3 py-3 font-semibold">View store profile</button>
@@ -788,7 +788,7 @@ export default function AgrimarketPage() {
               {cartError && <p role="alert" className="mt-3 text-sm text-red-800">{cartError}</p>}
               <p className="mt-2 text-xs text-slate-500">{cartMode === "scheduled_harvest" ? `${scheduledTitle(cart.map(item => item.product))} cart` : "Always Available cart"} - one farmer only</p>
               {cartCrossTownProduct ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900"><strong>Cross-town order</strong><br/>{cartCrossTownProduct.producer_town} to {deliveryTown}: {exactRoadDistance(cartCrossTownProduct.road_distance_km)} by road.<br/>JRide delivery to this selected pin only; no customer pickup or farmer meet-up.</div> : null}
-              {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)}{cartHarvest.harvest_end_at ? ` to ${formatDate(cartHarvest.harvest_end_at)}` : ""}</div> : null}
+              {cartHarvest ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{scheduledTitle(cart.map(item => item.product))}: {formatDate(cartHarvest.harvest_start_at)} to {formatDate(estimatedHarvestEnd(cartHarvest.harvest_start_at, cartHarvest.harvest_end_at))}{!cartHarvest.harvest_end_at ? " (estimated one-hour window)" : ""}</div> : null}
               <div className="mt-4 space-y-3">{cart.map((line) => <div key={line.product.id} className="rounded-xl border p-3"><div className="flex justify-between gap-2"><div><strong>{line.product.name}</strong><p className="text-xs text-slate-500">{money(line.product.unit_price)} / {line.product.selling_unit}</p></div><strong>{money(cartLineAmount(line))}</strong></div><div className="mt-2 flex items-center gap-2"><input aria-label={`Quantity for ${line.product.name}`} type="number" min="0" max={line.product.remaining_quantity} step="0.01" value={line.quantity} onChange={(e) => updateQuantity(line.product.id, Number(e.target.value))} className="w-28 rounded-lg border px-2 py-2"/><span className="text-xs text-slate-500">{line.product.selling_unit}</span></div></div>)}</div>
               <div className="mt-4 flex justify-between border-t pt-3"><span>Products</span><strong>{money(cartSubtotal)}</strong></div>
               <p className="mt-2 text-sm text-slate-600">Combined estimated cargo: {cartWeight == null ? "Farmer confirmation required" : `${cartWeight} kg`}</p>

@@ -6,7 +6,7 @@ import CustomerReapprovalDialog from "@/components/agrimarket/CustomerReapproval
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
+import { estimatedHarvestEnd, scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
 import { scheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
 
 type CargoConfirmation = {
@@ -59,6 +59,7 @@ type OrderStatus = {
   selected_vehicle_type?: string | null;
   preferred_vehicle_type?: string | null;
   required_vehicle_type?: string | null;
+  customer_approved_total?: number | null;
   estimated_cargo_weight_kg?: number | null;
   confirmed_cargo_weight_basis?: string | null;
   confirmed_cargo_weight_kg?: number | null;
@@ -177,6 +178,7 @@ export default function AgrimarketOrderTrackingPage() {
   const [loading, setLoading] = useState(false);
   const [responding, setResponding] = useState(false);
   const [error, setError] = useState("");
+  const [vehicleNotice, setVehicleNotice] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -251,6 +253,30 @@ export default function AgrimarketOrderTrackingPage() {
     } finally { setResponding(false); }
   }
 
+  async function switchToTricycle() {
+    if (!order || responding || order.customer_approved_total == null) return;
+    if (!window.confirm("Switch this unassigned order to a tricycle? The current quoted total stays the same. A driver approach fee may still be added after assignment.")) return;
+    setResponding(true); setError(""); setVehicleNotice("");
+    try {
+      const response = await fetch("/api/agrimarket/order-vehicle-switch", {
+        method: "POST", headers: authHeaders(true), body: JSON.stringify({
+          order_code: order.order_code,
+          expected_vehicle: "motorcycle",
+          expected_total: order.customer_approved_total,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      await loadOrder(order.order_code, true);
+      if (!response.ok || payload?.ok === false) {
+        setError("The vehicle choice could not be changed. Refresh this order and check its current status before trying again.");
+      } else {
+        setVehicleNotice("Tricycle approved for driver search. Assignment still requires an eligible driver to accept.");
+      }
+    } catch {
+      setError("The vehicle change was not confirmed. Refresh the order before trying again.");
+    } finally { setResponding(false); }
+  }
+
   const expiryNotice = order ? agrimarketExpiryNotice(order) : null;
 
   if (disabled) return <main className="min-h-screen bg-emerald-50 p-8"><div className="mx-auto max-w-xl rounded-3xl bg-white p-8"><h1 className="text-2xl font-bold">Agrimarket is still in pre-launch</h1></div></main>;
@@ -271,7 +297,17 @@ export default function AgrimarketOrderTrackingPage() {
             <OrderExpiryDialog key={order.order_code} orderCode={order.order_code} storeName={order.store?.name}
               title={expiryNotice.title} message={expiryNotice.message} onAcknowledge={() => window.location.replace("/agrimarket")} />
           </> : <>
-          {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}<br/>{order.harvest_ready_at ? `Farmer marked products ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer confirms the products are ready."}</div> : null}
+          {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{estimatedHarvestEnd(order.harvest_expected_start_at, order.harvest_expected_end_at) ? ` to ${formatDate(estimatedHarvestEnd(order.harvest_expected_start_at, order.harvest_expected_end_at))}` : ""}{!order.harvest_expected_end_at ? " (estimated one-hour window)" : ""}<br/>{order.harvest_ready_at ? `Farmer marked products ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer confirms the products are ready."}</div> : null}
+
+          {order.status === "ready_for_dispatch" && order.preferred_vehicle_type === "motorcycle" &&
+            ["either", "motorcycle", "tricycle"].includes(order.required_vehicle_type || "") &&
+            order.customer_approved_total != null && Number(order.total_payable) === Number(order.customer_approved_total) ?
+            <div className="mt-4 rounded-2xl border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950">
+              <strong>Waiting for a motorcycle driver?</strong>
+              <p className="mt-1">You can approve a tricycle for this unassigned order. The current quoted total stays the same. The driver approach fee is calculated after assignment.</p>
+              <button type="button" disabled={responding} onClick={() => void switchToTricycle()} className="mt-3 rounded-xl bg-blue-800 px-4 py-2 font-bold text-white disabled:bg-slate-400">{responding ? "Checking..." : "Switch driver search to tricycle"}</button>
+            </div> : null}
+          {vehicleNotice ? <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">{vehicleNotice}</p> : null}
 
           {scheduledHarvestAttention(order, Date.parse(order.server_now || "")) === "overdue" ? <div role="status" className="mt-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950"><strong>Farmer update overdue.</strong> The preparation window ended without a readiness update. No driver has been offered this reservation. Check this order for a farmer proposal or contact JRide for help. It has not been automatically cancelled.</div> : null}
           {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New {scheduledActivity(order.items)} date: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}

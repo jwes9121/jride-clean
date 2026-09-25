@@ -188,6 +188,7 @@ export async function GET(req: NextRequest) {
         preparation_minutes: order.preparation_minutes == null ? null : num(order.preparation_minutes),
         ready_at: order.ready_at,
         preferred_vehicle_type: order.preferred_vehicle_type,
+        customer_approved_total: approvedTotal,
         required_vehicle_type: order.required_vehicle_type,
         selected_vehicle_type: order.selected_vehicle_type,
         estimated_cargo_weight_kg:

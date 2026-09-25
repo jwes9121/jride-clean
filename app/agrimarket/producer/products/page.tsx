@@ -11,7 +11,7 @@ import styles from "../farmer.module.css";
 import { ProductPhoto } from "../../ProductPhoto";
 import { PhotoPicker } from "./PhotoPicker";
 import { ButcheringForm } from "./ButcheringForm";
-import { scheduledTitle } from "@/lib/agrimarket/schedule";
+import { estimatedHarvestEnd, scheduledTitle } from "@/lib/agrimarket/schedule";
 
 type Product = {
   id: string;
@@ -299,7 +299,7 @@ export default function AgrimarketProducerProductsPage() {
             {form.availability_mode === "scheduled_harvest" ? <>
               <label className="text-sm font-semibold">Reservation cutoff<input required type="datetime-local" value={form.harvest_order_cutoff_at} onChange={(e) => setForm({ ...form, harvest_order_cutoff_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
               <label className="text-sm font-semibold">Expected {form.product_group === "meat" ? "butchering" : "harvest"} start<input required type="datetime-local" value={form.harvest_start_at} onChange={(e) => setForm({ ...form, harvest_start_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
-              <label className="text-sm font-semibold">Expected {form.product_group === "meat" ? "butchering" : "harvest"} end<input type="datetime-local" value={form.harvest_end_at} onChange={(e) => setForm({ ...form, harvest_end_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
+              <label className="text-sm font-semibold">Expected {form.product_group === "meat" ? "butchering" : "harvest"} end (defaults to 1 hour later)<input type="datetime-local" value={form.harvest_end_at} onChange={(e) => setForm({ ...form, harvest_end_at: e.target.value })} className="mt-1 w-full rounded-xl border px-3 py-3" /></label>
               <p className={`${styles.scheduleNote} ${styles.fullWidth}`}>The date is an estimate. No driver is assigned until you confirm the products are ready. Shortfall or delay requires customer approval.</p>
             </> : null}
           </div></fieldset>
@@ -326,7 +326,7 @@ export default function AgrimarketProducerProductsPage() {
                 <div className={styles.productTop}><span className={styles.productGlyph} data-group={product.product_group}><ProductIcon size={29} strokeWidth={1.4} /></span><div className={styles.productName}><h2>{product.name}</h2><p>{groupNames[product.product_group] || "Farm products"} · {product.unit_weight_kg == null ? "Weight not set" : `${product.unit_weight_kg} kg / ${product.selling_unit}`}</p></div></div>
                 <div className={styles.productPriceRow}><strong>{money(product.unit_price)}<small>/ {product.selling_unit}</small></strong><span className={`${styles.badge} ${product.is_active ? styles.activeBadge : ""}`}>{!product.is_active && <Pause size={10} />}{!product.is_active ? "Off" : product.remaining_quantity <= 0 ? "Sold out" : "On"}</span></div>
                 <div className={styles.stockStats}><div><strong>{product.remaining_quantity} <small>{product.selling_unit}</small></strong><span>Available to reserve</span></div><div><strong>{product.reserved_quantity} <small>{product.selling_unit}</small></strong><span>Reserved</span></div><div><strong>{product.sold_quantity} <small>{product.selling_unit}</small></strong><span>Sold</span></div></div>
-                {product.availability_mode === "scheduled_harvest" && <div className={styles.scheduleNote}><strong>{scheduledTitle([product])}</strong><br />Order cutoff: {formatDate(product.harvest_order_cutoff_at)}<br />Expected: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}</div>}
+                {product.availability_mode === "scheduled_harvest" && <div className={styles.scheduleNote}><strong>{scheduledTitle([product])}</strong><br />Order cutoff: {formatDate(product.harvest_order_cutoff_at)}<br />Expected: {formatDate(product.harvest_start_at)}{estimatedHarvestEnd(product.harvest_start_at, product.harvest_end_at) ? ` to ${formatDate(estimatedHarvestEnd(product.harvest_start_at, product.harvest_end_at))}` : ""}{!product.harvest_end_at ? " (estimated one-hour window)" : ""}</div>}
               </div>
               <div className={styles.stockControls}>
                   <form className={styles.editRow} onSubmit={(event) => { event.preventDefault(); void productAction({ action: "set_available_quantity", product_id: product.id, available_quantity: Number(stockDraft[product.id]) }, `stock-${product.id}`); }}><label>Available now ({product.selling_unit})<input aria-label={`Available ${product.selling_unit} for ${product.name}`} required type="number" min="0" step="0.01" value={stockDraft[product.id] ?? ""} onChange={(event) => setStockDraft((current) => ({ ...current, [product.id]: event.target.value }))} /></label><button disabled={Boolean(busy)} className={styles.secondaryButton}>{busy === `stock-${product.id}` ? "Saving..." : "Save stock"}</button></form>

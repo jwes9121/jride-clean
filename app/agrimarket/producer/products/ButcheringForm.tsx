@@ -53,7 +53,7 @@ export function ButcheringForm({ accessCode, headers, onSaved, onClose }: { acce
           <label>Animal type<select value={draft.species} onChange={event => setDraft({ ...draft, species: event.target.value })}>{["Pig", "Goat", "Carabao", "Cattle", "Sheep"].map(species => <option key={species}>{species}</option>)}</select></label>
           <label>Breed (optional)<input maxLength={80} value={draft.breed} onChange={event => setDraft({ ...draft, breed: event.target.value })} /></label>
           <label>Butchering date & time<input required type="datetime-local" value={draft.butcher_start_at} onChange={event => setDraft({ ...draft, butcher_start_at: event.target.value })} /></label>
-          <label>Expected finish (optional)<input type="datetime-local" min={draft.butcher_start_at || undefined} value={draft.butcher_end_at} onChange={event => setDraft({ ...draft, butcher_end_at: event.target.value })} /></label>
+          <label>Expected finish (defaults to 1 hour later)<input type="datetime-local" min={draft.butcher_start_at || undefined} value={draft.butcher_end_at} onChange={event => setDraft({ ...draft, butcher_end_at: event.target.value })} /></label>
           <label>Accept reservations until<input required type="datetime-local" max={draft.butcher_start_at || undefined} value={draft.order_cutoff_at} onChange={event => setDraft({ ...draft, order_cutoff_at: event.target.value })} /></label>
           <p className={`${styles.fieldHint} self-center`}>All times are Philippine time. Reservations close before butchering starts. Confirm the actual meat and load before a driver is assigned.</p>
         </div></fieldset>
