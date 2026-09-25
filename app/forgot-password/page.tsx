@@ -9,6 +9,7 @@ function isValidEmail(value: string): boolean {
 }
 
 export default function ForgotPasswordPage() {
+  const [phone, setPhone] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
@@ -17,6 +18,10 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setMsg(null);
 
+    if (!phone.trim()) {
+      setMsg("Enter the mobile number used to sign in.");
+      return;
+    }
     const normalizedEmail = email.trim().toLowerCase();
     if (!isValidEmail(normalizedEmail)) {
       setMsg("Enter a valid email address.");
@@ -28,7 +33,7 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/public/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail }),
+        body: JSON.stringify({ phone: phone.trim(), email: normalizedEmail }),
       });
 
       const j = await res.json().catch(() => ({}));
@@ -37,7 +42,7 @@ export default function ForgotPasswordPage() {
         return;
       }
 
-      setMsg(j?.message || "If that email exists, a reset link has been sent.");
+      setMsg(j?.message || "If these details match an account, a reset link will be emailed. Finish the reset before signing in.");
     } catch (err: any) {
       setMsg(err?.message || "Unable to send reset link.");
     } finally {
@@ -50,14 +55,28 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md rounded-2xl border border-black/10 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-semibold mb-1">Forgot Password</h1>
         <p className="text-sm opacity-70 mb-6">
-          Enter the email address linked to your JRide account. We will send a reset link if the account exists.
+          Enter the mobile number you use to sign in and the email linked to that same account. Resetting a different account will not change this number’s password.
         </p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="text-sm opacity-80">Email address</label>
+            <label htmlFor="recovery-phone" className="text-sm opacity-80">Registered mobile number</label>
+            <input
+              id="recovery-phone"
+              className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 outline-none"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+              type="tel"
+              autoComplete="tel"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="recovery-email" className="text-sm opacity-80">Linked email address</label>
             <input
               className="mt-1 w-full rounded-xl border border-black/10 px-3 py-2 outline-none"
+              id="recovery-email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
@@ -86,6 +105,8 @@ export default function ForgotPasswordPage() {
             {loading ? "Sending..." : "Send reset link"}
           </button>
         </form>
+
+        <p className="mt-4 text-sm opacity-70">If you cannot access the email linked to this mobile number, contact JRide support.</p>
 
         <div className="mt-4 text-center text-sm opacity-70">
           Remember your password?{" "}

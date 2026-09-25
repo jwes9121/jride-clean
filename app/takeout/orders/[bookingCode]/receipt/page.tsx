@@ -1,4 +1,5 @@
 "use client";
+import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -90,6 +91,7 @@ export default function TakeoutReceiptPage({ params }: PageProps) {
           `/api/orders/${encodeURIComponent(bookingCode)}`,
           {
             method: "GET",
+            headers: passengerAuthHeaders(),
             cache: "no-store",
           }
         );
@@ -210,9 +212,7 @@ export default function TakeoutReceiptPage({ params }: PageProps) {
         `/api/orders/${encodeURIComponent(bookingCode)}/rating`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: passengerAuthHeaders(true),
           body: JSON.stringify({
             rating,
             comment: comment || null,

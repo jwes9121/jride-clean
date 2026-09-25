@@ -32,6 +32,10 @@ async function forwardToCanonicalOrders(req: NextRequest, method: "GET" | "POST"
   const headers: Record<string, string> = { "content-type": "application/json" };
   const cookie = req.headers.get("cookie");
   if (cookie) headers.cookie = cookie;
+  for (const name of ["authorization", "x-device-id"]) {
+    const value = req.headers.get(name);
+    if (value) headers[name] = value;
+  }
 
   const forwarded = await fetch(url.toString(), {
     method,

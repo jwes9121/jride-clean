@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
+import { normalizeTrips } from "@/lib/passenger/history";
 import { useRouter } from "next/navigation";
 
 type TripStatus = "completed" | "cancelled" | "pending" | string;
@@ -20,7 +22,7 @@ type TripSummary = {
 };
 
 const EMPTY = "--";
-const LAST_TRIPS_KEY = "JRIDE_LAST_TRIPS_V1";
+
 
 function normalizeText(v: any): string {
   if (v === null || typeof v === "undefined") return EMPTY;
@@ -159,17 +161,22 @@ export default function TripDetailPage(props: { params: { ref: string } }) {
   const [toast, setToast] = React.useState<string>("");
 
   React.useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      const raw = window.localStorage.getItem(LAST_TRIPS_KEY);
-      if (!raw) { setTrip(null); return; }
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) { setTrip(null); return; }
-      const found = arr.find((x: any) => String(x?.ref || "") === ref) || null;
-      setTrip(found);
-    } catch {
-      setTrip(null);
+    let active = true;
+    setTrip(null);
+    async function load() {
+      try {
+        const response = await fetch("/api/rides/list?booking_code=" + encodeURIComponent(ref), {
+          cache: "no-store", headers: passengerAuthHeaders(),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.message || "Unable to load your trip.");
+        if (active) setTrip(normalizeTrips(body).find(row => row.ref === ref) || null);
+      } catch {
+        if (active) setTrip(null);
+      }
     }
+    void load();
+    return () => { active = false; };
   }, [ref]);
 
   React.useEffect(() => {
@@ -210,9 +217,9 @@ export default function TripDetailPage(props: { params: { ref: string } }) {
 
         {!trip ? (
           <div className="mt-6 rounded-2xl border border-black/10 bg-white p-4">
-            <div className="font-semibold">Trip not found on this device</div>
+            <div className="font-semibold">Trip unavailable</div>
             <div className="text-sm opacity-70 mt-1">
-              Please go back to History to reload your trips.
+              Go back to History to reload your trips, or sign in again.
             </div>
           </div>
         ) : (

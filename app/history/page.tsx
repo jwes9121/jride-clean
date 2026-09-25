@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
+import { normalizeTrips } from "@/lib/passenger/history";
 import BottomNavigation from "@/components/BottomNavigation";
 
 type TripStatus = "completed" | "cancelled" | "pending" | string;
@@ -30,7 +32,7 @@ type FavRoute = {
 
 const EMPTY = "--";
 const FAV_KEY = "JRIDE_FAVORITE_ROUTES_V1";
-const LAST_TRIPS_KEY = "JRIDE_LAST_TRIPS_V1";
+
 /* ================= JRIDE_P3C_A_PLUS_C_BEGIN =================
    UI-only:
    - Cache last loaded trips (for /history/[ref])
@@ -272,79 +274,11 @@ function computePayment(r: any): string | undefined {
   return undefined;
 }
 
-function normalizeTrips(payload: any): TripSummary[] {
-  const arr: any[] =
-    (Array.isArray(payload) ? payload : null) ||
-    (payload && Array.isArray(payload.data) ? payload.data : null) ||
-    (payload && Array.isArray(payload.items) ? payload.items : null) ||
-    (payload && Array.isArray(payload.rides) ? payload.rides : null) ||
-    [];
 
-  const out: TripSummary[] = arr.map((r) => {
-    const ref = safeStr(pickFirst(r, ["booking_code", "code", "ref", "reference", "id"]), EMPTY);
-
-    const pickup = safeStr(
-      pickFirst(r, ["from_label", "pickup_address", "pickup", "from_address", "from", "origin"]),
-      EMPTY
-    );
-
-    const dropoff = safeStr(
-      pickFirst(r, ["to_label", "dropoff_address", "dropoff", "to_address", "to", "destination"]),
-      EMPTY
-    );
-
-    const farePhp =
-      safeNum(pickFirst(r, ["verified_fare"])) ??
-      safeNum(pickFirst(r, ["passenger_fare_response"])) ??
-      safeNum(pickFirst(r, ["proposed_fare"])) ??
-      safeNum(pickFirst(r, ["fare", "total_fare", "total"])) ??
-      computeFareFromComponents(r);
-
-    const distanceKm = safeNum(pickFirst(r, ["distance_km", "distanceKm"]));
-
-    const status = safeStr(pickFirst(r, ["status", "ride_status", "state"]), "pending");
-    const payment = computePayment(r);
-
-    const created = pickFirst(r, ["created_at", "requested_at", "started_at", "completed_at", "updated_at"]);
-    const dateLabel = fmtDateLabel(created);
-
-    const sortTs =
-      parseTs(pickFirst(r, ["updated_at"])) ??
-      parseTs(pickFirst(r, ["completed_at"])) ??
-      parseTs(pickFirst(r, ["created_at"])) ??
-      parseTs(created) ??
-      0;
-
-    return {
-      ref: normalizeText(ref),
-      dateLabel: normalizeText(dateLabel),
-      service: "Ride",
-      pickup: normalizeText(pickup),
-      dropoff: normalizeText(dropoff),
-      payment,
-      farePhp,
-      distanceKm,
-      status: normalizeText(status),
-      sortTs,
-      _raw: r,
-    };
-  });
-
-  const completed = out.filter((t) => String(t.status).toLowerCase() === "completed");
-  if (completed.length > 0) return completed;
-
-  const doneLike = out.filter((t) => {
-    const s = String(t.status).toLowerCase();
-    return s === "done" || s === "finished" || s === "complete";
-  });
-  if (doneLike.length > 0) return doneLike;
-
-  return out;
-}
-
-function loadFavs(): FavRoute[] {
+function loadFavs(owner: string): FavRoute[] {
+  if (!owner) return [];
   try {
-    const raw = localStorage.getItem(FAV_KEY) || "";
+    const raw = localStorage.getItem(FAV_KEY + ":" + owner) || "";
     const j = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(j)) return [];
     return j
@@ -361,9 +295,10 @@ function loadFavs(): FavRoute[] {
   }
 }
 
-function saveFavs(items: FavRoute[]) {
+function saveFavs(items: FavRoute[], owner: string) {
+  if (!owner) return;
   try {
-    localStorage.setItem(FAV_KEY, JSON.stringify(items));
+    localStorage.setItem(FAV_KEY + ":" + owner, JSON.stringify(items));
   } catch {}
 }
 
@@ -375,6 +310,7 @@ function makeFavId(from: string, to: string) {
 
 export default function HistoryPage() {
   const router = useRouter();
+  const [historyOwner, setHistoryOwner] = useState("");
   /* ================= JRIDE_P3A_P3B_HISTORY_FAV_BEGIN =================
      P3A: Ride Again (go to /ride?from=&to=)
      P3B: Favorites (localStorage)
@@ -386,8 +322,9 @@ export default function HistoryPage() {
   const [favToast, setFavToast] = useState<string>("");
 
   function loadFavRoutes(): FavRoute[] {
+    if (!historyOwner) return [];
     try {
-      const raw = (typeof window !== "undefined") ? window.localStorage.getItem(FAV_KEY) : null;
+      const raw = (typeof window !== "undefined") ? window.localStorage.getItem(FAV_KEY + ":" + historyOwner) : null;
       if (!raw) return [];
       const arr = JSON.parse(raw);
       if (!Array.isArray(arr)) return [];
@@ -407,9 +344,10 @@ export default function HistoryPage() {
   }
 
   function saveFavRoutes(next: FavRoute[]) {
+    if (!historyOwner) return;
     try {
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(FAV_KEY, JSON.stringify(next));
+        window.localStorage.setItem(FAV_KEY + ":" + historyOwner, JSON.stringify(next));
       }
     } catch {
       // ignore
@@ -421,7 +359,7 @@ export default function HistoryPage() {
     // newest-first
     loaded.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
     setFavRoutes(loaded);
-  }, []);
+  }, [historyOwner]);
 
   useEffect(() => {
     if (!favToast) return;
@@ -479,18 +417,6 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string>("");
   const [trips, setTrips] = useState<TripSummary[]>([]);
-  // P3C: cache last loaded trips for /history/[ref] (UI-only)
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      // Keep it small + safe: only cache arrays
-      // @ts-ignore
-      if (Array.isArray(trips)) window.localStorage.setItem(LAST_TRIPS_KEY, JSON.stringify(trips));
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trips]);
   const [selectedRef, setSelectedRef] = useState<string>("");
 
   const [toast, setToast] = useState<string>("");
@@ -500,8 +426,8 @@ export default function HistoryPage() {
 
   useEffect(() => {
     // Load favorites once (UI-only)
-    setFavs(loadFavs());
-  }, []);
+    setFavs(loadFavs(historyOwner));
+  }, [historyOwner]);
 
   useEffect(() => {
     let alive = true;
@@ -510,7 +436,7 @@ export default function HistoryPage() {
       setLoading(true);
       setLoadErr("");
       try {
-        const res = await fetch("/api/rides/list", { method: "GET", cache: "no-store" });
+        const res = await fetch("/api/rides/list", { method: "GET", cache: "no-store", headers: passengerAuthHeaders() });
         const j = await res.json().catch(() => ({}));
 
         if (!res.ok) {
@@ -521,6 +447,7 @@ export default function HistoryPage() {
         const norm = normalizeTrips(j);
         if (!alive) return;
 
+        setHistoryOwner(String(j.passenger_user_id || ""));
         setTrips(norm);
         setSelectedRef((prev) => {
           if (prev && norm.some((t) => t.ref === prev)) return prev;
@@ -529,6 +456,7 @@ export default function HistoryPage() {
       } catch (e: any) {
         if (!alive) return;
         setLoadErr(normalizeText(e?.message || "Failed to load trips."));
+        setHistoryOwner("");
         setTrips([]);
         setSelectedRef("");
       } finally {
@@ -815,14 +743,14 @@ export default function HistoryPage() {
                 })}
               </div>
 
-              <div className="mt-3 text-xs opacity-60">Data from /api/rides/list.</div>
+
             </div>
 
             <div className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-semibold">Receipt</div>
-                  <div className="text-xs opacity-60">Passenger-side receipt (wired)</div>
+
                 </div>
 
                 {selectedTrip ? (
@@ -868,13 +796,6 @@ export default function HistoryPage() {
                         disabled={!selectedTrip}
                         onClick={() => {
                           if (!selectedTrip) return;
-                          try {
-                            if (typeof window !== "undefined") {
-                              // cache once more to improve reliability
-                              // @ts-ignore
-                              if (Array.isArray(trips)) window.localStorage.setItem(LAST_TRIPS_KEY, JSON.stringify(trips));
-                            }
-                          } catch {}
                           router.push("/history/" + encodeURIComponent(String((selectedTrip as any).ref || "")));
                         }}
                         className={
@@ -885,18 +806,7 @@ export default function HistoryPage() {
                       >
                         Open details
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => rideAgain((selectedTrip as any)?.pickup, (selectedTrip as any)?.dropoff)}
-                        disabled={!selectedTrip}
-                        className={
-                          "rounded-xl border border-black/10 px-3 py-2 text-xs font-semibold " +
-                          (!selectedTrip ? "opacity-50" : "hover:bg-black/5")
-                        }
-                        title="Go to Ride page with the same pickup/dropoff"
-                      >
-                        Ride again
-                      </button>
+
 
                       <button
                         type="button"
@@ -991,13 +901,7 @@ export default function HistoryPage() {
                     </div>
                   </div>
 
-                  <div className="mt-4 text-xs opacity-60">
-                    P3A+P3B: Ride Again + Favorites stored locally (device only).
-                  </div>
 
-                  <div className="mt-2 text-xs opacity-60">
-                    Note: Booking page prefill requires /ride to read ?from=&to= (next step once you upload app/ride/page.tsx).
-                  </div>
                 </div>
               ) : (
                 <div className="mt-4 text-sm opacity-70">No trip selected.</div>

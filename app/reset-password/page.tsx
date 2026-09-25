@@ -49,7 +49,7 @@ function ResetPasswordForm() {
       }
 
       setDone(true);
-      setMsg("Password has been reset successfully. You can now sign in.");
+      setMsg(j?.message || "Password has been reset successfully. Sign in with this account’s registered mobile number.");
     } catch (e: any) {
       setMsg(e?.message || "Reset failed.");
     } finally {

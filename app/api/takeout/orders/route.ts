@@ -1,3 +1,4 @@
+import { requirePassenger } from "@/lib/passenger/serverAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -169,6 +170,8 @@ function exposePickupBreakdown(row: any): any {
 
 export async function GET(req: NextRequest) {
   try {
+    const passenger = await requirePassenger(req);
+    if (passenger.ok === false) return passenger.response;
     const serviceSupabase = createServiceSupabase();
     const url = new URL(req.url);
     const orderId = text(url.searchParams.get("order_id") || url.searchParams.get("orderId") || url.searchParams.get("booking_id") || url.searchParams.get("bookingId") || url.searchParams.get("id"));
@@ -177,6 +180,7 @@ export async function GET(req: NextRequest) {
     let q = serviceSupabase
       .from("bookings")
       .select(TAKEOUT_ORDER_SELECT)
+      .eq("created_by_user_id", passenger.user.id)
       .eq("service_type", "takeout")
       .order("created_at", { ascending: false })
       .limit(10);
@@ -215,6 +219,7 @@ export async function GET(req: NextRequest) {
       const expiredUpdate = await serviceSupabase
         .from("bookings")
         .update(expiredPatch)
+        .eq("created_by_user_id", passenger.user.id)
         .in("id", expiredIds)
         .eq("service_type", "takeout")
         .or(
@@ -248,6 +253,7 @@ export async function GET(req: NextRequest) {
           const refreshRes = await serviceSupabase
             .from("bookings")
             .select(TAKEOUT_ORDER_SELECT)
+            .eq("created_by_user_id", passenger.user.id)
             .in("id", skippedExpiredIds)
             .eq("service_type", "takeout");
 

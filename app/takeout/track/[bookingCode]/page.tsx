@@ -147,7 +147,7 @@ function currentPassengerAuthHeaders(): Record<string, string> {
 }
 
 async function getJson(url: string) {
-  const res = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
+  const res = await fetch(url, { method: "GET", headers: { Accept: "application/json", ...currentPassengerAuthHeaders() }, cache: "no-store" });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || (j && j.ok === false)) {
     throw new Error(j?.message || j?.error || "HTTP " + res.status);
