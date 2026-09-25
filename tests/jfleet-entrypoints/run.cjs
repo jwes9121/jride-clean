@@ -56,10 +56,13 @@ check('owner review and quote acknowledgments retained', () => {
   assert.ok(reviews.includes('busy||!confirmQuote'));
 });
 check("owner base payment uses durable form instead of legacy sender", () => {assert.ok(owner.includes("<OwnerPaymentForm"));assert.ok(!owner.includes("async function confirmPayment("));});
+check("owner add-on payment uses durable form instead of legacy sender", () => {
+  assert.ok(owner.includes("<OwnerAddonPaymentForm"));
+  assert.ok(!owner.includes("async function confirmAddonPayment("));
+});
 const preserved = {
   "assign": "c31972d574c58fe4c17e438feaffb78ffe26dabbd31733cc907e3efccd83e27c",
-  "proposeAddon": "25d78bbd3f49ccb85c4280a6c517fedbda830065abf5b88be16520e3cd78c4cd",
-  "confirmAddonPayment": "6cb88e48df3485dff66bce1f12f1f5280a1eb0ee27f4e1d3227dc23891d03d28"
+  "proposeAddon": "25d78bbd3f49ccb85c4280a6c517fedbda830065abf5b88be16520e3cd78c4cd"
 };
 for (const [name, expected] of Object.entries(preserved)) {
   check('owner ' + name + ' implementation unchanged', () => {
