@@ -62,7 +62,7 @@ export async function POST(req: Request) {
   }
 
   const admin = supabaseAdmin({ noStore: true });
-  const result = await admin.rpc("jfleet_driver_location_v1", {
+  const result = await admin.rpc("jfleet_driver_location_security_v1", {
     p_driver_id: auth.driver.id,
     p_booking_id: bookingId,
     p_lat: lat,
@@ -82,7 +82,9 @@ export async function POST(req: Request) {
         code: "JFLEET_LOCATION_REJECTED",
         message: String(result.error.message || "").includes("ACTIVE_DRIVER_BOOKING")
           ? "Location tracking is allowed only for your assigned active JFleet trip."
-          : "This JFleet location update could not be recorded.",
+          : String(result.error.message || "").includes("SECURITY_ROUTE_NOT_BOUND")
+            ? "This confirmed JFleet booking does not have an approved route bound to it."
+            : "This JFleet location update could not be recorded.",
       },
       { status: 409, headers }
     );
