@@ -6,18 +6,22 @@ const ts = require('typescript');
 const filename = path.resolve(__dirname,'../../app/api/agrimarket/orders/sections/route.ts');
 const sqlFile = path.resolve(__dirname,'../../supabase/migrations/20260923124023_agrimarket_passenger_order_sections_v1.sql');
 const sql = fs.readFileSync(sqlFile,'utf8');
-function body(view='deliveries') { return {ok:true,layout:'sections_v1',view,page:0,total_count:1,active_count:3,counts:{deliveries:1,reservations:2,history:4,needs_response:0},server_now:'2026-09-23T12:00:00Z',orders:[{order_code:'test',fulfillment_mode:view==='reservations'?'scheduled_harvest':'always_available',items:[{product_name:'Meat',product_group:'meat',quantity:1}],cancel_reason:'Reserved cut sold outside JRide',store:{name:'Test',town:'Lamut'}}]}; }
+function body(view='deliveries') { return {ok:true,layout:'sections_v1',view,page:0,total_count:1,active_count:3,counts:{deliveries:1,reservations:2,history:4,needs_response:0},server_now:'2026-09-23T12:00:00Z',orders:[{order_code:'test',status:'ready_for_dispatch',preferred_vehicle_type:'tricycle',fulfillment_mode:view==='reservations'?'scheduled_harvest':'always_available',items:[{product_name:'Meat',product_group:'meat',quantity:1}],cancel_reason:'Reserved cut sold outside JRide',store:{name:'Test',town:'Lamut'}}]}; }
 function harness(options={}) {
  const calls=[], module={exports:{}};
  const schedule = {exports:{}};
+ const wait = {exports:{}};
  const compile = f => ts.transpileModule(fs.readFileSync(f,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
  vm.runInNewContext(compile(path.resolve(__dirname,'../../lib/agrimarket/schedule.ts')),{module:schedule,exports:schedule.exports});
- vm.runInNewContext(compile(filename),{module,exports:module.exports,require:n=> {
+ vm.runInNewContext(compile(path.resolve(__dirname,'../../lib/agrimarket/dispatchWait.ts')),{module:wait,exports:wait.exports,Date,Number,String});
+ vm.runInNewContext(compile(filename),{module,exports:module.exports,Date,require:n=> {
   if(n==='next/server') return {};
   if(n==='@/lib/agrimarket/schedule') return schedule.exports;
+  if(n==='@/lib/agrimarket/dispatchWait') return wait.exports;
   if(n==='../../_lib/server') return {agrimarketEnabled:()=>!options.disabled,agrimarketDisabledResponse:()=>({status:503}),
    requireAgrimarketPassenger:async()=>options.denied?{ok:false,response:{status:401}}:{ok:true,user:{id:'verified-owner'}},
-   createServiceSupabase:()=>({rpc:async(name,args)=>{calls.push({name,args});if(options.throw) throw Error('private token');return options.result??{data:body(args.p_view),error:null};}}),
+   createServiceSupabase:()=>({rpc:async(name,args)=>{calls.push({name,args});if(options.throw) throw Error('private token');return options.result??{data:body(args.p_view),error:null};},
+    from:name=>{const q={select:()=>q,eq:(key,value)=>{calls.push({filter:key,value});return q},in:()=>q,then:resolve=>Promise.resolve({data:options.waitRows||[],error:null}).then(resolve)};calls.push({table:name});return q}}),
    jsonNoStore:(status,body)=>({status,body})};
   throw Error(n);
  }},{filename});
@@ -35,6 +39,13 @@ async function check(name,fn){await fn();passed++;console.log('PASS '+name)}
  await check('meat cards use the actual shared schedule formatter',async()=>{assert.equal((await harness().get('?view=reservations')).body.orders[0].scheduled_activity,'butchering')});
  await check('ordinary cards have no scheduled activity',async()=>{assert.equal((await harness().get()).body.orders[0].scheduled_activity,null)});
  await check('human cancellation reasons and public store towns retained',async()=>{const r=await harness().get('?view=history');assert.equal(r.body.orders[0].cancel_reason,'Reserved cut sold outside JRide');assert.equal(r.body.orders[0].store.town,'Lamut')});
+ await check('fresh matching driver wait reason is owner-scoped and visible only for the current vehicle',async()=>{
+  const row={order_code:'test',status:'ready_for_dispatch',preferred_vehicle_type:'tricycle',dispatch_wait_code:'outside_pickup_range',dispatch_wait_vehicle_type:'tricycle',dispatch_checked_at:new Date().toISOString()};
+  const h=harness({waitRows:[row]});const r=await h.get();
+  assert.match(r.body.orders[0].dispatch_wait.message,/10 km road pickup limit/);
+  assert(h.calls.some(c=>c.filter==='customer_user_id'&&c.value==='verified-owner'));
+  assert.equal((await harness({waitRows:[{...row,dispatch_wait_vehicle_type:'motorcycle'}]}).get()).body.orders[0].dispatch_wait,null);
+ });
  await check('database errors and exceptions are bounded, not fake empty orders',async()=>{for(const o of [{throw:true},{result:{error:{message:'private sql'},data:null}}]){const r=await harness(o).get();assert.equal(r.status,503);assert(!JSON.stringify(r).includes('private'));assert(!('orders' in r.body))}});
  await check('malformed payload or wrong view does not claim a loaded section',async()=>{for(const data of [null,{}, {...body(),view:'history'},{...body(),orders:null},{...body(),counts:null},{...body(),active_count:-1}]) assert.equal((await harness({result:{data,error:null}}).get()).status,503)});
  await check('SQL is service-only and invoker-security, not executable by browser roles',()=>{assert(sql.includes('STABLE SECURITY INVOKER'));assert(sql.includes('FROM PUBLIC,anon,authenticated'));assert(sql.includes('TO service_role'))});
