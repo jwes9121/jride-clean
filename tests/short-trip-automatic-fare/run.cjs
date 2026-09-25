@@ -265,6 +265,58 @@ const sampled = elevation.sampleRoadLineGeometry({
 });
 assert.strictEqual(sampled.length, 3);
 
+const elevationGeometry = {
+  type: "LineString",
+  coordinates: [[121, 16], [121.001, 16.001], [121.002, 16.002]],
+};
+const previousNodeEnv = process.env.NODE_ENV;
+const previousOpenMeteoKey = process.env.OPEN_METEO_API_KEY;
+const previousOpenMeteoEndpoint = process.env.OPEN_METEO_ELEVATION_ENDPOINT;
+const previousFetch = global.fetch;
+try {
+  process.env.NODE_ENV = "production";
+  delete process.env.OPEN_METEO_API_KEY;
+  delete process.env.OPEN_METEO_ELEVATION_ENDPOINT;
+  let fetchCalls = 0;
+  global.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error("fetch should not run without production elevation credentials");
+  };
+  const missingProvider = await elevation.getValidatedCumulativePositiveElevationGain(
+    elevationGeometry,
+    0.2
+  );
+  assert.strictEqual(missingProvider.status, "unavailable");
+  assert.strictEqual(missingProvider.validationReason, "elevation_provider_credentials_missing");
+  assert.strictEqual(fetchCalls, 0);
+
+  process.env.OPEN_METEO_API_KEY = "test-open-meteo-key";
+  global.fetch = async (requestUrl) => {
+    fetchCalls += 1;
+    assert.ok(String(requestUrl).startsWith("https://customer-api.open-meteo.com/v1/elevation?"));
+    assert.ok(String(requestUrl).includes("apikey=test-open-meteo-key"));
+    return {
+      ok: true,
+      json: async () => ({ elevation: [100, 120, 130] }),
+    };
+  };
+  const customerProvider = await elevation.getValidatedCumulativePositiveElevationGain(
+    elevationGeometry,
+    0.2
+  );
+  assert.strictEqual(customerProvider.status, "validated");
+  assert.strictEqual(customerProvider.cumulativePositiveElevationGainM, 30);
+  assert.strictEqual(fetchCalls, 1);
+} finally {
+  if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+  else process.env.NODE_ENV = previousNodeEnv;
+  if (previousOpenMeteoKey === undefined) delete process.env.OPEN_METEO_API_KEY;
+  else process.env.OPEN_METEO_API_KEY = previousOpenMeteoKey;
+  if (previousOpenMeteoEndpoint === undefined) delete process.env.OPEN_METEO_ELEVATION_ENDPOINT;
+  else process.env.OPEN_METEO_ELEVATION_ENDPOINT = previousOpenMeteoEndpoint;
+  global.fetch = previousFetch;
+}
+
 const pickupFeeCompatibility = fare.computeShortTripAutomaticFare({
   roadDistanceKm: 1,
   validatedCumulativePositiveElevationGainM: 25,

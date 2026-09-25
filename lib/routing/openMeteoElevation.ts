@@ -6,6 +6,8 @@ const MAX_ELEVATION_SAMPLES = 100;
 const MIN_ELEVATION_M = -1000;
 const MAX_ELEVATION_M = 10000;
 const ELEVATION_REQUEST_TIMEOUT_MS = 5000;
+const OPEN_METEO_PUBLIC_ELEVATION_ENDPOINT = "https://api.open-meteo.com/v1/elevation";
+const OPEN_METEO_CUSTOMER_ELEVATION_ENDPOINT = "https://customer-api.open-meteo.com/v1/elevation";
 
 export type ElevationValidationStatus = "validated" | "unavailable" | "invalid";
 
@@ -174,10 +176,47 @@ export function validateElevationValues(
   };
 }
 
-function elevationUrl(points: ElevationPoint[]): string {
-  const latitude = points.map((point) => point.latitude.toFixed(6)).join(",");
-  const longitude = points.map((point) => point.longitude.toFixed(6)).join(",");
-  return `https://api.open-meteo.com/v1/elevation?latitude=${encodeURIComponent(latitude)}&longitude=${encodeURIComponent(longitude)}`;
+function elevationUrl(points: ElevationPoint[]): string | null {
+  const apiKey = String(process.env.OPEN_METEO_API_KEY || "").trim();
+  const configuredEndpoint = String(process.env.OPEN_METEO_ELEVATION_ENDPOINT || "").trim();
+  let endpoint = configuredEndpoint;
+
+  if (!endpoint) {
+    if (apiKey) {
+      endpoint = OPEN_METEO_CUSTOMER_ELEVATION_ENDPOINT;
+    } else if (process.env.NODE_ENV === "production") {
+      return null;
+    } else {
+      endpoint = OPEN_METEO_PUBLIC_ELEVATION_ENDPOINT;
+    }
+  }
+
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== "https:") return null;
+    parsed.search = "";
+    parsed.searchParams.set(
+      "latitude",
+      points.map((point) => point.latitude.toFixed(6)).join(",")
+    );
+    parsed.searchParams.set(
+      "longitude",
+      points.map((point) => point.longitude.toFixed(6)).join(",")
+    );
+    if (apiKey) parsed.searchParams.set("apikey", apiKey);
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function elevationProviderUnavailableReason(): string {
+  const apiKey = String(process.env.OPEN_METEO_API_KEY || "").trim();
+  const configuredEndpoint = String(process.env.OPEN_METEO_ELEVATION_ENDPOINT || "").trim();
+  if (!apiKey && !configuredEndpoint && process.env.NODE_ENV === "production") {
+    return "elevation_provider_credentials_missing";
+  }
+  return "elevation_provider_endpoint_invalid";
 }
 
 export async function getValidatedCumulativePositiveElevationGain(
@@ -189,11 +228,16 @@ export async function getValidatedCumulativePositiveElevationGain(
     return invalidResult("invalid", "road_route_geometry_unavailable");
   }
 
+  const url = elevationUrl(points);
+  if (!url) {
+    return invalidResult("unavailable", elevationProviderUnavailableReason(), points.length, 0);
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), ELEVATION_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(elevationUrl(points), {
+    const response = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
     });
