@@ -212,14 +212,22 @@ export function confirmAddonPaymentSlot(
     if (!old || old.generation !== generation) {
       throw new Error("Another tab changed this add-on payment form. Reload before doing anything else.");
     }
-    if (
-      old.phase === "pending" &&
-      old.request &&
-      old.request.idempotency_key !== receipt.idempotency_key
-    ) {
-      // Another device/browser may already have recorded this one-time add-on.
-      // The authoritative addon-bound receipt wins.
-    }
-    return { ...old, phase: "confirmed", request: old.request, receipt };
+    const request =
+      old.request ||
+      ({
+        amount: receipt.amount,
+        payment_channel: receipt.payment_channel,
+        payment_reference: receipt.payment_reference,
+        notes: receipt.notes,
+        booking_id: scope.booking_id,
+        addon_id: scope.addon_id,
+        expected_owner_id: scope.owner_user_id,
+        expected_partner_id: scope.partner_id,
+        idempotency_key: receipt.idempotency_key,
+      } satisfies AddonPaymentRequest);
+
+    // Another device/browser may already have recorded this one-time add-on.
+    // The authoritative addon-bound receipt wins even when its key differs.
+    return { ...old, phase: "confirmed", request, receipt };
   });
 }
