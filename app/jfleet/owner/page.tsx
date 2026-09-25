@@ -392,6 +392,15 @@ export default function JFleetOwnerPage() {
           </div>
         </header>
 
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/jfleet/owner/security"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 font-semibold text-red-900"
+          >
+            Security Monitoring
+          </Link>
+        </div>
+
         {error ? <p role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}</p> : null}
         {message ? <p role="status" className="rounded-xl bg-emerald-50 p-4 text-emerald-900">{message}</p> : null}
 
