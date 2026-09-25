@@ -229,7 +229,7 @@ export default function JFleetOwnerSecurityPage() {
                       onChange={(e) =>
                         setReasons((current) => ({ ...current, [event.id]: e.target.value }))
                       }
-                      placeholder="Reason required for resolve / approved detour"
+                      placeholder="Reason required for manual resolution"
                       className="mt-3 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                       maxLength={1000}
                     />
@@ -238,11 +238,6 @@ export default function JFleetOwnerSecurityPage() {
                       <button type="button" disabled={!!busy} onClick={() => void act(event.id, "acknowledge")} className="rounded-lg border bg-white px-3 py-2 text-sm font-bold disabled:opacity-50">
                         Acknowledge
                       </button>
-                      {event.event_type === "route_deviation" ? (
-                        <button type="button" disabled={!!busy} onClick={() => void act(event.id, "approve_detour")} className="rounded-lg bg-violet-800 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
-                          Approve Detour
-                        </button>
-                      ) : null}
                       <button type="button" disabled={!!busy} onClick={() => void act(event.id, "resolve")} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
                         Resolve
                       </button>
