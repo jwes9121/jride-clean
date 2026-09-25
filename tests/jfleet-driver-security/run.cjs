@@ -46,16 +46,16 @@ check('route recovery resolves deviation', migration.includes("'route_recovered'
 check('security RPCs revoked from clients', migration.includes('from public,anon,authenticated'));
 check('owner action verifies partner owner', migration.includes('owner_user_id=p_owner_user_id'));
 
-for (const [name, source, kind] of [
-  ['owner security page', ownerPage, ts.ScriptKind.TSX],
-  ['admin security page', adminPage, ts.ScriptKind.TSX],
-  ['driver location API', driverApi, ts.ScriptKind.TS],
-  ['owner security API', ownerApi, ts.ScriptKind.TS],
-  ['admin security API', adminApi, ts.ScriptKind.TS],
+for (const [name, fileName, source] of [
+  ['owner security page', 'app/jfleet/owner/security/page.tsx', ownerPage],
+  ['admin security page', 'app/admin/jfleet/security/page.tsx', adminPage],
+  ['driver location API', 'app/api/jfleet/driver/location/route.ts', driverApi],
+  ['owner security API', 'app/api/jfleet/owner/security/route.ts', ownerApi],
+  ['admin security API', 'app/api/admin/jfleet/security/route.ts', adminApi],
 ]) {
   check(name + ' is ASCII', !/[^\x00-\x7F]/.test(source));
   const result = ts.transpileModule(source, {
-    fileName: name,
+    fileName,
     compilerOptions: {
       jsx: ts.JsxEmit.ReactJSX,
       target: ts.ScriptTarget.ES2020,
@@ -63,6 +63,9 @@ for (const [name, source, kind] of [
     },
     reportDiagnostics: true,
   });
+  if (result.diagnostics.length) {
+    console.error(result.diagnostics.map((d) => String(d.messageText)).join(' | '));
+  }
   check(name + ' parses', result.diagnostics.length === 0);
 }
 
