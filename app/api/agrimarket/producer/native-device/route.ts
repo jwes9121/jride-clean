@@ -65,6 +65,19 @@ export async function POST(req: NextRequest) {
     if (result.error || result.data !== true) {
       return json(409, { ok: false, error: "DEVICE_REGISTRATION_FAILED" });
     }
+    // Old APKs omit this field and must never receive the new harvest event.
+    // Bind capability to the registration that just passed the existing
+    // installation secret, producer identity and session checks.
+    const capability = await admin.from("agrimarket_native_devices")
+      .update({ harvest_alerts_enabled: body.harvest_alerts_supported === true })
+      .eq("installation_id", body.installation_id)
+      .eq("producer_id", auth.producer.id)
+      .eq("secret_hash", secret)
+      .eq("session_hash", sessionHash)
+      .select("installation_id").maybeSingle();
+    if (capability.error || !capability.data) {
+      return json(503, { ok: false, error: "DEVICE_CAPABILITY_REGISTRATION_FAILED" });
+    }
     const ready = await admin.rpc("agrimarket_native_ready");
     return json(200, {
       ok: true,
