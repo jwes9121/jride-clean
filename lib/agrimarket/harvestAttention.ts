@@ -15,7 +15,7 @@ export function scheduledHarvestAttention(order: ScheduledReservation, nowMs: nu
   if (!Number.isFinite(nowMs)) return null;
   const start = Date.parse(String(order.harvest_expected_start_at || ""));
   const end = Date.parse(String(order.harvest_expected_end_at || ""));
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return null;
   if (nowMs >= end) return "overdue";
   if (nowMs >= start) return "in_window";
   return start - nowMs <= 30 * 60 * 1000 ? "due_soon" : null;
