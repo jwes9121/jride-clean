@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 export type ExpiredRegularRideWindow = {
   booking_id: string;
   booking_code: string | null;
-  previous_status: "assigned" | "accepted" | "fare_proposed";
+  previous_status: "assigned" | "accepted" | "fare_proposed" | "searching";
   new_status: "searching" | "cancelled";
   expired_driver_id: string | null;
   expires_at: string;

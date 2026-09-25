@@ -84,9 +84,40 @@ export async function GET(req: NextRequest) {
     const expiredRows = Array.isArray(expiryResult.data)
       ? (expiryResult.data as ExpiredRegularRideWindow[])
       : [];
+    const searchExpiryResult = await admin.rpc(
+      "expire_stale_searching_ride_windows_v1",
+      {
+        p_now: generatedAt,
+        p_limit: 200,
+      }
+    );
+
+    if (searchExpiryResult.error) {
+      console.error("[ride-expiry-recovery] searching expiry RPC failed", {
+        generatedAt,
+        code: searchExpiryResult.error.code || null,
+        message: searchExpiryResult.error.message,
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "RIDE_SEARCH_EXPIRY_SWEEP_FAILED",
+          message: searchExpiryResult.error.message,
+          generatedAt,
+          expiredCount: expiredRows.length,
+        },
+        { status: 500, headers: noStoreHeaders() }
+      );
+    }
+
+    const searchExpiredRows = Array.isArray(searchExpiryResult.data)
+      ? (searchExpiryResult.data as ExpiredRegularRideWindow[])
+      : [];
     const errors: SweepError[] = [];
     let assignmentExpiredCount = 0;
     let fareResponseExpiredCount = 0;
+    let searchExpiredCount = 0;
     let reassignedCount = 0;
     let waitingForDriverCount = 0;
     let claimedReassignmentCount = 0;
@@ -114,6 +145,17 @@ export async function GET(req: NextRequest) {
         expiresAt: row.expires_at,
         expiredDriverId: row.expired_driver_id,
         reassignmentOutcome: "queued",
+      });
+    }
+
+    for (const row of searchExpiredRows) {
+      searchExpiredCount += 1;
+      console.log("[JRIDE_RIDE_SEARCH_EXPIRED]", {
+        bookingId: row.booking_id,
+        bookingCode: row.booking_code,
+        previousStatus: row.previous_status,
+        expiresAt: row.expires_at,
+        outcome: "cancelled_no_driver",
       });
     }
 
@@ -145,9 +187,10 @@ export async function GET(req: NextRequest) {
           error: "RIDE_REASSIGNMENT_QUEUE_READ_FAILED",
           message: pendingResult.error.message,
           generatedAt,
-          expiredCount: expiredRows.length,
+          expiredCount: expiredRows.length + searchExpiredRows.length,
           assignmentExpiredCount,
           fareResponseExpiredCount,
+          searchExpiredCount,
         },
         { status: 500, headers: noStoreHeaders() }
       );
@@ -248,9 +291,10 @@ export async function GET(req: NextRequest) {
 
     console.log("[ride-expiry-recovery] cron completed", {
       generatedAt,
-      expiredCount: expiredRows.length,
+      expiredCount: expiredRows.length + searchExpiredRows.length,
       assignmentExpiredCount,
       fareResponseExpiredCount,
+      searchExpiredCount,
       pendingReassignmentCount: pendingRows.length,
       claimedReassignmentCount,
       claimRaceCount,
@@ -264,9 +308,10 @@ export async function GET(req: NextRequest) {
       {
         ok: errors.length === 0,
         generatedAt,
-        expiredCount: expiredRows.length,
+        expiredCount: expiredRows.length + searchExpiredRows.length,
         assignmentExpiredCount,
         fareResponseExpiredCount,
+        searchExpiredCount,
         pendingReassignmentCount: pendingRows.length,
         claimedReassignmentCount,
         claimRaceCount,
