@@ -1,5 +1,5 @@
 {
-  "version": 8,
+  "version": 9,
   "entries": [
     {
       "role": "passenger",
@@ -1076,9 +1076,9 @@
         "ilo": "Ti kadi naiskediul a harvest wenno butchering window ti oras ti delivery?"
       },
       "answer": {
-        "en": "No. It is the expected time for the farmer to harvest or butcher the products, not a guaranteed delivery time or a one-hour delivery promise. After the farmer reports the harvest or butchering ready and enters any remaining preparation time, JRide may offer the order to an eligible online driver. Driver travel and final preparation can overlap. Delivery depends on a driver accepting and the goods being ready for pickup. Check your order status for updates.",
-        "tl": "Hindi. Iyon ang inaasahang oras ng pag-ani o pagkatay, hindi garantisadong oras ng delivery o pangakong darating sa loob ng isang oras. Kapag iniulat ng farmer na handa na ang ani o katay at inilagay ang natitirang oras ng paghahanda, maaaring ialok ng JRide ang order sa eligible na online na driver. Maaaring sabay ang biyahe ng driver at huling paghahanda. Depende ang delivery sa pagtanggap ng driver at sa pagiging handa ng produkto sa pickup. Tingnan ang status ng order para sa mga update.",
-        "ilo": "Saan. Dayta ti namnamaen nga oras ti panagani wenno panagpartuat ti karne, saan a garantisado nga oras ti delivery wenno kari a maideliver iti uneg ti maysa nga oras. No naireport ti farmer a nakasagana ti ani wenno karne ken naitedna ti nabati nga oras ti panagsagana, mabalin nga ialok ti JRide ti order iti eligible nga online a driver. Mabalin nga agsabay ti biyahe ti driver ken ti maudi a panagsagana. Agdepende ti delivery iti panangawat ti driver ken iti pannakasagana dagiti produkto para iti pickup. Kitaen ti status ti order para kadagiti update."
+        "en": "No. It is the farmer's expected harvest or butchering window. If the farmer leaves the finish time blank, JRide shows an estimated one-hour preparation window. That is not a one-hour delivery promise. After the farmer reports the goods ready, JRide looks for an eligible online driver. Delivery still depends on a driver accepting. Check your order status for updates.",
+        "tl": "Hindi. Iyon ang inaasahang oras ng pag-ani o pagkatay. Kung walang inilagay na oras ng pagtatapos ang farmer, magpapakita ang JRide ng tinatayang isang oras na paghahanda. Hindi ito pangakong madedeliver sa loob ng isang oras. Kapag iniulat ng farmer na handa na ang produkto, hahanap ang JRide ng eligible na online na driver. Kailangan pa ring tanggapin ng driver ang offer. Tingnan ang status ng order para sa mga update.",
+        "ilo": "Saan. Dayta ti namnamaen a window ti farmer para iti panagani wenno panagpartuat ti karne. No awan ti oras ti panagpatingga nga inkabil ti farmer, ipakita ti JRide ti namnamaen a maysa nga oras a panagsagana. Saan dayta a kari a maideliver iti uneg ti maysa nga oras. No naireport ti farmer a nakasagana dagiti produkto, agsapul ti JRide iti eligible nga online a driver. Masapul pay nga awaten ti driver ti offer. Kitaen ti status ti order para kadagiti update."
       }
     },
     {
@@ -1133,6 +1133,24 @@
         "en": "Plan for someone you trust to be at the delivery address and coordinate the handoff with JRide in advance. Do not leave cash unattended. Pay only the assigned JRide driver as instructed in the order tracker. For a product subtotal above PHP 500, the assigned driver collects product cash at the customer address before going to the farmer; remaining applicable charges are settled at delivery. Make sure a person can receive perishable items promptly.",
         "tl": "Magplano na may pinagkakatiwalaang tao sa delivery address at makipag-ugnayan muna sa JRide para sa pag-abot ng order. Huwag mag-iwan ng perang walang nagbabantay. Magbayad lamang sa assigned JRide driver ayon sa order tracker. Kung higit sa PHP 500 ang product subtotal, kukunin muna ng assigned driver ang pambayad sa produkto sa address ng customer bago pumunta sa farmer; ang natitirang applicable na singil ay babayaran sa delivery. Siguraduhing may taong agad na tatanggap ng madaling masirang produkto.",
         "ilo": "Agplano nga adda ti tao a pagtalekam iti delivery address ken makikoordinar nga umuna iti JRide para iti panangawat ti order. Saan nga ibati ti kuarta nga awan agbantay. Agbayad laeng iti assigned JRide driver kas naipakita iti order tracker. No nasurok PHP 500 ti product subtotal, alaen nga umuna ti assigned driver ti kuarta para kadagiti produkto iti address ti customer sakbay a mapan iti farmer; bayadan dagiti nabati nga applicable a singil iti delivery. Siguraduen nga adda tao a dagus nga umawat kadagiti produkto a nalaka a madadael."
+      }
+    },
+    {
+      "role": "passenger",
+      "category": {
+        "en": "AgriMarket",
+        "tl": "AgriMarket",
+        "ilo": "AgriMarket"
+      },
+      "question": {
+        "en": "What if no motorcycle driver is available for my AgriMarket order?",
+        "tl": "Paano kung walang available na motorcycle driver para sa AgriMarket order ko?",
+        "ilo": "Kasano no awan ti available nga motorcycle driver para iti AgriMarket orderko?"
+      },
+      "answer": {
+        "en": "Open Track order. If the order is ready for driver search and no driver has been offered it, you can choose Switch driver search to tricycle. JRide checks that a tricycle can reach the farmer, carry the load, and keep the current quoted total. The Driver Approach Fee is set after assignment. A tricycle driver still needs to be online and accept the offer.",
+        "tl": "Buksan ang Track order. Kung handa na ang order para maghanap ng driver at wala pang offer, maaari mong piliin ang Switch driver search to tricycle. Titingnan ng JRide kung makakarating ang tricycle sa farmer, kaya nito ang karga, at hindi magbabago ang kasalukuyang quoted total. Itatakda ang Driver Approach Fee pagkatapos ma-assign. Kailangan pa ring online ang tricycle driver at tanggapin niya ang offer.",
+        "ilo": "Luktan ti Track order. No nakasaganan ti order para iti panagsapul iti driver ken awan pay ti offer, mabalinmo nga pilien ti Switch driver search to tricycle. Kitaen ti JRide no makadanon ti tricycle iti farmer, kaya ti karga, ken agtalinaed ti agdama a quoted total. Maikeddeng ti Driver Approach Fee kalpasan ti assignment. Masapul pay nga online ti tricycle driver ken awatenna ti offer."
       }
     },
     {
@@ -1244,5 +1262,5 @@
       }
     }
   ],
-  "generated_note": "JRide Help & FAQ v8. Retains earlier entries and adds scheduled AgriMarket reservation, readiness, delivery, and cash handoff guidance."
+  "generated_note": "JRide Help & FAQ v9. Clarifies the estimated preparation window and customer-approved AgriMarket vehicle switch."
 }

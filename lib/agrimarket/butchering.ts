@@ -24,9 +24,10 @@ function decimal(value: unknown, maximum: number): number | null {
 export function normalizeButchering(input: any): ButcheringPayload {
   const species = clean(input?.species), breed = clean(input?.breed), description = clean(input?.description);
   if (species.length < 2 || species.length > 60 || breed.length > 80 || description.length > 2000) throw new Error("Enter the animal type and keep the description under 2,000 characters.");
-  const start = date(input.butcher_start_at), end = input.butcher_end_at ? date(input.butcher_end_at) : null, cutoff = date(input.order_cutoff_at);
-  if (!start || !cutoff || (input.butcher_end_at && !end)) throw new Error("Enter the butchering date and reservation cutoff in Philippine time.");
-  if (Date.parse(cutoff) >= Date.parse(start) || (end && Date.parse(end) < Date.parse(start))) throw new Error("Reservations must close before butchering starts. The end time cannot be earlier than the start.");
+  const start = date(input.butcher_start_at), submittedEnd = input.butcher_end_at ? date(input.butcher_end_at) : null, cutoff = date(input.order_cutoff_at);
+  if (!start || !cutoff || (input.butcher_end_at && !submittedEnd)) throw new Error("Enter the butchering date and reservation cutoff in Philippine time.");
+  const end = submittedEnd || new Date(Date.parse(start) + 60 * 60 * 1000).toISOString();
+  if (Date.parse(cutoff) >= Date.parse(start) || Date.parse(end) < Date.parse(start)) throw new Error("Reservations must close before butchering starts. The end time cannot be earlier than the start.");
   if (!["fresh", "chilled"].includes(input.condition) || !["either", "motorcycle", "tricycle", "kolong_kolong"].includes(input.vehicle_requirement)) throw new Error("Choose the meat condition and delivery vehicle.");
   const prep = Number(input.default_prep_minutes);
   if (!/^[0-9]+$/.test(String(input.default_prep_minutes)) || !Number.isInteger(prep) || prep < 0 || prep > 1440 || typeof input.is_active !== "boolean") throw new Error("Check the preparation time and listing status.");

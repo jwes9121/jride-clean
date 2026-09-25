@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { passengerAuthHeaders } from "@/lib/passenger/browserSession";
 import { cartConflict, cargoGroupLabel, deliveryGroupKey, type CartProduct } from "@/lib/agrimarket/cartCompatibility";
 import { ProductPhoto } from "./ProductPhoto";
+import { estimatedHarvestEnd } from "@/lib/agrimarket/schedule";
 import StoreAvailabilityNotice from "./StoreAvailabilityNotice";
 import { CLOSED_CATALOG_VERSION, isStoreUnavailable, productOrderBlocker, orderingButtonLabel, type StoreAvailability } from "@/lib/agrimarket/storeAvailability";
 
@@ -19,7 +20,8 @@ function schedule(product: CartProduct): string {
   const format = (value?: string | null) => value ? new Date(value).toLocaleString("en-PH", {
     timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
   }) : "Date unavailable";
-  return `Scheduled: ${format(product.harvest_start_at)}${product.harvest_end_at ? ` to ${format(product.harvest_end_at)}` : ""} (Philippine time)`;
+  const end = estimatedHarvestEnd(product.harvest_start_at, product.harvest_end_at);
+  return `Scheduled: ${format(product.harvest_start_at)}${end ? ` to ${format(end)}` : ""}${product.harvest_end_at ? "" : " (estimated one-hour window)"} (Philippine time)`;
 }
 
 export default function StoreProfile({ productId, products, cartProducts, otherStoreName, busy, onAdd, onClose, onReviewCart }: {
