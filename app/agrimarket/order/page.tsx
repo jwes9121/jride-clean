@@ -58,6 +58,7 @@ type OrderStatus = {
   ready_at?: string | null;
   selected_vehicle_type?: string | null;
   preferred_vehicle_type?: string | null;
+  dispatch_wait?: { code: string; message: string; checked_at: string } | null;
   required_vehicle_type?: string | null;
   customer_approved_total?: number | null;
   estimated_cargo_weight_kg?: number | null;
@@ -164,7 +165,7 @@ function progressLabel(order: OrderStatus): string {
   if (order.picked_up_at || order.status === "picked_up") return "Items verified and picked up";
   if (order.status === "driver_assigned") return order.cash_collection_required && !order.customer_cash_collected_at ? "Driver assigned - prepare product cash" : "Driver assigned";
   if (order.status === "awaiting_customer_reapproval") return "Review revised delivery charges";
-  if (["dispatching", "ready_for_dispatch"].includes(order.status)) return "Finding an eligible driver";
+  if (["dispatching", "ready_for_dispatch"].includes(order.status)) return order.dispatch_wait?.code === "outside_pickup_range" ? "No nearby driver available yet" : "Finding an eligible driver";
   if (order.status === "awaiting_harvest") return order.pending_harvest_proposal ? "Farmer needs your decision" : `${scheduledTitle(order.items)} reservation confirmed`;
   if (["producer_accepted", "preparing"].includes(order.status)) return "Farmer is preparing your order";
   if (order.status === "awaiting_producer") return order.fulfillment_mode === "scheduled_harvest" ? "Waiting for farmer to confirm your reservation" : "Waiting for farmer confirmation";
@@ -308,6 +309,11 @@ export default function AgrimarketOrderTrackingPage() {
               <button type="button" disabled={responding} onClick={() => void switchToTricycle()} className="mt-3 rounded-xl bg-blue-800 px-4 py-2 font-bold text-white disabled:bg-slate-400">{responding ? "Checking..." : "Switch driver search to tricycle"}</button>
             </div> : null}
           {vehicleNotice ? <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-950">{vehicleNotice}</p> : null}
+          {order.dispatch_wait ? <div role="status" className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <strong>Driver search update</strong>
+            <p className="mt-1">{order.dispatch_wait.message}</p>
+            <p className="mt-2 text-xs">Last checked: {formatDate(order.dispatch_wait.checked_at)}. Your order remains active. Contact JRide with the order code if you need help.</p>
+          </div> : null}
 
           {scheduledHarvestAttention(order, Date.parse(order.server_now || "")) === "overdue" ? <div role="status" className="mt-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950"><strong>Farmer update overdue.</strong> The preparation window ended without a readiness update. No driver has been offered this reservation. Check this order for a farmer proposal or contact JRide for help. It has not been automatically cancelled.</div> : null}
           {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New {scheduledActivity(order.items)} date: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}

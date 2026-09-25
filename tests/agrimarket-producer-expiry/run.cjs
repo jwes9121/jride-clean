@@ -19,16 +19,18 @@ function harness(options = {}) {
     },
     from: name => {
       calls.push({ name });
-      const q = { update: () => q, eq: () => q, lte: () => q, select: () => q,
+      let mutation = false;
+      const q = { update: payload => { mutation = true; calls.push({ name, payload }); return q; }, eq: () => q, lte: () => q, select: () => q,
         is: () => q, in: () => q, order: () => q, limit: () => q,
-        then: resolve => Promise.resolve({ data: [], error: null }).then(resolve) };
+        then: resolve => Promise.resolve({ data: name === 'agrimarket_orders' && !mutation ? options.pendingRows || [] : [], error: null }).then(resolve) };
       return q;
     },
   };
   const mocks = {
     'next/server': { NextResponse: { json: (body, opts) => ({ body, status: opts.status }) } },
     '@/lib/supabaseAdmin': { supabaseAdmin: () => admin },
-    '@/lib/agrimarket/dispatch': { offerAgrimarketDriver: () => { throw Error('Unexpected driver offer'); } },
+    '@/lib/agrimarket/dispatch': { offerAgrimarketDriver: () => { if (options.dispatchResult) return options.dispatchResult; throw Error('Unexpected driver offer'); } },
+    '@/lib/agrimarket/dispatchWait': { dispatchWaitCode: result => result.error === 'NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT' ? 'outside_pickup_range' : result.error === 'ROAD_DISTANCE_UNAVAILABLE' ? 'route_unavailable' : null },
     '@/app/api/agrimarket/_lib/server': { agrimarketEnabled: () => options.enabled !== false },
   };
   const module = { exports: {} };
@@ -68,6 +70,19 @@ async function test(label, run) { await run(); console.log('PASS ' + label); pas
   await test('reapproval failure stays distinct and cannot silently continue', async () => {
     const h=harness({error:'agrimarket_expire_customer_reapproval_v1'});const r=await h.GET(h.req('Bearer TEST_SECRET'));
     assert.equal(r.status,503);assert.equal(r.body.error,'AGRIMARKET_TIMEOUT_SWEEP_FAILED');assert.equal(h.calls.length,2);
+  });
+  await test('no nearby driver result is recorded for the selected vehicle and counted', async () => {
+    const h=harness({pendingRows:[{id:'order-1',order_code:'AG-TEST',status:'ready_for_dispatch',ready_at:'2026-09-25T18:00:00Z',preferred_vehicle_type:'tricycle'}],dispatchResult:{ok:true,offered:false,error:'NO_DRIVER_WITHIN_AGRIMARKET_APPROACH_LIMIT'}});
+    const r=await h.GET(h.req('Bearer TEST_SECRET'));
+    assert.equal(r.body.no_driver_available,1);assert.equal(r.body.routing_unavailable,0);
+    const diagnostic=h.calls.find(c=>c.payload?.dispatch_wait_code==='outside_pickup_range');
+    assert.equal(diagnostic.name,'agrimarket_orders');assert.equal(diagnostic.payload.dispatch_wait_vehicle_type,'tricycle');
+  });
+  await test('route failure stays separate from unavailable drivers', async () => {
+    const h=harness({pendingRows:[{id:'order-1',order_code:'AG-TEST',status:'ready_for_dispatch',ready_at:'2026-09-25T18:00:00Z',preferred_vehicle_type:'tricycle'}],dispatchResult:{ok:true,offered:false,error:'ROAD_DISTANCE_UNAVAILABLE'}});
+    const r=await h.GET(h.req('Bearer TEST_SECRET'));
+    assert.equal(r.body.no_driver_available,0);assert.equal(r.body.routing_unavailable,1);
+    assert(h.calls.some(c=>c.payload?.dispatch_wait_code==='route_unavailable'));
   });
   await test('scheduler uses bounded existing RPC independently of farmer-screen polling', () => {
     const m=fs.readFileSync(path.join(root,'supabase/migrations/20260922200115_agrimarket_producer_confirmation_expiry_schedule_v1.sql'),'utf8');
