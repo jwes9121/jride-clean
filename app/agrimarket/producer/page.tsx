@@ -14,6 +14,7 @@ import { ArrowUpRight, BadgePercent, CheckCheck, Clock3, PackageCheck, Sprout, T
 import { FarmerFeedback, FarmerLogin, FarmerUnavailable, FarmerWorkspace } from "./FarmerWorkspace";
 import styles from "./farmer.module.css";
 import { manilaDateTimeToIso, scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
+import { scheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
 
 type OrderItem = {
   product_id: string;
@@ -512,6 +513,7 @@ export default function AgrimarketProducerPage() {
             const scheduled = order.fulfillment_mode === "scheduled_harvest";
             const pendingProposal = order.pending_harvest_proposal;
             const activity = scheduledActivity(order.items);
+            const harvestAttention = scheduledHarvestAttention(order, Date.parse(order.server_now || ""));
             const weightError = weightConfirmationError(weightBasis[order.order_code] || "approximate", cargoWeight[order.order_code] || "", weightBand[order.order_code] || "");
             const weightHelpId = `weight-help-${order.order_code}`;
             return (
@@ -523,6 +525,9 @@ export default function AgrimarketProducerPage() {
                   {order.created_at && <p className="mt-1 text-xs">Placed {formatDate(order.created_at)}</p>}
                 </div>}
                 {scheduled ? <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} window</strong><br/>{formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}</div> : null}
+                {harvestAttention === "due_soon" ? <div role="status" className="mt-2 rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">Preparation starts within 30 minutes. Be ready to mark this reservation ready or propose a new date.</div> : null}
+                {harvestAttention === "in_window" ? <div role="status" className="mt-2 rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-950">Preparation window is open. Mark ready only when the harvest or butchering is ready, or propose a new date.</div> : null}
+                {harvestAttention === "overdue" ? <div role="alert" className="mt-2 rounded-xl border border-rose-400 bg-rose-50 p-3 text-sm font-semibold text-rose-950">The preparation window has ended. Please mark ready if the goods are ready, or propose a new date for customer approval. JRide has not assigned a driver for this reservation.</div> : null}
                 <div className="mt-3 space-y-1 break-words text-sm">
                   <p>Customer: <strong>{order.customer?.name || "Name unavailable"}</strong></p>
                   <p>Deliver to: <strong>{order.customer?.delivery_label || "Destination unavailable"}</strong></p>

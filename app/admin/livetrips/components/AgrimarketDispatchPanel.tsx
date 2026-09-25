@@ -1,6 +1,7 @@
 "use client";
 
 import ReapprovalCountdown from "@/components/agrimarket/ReapprovalCountdown";
+import type { ScheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgrimarketOrderDetails, type DispatchItem } from "./AgrimarketOrderDetails";
 
@@ -21,6 +22,7 @@ export type AgrimarketDispatchOrder = {
   harvest_expected_start_at?: string | null;
   harvest_expected_end_at?: string | null;
   harvest_ready_at?: string | null;
+  harvest_attention?: ScheduledHarvestAttention;
   producer_confirm_expires_at?: string | null;
   preparation_minutes?: number | null;
   ready_at?: string | null;
@@ -185,10 +187,12 @@ export default function AgrimarketDispatchPanel() {
     const offered = orders.filter((order) => order.latest_offer?.status === "offered").length;
     const assigned = orders.filter((order) => Boolean(order.assigned_driver)).length;
     const harvest = orders.filter((order) => order.status === "awaiting_harvest").length;
+    const overdue = orders.filter((order) => order.harvest_attention === "overdue").length;
+    const dueSoon = orders.filter((order) => order.harvest_attention === "due_soon").length;
     const settlement = orders.filter(
       (order) => order.status === "delivered" && order.wallet_settlement_status !== "settled"
     ).length;
-    return { offered, assigned, harvest, settlement };
+    return { offered, assigned, harvest, overdue, dueSoon, settlement };
   }, [orders]);
 
   async function runDispatch(order: AgrimarketDispatchOrder) {
@@ -246,6 +250,8 @@ export default function AgrimarketDispatchPanel() {
           <span className="rounded-full bg-white px-2 py-1">{summary.offered} offered</span>
           <span className="rounded-full bg-white px-2 py-1">{summary.assigned} assigned</span>
           {summary.harvest > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1">{summary.harvest} harvest</span> : null}
+          {summary.dueSoon > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1">{summary.dueSoon} starting soon</span> : null}
+          {summary.overdue > 0 ? <span role="alert" className="rounded-full bg-rose-700 px-2 py-1 font-bold text-white">{summary.overdue} farmer updates overdue - open to follow up</span> : null}
           {summary.settlement > 0 ? <span className="rounded-full bg-rose-100 px-2 py-1">{summary.settlement} settlement</span> : null}
           <button
             type="button"
@@ -351,6 +357,8 @@ export default function AgrimarketDispatchPanel() {
                   <p>Farmer refund: {order.pickup_issue.confirm_farmer_refund ? "Confirmed" : "Not recorded"}. Customer refund: {order.pickup_issue.confirm_customer_refund ? "Confirmed" : "Not recorded"}.</p>
                   <div className="mt-3 flex gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "restored_to_booking")} className="rounded bg-emerald-700 p-2 text-white disabled:opacity-50">Original booked load restored</button><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "cancel")} className="rounded bg-rose-700 p-2 text-white disabled:opacity-50">Cancel after cash returns</button></div>
                 </div> : null}
+                {order.harvest_attention === "overdue" ? <div role="alert" className="mt-2 rounded-lg border border-rose-400 bg-rose-50 p-3 text-xs font-semibold text-rose-950">Farmer update overdue since {formatDate(order.harvest_expected_end_at)}. Contact the farmer and arrange a confirmed delay or cancellation with the customer. The reservation is still unassigned; do not mark it ready for the farmer.</div> : null}
+                {order.harvest_attention === "due_soon" ? <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Preparation starts within 30 minutes. Check that the farmer can update this reservation.</div> : null}
                 {order.status === "awaiting_harvest" ? (
                   <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                     Harvest reservation confirmed. Expected {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}. No driver dispatch until farmer marks harvest ready.
