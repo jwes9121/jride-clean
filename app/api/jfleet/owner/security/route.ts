@@ -159,7 +159,7 @@ export async function POST(req: Request) {
 
   if (
     !eventId ||
-    !["acknowledge", "approve_detour", "resolve"].includes(action)
+    !["acknowledge", "resolve"].includes(action)
   ) {
     return NextResponse.json(
       { ok: false, code: "JFLEET_SECURITY_ACTION_INVALID", message: "Choose a valid security alert action." },
@@ -167,9 +167,9 @@ export async function POST(req: Request) {
     );
   }
 
-  if ((action === "approve_detour" || action === "resolve") && reason.length < 3) {
+  if (action === "resolve" && reason.length < 3) {
     return NextResponse.json(
-      { ok: false, code: "JFLEET_SECURITY_REASON_REQUIRED", message: "Enter a reason before closing or approving a route deviation." },
+      { ok: false, code: "JFLEET_SECURITY_REASON_REQUIRED", message: "Enter a reason before manually resolving a security alert." },
       { status: 400, headers }
     );
   }
