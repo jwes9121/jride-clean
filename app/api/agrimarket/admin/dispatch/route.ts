@@ -1,4 +1,5 @@
 import { agrimarketAdminActions } from "@/lib/agrimarket/adminActions";
+import { scheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
 import { NextRequest } from "next/server";
 import { loadOrderCustomers, nullableNumber } from "@/lib/agrimarket/orderCustomer";
 import { offerAgrimarketDriver } from "@/lib/agrimarket/dispatch";
@@ -78,7 +79,7 @@ export async function GET() {
     const orderIds = orders.map((row: any) => text(row.id)).filter(Boolean);
     const producerIds = Array.from(new Set(orders.map((row: any) => text(row.producer_id)).filter(Boolean)));
 
-    const [producerRes, offersRes, itemsRes, customers] = await Promise.all([
+    const [producerRes, offersRes, itemsRes, proposalRes, customers] = await Promise.all([
       producerIds.length
         ? admin
             .from("agrimarket_producers")
@@ -99,17 +100,22 @@ export async function GET() {
             .select("order_id,product_id,product_name,product_group,species,breed,meat_cut,processing_form,condition_required,cargo_class,selling_unit,unit_price,quantity,line_total,handling_eligible,availability_mode,harvest_start_at,harvest_end_at,harvest_order_cutoff_at")
             .in("order_id", orderIds).order("created_at", { ascending: true })
         : Promise.resolve({ data: [], error: null } as any),
+      orderIds.length
+        ? admin.from("agrimarket_harvest_proposals").select("order_id")
+            .in("order_id", orderIds).eq("status", "pending_customer")
+        : Promise.resolve({ data: [], error: null } as any),
       loadOrderCustomers(admin, orders),
     ]);
 
-    if (producerRes.error || offersRes.error || itemsRes.error) {
+    if (producerRes.error || offersRes.error || itemsRes.error || proposalRes.error) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_ADMIN_DISPATCH_DETAIL_FAILED",
-        message: producerRes.error?.message || offersRes.error?.message || itemsRes.error?.message,
+        message: producerRes.error?.message || offersRes.error?.message || itemsRes.error?.message || proposalRes.error?.message,
       });
     }
 
+    const ordersWithPendingProposal = new Set((proposalRes.data || []).map((row: any) => text(row.order_id)));
     const itemsByOrder = new Map<string, any[]>();
     for (const item of itemsRes.data || []) {
       const list = itemsByOrder.get(item.order_id) || [];
@@ -168,6 +174,7 @@ export async function GET() {
         admin_actions: agrimarketAdminActions(row, activeOffer?.id || null),
         customer_reapproval_expires_at: row.customer_reapproval_expires_at || null,
         server_now: new Date(nowMs).toISOString(),
+        harvest_attention: scheduledHarvestAttention({ ...row, pending_harvest_proposal: ordersWithPendingProposal.has(text(row.id)) }, nowMs),
         customer: customers.get(row.id) || null,
         items: itemsByOrder.get(row.id) || [],
         details: {
