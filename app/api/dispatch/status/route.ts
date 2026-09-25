@@ -118,6 +118,47 @@ async function finalizePromoSafe(supabase: any, booking: any) {
   return { ok: true, data: data ?? null, completed_total: completedTotal };
 }
 
+// Receipt data is read only after completion/promo finalization. It cannot
+// change settlement, and a missing ledger entry is never treated as zero.
+async function readRideCompletionReceipt(supabase: any, booking: any) {
+  if (!isRegularRideServiceType(booking?.service_type)) return null;
+  try {
+    const driverId = clean(booking.driver_id || booking.assigned_driver_id);
+    const result = await supabase.from("bookings")
+      .select("id,status,driver_id,assigned_driver_id,verified_fare,pickup_distance_fee,promo_applied_amount,wallet_settlement_status,wallet_settlement_id")
+      .eq("id", booking.id).maybeSingle();
+    const row = result.data;
+    if (result.error || !row || row.status !== "completed" ||
+        clean(row.driver_id || row.assigned_driver_id) !== driverId ||
+        row.wallet_settlement_status !== "settled" || !row.wallet_settlement_id) return null;
+    const ledger = await supabase.from("driver_wallet_transactions")
+      .select("amount,reason")
+      .eq("booking_id", row.id).eq("driver_id", driverId)
+      .eq("wallet_settlement_id", row.wallet_settlement_id);
+    if (ledger.error || !Array.isArray(ledger.data) || ledger.data.length !== 1) return null;
+    const entry = ledger.data[0];
+    if (!["ride_platform_cut_15", "ride_platform_cut_20"].includes(entry.reason)) return null;
+    const fare = row.verified_fare == null ? NaN : Number(row.verified_fare);
+    const pickup = row.pickup_distance_fee == null ? NaN : Number(row.pickup_distance_fee);
+    const promo = Number(row.promo_applied_amount ?? 0);
+    const deduction = -Number(entry.amount);
+    if (![fare, pickup, promo, deduction].every(Number.isFinite) ||
+        fare <= 0 || pickup < 0 || promo < 0 || deduction <= 0) return null;
+    const total = Number(Math.max(0, fare + pickup + 15 - promo).toFixed(2));
+    return {
+      version: "recorded_ride_receipt_v1",
+      settlement_status: "settled",
+      ride_fare: fare, pickup_distance_fee: pickup, convenience_fee: 15,
+      promo_discount: promo, customer_total: total,
+      wallet_deduction: deduction,
+      cash_after_wallet_deduction: Number((total - deduction).toFixed(2)),
+      // Promo points are not cash earnings and are never added to this amount.
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -226,6 +267,7 @@ export async function POST(req: NextRequest) {
         settlement_rpc: finalized.settlementRpc,
         result: finalized.data ?? null,
         promo_finalize: promoFinalized,
+        receipt: await readRideCompletionReceipt(settlementClient, booking),
       });
     }
 

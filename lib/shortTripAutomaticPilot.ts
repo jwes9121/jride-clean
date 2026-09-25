@@ -80,6 +80,9 @@ function makeSnapshot(
     passenger_total_minimum_applied: fare?.passengerTotalMinimumApplied ?? null,
     minimum_applied: fare?.minimumApplied ?? null,
     automatic_ride_fare: fare?.automaticRideFare ?? null,
+    rounding_version: fare?.roundingVersion ?? null,
+    ride_fare_before_rounding: fare?.rideFareBeforeRounding ?? null,
+    ride_fare_rounding_adjustment: fare?.rideFareRoundingAdjustment ?? null,
     convenience_fee: fare?.convenienceFee ?? null,
     pickup_distance_km:
       evaluation.driverToPickupKm == null ? null : round(evaluation.driverToPickupKm, 2),
