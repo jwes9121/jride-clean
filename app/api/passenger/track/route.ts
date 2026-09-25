@@ -137,6 +137,26 @@ export async function GET(req: NextRequest) {
     const status = statusOf((booking as any).status);
     const driverId = s((booking as any).driver_id) || s((booking as any).assigned_driver_id);
 
+    // Additive vehicle/location metadata is limited to the signed-in booking owner.
+    // Keep the existing legacy tracking contract intact when authentication is absent.
+    let isBookingOwner = false;
+    const token = getBearerToken(req);
+    if (token && s((booking as any).created_by_user_id)) {
+      try {
+        const userResult = await createAnonSupabase().auth.getUser(token);
+        isBookingOwner = !userResult.error && !!userResult.data.user &&
+          userResult.data.user.id === (booking as any).created_by_user_id;
+      } catch {
+        // Optional enrichment must not prevent existing trip status/fare updates.
+      }
+    }
+    const showDriverDetails = isBookingOwner && [
+      "accepted", "fare_proposed", "ready", "on_the_way", "arrived", "on_trip", "completed",
+    ].includes(status);
+    let driverVehicleType: string | null = null;
+    let driverPlateNumber: string | null = null;
+    let driverLocationAgeSeconds: number | null = null;
+
     let driverName: string | null =
       s((booking as any).driver_name) ||
       s((booking as any).driver_full_name) ||
@@ -162,7 +182,7 @@ export async function GET(req: NextRequest) {
 
       const driverProfileRes = await serviceSupabase
         .from("driver_profiles")
-        .select("driver_id, full_name, callsign, phone, photo_url")
+        .select("driver_id, full_name, callsign, phone, photo_url, vehicle_type, plate_number")
         .eq("driver_id", driverId)
         .limit(1)
         .maybeSingle();
@@ -177,17 +197,26 @@ export async function GET(req: NextRequest) {
 
       driverPhotoUrl =
   	s((driverProfileRes.data as any).photo_url);
+        if (showDriverDetails) {
+          driverVehicleType = s((driverProfileRes.data as any).vehicle_type);
+          driverPlateNumber = s((driverProfileRes.data as any).plate_number);
+        }
       }
 
       const driverLocRes = await serviceSupabase
         .from("driver_locations_latest")
-        .select("lat,lng")
+        .select("lat,lng,updated_at")
         .eq("driver_id", driverId)
         .maybeSingle();
 
       if (!driverLocRes.error && driverLocRes.data) {
         driverLat = n((driverLocRes.data as any).lat);
         driverLng = n((driverLocRes.data as any).lng);
+        const updatedAt = Date.parse(String((driverLocRes.data as any).updated_at ?? ""));
+        const ageMs = Date.now() - updatedAt;
+        if (showDriverDetails && status !== "completed" && Number.isFinite(ageMs) && ageMs >= 0) {
+          driverLocationAgeSeconds = Math.ceil(ageMs / 1000);
+        }
       }
     }
 	const ratingRes = await serviceSupabase
@@ -265,6 +294,9 @@ if (!ratingRes.error && Array.isArray(ratingRes.data)) {
       driver_name: driverName,
       driver_phone: driverPhone,
       driver_photo_url: driverPhotoUrl,
+      driver_vehicle_type: driverVehicleType,
+      driver_plate_number: driverPlateNumber,
+      driver_location_age_seconds: driverLocationAgeSeconds,
       driver_average_rating: driverAverageRating,
       driver_ratings_count: driverRatingsCount,
       driver_lat: driverLat,
