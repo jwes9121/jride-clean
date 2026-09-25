@@ -7,6 +7,7 @@ import CustomerReapprovalDialog from "@/components/agrimarket/CustomerReapproval
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { scheduledActivity, scheduledTitle } from "@/lib/agrimarket/schedule";
+import { scheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
 
 type CargoConfirmation = {
   weight_basis: string;
@@ -272,6 +273,7 @@ export default function AgrimarketOrderTrackingPage() {
           </> : <>
           {order.fulfillment_mode === "scheduled_harvest" ? <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900"><strong>{scheduledTitle(order.items)} reservation</strong><br/>Expected: {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}<br/>{order.harvest_ready_at ? `Farmer marked products ready: ${formatDate(order.harvest_ready_at)}` : "No driver will be assigned until the farmer confirms the products are ready."}</div> : null}
 
+          {scheduledHarvestAttention(order, Date.parse(order.server_now || "")) === "overdue" ? <div role="status" className="mt-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-sm text-amber-950"><strong>Farmer update overdue.</strong> The preparation window ended without a readiness update. No driver has been offered this reservation. Check this order for a farmer proposal or contact JRide for help. It has not been automatically cancelled.</div> : null}
           {order.pending_harvest_proposal ? <div className="mt-4 rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950"><h3 className="font-bold">Farmer proposes a change</h3>{order.pending_harvest_proposal.proposal_type === "delay" ? <p className="mt-2 text-sm">New {scheduledActivity(order.items)} date: <strong>{formatDate(order.pending_harvest_proposal.proposed_harvest_start_at)}</strong>{order.pending_harvest_proposal.proposed_harvest_end_at ? ` to ${formatDate(order.pending_harvest_proposal.proposed_harvest_end_at)}` : ""}</p> : <div className="mt-2 space-y-1 text-sm">{order.pending_harvest_proposal.proposed_items.map((item, index) => <p key={index}>{item.product_name}: <strong>{item.proposed_quantity} {item.selling_unit}</strong> instead of {item.original_quantity}</p>)}</div>}{order.pending_harvest_proposal.reason ? <p className="mt-2 text-sm">Reason: {order.pending_harvest_proposal.reason}</p> : null}<p className="mt-3 text-xs">Accept keeps the reservation with the revised date/quantity. Reject cancels the order and releases the reserved inventory.</p><div className="mt-3 flex gap-2"><button disabled={responding} onClick={() => respondHarvest("accept")} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white">Accept change</button><button disabled={responding} onClick={() => respondHarvest("reject")} className="rounded-xl bg-red-700 px-4 py-2 font-bold text-white">Cancel order</button></div></div> : null}
 
           <div className="mt-4 rounded-2xl border bg-slate-50 p-4 text-sm">
