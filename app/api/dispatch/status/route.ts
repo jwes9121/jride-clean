@@ -10,6 +10,7 @@ import {
 import {
   isRegularRideServiceType,
   SHORT_TRIP_AUTOMATIC_FARE_VERSION,
+  SHORT_TRIP_MAX_ROAD_DISTANCE_KM,
 } from "@/lib/shortTripAutomaticFare";
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -264,8 +265,34 @@ export async function POST(req: NextRequest) {
               error: String(pilotError?.message ?? pilotError),
             })
           );
+          return NextResponse.json(
+            { ok: false, error: "Automatic fare is temporarily unavailable. Please retry acceptance.", code: "AUTOMATIC_FARE_UNAVAILABLE" },
+            { status: 503 }
+          );
         }
       }
+
+      // Never turn an eligible short trip into a proposed-fare negotiation when
+      // a provider fails. Keep the original assignment/deadline for retry/expiry.
+      if (shortTripEvaluation?.outcome === "fallback" &&
+          (shortTripEvaluation.roadDistanceKm == null ||
+           shortTripEvaluation.roadDistanceKm <= SHORT_TRIP_MAX_ROAD_DISTANCE_KM)) {
+        console.warn("[SHORT_TRIP_AUTOMATIC_FARE_UNAVAILABLE]", JSON.stringify({
+          booking_code: clean(booking.booking_code), ...shortTripEvaluation.snapshot,
+        }));
+        return NextResponse.json(
+          { ok: false, error: "Automatic fare is temporarily unavailable. Please retry acceptance.", code: "AUTOMATIC_FARE_UNAVAILABLE" },
+          { status: 503 }
+        );
+      }
+
+      // Provider requests can consume the remainder of the acceptance window.
+      if (expectedAcceptExpiryMs <= Date.now()) {
+        return NextResponse.json(
+          { ok: false, error: "driver_accept_window_expired_or_changed" }, { status: 409 }
+        );
+      }
+      updatePayload.updated_at = new Date().toISOString();
 
       if (shortTripEvaluation?.outcome === "automatic" && shortTripEvaluation.fare) {
         const fare = shortTripEvaluation.fare;
@@ -283,7 +310,7 @@ export async function POST(req: NextRequest) {
         updatePayload.ride_fare_pricing_version = SHORT_TRIP_AUTOMATIC_FARE_VERSION;
         updatePayload.ride_fare_provenance = String(
           shortTripEvaluation.snapshot.provenance ||
-            "mapbox_road_open_meteo_glo90_v1"
+            "mapbox_road_terrain_rgb_v1"
         );
         updatePayload.short_trip_road_distance_km = shortTripEvaluation.roadDistanceKm;
         updatePayload.short_trip_validated_elevation_gain_m =

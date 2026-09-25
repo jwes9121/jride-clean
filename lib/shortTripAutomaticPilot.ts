@@ -11,8 +11,11 @@ import {
 } from "@/lib/routing/mapboxRoad";
 import {
   getValidatedCumulativePositiveElevationGain,
+  MAPBOX_ELEVATION_SOURCE,
+  MAPBOX_ELEVATION_VERSION,
+  MAPBOX_FARE_PROVENANCE,
   type ElevationValidationResult,
-} from "@/lib/routing/openMeteoElevation";
+} from "@/lib/routing/mapboxTerrainElevation";
 import {
   computeShortTripAutomaticFare,
   isRegularRideServiceType,
@@ -45,8 +48,8 @@ function estimateEtaMinutes(distanceKm: number | null): number | null {
 function notAttemptedElevation(reason: string): ElevationValidationResult {
   return {
     status: "unavailable",
-    source: "open_meteo_copernicus_glo90",
-    version: "open_meteo_elevation_v1",
+    source: MAPBOX_ELEVATION_SOURCE,
+    version: MAPBOX_ELEVATION_VERSION,
     cumulativePositiveElevationGainM: null,
     samplesRequested: 0,
     samplesUsed: 0,
@@ -64,7 +67,7 @@ function makeSnapshot(
     version: SHORT_TRIP_AUTOMATIC_FARE_VERSION,
     outcome: evaluation.outcome,
     fallback_reason: reason,
-    provenance: "mapbox_road_open_meteo_glo90_v1",
+    provenance: MAPBOX_FARE_PROVENANCE,
     road_distance_km:
       evaluation.roadDistanceKm == null ? null : round(evaluation.roadDistanceKm, 6),
     validated_cumulative_positive_elevation_gain_m:
@@ -246,4 +249,3 @@ export async function evaluateShortTripAutomaticFare(args: {
   };
   return { ...base, snapshot: makeSnapshot(base, null) };
 }
-
