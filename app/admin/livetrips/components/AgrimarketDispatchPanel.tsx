@@ -358,8 +358,8 @@ export default function AgrimarketDispatchPanel() {
                   <div className="mt-3 flex gap-2"><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "restored_to_booking")} className="rounded bg-emerald-700 p-2 text-white disabled:opacity-50">Original booked load restored</button><button type="button" disabled={Boolean(busy)} onClick={() => resolveIssue(order, "cancel")} className="rounded bg-rose-700 p-2 text-white disabled:opacity-50">Cancel after cash returns</button></div>
                 </div> : null}
                 {order.harvest_attention === "overdue" ? <div role="alert" className="mt-2 rounded-lg border border-rose-400 bg-rose-50 p-3 text-xs font-semibold text-rose-950">Farmer update overdue since {formatDate(order.harvest_expected_end_at)}. Contact the farmer and arrange a confirmed delay or cancellation with the customer. The reservation is still unassigned; do not mark it ready for the farmer.</div> : null}
-                 {order.harvest_attention === "due_soon" ? <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Preparation starts within 30 minutes. Check that the farmer can update this reservation.</div> : null}
-                 {order.status === "awaiting_harvest" ? (
+                {order.harvest_attention === "due_soon" ? <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">Preparation starts within 30 minutes. Check that the farmer can update this reservation.</div> : null}
+                {order.status === "awaiting_harvest" ? (
                   <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                     Harvest reservation confirmed. Expected {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}. No driver dispatch until farmer marks harvest ready.
                   </div>
