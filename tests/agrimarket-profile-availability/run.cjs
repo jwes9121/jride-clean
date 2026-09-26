@@ -17,7 +17,7 @@ function harness(options = {}) {
   const calls = [];
   const row = {
     id: 'authenticated-farmer', contact_name: 'Test Farmer', contact_phone: '09991234567',
-    town: 'Lamut', barangay: 'Test barangay', vendor_name: 'Test farm',
+    town: 'Lamut', barangay: 'Pugol', vendor_name: 'Test farm',
     pickup_label: 'Verified test pickup', pickup_lat: 16.65, pickup_lng: 121.22,
     pickup_motorcycle_accessible: true, pickup_tricycle_accessible: true,
     pickup_roadside_handoff_required: false, pickup_driver_directions: 'Meet beside the barangay hall.',
@@ -48,7 +48,10 @@ function harness(options = {}) {
     '../../_lib/admin-farmer-location': { reverseGeocodeFarmerPin: async () => {
       calls.push({ geocode: true }); return { launch_eligible: true, town: options.pinTown || 'Lamut', label: row.pickup_label };
     } },
-    '@/lib/agrimarket/farmer-towns': { isAgrimarketActiveTown: value => ['Lagawe','Hingyon','Banaue','Lamut'].includes(value) },
+    '@/lib/agrimarket/farmer-towns': {
+      isAgrimarketActiveTown: value => ['Lagawe','Hingyon','Banaue','Lamut'].includes(value),
+      canonicalAgrimarketBarangay: (town,value) => town === 'Lamut' && value === 'Pugol' ? value : null,
+    },
   };
   const module = { exports: {} };
   const compiled = ts.transpileModule(read(route), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }, reportDiagnostics: true });
@@ -81,7 +84,7 @@ async function run() {
   });
   await test('caller cannot choose another farmer or set approval flags', async () => {
     const h = harness({ ready: false }); await h.api.POST(h.req({ producer_id: 'other', id: 'other', accepting_orders: true, store_open: true }));
-    const call = h.calls.find(c => c.name); assert.equal(call.name, 'agrimarket_farmer_save_profile_v3'); assert.equal(call.args.p_producer_id, 'authenticated-farmer'); assert.equal(call.args.p_town, 'Lamut');
+    const call = h.calls.find(c => c.name); assert.equal(call.name, 'agrimarket_farmer_save_profile_v4'); assert.equal(call.args.p_producer_id, 'authenticated-farmer'); assert.equal(call.args.p_town, 'Lamut');
     assert.equal(call.args.p_actor, 'AGF-TESTONLY');
     assert(!Object.hasOwn(call.args, 'accepting_orders')); assert(!Object.hasOwn(call.args, 'store_open'));
     assert.equal(call.args.p_phone_normalized, '+639991234567');
