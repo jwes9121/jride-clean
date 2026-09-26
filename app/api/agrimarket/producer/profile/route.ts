@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
-import { isAgrimarketActiveTown } from "@/lib/agrimarket/farmer-towns";
+import { canonicalAgrimarketBarangay, isAgrimarketActiveTown } from "@/lib/agrimarket/farmer-towns";
 import {
   agrimarketFarmerPortalDisabledResponse,
   agrimarketFarmerPortalEnabled,
@@ -45,6 +45,13 @@ function saveFailure(message: string) {
       ok: false,
       error: "AGRIMARKET_FARMER_TOWN_INVALID",
       message: "Choose an active AgriMarket municipality.",
+    });
+  }
+  if (message.includes("STORE_NAME_TAKEN") || message.includes("agrimarket_producers_town_vendor_name_ci_uidx")) {
+    return jsonNoStore(409, {
+      ok: false,
+      error: "AGRIMARKET_STORE_NAME_TAKEN",
+      message: "This farm/store name already exists in the selected municipality. Choose a different name.",
     });
   }
   if (message.includes("FARM_NAME_CONFIRMATION_REQUIRED")) {
@@ -202,8 +209,13 @@ export async function POST(req: NextRequest) {
     if (!isAgrimarketActiveTown(selectedTown)) {
       return jsonNoStore(400, { ok: false, message: "Choose Lagawe, Hingyon, Banaue, or Lamut." });
     }
-    if (barangay.length < 2 || barangay.length > 120) {
-      return jsonNoStore(400, { ok: false, message: "Enter the farmer's barangay." });
+    const canonicalBarangay = canonicalAgrimarketBarangay(selectedTown, barangay);
+    if (!canonicalBarangay) {
+      return jsonNoStore(400, {
+        ok: false,
+        error: "AGRIMARKET_FARMER_BARANGAY_INVALID",
+        message: `Choose a barangay from the ${selectedTown} list.`,
+      });
     }
     if (vendorName.length < 2 || vendorName.length > 60) {
       return jsonNoStore(400, { ok: false, message: "Enter a farm or store name between 2 and 60 characters." });
@@ -233,14 +245,14 @@ export async function POST(req: NextRequest) {
     }
 
     const admin = createServiceSupabase();
-    const completed = await admin.rpc("agrimarket_farmer_save_profile_v3", {
+    const completed = await admin.rpc("agrimarket_farmer_save_profile_v4", {
       p_confirm_vendor_name: body.confirm_vendor_name === true,
       p_producer_id: auth.producer.id,
       p_town: selectedTown,
       p_contact_name: contactName,
       p_phone_display: contactPhone,
       p_phone_normalized: normalizedPhone,
-      p_barangay: barangay,
+      p_barangay: canonicalBarangay,
       p_vendor_name: vendorName,
       p_pickup_label: resolved.label,
       p_pickup_lat: lat,
