@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
 
   const res = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,takeout_customer_confirmed_at,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan")
+    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,takeout_pricing_snapshot,takeout_customer_confirmed_at,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan")
     .eq("service_type", "takeout")
     .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
     .in("status", activeCanonicalStatuses)
@@ -117,6 +117,15 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const subtotal = Number(row.takeout_items_subtotal || 0);
+  const derivedCashRequired =
+    row.takeout_cash_collection_required == null
+      ? subtotal > 500
+      : Boolean(row.takeout_cash_collection_required);
+  const derivedRoutePlan =
+    String(row.takeout_route_plan || "").trim() ||
+    (derivedCashRequired ? "customer_cash_first" : "vendor_first");
+
   const trip = {
     id: row.id,
     booking_id: row.id,
@@ -141,11 +150,23 @@ export async function GET(req: NextRequest) {
     from_label: pickLabel(row.from_label, vendorName),
     dropoff_label: pickLabel(row.to_label),
     to_label: pickLabel(row.to_label),
-    takeout_items_subtotal: Number(row.takeout_items_subtotal || 0),
+    takeout_items_subtotal: subtotal,
     takeout_delivery_fee: row.takeout_delivery_fee,
+    takeout_service_fee: row.takeout_service_fee,
     takeout_total_payable: row.takeout_total_payable,
-    takeout_cash_collection_required: row.takeout_cash_collection_required,
-    takeout_route_plan: row.takeout_route_plan,
+    takeout_cash_collection_required: derivedCashRequired,
+    takeout_route_plan: derivedRoutePlan,
+    takeout_pricing_version:
+      row.takeout_pricing_snapshot && typeof row.takeout_pricing_snapshot === "object"
+        ? String((row.takeout_pricing_snapshot as any).version || "") || null
+        : null,
+    takeout_automatic_delivery_fare:
+      Boolean(
+        row.takeout_pricing_snapshot &&
+        typeof row.takeout_pricing_snapshot === "object" &&
+        String((row.takeout_pricing_snapshot as any).version || "") ===
+          "takeout_short_trip_automatic_v1"
+      ),
 
     assigned_driver_id: row.assigned_driver_id || row.driver_id,
     driver_id: row.driver_id || row.assigned_driver_id,

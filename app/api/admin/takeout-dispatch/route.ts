@@ -288,7 +288,7 @@ export async function GET(req: NextRequest) {
       customer_name: r.passenger_name || "Takeout Customer",
       to_label: r.to_label || null,
       takeout_items_subtotal: subtotal,
-      cash_required: subtotal >= 500,
+      cash_required: subtotal > 500,
       assigned_driver_id: assignedDriverId,
       assigned_driver_name: assignedDriverId ? driverNameById[assignedDriverId] || assignedDriverId : null,
       assigned_driver_phone: assignedDriverId ? driverPhoneById[assignedDriverId] || null : null,
