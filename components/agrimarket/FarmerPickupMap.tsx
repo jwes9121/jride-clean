@@ -64,7 +64,7 @@ export default function FarmerPickupMap({ selectedTown, value, onChange, farmerC
     onChangeRef.current({ ...base, resolving: true });
     setError(""); setNotice("");
     try {
-      const response = await fetchLocation(new URLSearchParams({ lat: String(lat), lng: String(lng) }));
+      const response = await fetchLocation(new URLSearchParams({ lat: String(lat), lng: String(lng), town: currentTown.current }));
       const payload = await response.json();
       if (generation.current !== request) return;
       if (!response.ok || !payload.location) throw new Error(payload.message || "Move the pin to a pickup point JRide can verify.");
