@@ -208,14 +208,14 @@ async function driverReadiness() {
   };
   await test('vendor Ready survives driver arrival and both driver feeds retain readiness and actual progress',async()=>{
     for(const cashFirst of [false,true]) {
-      const {db,h,req,vendorApi,driverApi,activeApi,takeoutApi}=setup(approved({takeout_cash_collection_required:cashFirst,takeout_route_plan:cashFirst?'customer_cash_first':'vendor_first'}));
+      const {db,h,req,vendorApi,driverApi,activeApi,takeoutApi}=setup(approved({takeout_cash_collection_required:cashFirst,takeout_route_plan:cashFirst?'customer_cash_first':'vendor_first',takeout_cash_first_amount:cashFirst?90:0,takeout_pay_on_delivery_amount:cashFirst?50:140}));
       assert.equal((await activeApi.GET(req())).body.trip.vendor_pickup_ready,false);
       assert.equal((await vendorApi.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'pickup_ready'}))).status,200);
       const initial=(await activeApi.GET(req())).body.trip;
       assert.equal(initial.vendor_pickup_ready,true);assert.equal(initial.vendor_status_label,'Ready for pickup');assert.equal(initial.status,'driver_accepted');assert.equal(initial.takeout_status,'driver_accepted');assert.equal(initial.driver_status,'driver_accepted');
       const stages=cashFirst?['cash_collected','rider_arrived_vendor']:['rider_arrived_vendor'];
       for(const stage of stages) {
-        const result=await driverApi.POST(req({driver_id:driver,order_id:'order-1',status:stage}));assert.equal(result.status,200);
+        const body={driver_id:driver,order_id:'order-1',status:stage};if(stage==='cash_collected')body.cash_collected_amount=90;const result=await driverApi.POST(req(body));assert.equal(result.status,200);
         assert.equal(db.tables.bookings[0].vendor_status,'pickup_ready');assert.equal(db.tables.bookings[0].customer_status,'ready_for_pickup');assert.equal(db.tables.bookings[0].status,'fare_proposed');assert.equal(db.tables.bookings[0].takeout_delivery_fee,40);assert.equal(db.tables.bookings[0].takeout_total_payable,140);assert.equal(db.tables.bookings[0].takeout_customer_confirmed_at,confirmed);
         const active=await activeApi.GET(req());assert.equal(active.status,200);assert.equal(active.body.trip.vendor_pickup_ready,true);assert.equal(active.body.trip.takeout_status,stage==='rider_arrived_vendor'?'arrived_vendor':stage);assert.equal(active.body.trip.driver_status,stage);assert.deepEqual(active.body.trip,active.body.active_trip);
         if(stage==='cash_collected'){assert.equal(active.body.trip.cash_collection_confirmed,true);assert.equal(active.body.trip.current_nav_target,'vendor_or_pickup');}
