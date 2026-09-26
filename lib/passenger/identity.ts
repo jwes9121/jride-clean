@@ -19,6 +19,22 @@ export type PassengerIdentity = {
   identity_name_mismatch: boolean | null;
 };
 
+export type VerificationSubmissionLocation = {
+  passenger_id: string;
+  request_submitted_at: string;
+  server_received_at: string;
+  device_status: string;
+  device_source: string;
+  device_latitude: number | null;
+  device_longitude: number | null;
+  device_accuracy_m: number | null;
+  device_captured_at: string | null;
+  declared_town: string | null;
+  network_city: string | null;
+  network_region: string | null;
+  network_country: string | null;
+};
+
 export type PassengerActivity = {
   activity_id: string;
   service: string;
@@ -41,6 +57,11 @@ export const IDENTITY_COLUMNS =
 export const ACTIVITY_COLUMNS =
   "activity_id,service,code,booking_code,status,created_at,last_activity_at," +
   "origin_label,destination_label,cancel_reason";
+
+export const VERIFICATION_LOCATION_COLUMNS =
+  "passenger_id,request_submitted_at,server_received_at,device_status,device_source," +
+  "device_latitude,device_longitude,device_accuracy_m,device_captured_at,declared_town," +
+  "network_city,network_region,network_country";
 
 export const PASSENGER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export type EvidenceKind = "id_front" | "id_back" | "selfie";

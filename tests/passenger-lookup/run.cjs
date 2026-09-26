@@ -40,6 +40,12 @@ const profile = {
 };
 const requestRow = { passenger_id: uid, id_front_path: "id_front/" + uid + "/id.jpg", id_back_path: null,
   selfie_with_id_path: "selfie_with_id/" + uid + "/selfie.jpg", updated_at: "2026-08-02T00:00:00Z" };
+const locationRow = {
+  passenger_id: uid, request_submitted_at: "2026-08-01T00:00:00Z", server_received_at: "2026-08-01T00:00:02Z",
+  device_status: "captured", device_source: "browser_geolocation", device_latitude: 16.914, device_longitude: 121.057,
+  device_accuracy_m: 18, device_captured_at: "2026-08-01T00:00:01Z", declared_town: "Banaue",
+  network_city: "Baguio", network_region: "CAR", network_country: "PH",
+};
 const lookupRoute = "app/api/admin/analytics/v3/passengers/route.ts";
 const evidenceRoute = "app/api/admin/passenger-verifications/evidence/route.ts";
 const pendingRoute = "app/api/admin/passenger-verifications/pending/route.ts";
@@ -50,6 +56,7 @@ function harness(options = {}) {
     passenger_recent_activity_v1: options.activities || [],
     passenger_verification_requests: options.request === null ? [] : [options.request || requestRow],
     passenger_verifications: options.legacy ? [options.legacy] : [],
+    passenger_verification_latest_location_v1: options.location === null ? [] : [options.location || locationRow],
     ...options.tables,
   };
   function builder(table, rows) {
@@ -127,6 +134,26 @@ function harness(options = {}) {
     assert.ok(h.calls.some((c) => c.table === "passenger_recent_activity_v1" && c.filter === "user_id" && c.value === uid));
     assert.ok(h.calls.some((c) => c.table === "passenger_recent_activity_v1" && c.limit === 51));
   });
+  await test("admin profile returns the current verification submission location only for that passenger", async () => {
+    const h = harness({ role: "admin" }), r = await h.get("?passenger_id=" + uid);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.can_view_verification_location, true);
+    assert.equal(r.body.verification_location.device_status, "captured");
+    assert.equal(r.body.verification_location.device_latitude, 16.914);
+    assert.ok(h.calls.some((c) => c.table === "passenger_verification_latest_location_v1" && c.filter === "passenger_id" && c.value === uid));
+  });
+  await test("dispatcher profile never queries or receives exact verification submission location", async () => {
+    const h = harness({ role: "dispatcher" }), r = await h.get("?passenger_id=" + uid);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.can_view_verification_location, false);
+    assert.equal(r.body.verification_location, null);
+    assert.equal(h.calls.some((c) => c.table === "passenger_verification_latest_location_v1"), false);
+  });
+  await test("verification location failures do not make the passenger profile unusable", async () => {
+    const h = harness({ role: "admin", failTable: "passenger_verification_latest_location_v1" }), r = await h.get("?passenger_id=" + uid);
+    assert.equal(r.status, 200); assert.ok(r.body.profile); assert.equal(r.body.verification_location, null);
+    assert.ok(r.body.verification_location_error);
+  });
   await test("missing profiles return 404 without scanning activity", async () => {
     const h = harness({ missing: true }); assert.equal((await h.get("?passenger_id=" + uid)).status, 404);
     assert.equal(h.calls.some((c) => c.table === "passenger_recent_activity_v1"), false);
@@ -195,6 +222,29 @@ function harness(options = {}) {
     }
     assert.ok(evidenceLocation("id_front/" + uid + "/a.jpg", uid, "id_front", false, base));
     assert.ok(evidenceLocation(uid + "/a.jpg", uid, "id_front", false, base));
+  });
+  await test("verification location normalizer accepts valid coordinates and fails malformed coordinates closed", () => {
+    const { normalizeVerificationLocation, verificationNetworkLocation } = load("lib/passenger/verificationLocation.ts");
+    const good = normalizeVerificationLocation({
+      status: "captured", latitude: "16.914", longitude: "121.057", accuracy_m: "18", captured_at: "2026-09-26T01:00:00Z"
+    }, "browser_geolocation");
+    assert.equal(good.status, "captured"); assert.equal(good.latitude, 16.914); assert.equal(good.accuracy_m, 18);
+    const bad = normalizeVerificationLocation({ status: "captured", latitude: "999", longitude: "121" }, "browser_geolocation");
+    assert.equal(bad.status, "error"); assert.equal(bad.latitude, null); assert.equal(bad.longitude, null);
+    const headers = { get(name) {
+      return name === "x-vercel-ip-city" ? "Baguio%20City" : name === "x-vercel-ip-country-region" ? "CAR" : name === "x-vercel-ip-country" ? "PH" : null;
+    } };
+    assert.deepEqual({ ...verificationNetworkLocation(headers) }, { city: "Baguio City", region: "CAR", country: "PH" });
+  });
+  await test("verification submit paths wire the location signal without making it a verification blocker", () => {
+    const web = fs.readFileSync(path.join(root, "app/verify/page.tsx"), "utf8");
+    const request = fs.readFileSync(path.join(root, "app/api/public/passenger/verification/request/route.ts"), "utf8");
+    const legacy = fs.readFileSync(path.join(root, "app/api/passenger/verification/submit/route.ts"), "utf8");
+    assert.match(web, /navigator\.geolocation/); assert.match(web, /location_status/);
+    for (const source of [request, legacy]) {
+      assert.match(source, /passenger_verification_submission_locations/);
+      assert.match(source, /location_recorded/);
+    }
   });
   await test("lookup page renders the search controls without embedding passenger data", () => {
     const page = load("app/admin/analytics-v3/passengers/page.tsx", { "@/app/components/PassengerEvidence": { default: () => null } }).default;

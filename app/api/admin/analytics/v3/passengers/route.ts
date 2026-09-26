@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth/requireStaff";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { ACTIVITY_COLUMNS, IDENTITY_COLUMNS, PASSENGER_UUID } from "@/lib/passenger/identity";
+import {
+  ACTIVITY_COLUMNS,
+  IDENTITY_COLUMNS,
+  PASSENGER_UUID,
+  VERIFICATION_LOCATION_COLUMNS,
+} from "@/lib/passenger/identity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,6 +42,18 @@ export async function GET(req: Request) {
     const profile = await db.from("passenger_identity_v1").select(IDENTITY_COLUMNS).eq("user_id", userId).maybeSingle();
     if (profile.error) return json(503, { ok: false, error: "Passenger profile is unavailable. Please retry." });
     if (!profile.data) return json(404, { ok: false, error: "Passenger profile not found." });
+    const canViewVerificationLocation = access.staff.role === "admin";
+    let verificationLocation = null;
+    let verificationLocationError: string | null = null;
+    if (canViewVerificationLocation) {
+      const location = await db.from("passenger_verification_latest_location_v1")
+        .select(VERIFICATION_LOCATION_COLUMNS).eq("passenger_id", userId).maybeSingle();
+      verificationLocation = location.error ? null : location.data;
+      verificationLocationError = location.error
+        ? "Verification submission location could not be loaded. Please retry."
+        : null;
+    }
+
     const activity = await db.from("passenger_recent_activity_v1").select(ACTIVITY_COLUMNS)
       .eq("user_id", userId).order("last_activity_at", { ascending: false, nullsFirst: false })
       .order("activity_id", { ascending: false }).limit(51);
@@ -44,6 +61,9 @@ export async function GET(req: Request) {
       ok: true,
       profile: profile.data,
       can_view_evidence: access.staff.role === "admin",
+      can_view_verification_location: canViewVerificationLocation,
+      verification_location: verificationLocation,
+      verification_location_error: verificationLocationError,
       activity: activity.error ? [] : (activity.data || []).slice(0, 50),
       activity_has_more: !activity.error && (activity.data || []).length > 50,
       activity_error: activity.error ? "Recent activity could not be loaded. Please retry." : null,
