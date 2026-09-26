@@ -86,6 +86,18 @@ begin
   new.company_cut := v_company;
   new.driver_payout := v_driver_earnings;
 
+  new.takeout_pricing_snapshot := v_snapshot || jsonb_build_object(
+    'takeout_product_purchase_amount', v_product,
+    'takeout_cash_first_amount', v_cash_first,
+    'cash_collection_amount', v_cash_first,
+    'takeout_pay_on_delivery_amount', v_pay_on_delivery,
+    'pay_on_delivery_amount', v_pay_on_delivery,
+    'takeout_driver_commission', v_commission,
+    'takeout_company_revenue', v_company,
+    'takeout_driver_delivery_earnings', v_driver_earnings,
+    'pickup_distance_fee', v_pickup
+  );
+
   return new;
 end;
 $function$;
