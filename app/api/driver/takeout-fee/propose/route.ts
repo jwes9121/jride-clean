@@ -6,6 +6,7 @@ export const revalidate = 0;
 
 const SERVICE_FEE = 15;
 const PROPOSAL_TTL_SECONDS = 300;
+const MIN_DELIVERY_FEE = 25;
 const MAX_DELIVERY_FEE = 2000;
 const CUSTOMER_CASH_PICKUP_FREE_KM = 1.5;
 const CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M = 20;
@@ -413,8 +414,13 @@ export async function POST(req: NextRequest) {
     const allowedRoutePlans = new Set(["vendor_first", "customer_cash_first"]);
 
     if (!orderId && !bookingCode) return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
-    if (deliveryFee === null || deliveryFee <= 0 || deliveryFee > MAX_DELIVERY_FEE) {
-      return json(400, { ok: false, error: "BAD_DELIVERY_FEE", message: "Delivery fee must be greater than 0 and not excessive." });
+    if (deliveryFee === null || deliveryFee < MIN_DELIVERY_FEE || deliveryFee > MAX_DELIVERY_FEE) {
+      return json(400, {
+        ok: false,
+        error: "BAD_DELIVERY_FEE",
+        message: "Takeout delivery fee must be at least PHP 25.",
+        minimum_delivery_fee: MIN_DELIVERY_FEE,
+      });
     }
     if (requestedRoutePlan && !allowedRoutePlans.has(requestedRoutePlan)) {
       return json(400, { ok: false, error: "BAD_TAKEOUT_ROUTE_PLAN", message: "route_plan must be vendor_first or customer_cash_first." });
