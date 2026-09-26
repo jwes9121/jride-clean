@@ -11,7 +11,7 @@ function load(file, mocks, globals = {}) {
  const module = { exports: {} };
  const compiled = ts.transpileModule(read(file), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true }, reportDiagnostics: true });
  assert.equal(compiled.diagnostics.filter(x => x.category === ts.DiagnosticCategory.Error).length, 0);
- vm.runInNewContext(compiled.outputText, {module, exports: module.exports, require: name => { if(name in mocks) return mocks[name]; if(name.endsWith('.css')) return {}; return require(name); }, console, Date, JSON, Error, Number, String, URL, Headers, AbortSignal, Event, ...globals});
+ vm.runInNewContext(compiled.outputText, {module, exports: module.exports, require: name => { if(name in mocks) return mocks[name]; if(name.endsWith('.css')) return {}; return require(name); }, console, Date, JSON, Error, Number, String, URL, URLSearchParams, Headers, AbortSignal, Event, ...globals});
  return module.exports;
 }
 const origin = 'https://app.jride.net';
