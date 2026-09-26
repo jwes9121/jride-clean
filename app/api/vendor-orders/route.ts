@@ -593,6 +593,20 @@ function vendorAcceptExpiresAt(row: any): string | null {
 // Rule: PHP 500 and below => nearest fresh driver to vendor pickup.
 // Rule: Above PHP 500 => nearest fresh driver to customer dropoff for cash-first collection.
 // Manual admin assignment remains available and can reassign later.
+const TAKEOUT_TEST_VENDOR_ID = "11111111-1111-1111-1111-111111111111";
+const TAKEOUT_TEST_PASSENGER_ID = "a80e8043-6477-4ce0-96a7-06ef7007b541";
+const TAKEOUT_TEST_DRIVER_IDS = new Set([
+  "00000000-0000-4000-8000-000000000001",
+  "00000000-0000-4000-8000-000000000002",
+]);
+
+function isDedicatedTakeoutTestOrder(order: any): boolean {
+  return (
+    String(order?.vendor_id || "").trim() === TAKEOUT_TEST_VENDOR_ID &&
+    String(order?.created_by_user_id || "").trim() === TAKEOUT_TEST_PASSENGER_ID
+  );
+}
+
 function takeoutAutoAssignNum(v: any): number | null {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
@@ -693,8 +707,15 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
     latestByDriver[did] = row;
   }
 
+  const dedicatedTestOrder = isDedicatedTakeoutTestOrder(order);
+  const candidateRows = (Object.values(latestByDriver) as any[]).filter((row) => {
+    if (!dedicatedTestOrder) return true;
+    const did = String(row?.driver_id || "").trim();
+    return TAKEOUT_TEST_DRIVER_IDS.has(did);
+  });
+
   let best: any = null;
-  for (const row of Object.values(latestByDriver) as any[]) {
+  for (const row of candidateRows) {
     const did = String(row?.driver_id || "").trim();
     if (!did || reserved.has(did)) continue;
     if (!takeoutAutoAssignDriverIsFreshAndOnline(row)) continue;
@@ -720,16 +741,25 @@ async function takeoutAutoAssignOnVendorAccept(admin: any, order: any) {
   }
 
   if (!best) {
-    return { attempted: true, assigned: false, reason: "no_fresh_online_driver", anchor, subtotal, cash_first: cashFirst };
+    return {
+      attempted: true,
+      assigned: false,
+      reason: dedicatedTestOrder ? "dedicated_test_driver_unavailable" : "no_fresh_online_driver",
+      anchor,
+      subtotal,
+      cash_first: cashFirst,
+      test_only: dedicatedTestOrder,
+    };
   }
 
   return {
     attempted: true,
     assigned: true,
-    reason: "nearest_fresh_online_driver",
+    reason: dedicatedTestOrder ? "dedicated_test_driver_only" : "nearest_fresh_online_driver",
     anchor,
     subtotal,
     cash_first: cashFirst,
+    test_only: dedicatedTestOrder,
     ...best,
   };
 }
@@ -1128,7 +1158,7 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
         .eq("vendor_id", vendor_id)
         .eq("service_type", "takeout"))
         .gt("created_at", new Date(Date.now() - VENDOR_ACCEPT_WINDOW_MS).toISOString())
-        .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town");
+        .select("id,status,vendor_status,customer_status,created_at,cancel_reason,vendor_cancel_reason,assigned_driver_id,driver_id,vendor_id,created_by_user_id,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,town");
 
       if (acceptUp.error) {
         return json(500, {
