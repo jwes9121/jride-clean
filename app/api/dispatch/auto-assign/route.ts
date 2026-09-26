@@ -4,6 +4,11 @@ import { getDrivingRoadMetricsToTarget } from "@/lib/routing/mapboxRoad";
 import { RIDE_PICKUP_NORMAL_MAX_KM } from "@/lib/pricing/pickupFee";
 import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
 import {
+  consumeDriverStandbyLocation,
+  resolveDriverDispatchLocations,
+  type DriverDispatchLocationResolution,
+} from "@/lib/driver/standbyDispatch";
+import {
   TAKEOUT_DRIVER_UNAVAILABLE_STATUS,
   openTakeoutDriverUnavailableOperationsCase,
   reachedTakeoutUniqueDriverOfferLimit,
@@ -18,6 +23,9 @@ type DriverRow = {
   lng: number | null;
   town?: string | null;
   vehicle_type?: string | null;
+  dispatch_location_source?: "live_gps" | "standby";
+  standby_confirmed_at?: string | null;
+  standby_expires_at?: string | null;
 };
 
 type DriverWalletRow = {
@@ -249,7 +257,11 @@ type MatchDebug = {
   rejected_road_distance_unavailable_count: number;
   rejected_road_distance_over_limit_count: number;
   eligible_count: number;
+  eligible_live_gps_count: number;
+  eligible_standby_count: number;
   chosen_driver_id: string | null;
+  chosen_driver_location_source: "live_gps" | "standby" | null;
+  standby_consumed: boolean | null;
   chosen_driver_town: string | null;
   chosen_driver_distance_km: number | null;
   requested_vehicle_type: string | null;
@@ -430,7 +442,11 @@ async function matchSingle(
     rejected_road_distance_unavailable_count: 0,
     rejected_road_distance_over_limit_count: 0,
     eligible_count: 0,
+    eligible_live_gps_count: 0,
+    eligible_standby_count: 0,
     chosen_driver_id: null,
+    chosen_driver_location_source: null,
+    standby_consumed: null,
     chosen_driver_town: null,
     chosen_driver_distance_km: null,
     requested_vehicle_type: requestedVehicleType || null,
@@ -526,6 +542,28 @@ async function matchSingle(
   const allDrivers = (drivers || []) as DriverRow[];
   debug.scanned_driver_count = allDrivers.length;
 
+  let dispatchLocationByDriverId: Map<
+    string,
+    DriverDispatchLocationResolution
+  >;
+  try {
+    dispatchLocationByDriverId = await resolveDriverDispatchLocations(
+      supabase,
+      allDrivers,
+      {
+        nowMs,
+        freshnessSeconds: ASSIGN_FRESHNESS_SECONDS,
+      }
+    );
+  } catch (error: any) {
+    return {
+      assigned: false,
+      reason: "DRIVER_DISPATCH_LOCATION_SCAN_FAILED",
+      decision: "blocked",
+      debug,
+    };
+  }
+
   const driverIds = allDrivers
     .map((d) => text(d.driver_id))
     .filter(Boolean);
@@ -556,7 +594,6 @@ async function matchSingle(
 
   for (const d of allDrivers) {
     const st = norm(d.status);
-    const driverTown = text(d.town).toLowerCase();
 
     if (excluded.includes(String(d.driver_id || "").trim())) {
       debug.rejected_excluded_count++;
@@ -568,28 +605,54 @@ async function matchSingle(
       continue;
     }
 
-    const usableLocation = parseUsableCoordinatePair(d.lat, d.lng);
-    if (!usableLocation) {
-      debug.rejected_unusable_location_count++;
+    const dispatchLocation = dispatchLocationByDriverId.get(text(d.driver_id));
+    if (!dispatchLocation || !dispatchLocation.ok) {
+      const reason = dispatchLocation?.reason || "missing_location";
+      if (reason === "missing_updated_at") {
+        debug.rejected_missing_updated_at_count++;
+      } else if (reason === "invalid_updated_at") {
+        debug.rejected_invalid_updated_at_count++;
+      } else if (reason === "missing_location") {
+        debug.rejected_unusable_location_count++;
+      } else {
+        debug.rejected_stale_count++;
+      }
       continue;
     }
+
+    const usableLocation = {
+      lat: dispatchLocation.lat,
+      lng: dispatchLocation.lng,
+    };
+    const driverTown = text(dispatchLocation.town || d.town).toLowerCase();
+
+    // JRIDE_DRIVER_STANDBY_DISPATCH_V1
+    // Fresh live GPS always wins. Standby is a separately confirmed saved-home
+    // point used only for this initial assignment scan.
 
     // JRIDE_RIDE_RESCUE_DISPATCH_TOWN_V1
     // Normal/Rescue Ride eligibility uses the server GPS-derived town helper.
     // Emergency Booking keeps its existing neighboring-town rule, and
     // non-Ride services keep their existing assignment behavior.
     if (isRideBooking && !emergencyMode) {
-      const { data: rideTownEligible, error: rideTownError } = await supabase.rpc(
-        "jride_ride_driver_town_eligible_v1",
-        {
-          p_driver_id: d.driver_id,
-          p_booking_town: bookingTown,
+      if (dispatchLocation.source === "standby") {
+        if (!driverTown || driverTown !== bookingTown.toLowerCase()) {
+          debug.rejected_wrong_town_count++;
+          continue;
         }
-      );
+      } else {
+        const { data: rideTownEligible, error: rideTownError } = await supabase.rpc(
+          "jride_ride_driver_town_eligible_v1",
+          {
+            p_driver_id: d.driver_id,
+            p_booking_town: bookingTown,
+          }
+        );
 
-      if (rideTownError || rideTownEligible !== true) {
-        debug.rejected_wrong_town_count++;
-        continue;
+        if (rideTownError || rideTownEligible !== true) {
+          debug.rejected_wrong_town_count++;
+          continue;
+        }
       }
     } else if (!driverTown || !allowedTownSet.has(driverTown)) {
       debug.rejected_wrong_town_count++;
@@ -682,27 +745,21 @@ async function matchSingle(
       continue;
     }
 
-    if (!d.updated_at) {
-      debug.rejected_missing_updated_at_count++;
-      continue;
-    }
-
-    const updatedMs = new Date(d.updated_at).getTime();
-    if (!Number.isFinite(updatedMs)) {
-      debug.rejected_invalid_updated_at_count++;
-      continue;
-    }
-
-    const ageSec = (nowMs - updatedMs) / 1000;
-    if (ageSec > ASSIGN_FRESHNESS_SECONDS) {
-      debug.rejected_stale_count++;
-      continue;
+    if (dispatchLocation.source === "standby") {
+      debug.eligible_standby_count++;
+    } else {
+      debug.eligible_live_gps_count++;
     }
 
     eligible.push({
       ...d,
       lat: usableLocation.lat,
       lng: usableLocation.lng,
+      town: dispatchLocation.town || d.town,
+      updated_at: dispatchLocation.freshAt,
+      dispatch_location_source: dispatchLocation.source,
+      standby_confirmed_at: dispatchLocation.standbyConfirmedAt,
+      standby_expires_at: dispatchLocation.standbyExpiresAt,
     });
   }
 
@@ -818,6 +875,7 @@ async function matchSingle(
   debug.chosen_driver_id = chosen.driver_id;
   debug.chosen_driver_town = text(chosen.town) || null;
   debug.chosen_driver_vehicle_type = normalizeVehicleType(chosen.vehicle_type) || null;
+  debug.chosen_driver_location_source = chosen.dispatch_location_source || "live_gps";
 
   const chosenRoadMetric = roadMetrics.get(text(chosen.driver_id)) ?? null;
   const chosenLat = num(chosen.lat);
@@ -927,6 +985,22 @@ async function matchSingle(
       decision: "blocked",
       debug,
     };
+  }
+
+  if (chosen.dispatch_location_source === "standby") {
+    const standbyConsume = await consumeDriverStandbyLocation(supabase, {
+      driverId: text(chosen.driver_id),
+      confirmedAt: chosen.standby_confirmed_at,
+      reason: "booking:" + text(booking.id) + ":" + norm(booking.service_type),
+    });
+    debug.standby_consumed = standbyConsume.ok && standbyConsume.consumed;
+    if (!standbyConsume.ok) {
+      console.error("[JRIDE_STANDBY_CONSUME_FAILED]", {
+        driver_id: chosen.driver_id,
+        booking_id: booking.id,
+        error: standbyConsume.error || null,
+      });
+    }
   }
 
   return {

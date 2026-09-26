@@ -11,6 +11,11 @@ import {
   RIDE_PICKUP_TIER_ONE_FEE_PER_BLOCK,
   RIDE_PICKUP_TIER_TWO_FEE_PER_BLOCK,
 } from "@/lib/pricing/pickupFee";
+import {
+  consumeDriverStandbyLocation,
+  resolveDriverDispatchLocations,
+  type DriverDispatchLocationResolution,
+} from "@/lib/driver/standbyDispatch";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
@@ -102,6 +107,7 @@ export type AgrimarketDispatchResult = {
   eta_seconds_to_farmer?: number;
   remaining_preparation_seconds?: number;
   driver_accept_expires_at?: string;
+  dispatch_location_source?: "live_gps" | "standby";
   error?: string;
   message?: string;
 };
@@ -323,19 +329,53 @@ export async function offerAgrimarketDriver(input: {
     if (!previous || nextTime >= previousTime) latestByDriver.set(driverId, row);
   }
 
-  let locations = Array.from(latestByDriver.values()).filter((row: any) => {
-    const age = ageSeconds(row.updated_at);
-    const lat = numberOrNull(row.lat);
-    const lng = numberOrNull(row.lng);
-    return (
-      age != null &&
-      age <= DRIVER_STALE_AFTER_SECONDS &&
-      ONLINE_LIKE.has(lower(row.status)) &&
-      lat != null &&
-      lng != null &&
-      normalizeVehicle(row.vehicle_type) === preferredVehicle
+  const locationRows = Array.from(latestByDriver.values());
+  let dispatchLocationByDriverId: Map<
+    string,
+    DriverDispatchLocationResolution
+  >;
+  try {
+    dispatchLocationByDriverId = await resolveDriverDispatchLocations(
+      admin,
+      locationRows,
+      {
+        freshnessSeconds: DRIVER_STALE_AFTER_SECONDS,
+      }
     );
-  });
+  } catch (error: any) {
+    return {
+      ok: false,
+      order_id: resolvedOrderId,
+      order_code: resolvedOrderCode,
+      error: "AGRIMARKET_DRIVER_DISPATCH_LOCATION_READ_FAILED",
+      message: text(error?.message || error),
+      assignment_anchor: assignmentAnchor,
+    };
+  }
+
+  let locations = locationRows
+    .map((row: any) => {
+      const driverId = text(row.driver_id);
+      const dispatchLocation = dispatchLocationByDriverId.get(driverId);
+      if (!dispatchLocation || !dispatchLocation.ok) return null;
+      if (
+        !ONLINE_LIKE.has(lower(row.status)) ||
+        normalizeVehicle(row.vehicle_type) !== preferredVehicle
+      ) {
+        return null;
+      }
+
+      return {
+        ...row,
+        lat: dispatchLocation.lat,
+        lng: dispatchLocation.lng,
+        town: dispatchLocation.town || row.town,
+        updated_at: dispatchLocation.freshAt,
+        dispatch_location_source: dispatchLocation.source,
+        standby_confirmed_at: dispatchLocation.standbyConfirmedAt,
+      };
+    })
+    .filter((row: any) => row != null);
 
   if (!locations.length) {
     return {
@@ -490,7 +530,15 @@ export async function offerAgrimarketDriver(input: {
             )
           : null;
 
-      return { driverId, metric, approachDistanceKm };
+      return {
+        driverId,
+        metric,
+        approachDistanceKm,
+        dispatchLocationSource: (
+          row.dispatch_location_source === "standby" ? "standby" : "live_gps"
+        ) as "standby" | "live_gps",
+        standbyConfirmedAt: text(row.standby_confirmed_at) || null,
+      };
     })
     .filter(
       (entry) =>
@@ -636,6 +684,22 @@ export async function offerAgrimarketDriver(input: {
     return { ok: false, error: "AGRIMARKET_ORDER_DISPATCH_UPDATE_FAILED", message: updateRes.error.message };
   }
 
+  if (nearest.dispatchLocationSource === "standby") {
+    const standbyConsume = await consumeDriverStandbyLocation(admin, {
+      driverId: nearest.driverId,
+      confirmedAt: nearest.standbyConfirmedAt,
+      reason: "agrimarket:" + resolvedOrderId,
+    });
+    if (!standbyConsume.ok) {
+      console.error("[JRIDE_STANDBY_CONSUME_FAILED]", {
+        driver_id: nearest.driverId,
+        order_id: resolvedOrderId,
+        service_type: "agrimarket",
+        error: standbyConsume.error || null,
+      });
+    }
+  }
+
   await admin.from("agrimarket_order_events").insert({
     order_id: resolvedOrderId,
     from_status: lower(order.status),
@@ -662,6 +726,7 @@ export async function offerAgrimarketDriver(input: {
       driver_approach_base_delivery_fee_credit: approachBaseDeliveryFee,
       driver_approach_raw_pickup_fee: rawPickupFee,
       pickup_distance_fee: storedPickupFee,
+      dispatch_location_source: nearest.dispatchLocationSource,
       eta_seconds_to_first_pickup: etaToFirstPickup,
       eta_seconds_to_farmer: etaToFarmer,
       remaining_preparation_seconds: remainingPreparationSeconds,
@@ -685,5 +750,6 @@ export async function offerAgrimarketDriver(input: {
     eta_seconds_to_farmer: etaToFarmer,
     remaining_preparation_seconds: remainingPreparationSeconds,
     driver_accept_expires_at: expiresAt,
+    dispatch_location_source: nearest.dispatchLocationSource,
   };
 }
