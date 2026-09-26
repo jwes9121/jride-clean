@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
     let q = serviceSupabase
       .from("bookings")
       .select(
-        "id,booking_code,service_type,created_by_user_id,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+        "id,booking_code,service_type,created_by_user_id,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
       )
       .eq("service_type", "takeout")
       .limit(1);
@@ -348,7 +348,7 @@ export async function POST(req: NextRequest) {
       confirmation = order[field] == null ? confirmation.is(field, null) : confirmation.eq(field, order[field]);
     }
     const updateRes = await confirmation.select(
-        "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
+        "id,booking_code,service_type,assigned_driver_id,driver_id,vendor_status,customer_status,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_cash_collection_required,takeout_fee_proposed_by_driver_id,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,takeout_route_plan,status",
       )
       .maybeSingle();
 

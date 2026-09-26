@@ -335,6 +335,42 @@ function booking(subtotal) {
     /status not in \('completed', 'cancelled', 'canceled'\)/
   );
 
+  const splitCashMigration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260927100000_takeout_split_cash_accounting_v1.sql"
+    ),
+    "utf8"
+  );
+  assert.match(splitCashMigration, /takeout_product_purchase_amount/);
+  assert.match(splitCashMigration, /takeout_cash_first_amount/);
+  assert.match(splitCashMigration, /takeout_pay_on_delivery_amount/);
+  assert.match(splitCashMigration, /takeout_driver_commission/);
+  assert.match(splitCashMigration, /takeout_company_revenue/);
+  assert.match(splitCashMigration, /takeout_driver_delivery_earnings/);
+  assert.match(splitCashMigration, /v_cash_required := v_items > 500/);
+  assert.match(splitCashMigration, /v_commission := case when v_delivery >= 50 then 5 else 0 end/);
+  assert.match(splitCashMigration, /v_company := round\(v_service \+ v_commission, 2\)/);
+  assert.match(splitCashMigration, /v_driver_earnings := greatest\(round\(v_delivery \+ v_pickup - v_commission, 2\), 0\)/);
+  assert.match(splitCashMigration, /wallet_settlement_status = 'settled'/);
+
+  const takeoutPage = fs.readFileSync(
+    path.join(root, "app/takeout/page.tsx"),
+    "utf8"
+  );
+  assert.match(takeoutPage, /const cashCollectionRequired = itemsSubtotal > 500;/);
+  assert.doesNotMatch(takeoutPage, /estimatedSubtotalWithPackaging >= 500/);
+  assert.match(takeoutPage, /Give driver now for vendor purchase/);
+  assert.match(takeoutPage, /Pay on final delivery/);
+
+  const driverActive = fs.readFileSync(
+    path.join(root, "app/api/driver/active-trip/route.ts"),
+    "utf8"
+  );
+  assert.match(driverActive, /cash_collection_amount/);
+  assert.match(driverActive, /pay_on_delivery_amount/);
+  assert.match(driverActive, /for the vendor purchase only/);
+
   console.log("takeout-automatic-fare: ok");
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : error);

@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
 
   const res = await admin
     .from("bookings")
-    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,takeout_pricing_snapshot,takeout_customer_confirmed_at,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan")
+    .select("id,booking_code,service_type,vendor_id,status,vendor_status,customer_status,driver_status,takeout_pricing_status,takeout_pricing_snapshot,takeout_customer_confirmed_at,passenger_name,from_label,to_label,takeout_items_subtotal,assigned_driver_id,driver_id,created_at,updated_at,town,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,pickup_distance_fee,company_cut,driver_payout")
     .eq("service_type", "takeout")
     .or(`assigned_driver_id.eq.${driverId},driver_id.eq.${driverId}`)
     .in("status", activeCanonicalStatuses)
@@ -154,6 +154,17 @@ export async function GET(req: NextRequest) {
     takeout_delivery_fee: row.takeout_delivery_fee,
     takeout_service_fee: row.takeout_service_fee,
     takeout_total_payable: row.takeout_total_payable,
+    takeout_product_purchase_amount: row.takeout_product_purchase_amount ?? null,
+    takeout_cash_first_amount: row.takeout_cash_first_amount ?? null,
+    cash_collection_amount: row.takeout_cash_first_amount ?? null,
+    takeout_pay_on_delivery_amount: row.takeout_pay_on_delivery_amount ?? null,
+    pay_on_delivery_amount: row.takeout_pay_on_delivery_amount ?? null,
+    takeout_driver_commission: row.takeout_driver_commission ?? null,
+    takeout_company_revenue: row.takeout_company_revenue ?? null,
+    takeout_driver_delivery_earnings: row.takeout_driver_delivery_earnings ?? null,
+    pickup_distance_fee: row.pickup_distance_fee ?? null,
+    company_cut: row.company_cut ?? null,
+    driver_payout: row.driver_payout ?? null,
     takeout_cash_collection_required: derivedCashRequired,
     takeout_route_plan: derivedRoutePlan,
     takeout_pricing_version:

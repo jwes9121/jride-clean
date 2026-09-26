@@ -19,6 +19,11 @@ type TakeoutOrder = {
   takeout_delivery_fee?: number | string | null;
   takeout_service_fee?: number | string | null;
   takeout_total_payable?: number | string | null;
+  takeout_product_purchase_amount?: number | string | null;
+  takeout_cash_first_amount?: number | string | null;
+  takeout_pay_on_delivery_amount?: number | string | null;
+  cash_collection_amount?: number | string | null;
+  pay_on_delivery_amount?: number | string | null;
   takeout_cash_collection_required?: boolean | null;
   premium_packaging_fee?: number | string | null;
   order_preferences?: any;
@@ -424,6 +429,20 @@ export default function TakeoutTrackPage() {
     const vendorPoint = takeoutMapPoint(order?.vendor_lat ?? order?.pickup_lat, order?.vendor_lng ?? order?.pickup_lng);
     const customerPoint = takeoutMapPoint(order?.customer_lat ?? order?.dropoff_lat, order?.customer_lng ?? order?.dropoff_lng);
     const cashFirstRoute = order?.takeout_cash_collection_required === true || routePlan === "customer_cash_first";
+    const productPurchaseAmount = Math.max(
+      0,
+      toNum(order?.takeout_product_purchase_amount) || Number((foodSubtotal + packagingSubtotal).toFixed(2))
+    );
+    const cashFirstAmount = Math.max(
+      0,
+      toNum(order?.takeout_cash_first_amount ?? order?.cash_collection_amount) ||
+        (cashFirstRoute ? productPurchaseAmount : 0)
+    );
+    const payOnDeliveryAmount = Math.max(
+      0,
+      toNum(order?.takeout_pay_on_delivery_amount ?? order?.pay_on_delivery_amount) ||
+        Number((totalPayable - cashFirstAmount).toFixed(2))
+    );
     const alreadyPickedUp = ["picked_up", "delivering", "completed"].includes(progressStatus);
     const cashAlreadyCollected = ["cash_collected", "vendor_bound", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].some((s) =>
       [progressStatus, customerStatus, vendorStatus, driverStatus].includes(s)
@@ -458,6 +477,9 @@ export default function TakeoutTrackPage() {
       serviceFee,
       packagingSubtotal,
       totalPayable,
+      productPurchaseAmount,
+      cashFirstAmount,
+      payOnDeliveryAmount,
       pickupExcessFee,
       pickupDistanceKm,
       pickupFreeKm,
@@ -684,7 +706,20 @@ export default function TakeoutTrackPage() {
                 <span className="font-black text-slate-950">{order && isVendorAcceptTimeout(order) ? "Order expired" : state.totalPayable > 0 ? money(state.totalPayable) : "Pending"}</span>
               </div>
               {order?.takeout_cash_collection_required === true ? (
-                <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Cash collection required before vendor pickup.</div>
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <div className="font-bold">Customer-first cash split</div>
+                  <div className="mt-2 flex justify-between gap-3">
+                    <span>Give driver now for vendor purchase</span>
+                    <span className="font-bold">{money(state.cashFirstAmount)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span>Pay on final delivery</span>
+                    <span className="font-bold">{money(state.payOnDeliveryAmount)}</span>
+                  </div>
+                  <div className="mt-2 text-[11px] text-amber-800">
+                    The first amount is only for the menu/items and vendor packaging. Delivery, JRide service, and pickup/approach charges are paid when the order is delivered.
+                  </div>
+                </div>
               ) : null}
                             {state.pickupExcessFee >= 200 ? (
   <div className="mt-2 rounded border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
