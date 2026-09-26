@@ -178,3 +178,20 @@
 .alertOrder { padding: 14px 0; border-bottom: 1px solid #547260; margin-bottom: 12px; }
 .alertOrder a { display: inline-block; margin-top: 4px; background: #b9f0cf; text-decoration: none; }
 .alertPanel :focus-visible { outline: 3px solid #ba7c0d; outline-offset: 3px; }
+
+.setupProgress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin: 0 0 14px; }
+.setupProgress span { min-width: 0; border: 1px solid #dfe6d7; border-radius: 11px; background: #f7f9f1; padding: 9px 8px; color: #5d6c5e; font-size: 10px; line-height: 1.35; text-align: center; }
+.setupProgress strong { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 4px; border-radius: 7px; background: #e7edd9; color: #506841; font-size: 10px; }
+.setupRequirement { margin: 0; border: 1px solid #ead79a; border-radius: 11px; background: #fff8df; padding: 10px 12px; color: #6a5725; font-size: 12px; line-height: 1.5; }
+@media (max-width: 480px) {
+  .createPanel { margin: 14px 0; padding: 16px 15px; border-radius: 18px; }
+  .formSection { margin: 18px 0; }
+  .formSection legend { margin-bottom: 13px; padding-bottom: 10px; }
+  .formGrid { gap: 13px; }
+  .formGrid label, .editGrid label { gap: 6px; }
+  .workspace input:not([type=checkbox]), .workspace select, .workspace textarea { min-height: 44px; padding: 10px 11px; }
+  .setupProgress { gap: 5px; margin-bottom: 11px; }
+  .setupProgress span { padding: 8px 5px; font-size: 9px; }
+  .setupProgress strong { display: grid; margin: 0 auto 4px; }
+  .formActions { gap: 8px; padding-top: 13px; }
+}
