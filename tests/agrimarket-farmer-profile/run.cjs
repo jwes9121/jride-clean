@@ -43,10 +43,24 @@ const client = load('lib/agrimarket/farmerSessionClient.ts', {
 });
 function apiHarness(options = {}) {
   const calls = [];
-  const db = { rpc: async (name, args) => {
-    calls.push({ kind: 'auth', name, args });
-    return options.expired ? { data: null, error: null } : { data: { access_code: code, producer }, error: null };
-  } };
+  const db = {
+    rpc: async (name, args) => {
+      calls.push({ kind: 'auth', name, args });
+      return options.expired ? { data: null, error: null } : { data: { access_code: code, producer }, error: null };
+    },
+    from: table => {
+      calls.push({ kind: 'profile', table });
+      const q = {
+        select() { return q; },
+        eq() { return q; },
+        limit() { return q; },
+        maybeSingle: async () => options.profileReadError
+          ? { data: null, error: { message: 'profile read failed' } }
+          : { data: { town: producer.town, vendor_name_locked_at: options.locked ? '2026-09-26T00:00:00Z' : null }, error: null },
+      };
+      return q;
+    },
+  };
   const api = load('app/api/agrimarket/producer/location/route.ts', {
     '../../_lib/server': {
       agrimarketFarmerPortalEnabled: () => options.portal !== false,
@@ -57,6 +71,7 @@ function apiHarness(options = {}) {
         const value = await session.readFarmerSession(req, db);
         return value ? { ok: true, ...value, accessCode: value.access_code } : { ok: false, response: { status: 401, body: { ok: false, message: 'Sign in again.' } } };
       },
+      createServiceSupabase: () => db,
       jsonNoStore: (status, body) => ({ status, body }),
     },
     '../../_lib/admin-farmer-location': {
@@ -147,14 +162,34 @@ async function run() {
   await test('disabled farmer portal fails closed', async () => {
     const h = apiHarness({ portal: false }); assert.equal((await h.api.GET(h.req('q=Lamut'))).status, 503); assert.equal(h.calls.length, 0);
   });
+  await test('profile town lookup fails closed before geocoding', async () => {
+    const h = apiHarness({ profileReadError: true });
+    const response = await h.api.GET(h.req('q=Lamut&town=Lamut'));
+    assert.equal(response.status, 503);
+    assert(!h.calls.some(c => c.kind === 'search' || c.kind === 'reverse'));
+  });
   await test('authenticated search does not depend on public onboarding and filters other towns', async () => {
     const h = apiHarness({ results: [point, { ...point, town: 'Lagawe' }, { ...point, launch_eligible: false }] });
     const r = await h.api.GET(h.req('q=Municipal+hall&town=Lamut'));
     assert.equal(r.status, 200); assert.equal(r.body.results.length, 1); assert.equal(h.calls.find(c => c.kind === 'search').town, 'Lamut');
   });
-  await test('forged municipality and invalid search length do not call provider', async () => {
-    const h = apiHarness();
-    for (const q of ['q=hall&town=Lagawe', 'q=a', 'q=' + 'a'.repeat(181)]) assert.equal((await h.api.GET(h.req(q))).status, 400);
+  await test('unlocked first setup may verify another active municipality, but Kiangan remains unavailable', async () => {
+    let h = apiHarness({ results: [{ ...point, town: 'Lagawe' }] });
+    const allowed = await h.api.GET(h.req('q=hall&town=Lagawe'));
+    assert.equal(allowed.status, 200);
+    assert.equal(h.calls.find(c => c.kind === 'search').town, 'Lagawe');
+
+    h = apiHarness();
+    for (const q of ['q=hall&town=Kiangan', 'q=a&town=Lamut', 'q=' + 'a'.repeat(181) + '&town=Lamut']) {
+      assert.equal((await h.api.GET(h.req(q))).status, 400);
+    }
+    assert(!h.calls.some(c => c.kind === 'search'));
+  });
+  await test('confirmed farm keeps municipality locked before calling the location provider', async () => {
+    const h = apiHarness({ locked: true });
+    const response = await h.api.GET(h.req('q=hall&town=Lagawe'));
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /locked/i);
     assert(!h.calls.some(c => c.kind === 'search'));
   });
   await test('no search matches is not a pin-verification failure', async () => {
