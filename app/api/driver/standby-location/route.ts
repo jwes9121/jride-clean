@@ -432,13 +432,15 @@ export async function PUT(req: NextRequest) {
   } else {
     const townLookup = await resolveSavedHomeTown(homeLat, homeLng);
     if (!townLookup.ok) {
+      const status =
+        townLookup.error === "HOME_OUTSIDE_SERVICE_TOWN" ? 409 : 503;
       return json(
         {
           ok: false,
           error: townLookup.error,
           message: townLookup.message,
         },
-        503
+        status
       );
     }
     verifiedHomeTown = townLookup.town;
