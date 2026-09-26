@@ -204,4 +204,28 @@ test("standby remains initial-dispatch only", () => {
   }
 });
 
+test("leaving online duty cancels active standby", () => {
+  const migration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260927013000_driver_standby_cancel_on_duty_exit_v1.sql"
+    ),
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /after\s+insert\s+or\s+update\s+of\s+status[\s\S]*on\s+public\.driver_locations/i
+  );
+  assert.match(
+    migration,
+    /not\s+in\s*\(\s*'online'\s*,\s*'available'\s*,\s*'idle'\s*,\s*'waiting'\s*\)/i
+  );
+  assert.match(migration, /update\s+public\.driver_standby_sessions/i);
+  assert.match(migration, /cancel_reason\s*=\s*'duty_left_online'/i);
+  assert.match(migration, /consumed_at\s+is\s+null/i);
+  assert.match(migration, /cancelled_at\s+is\s+null/i);
+  assert.match(migration, /expires_at\s*>\s*now\(\)/i);
+});
+
 console.log("\n" + passed + " driver standby regression groups passed.");
