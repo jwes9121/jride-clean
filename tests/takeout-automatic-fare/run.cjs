@@ -373,6 +373,22 @@ function booking(subtotal) {
   assert.match(driverActive, /pay_on_delivery_amount/);
   assert.match(driverActive, /for the vendor purchase only/);
 
+  assert.match(status, /TAKEOUT_CASH_AMOUNT_MISMATCH/);
+  assert.match(status, /TAKEOUT_CASH_COLLECTION_NOT_REQUIRED/);
+  assert.match(status, /expected_cash_first_amount/);
+  assert.match(status, /takeout_cash_collected_amount/);
+  assert.match(status, /takeout_cash_collected_at/);
+
+  const cashGuardMigration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260927103000_takeout_cash_first_amount_guard_v1.sql"
+    ),
+    "utf8"
+  );
+  assert.match(cashGuardMigration, /takeout_cash_collected_amount numeric/);
+  assert.match(cashGuardMigration, /takeout_cash_collected_at timestamptz/);
+
   console.log("takeout-automatic-fare: ok");
 })().catch((error) => {
   console.error(error && error.stack ? error.stack : error);
