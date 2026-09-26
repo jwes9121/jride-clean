@@ -23,10 +23,6 @@ type TakeoutOrder = {
   proposal_expiry_stuck?: boolean;
   takeout_auto_dispatch_exhausted?: boolean;
   takeout_auto_dispatch_exhausted_at?: string | null;
-  pickup_distance_exception_required?: boolean;
-  pickup_distance_exception_status?: string | null;
-  pickup_distance_km?: number | null;
-  pickup_distance_fee?: number | null;
   priority: number;
 };
 
@@ -382,11 +378,6 @@ export default function TakeoutDispatchPanel() {
                               : titleCase(status)}
                           </span>
                           {o.cash_required ? <span className="rounded-full border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700">Cash required</span> : null}
-                          {o.pickup_distance_exception_required ? (
-                            <span className="rounded-full border border-amber-400 bg-amber-50 px-2 py-1 text-xs font-bold text-amber-800">
-                              Pickup &gt;10 km — dispatch review
-                            </span>
-                          ) : null}
                         </div>
                         <div className="grid gap-2 text-sm text-slate-700 md:grid-cols-2">
                           <div><span className="font-semibold">Vendor:</span> {o.vendor_name || "Unknown"}</div>
@@ -397,14 +388,6 @@ export default function TakeoutDispatchPanel() {
                           <div><span className="font-semibold">Updated:</span> {o.update_age_minutes} min ago</div>
                           <div className="md:col-span-2"><span className="font-semibold">Dropoff:</span> {o.to_label || "Not provided"}</div>
                           <div className="md:col-span-2"><span className="font-semibold">Assigned driver:</span> {o.assigned_driver_name || "None"}{o.assigned_driver_phone ? ` (${o.assigned_driver_phone})` : ""}</div>
-                          {o.pickup_distance_exception_required ? (
-                            <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-900">
-                              <span className="font-semibold">Pickup exception:</span>{" "}
-                              {o.pickup_distance_km != null ? `${Number(o.pickup_distance_km).toFixed(2)} km actual road approach` : "over the normal 10 km range"}
-                              {o.pickup_distance_fee != null ? ` · normal surcharge capped at ${money(o.pickup_distance_fee)}` : ""}
-                              {" · Do not collect customer cash until reassigned or reviewed."}
-                            </div>
-                          ) : null}
                         </div>
                       </div>
 
