@@ -181,6 +181,17 @@ test("all initial dispatch paths resolve and consume standby", () => {
   }
 });
 
+test("standby activation verifies the saved Home town server-side", () => {
+  const route = fs.readFileSync(
+    path.join(root, "app/api/driver/standby-location/route.ts"),
+    "utf8"
+  );
+  assert.match(route, /api\.mapbox\.com\/geocoding\/v5\/mapbox\.places/);
+  assert.match(route, /types=place/);
+  assert.match(route, /HOME_LOCATION_TOWN_MISMATCH/);
+  assert.match(route, /HOME_OUTSIDE_SERVICE_TOWN/);
+});
+
 test("standby remains initial-dispatch only", () => {
   const treeFiles = [
     "app/api/driver/location/ping/route.ts",
