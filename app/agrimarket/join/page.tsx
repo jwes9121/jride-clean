@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import FarmerPickupMap, { emptyFarmerPin } from "@/components/agrimarket/FarmerPickupMap";
-import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, agrimarketBarangays, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
 import { FarmerFeedback, FarmerWorkspace } from "../producer/FarmerWorkspace";
 import styles from "../producer/farmer.module.css";
 
@@ -44,6 +44,7 @@ export default function AgrimarketFarmerJoinPage() {
   }, []);
 
   function change<K extends keyof typeof blank>(key: K, value: (typeof blank)[K]) { setForm((current) => ({ ...current, [key]: value })); }
+  const barangays = agrimarketBarangays(form.town);
   const validPin = pin.lat != null && pin.lng != null && !pin.resolving && pin.launch_eligible && pin.resolved_town === form.town;
 
   async function submit(event: FormEvent) {
@@ -99,9 +100,14 @@ export default function AgrimarketFarmerJoinPage() {
         </div></fieldset>
         <fieldset className={styles.formSection}><legend><span>02</span> Private pickup point</legend><div className={styles.formGrid}>
           <label>Municipality<select value={form.town} onChange={(event) => { change("town", event.target.value); change("barangay", ""); change("pin_confirmed", false); }}>{AGRIMARKET_ACTIVE_TOWNS.map((town) => <option key={town} value={town}>{town}</option>)}</select></label>
-          <label>Barangay / local place<input maxLength={100} value={form.barangay} onChange={(event) => change("barangay", event.target.value)} /></label>
+          <label>Barangay<select required value={form.barangay} onChange={(event) => change("barangay", event.target.value)}><option value="">Select barangay</option>{barangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}</select></label>
           <label className={styles.fullWidth}>Handoff point description<input required minLength={2} maxLength={180} value={form.pickup_label} onChange={(event) => change("pickup_label", event.target.value)} placeholder="Farm gate or agreed roadside pickup" /></label>
-          <div className={styles.fullWidth}><FarmerPickupMap selectedTown={form.town} value={pin} onChange={(next) => { setPin(next); change("pin_confirmed", false); if (next.resolved_barangay) change("barangay", next.resolved_barangay); }} /></div>
+          <div className={styles.fullWidth}><FarmerPickupMap selectedTown={form.town} value={pin} onChange={(next) => {
+            setPin(next);
+            change("pin_confirmed", false);
+            const resolvedBarangay = next.resolved_barangay ? canonicalAgrimarketBarangay(form.town, next.resolved_barangay) : null;
+            if (resolvedBarangay) change("barangay", resolvedBarangay);
+          }} /></div>
           <label className={styles.checkLabel}><input type="checkbox" checked={form.pickup_motorcycle_accessible} onChange={(event) => change("pickup_motorcycle_accessible", event.target.checked)} /> A motorcycle can reach this pin</label>
           <label className={styles.checkLabel}><input type="checkbox" checked={form.pickup_tricycle_accessible} onChange={(event) => change("pickup_tricycle_accessible", event.target.checked)} /> A tricycle can reach and stop at this pin</label>
           <label className={`${styles.checkLabel} ${styles.fullWidth}`}><input type="checkbox" checked={form.pickup_roadside_handoff_required} onChange={(event) => change("pickup_roadside_handoff_required", event.target.checked)} /> We will meet the driver at this roadside handoff point</label>
