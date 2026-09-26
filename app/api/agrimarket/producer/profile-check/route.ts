@@ -52,11 +52,11 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    if (vendorName.length < 2 || vendorName.length > 60) {
+    if (vendorName.length > 60) {
       return jsonNoStore(400, {
         ok: false,
         error: "AGRIMARKET_STORE_NAME_INVALID",
-        message: "Enter a farm or store name between 2 and 60 characters.",
+        message: "Farm/store name must be 60 characters or fewer.",
       });
     }
 
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
     return jsonNoStore(200, {
       ok: true,
       phone_available: row.phone_taken !== true,
-      store_name_available: row.vendor_name_taken !== true,
+      store_name_available: vendorName.length >= 2 ? row.vendor_name_taken !== true : null,
       normalized_phone: normalizedPhone,
       town,
       vendor_name: vendorName,
