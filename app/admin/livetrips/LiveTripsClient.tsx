@@ -128,6 +128,8 @@ type TicketInspectorResponse = {
   ok?: boolean;
   query?: string;
   booking?: any;
+  people?: any;
+  service_details?: any;
   matches?: any[];
   timeline?: TicketInspectorTimelineItem[];
   diagnostics?: TicketInspectorDiagnostic[];
@@ -376,6 +378,34 @@ function formatMoney(v?: any) {
   return "PHP " + n.toLocaleString("en-PH", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
+function ticketServiceType(ticket?: TicketInspectorResponse | null): string {
+  return normStatus(ticket?.booking?.service_type || ticket?.booking?.trip_type);
+}
+
+function ticketOperationalStatus(booking?: any): string {
+  if (!booking) return "";
+  if (booking?.effective_status) return normStatus(booking.effective_status);
+  const service = normStatus(booking?.service_type || booking?.trip_type);
+  if (service === "takeout") {
+    return normStatus(booking?.customer_status || booking?.vendor_status || booking?.driver_status || booking?.status);
+  }
+  return normStatus(booking?.status);
+}
+
+function formatDistanceKm(v?: any): string {
+  if (v == null || v === "") return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString("en-PH", { maximumFractionDigits: 3 }) + " km";
+}
+
+function formatWeightKg(v?: any): string {
+  if (v == null || v === "") return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString("en-PH", { maximumFractionDigits: 2 }) + " kg";
+}
+
 function timelineTitle(row: TicketInspectorTimelineItem) {
   const source = String(row.source || "");
   const action = String(row.action || "");
@@ -477,43 +507,50 @@ function findTimelineAt(ticket: TicketInspectorResponse, opts: { source?: string
 }
 
 function buildJourneyRows(ticket: TicketInspectorResponse) {
-  const booking = ticket.booking || {};
   const rows: { label: string; at?: string | null; delta?: string; source: string; note?: string }[] = [];
-  const add = (label: string, at: any, source: string, note?: string) => {
+  const timeline = (Array.isArray(ticket.timeline) ? ticket.timeline : [])
+    .filter((row) => Boolean(row?.at))
+    .slice()
+    .sort((a, b) => (parseMs(a?.at) || 0) - (parseMs(b?.at) || 0));
+
+  const seen = new Set<string>();
+  for (const row of timeline) {
+    const key = [
+      String(row?.at || ""),
+      String(row?.source || ""),
+      String(row?.action || ""),
+      String(row?.from_status || ""),
+      String(row?.to_status || ""),
+    ].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+
     const prevAt = rows.length ? rows[rows.length - 1].at : null;
-    const currentMs = parseMs(at);
+    const currentMs = parseMs(row?.at);
     const prevMs = parseMs(prevAt);
+    const transition =
+      row?.from_status || row?.to_status
+        ? [labelOrDash(row?.from_status), labelOrDash(row?.to_status)].join(" -> ")
+        : undefined;
+
     rows.push({
-      label,
-      at: at || null,
+      label: timelineTitle(row),
+      at: row?.at || null,
       delta: rows.length === 0 ? "Start" : durationLabel(currentMs != null && prevMs != null ? currentMs - prevMs : null),
-      source,
-      note,
+      source: String(row?.source || "--"),
+      note: transition,
     });
-  };
-
-  add("Booking Created", booking.created_at, "bookings", "Initial booking record");
-
-  const steps = [
-    ["Driver Assigned", "assigned"],
-    ["Driver Accepted", "accepted"],
-    ["Fare Proposed", "fare_proposed"],
-    ["Ready for Pickup", "ready"],
-    ["Driver On The Way", "on_the_way"],
-    ["Driver Arrived", "arrived"],
-    ["Trip Started", "on_trip"],
-    ["Trip Completed", "completed"],
-    ["Trip Cancelled", "cancelled"],
-  ] as const;
-
-  for (const [label, to] of steps) {
-    const row = findTimelineAt(ticket, { source: "dispatch_actions", action: "status_change", to });
-    if (row?.at) add(label, row.at, "dispatch_actions", row.from_status ? String(row.from_status) + " -> " + String(row.to_status || to) : undefined);
   }
 
-  const walletRow = findTimelineAt(ticket, { source: "driver_wallet_transactions" });
-  if (walletRow?.at) add("Wallet Settled", walletRow.at, "driver_wallet_transactions", walletRow.evidence?.reason ? String(walletRow.evidence.reason) : undefined);
-  else if (booking.wallet_settled_at) add("Wallet Settled", booking.wallet_settled_at, "bookings", "wallet_settled_at");
+  if (!rows.length && ticket?.booking?.created_at) {
+    rows.push({
+      label: "Booking Created",
+      at: ticket.booking.created_at,
+      delta: "Start",
+      source: ticketServiceType(ticket) === "agrimarket" ? "agrimarket_orders" : "bookings",
+      note: "Initial record",
+    });
+  }
 
   return rows;
 }
@@ -556,6 +593,71 @@ function buildTimerRows(ticket: TicketInspectorResponse) {
     }
     rows.push({ name, window, started: started || null, deadline: deadline || null, metAt: metAt || null, result, detail });
   };
+
+  const serviceType = ticketServiceType(ticket);
+  if (serviceType === "agrimarket") {
+    addTimer(
+      "Producer Confirmation",
+      booking.created_at,
+      booking.producer_confirm_expires_at,
+      booking.producer_responded_at,
+      "Producer responded within the window",
+      "Producer did not respond within the window"
+    );
+
+    if (booking.customer_reapproval_required_at || booking.customer_reapproval_expires_at) {
+      addTimer(
+        "Customer Reapproval",
+        booking.customer_reapproval_required_at,
+        booking.customer_reapproval_expires_at,
+        booking.customer_reapproval_responded_at,
+        "Customer responded within the reapproval window",
+        "Customer did not respond within the reapproval window"
+      );
+    }
+
+    if (String(booking.status || "").toLowerCase() === "completed" || booking.completed_at) {
+      const completedAt = booking.completed_at;
+      const walletAt = booking.wallet_settled_at;
+      const completedMs = parseMs(completedAt);
+      const walletMs = parseMs(walletAt);
+      const settled = String(booking.wallet_settlement_status || "").toLowerCase() === "settled";
+      rows.push({
+        name: "Wallet Settlement",
+        window: "Immediate",
+        started: completedAt || null,
+        deadline: null,
+        metAt: walletAt || null,
+        result: settled ? "PASS" : "FAIL",
+        detail: settled
+          ? "Wallet settled after " + durationLabel(completedMs != null && walletMs != null ? walletMs - completedMs : null) + "."
+          : "Completed AgriMarket order is not settled.",
+      });
+    }
+    return rows;
+  }
+
+  if (serviceType === "errand") {
+    if (String(booking.status || "").toLowerCase() === "completed" || booking.completed_at) {
+      const completedAt = booking.completed_at;
+      const walletAt = booking.wallet_settled_at;
+      const completedMs = parseMs(completedAt);
+      const walletMs = parseMs(walletAt);
+      const settled = String(booking.wallet_settlement_status || "").toLowerCase() === "settled";
+      rows.push({
+        name: "Wallet Settlement",
+        window: "Immediate",
+        started: completedAt || null,
+        deadline: null,
+        metAt: walletAt || null,
+        result: settled ? "PASS" : "FAIL",
+        detail: settled
+          ? "Wallet settled after " + durationLabel(completedMs != null && walletMs != null ? walletMs - completedMs : null) + "."
+          : "Completed Errand booking is not settled.",
+      });
+    }
+    return rows;
+  }
 
   addTimer(
     "Driver Accept",
@@ -620,7 +722,11 @@ function firstAssignedDriverId(ticket?: TicketInspectorResponse | null) {
     String(row?.meta?.to || "") === "assigned" &&
     String(row?.driver_id || "").trim()
   );
-  return firstAssigned?.driver_id || null;
+  if (firstAssigned?.driver_id) return firstAssigned.driver_id;
+
+  const agriOffers = Array.isArray(ticket?.raw?.agrimarket_driver_offers) ? ticket?.raw?.agrimarket_driver_offers : [];
+  const firstAgriOffer = agriOffers.find((row: any) => String(row?.driver_id || "").trim());
+  return firstAgriOffer?.driver_id || ticket?.booking?.assigned_driver_id || ticket?.booking?.driver_id || null;
 }
 
 function cancellationActorLabel(ticket?: TicketInspectorResponse | null) {
@@ -643,7 +749,10 @@ function buildIncidentReport(ticket?: TicketInspectorResponse | null) {
   lines.push("JRide Ticket Inspector Report");
   lines.push("");
   lines.push("Ticket: " + labelOrDash(booking.booking_code));
-  lines.push("Status: " + labelOrDash(booking.status));
+  lines.push("Operational Status: " + labelOrDash(ticketOperationalStatus(booking) || booking.status));
+  if (ticketOperationalStatus(booking) && ticketOperationalStatus(booking) !== normStatus(booking.status)) {
+    lines.push("Stored Booking Status: " + labelOrDash(booking.status));
+  }
   lines.push("Service: " + labelOrDash(booking.service_type || booking.trip_type));
   lines.push("Town: " + labelOrDash(booking.town));
   lines.push("Passenger: " + labelOrDash(booking.passenger_name));
@@ -1514,7 +1623,7 @@ export default function LiveTripsClient({
   async function loadTicketInspector(queryOverride?: string) {
     const q = String(queryOverride ?? ticketQuery).trim();
     if (!q) {
-      setTicketInspectorError("Enter a JR-UI or TO ticket code.");
+      setTicketInspectorError("Enter a JR-UI, TO, JR-ERR, or AG ticket code.");
       return;
     }
 
@@ -1784,7 +1893,7 @@ export default function LiveTripsClient({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-sm font-semibold text-slate-900">Search Ticket</div>
-            <div className="text-xs text-slate-500">Open the forensic drawer for JR-UI or TO tickets using confirmed audit sources.</div>
+            <div className="text-xs text-slate-500">Open the forensic drawer for Ride, Takeout, Errand, or AgriMarket tickets using confirmed service evidence.</div>
           </div>
           <form
             className="grid gap-3 md:grid-cols-[minmax(280px,1fr),auto]"
@@ -1796,7 +1905,7 @@ export default function LiveTripsClient({
             <input
               value={ticketQuery}
               onChange={(e) => setTicketQuery(e.target.value)}
-              placeholder="JR-UI-... or TO-..."
+              placeholder="JR-UI-..., TO-..., JR-ERR-..., or AG-..."
               className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-emerald-400 focus:bg-white"
             />
             <button
@@ -2496,11 +2605,12 @@ export default function LiveTripsClient({
                     const booking = ticketInspector.booking || {};
                     const firstDriverId = firstAssignedDriverId(ticketInspector);
                     const lastExpiredDriverId = booking.last_expired_driver_id;
-                    const firstDriverName = resolveDriverNameById(drivers, firstDriverId);
+                    const inspectorPeople = ticketInspector.people || ticketInspector.raw?.people || {};
+                    const firstDriverName = inspectorPeople?.driver?.full_name || inspectorPeople?.driver?.callsign || resolveDriverNameById(drivers, firstDriverId);
                     const lastExpiredDriverName = resolveDriverNameById(drivers, lastExpiredDriverId);
-                    const snapshot = booking.takeout_pricing_snapshot || {};
-                    const deliveryFee = booking.takeout_delivery_fee ?? snapshot.takeout_delivery_fee;
-                    const totalPayable = booking.takeout_total_payable ?? snapshot.takeout_total_payable;
+                    const snapshot = booking.takeout_pricing_snapshot || booking.pricing_snapshot || {};
+                    const deliveryFee = booking.takeout_delivery_fee ?? booking.delivery_fee ?? snapshot.takeout_delivery_fee ?? snapshot.delivery_fee;
+                    const totalPayable = booking.takeout_total_payable ?? booking.total_payable ?? snapshot.takeout_total_payable ?? snapshot.total_payable;
                     const cancelReason = booking.cancel_reason || booking.vendor_cancel_reason;
                     const changedDriver =
                       String(firstDriverId || "").trim() &&
@@ -2510,7 +2620,7 @@ export default function LiveTripsClient({
                     return (
                       <div className="rounded-2xl border border-sky-200 bg-sky-50/60 p-4 md:col-span-2">
                         {(() => {
-                          const status = normStatus(booking.status);
+                          const status = ticketOperationalStatus(booking) || normStatus(booking.status);
                           const cancellationActor = cancellationActorLabel(ticketInspector);
                           const cancellationActorKnown = cancellationActor !== "Unknown - no actor audit record";
                           const resultTitle = status === "cancelled" ? "Cancelled" : status === "completed" ? "Completed" : labelOrDash(booking.status);
@@ -2618,12 +2728,17 @@ export default function LiveTripsClient({
                   })()}
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="mb-2 font-semibold">Booking</div>
+                    <div className="mb-2 font-semibold">Ticket</div>
                     <div className="space-y-1 text-sm">
                       <div><span className="text-slate-500">Code:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.booking_code)}</span></div>
-                      <div><span className="text-slate-500">Status:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.status)}</span></div>
+                      <div><span className="text-slate-500">Operational status:</span> <span className="font-medium">{labelOrDash(ticketOperationalStatus(ticketInspector.booking) || ticketInspector.booking?.status)}</span></div>
+                      {ticketOperationalStatus(ticketInspector.booking) && ticketOperationalStatus(ticketInspector.booking) !== normStatus(ticketInspector.booking?.status) ? (
+                        <div><span className="text-slate-500">Stored booking status:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.status)}</span></div>
+                      ) : null}
                       <div><span className="text-slate-500">Service:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.service_type || ticketInspector.booking?.trip_type)}</span></div>
                       <div><span className="text-slate-500">Town:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.town)}</span></div>
+                      <div><span className="text-slate-500">Pickup:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.from_label || ticketInspector.booking?.pickup_label)}</span></div>
+                      <div><span className="text-slate-500">Dropoff:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.to_label || ticketInspector.booking?.dropoff_label)}</span></div>
                       <div><span className="text-slate-500">Created:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.created_at)}</span></div>
                       <div><span className="text-slate-500">Updated:</span> <span className="font-medium">{formatPHDateTime(ticketInspector.booking?.updated_at)}</span></div>
                     </div>
@@ -2631,23 +2746,208 @@ export default function LiveTripsClient({
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="mb-2 font-semibold">People</div>
-                    <div className="space-y-1 text-sm">
-                      <div><span className="text-slate-500">Passenger:</span> <span className="font-medium">{labelOrDash(ticketInspector.booking?.passenger_name)}</span></div>
-                      <div><span className="text-slate-500">Driver ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.driver_id || ticketInspector.booking?.assigned_driver_id)}</span></div>
-                      <div><span className="text-slate-500">Vendor ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.vendor_id)}</span></div>
-                      <div><span className="text-slate-500">Created by user:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.created_by_user_id)}</span></div>
-                    </div>
+                    {(() => {
+                      const people = ticketInspector.people || ticketInspector.raw?.people || {};
+                      const passenger = people.passenger || {};
+                      const driver = people.driver || {};
+                      const driverAccount = people.driver_account || {};
+                      const vendor = people.vendor || people.producer || {};
+                      return (
+                        <div className="space-y-1 text-sm">
+                          <div><span className="text-slate-500">Passenger:</span> <span className="font-medium">{labelOrDash(passenger.full_name || ticketInspector.booking?.passenger_name)}</span></div>
+                          <div><span className="text-slate-500">Passenger phone:</span> <span className="font-medium">{labelOrDash(passenger.phone)}</span></div>
+                          <div><span className="text-slate-500">Driver:</span> <span className="font-medium">{labelOrDash(driver.full_name || driver.callsign || driverAccount.driver_name)}</span></div>
+                          <div><span className="text-slate-500">Driver phone:</span> <span className="font-medium">{labelOrDash(driver.phone)}</span></div>
+                          <div><span className="text-slate-500">Vehicle / plate:</span> <span className="font-medium">{labelOrDash(driver.vehicle_type)} / {labelOrDash(driver.plate_number)}</span></div>
+                          <div><span className="text-slate-500">Driver ID:</span> <span className="font-medium break-all">{labelOrDash(ticketInspector.booking?.driver_id || ticketInspector.booking?.assigned_driver_id)}</span></div>
+                          {vendor.display_name || vendor.vendor_name || vendor.contact_name ? (
+                            <div><span className="text-slate-500">Vendor / producer:</span> <span className="font-medium">{labelOrDash(vendor.display_name || vendor.vendor_name || vendor.contact_name)}</span></div>
+                          ) : null}
+                          {vendor.contact_phone ? <div><span className="text-slate-500">Vendor phone:</span> <span className="font-medium">{labelOrDash(vendor.contact_phone)}</span></div> : null}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="mb-2 font-semibold">Fare fields</div>
+                    <div className="mb-2 font-semibold">Primary financials</div>
                     <div className="space-y-1 text-sm">
-                      <div><span className="text-slate-500">Proposed fare:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.proposed_fare)}</span></div>
+                      <div><span className="text-slate-500">Ride / proposed fare:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.proposed_fare)}</span></div>
+                      <div><span className="text-slate-500">Errand total:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.total_errand_fare)}</span></div>
+                      <div><span className="text-slate-500">Takeout total:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.takeout_total_payable)}</span></div>
+                      <div><span className="text-slate-500">AgriMarket total:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.total_payable)}</span></div>
                       <div><span className="text-slate-500">Company cut:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.company_cut)}</span></div>
                       <div><span className="text-slate-500">Driver payout:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.driver_payout)}</span></div>
-                      <div><span className="text-slate-500">Takeout payable:</span> <span className="font-medium">{formatMoney(ticketInspector.booking?.takeout_total_payable)}</span></div>
                     </div>
                   </div>
+
+                  {(() => {
+                    const service = ticketServiceType(ticketInspector);
+                    const details = ticketInspector.service_details || ticketInspector.raw?.service_details || {};
+                    const booking = ticketInspector.booking || {};
+
+                    if (service === "takeout") {
+                      const d = details.takeout || {};
+                      const vendor = d.vendor || ticketInspector.people?.vendor || ticketInspector.raw?.people?.vendor || {};
+                      const items = Array.isArray(d.items) ? d.items : (Array.isArray(ticketInspector.raw?.takeout_order_items) ? ticketInspector.raw.takeout_order_items : []);
+                      return (
+                        <div className="rounded-2xl border border-orange-200 bg-orange-50/60 p-4 md:col-span-2">
+                          <div className="mb-3 font-semibold text-slate-900">Takeout details</div>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-1 text-sm">
+                              <div><span className="text-slate-500">Vendor:</span> <span className="font-medium">{labelOrDash(vendor.display_name)}</span></div>
+                              <div><span className="text-slate-500">Vendor town:</span> <span className="font-medium">{labelOrDash(vendor.town)}</span></div>
+                              <div><span className="text-slate-500">Vendor location:</span> <span className="font-medium">{labelOrDash(vendor.vendor_location_label || vendor.location_label)}</span></div>
+                              <div><span className="text-slate-500">Vendor status:</span> <span className="font-medium">{labelOrDash(d.vendor_status || booking.vendor_status)}</span></div>
+                              <div><span className="text-slate-500">Customer status:</span> <span className="font-medium">{labelOrDash(d.customer_status || booking.customer_status)}</span></div>
+                              <div><span className="text-slate-500">Driver status:</span> <span className="font-medium">{labelOrDash(d.driver_status || booking.driver_status)}</span></div>
+                              <div><span className="text-slate-500">Pricing status:</span> <span className="font-medium">{labelOrDash(d.pricing_status || booking.takeout_pricing_status)}</span></div>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <div><span className="text-slate-500">Items subtotal:</span> <span className="font-medium">{formatMoney(d.items_subtotal ?? booking.takeout_items_subtotal)}</span></div>
+                              <div><span className="text-slate-500">Delivery fee:</span> <span className="font-medium">{formatMoney(d.delivery_fee ?? booking.takeout_delivery_fee)}</span></div>
+                              <div><span className="text-slate-500">Service fee:</span> <span className="font-medium">{formatMoney(d.service_fee ?? booking.takeout_service_fee)}</span></div>
+                              <div><span className="text-slate-500">Total payable:</span> <span className="font-medium">{formatMoney(d.total_payable ?? booking.takeout_total_payable)}</span></div>
+                              <div><span className="text-slate-500">Vendor accepted:</span> <span className="font-medium">{formatPHDateTime(booking.vendor_accepted_at)}</span></div>
+                              <div><span className="text-slate-500">Fee proposed:</span> <span className="font-medium">{formatPHDateTime(booking.takeout_fee_proposed_at)}</span></div>
+                              <div><span className="text-slate-500">Customer confirmed:</span> <span className="font-medium">{formatPHDateTime(booking.takeout_customer_confirmed_at)}</span></div>
+                              <div><span className="text-slate-500">Arrived vendor / picked up:</span> <span className="font-medium">{formatPHDateTime(booking.vendor_driver_arrived_at)} / {formatPHDateTime(booking.vendor_order_picked_at)}</span></div>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Order items ({items.length})</div>
+                            <div className="mt-2 space-y-2">
+                              {items.length ? items.map((item: any, idx: number) => (
+                                <div key={String(item.id || idx)} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white bg-white/80 px-3 py-2 text-sm">
+                                  <div className="font-medium">{labelOrDash(item.quantity)} x {labelOrDash(item.name)}</div>
+                                  <div className="text-slate-600">{formatMoney(item.price)}</div>
+                                </div>
+                              )) : <div className="text-sm text-slate-500">No item snapshot rows recorded.</div>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (service === "errand") {
+                      const d = details.errand || {};
+                      const job = d.job || ticketInspector.raw?.errand_job || {};
+                      const stops = Array.isArray(d.stops) ? d.stops : (Array.isArray(ticketInspector.raw?.errand_stops) ? ticketInspector.raw.errand_stops : []);
+                      const funds = Array.isArray(d.pabili_fund_events) ? d.pabili_fund_events : [];
+                      const adjustments = Array.isArray(d.route_adjustments) ? d.route_adjustments : [];
+                      return (
+                        <div className="rounded-2xl border border-violet-200 bg-violet-50/60 p-4 md:col-span-2">
+                          <div className="mb-3 font-semibold text-slate-900">Errand details</div>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-1 text-sm">
+                              <div><span className="text-slate-500">Task:</span> <span className="font-medium">{labelOrDash(job.task_description)}</span></div>
+                              <div><span className="text-slate-500">Errand stage:</span> <span className="font-medium">{labelOrDash(job.errand_stage)}</span></div>
+                              <div><span className="text-slate-500">Pabili:</span> <span className="font-medium">{job.is_pabili === true ? "Yes" : job.is_pabili === false ? "No" : "--"}</span></div>
+                              <div><span className="text-slate-500">Vehicle requirement:</span> <span className="font-medium">{labelOrDash(job.vehicle_requirement)}</span></div>
+                              <div><span className="text-slate-500">Cargo:</span> <span className="font-medium">{labelOrDash(job.cargo_classification)} / {formatWeightKg(job.confirmed_cargo_weight_kg ?? job.estimated_cargo_weight_kg)}</span></div>
+                              <div><span className="text-slate-500">Route distance:</span> <span className="font-medium">{formatDistanceKm(job.confirmed_route_distance_km)}</span></div>
+                              <div><span className="text-slate-500">Waiting:</span> <span className="font-medium">{job.waiting_accumulated_seconds != null ? durationLabel(Number(job.waiting_accumulated_seconds) * 1000) : "--"}</span></div>
+                              <div><span className="text-slate-500">Final destination:</span> <span className="font-medium">{labelOrDash(job.final_label)}</span></div>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <div><span className="text-slate-500">Estimated purchase:</span> <span className="font-medium">{formatMoney(job.estimated_purchase_amount)}</span></div>
+                              <div><span className="text-slate-500">Cash received:</span> <span className="font-medium">{formatMoney(job.pabili_cash_received)}</span></div>
+                              <div><span className="text-slate-500">Purchase total:</span> <span className="font-medium">{formatMoney(job.pabili_purchase_total)}</span></div>
+                              <div><span className="text-slate-500">Change due / returned:</span> <span className="font-medium">{formatMoney(job.pabili_change_due)} / {formatMoney(job.pabili_change_returned)}</span></div>
+                              <div><span className="text-slate-500">Base / distance / stops / wait:</span> <span className="font-medium">{formatMoney(booking.base_fee)} / {formatMoney(booking.distance_fare)} / {formatMoney(booking.extra_stop_fee)} / {formatMoney(booking.waiting_fee)}</span></div>
+                              <div><span className="text-slate-500">Pickup / heavy:</span> <span className="font-medium">{formatMoney(booking.pickup_distance_fee)} / {formatMoney(booking.heavy_load_fee)}</span></div>
+                              <div><span className="text-slate-500">Total / company / driver:</span> <span className="font-medium">{formatMoney(booking.total_errand_fare)} / {formatMoney(booking.company_cut)} / {formatMoney(booking.driver_payout)}</span></div>
+                              <div><span className="text-slate-500">Fund events / route adjustments:</span> <span className="font-medium">{funds.length} / {adjustments.length}</span></div>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stops ({stops.length})</div>
+                            <div className="mt-2 space-y-2">
+                              {stops.length ? stops.map((stop: any, idx: number) => (
+                                <div key={String(stop.id || idx)} className="rounded-xl border border-white bg-white/80 px-3 py-2 text-sm">
+                                  <div className="font-semibold">Stop {labelOrDash(stop.sequence)} - {labelOrDash(stop.place_name || stop.location_label)}</div>
+                                  <div className="mt-1 text-xs text-slate-600">{labelOrDash(stop.instructions)} | {labelOrDash(stop.status)}</div>
+                                  <div className="mt-1 text-xs text-slate-500">Arrived {formatPHDateTime(stop.arrived_at)} | Completed {formatPHDateTime(stop.completed_at)} | Purchase {formatMoney(stop.purchase_total)}</div>
+                                </div>
+                              )) : <div className="text-sm text-slate-500">No errand stop rows recorded.</div>}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (service === "agrimarket") {
+                      const order = details.order || ticketInspector.raw?.agrimarket_order || booking;
+                      const producer = details.producer || ticketInspector.people?.producer || ticketInspector.raw?.people?.producer || {};
+                      const items = Array.isArray(details.items) ? details.items : (Array.isArray(ticketInspector.raw?.agrimarket_order_items) ? ticketInspector.raw.agrimarket_order_items : []);
+                      const checks = Array.isArray(details.pickup_checks) ? details.pickup_checks : [];
+                      const offers = Array.isArray(details.driver_offers) ? details.driver_offers : [];
+                      return (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 md:col-span-2">
+                          <div className="mb-3 font-semibold text-slate-900">AgriMarket details</div>
+                          <div className="grid gap-4 lg:grid-cols-3">
+                            <div className="space-y-1 text-sm">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Producer / pickup</div>
+                              <div><span className="text-slate-500">Store:</span> <span className="font-medium">{labelOrDash(producer.vendor_name)}</span></div>
+                              <div><span className="text-slate-500">Contact:</span> <span className="font-medium">{labelOrDash(producer.contact_name)} / {labelOrDash(producer.contact_phone)}</span></div>
+                              <div><span className="text-slate-500">Town / barangay:</span> <span className="font-medium">{labelOrDash(producer.town)} / {labelOrDash(producer.barangay)}</span></div>
+                              <div><span className="text-slate-500">Pickup:</span> <span className="font-medium">{labelOrDash(producer.pickup_label)}</span></div>
+                              <div><span className="text-slate-500">Driver directions:</span> <span className="font-medium">{labelOrDash(producer.pickup_driver_directions)}</span></div>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fulfillment</div>
+                              <div><span className="text-slate-500">Status:</span> <span className="font-medium">{labelOrDash(order.status)}</span></div>
+                              <div><span className="text-slate-500">Mode:</span> <span className="font-medium">{labelOrDash(order.fulfillment_mode)}</span></div>
+                              <div><span className="text-slate-500">Harvest window:</span> <span className="font-medium">{formatPHDateTime(order.harvest_expected_start_at)} - {formatPHDateTime(order.harvest_expected_end_at)}</span></div>
+                              <div><span className="text-slate-500">Harvest ready:</span> <span className="font-medium">{formatPHDateTime(order.harvest_ready_at)}</span></div>
+                              <div><span className="text-slate-500">Vehicle:</span> <span className="font-medium">{labelOrDash(order.preferred_vehicle_type)} / required {labelOrDash(order.required_vehicle_type)} / selected {labelOrDash(order.selected_vehicle_type)}</span></div>
+                              <div><span className="text-slate-500">Cargo:</span> <span className="font-medium">{formatWeightKg(order.confirmed_cargo_weight_kg ?? order.estimated_cargo_weight_kg)} / {labelOrDash(order.confirmed_handling_tier)}</span></div>
+                              <div><span className="text-slate-500">Driver offers / pickup checks:</span> <span className="font-medium">{offers.length} / {checks.length}</span></div>
+                            </div>
+                            <div className="space-y-1 text-sm">
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pricing / settlement</div>
+                              <div><span className="text-slate-500">Product subtotal:</span> <span className="font-medium">{formatMoney(order.product_subtotal)}</span></div>
+                              <div><span className="text-slate-500">Delivery base / distance:</span> <span className="font-medium">{formatMoney(order.delivery_base_fee)} / {formatMoney(order.delivery_distance_fee)}</span></div>
+                              <div><span className="text-slate-500">Pickup / handling / heavy:</span> <span className="font-medium">{formatMoney(order.pickup_distance_fee)} / {formatMoney(order.handling_fee)} / {formatMoney(order.heavy_load_fee)}</span></div>
+                              <div><span className="text-slate-500">Delivery / total:</span> <span className="font-medium">{formatMoney(order.delivery_fee)} / {formatMoney(order.total_payable)}</span></div>
+                              <div><span className="text-slate-500">Company / driver:</span> <span className="font-medium">{formatMoney(order.delivery_company_cut)} / {formatMoney(order.driver_delivery_payout)}</span></div>
+                              <div><span className="text-slate-500">Route / driver approach:</span> <span className="font-medium">{formatDistanceKm(order.route_distance_km)} / {formatDistanceKm(order.driver_to_first_pickup_km)}</span></div>
+                              <div><span className="text-slate-500">Wallet settlement:</span> <span className="font-medium">{labelOrDash(order.wallet_settlement_status)} / {formatMoney(order.wallet_settlement_amount)}</span></div>
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Products ({items.length})</div>
+                              <div className="mt-2 space-y-2">
+                                {items.length ? items.map((item: any, idx: number) => (
+                                  <div key={String(item.id || idx)} className="rounded-xl border border-white bg-white/80 px-3 py-2 text-sm">
+                                    <div className="flex flex-wrap justify-between gap-2">
+                                      <span className="font-semibold">{labelOrDash(item.product_name)}</span>
+                                      <span>{formatMoney(item.line_total)}</span>
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-600">{labelOrDash(item.quantity)} {labelOrDash(item.selling_unit)} x {formatMoney(item.unit_price)} | {labelOrDash(item.availability_mode)} | {labelOrDash(item.condition_required)}</div>
+                                  </div>
+                                )) : <div className="text-sm text-slate-500">No AgriMarket item rows recorded.</div>}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pickup checks ({checks.length})</div>
+                              <div className="mt-2 space-y-2">
+                                {checks.length ? checks.map((check: any, idx: number) => (
+                                  <div key={String(check.id || idx)} className="rounded-xl border border-white bg-white/80 px-3 py-2 text-sm">
+                                    <div className="font-semibold">{labelOrDash(check.check_type)} - {labelOrDash(check.result)}</div>
+                                    <div className="mt-1 text-xs text-slate-600">Expected {labelOrDash(check.expected_condition)} | Observed {labelOrDash(check.observed_condition)} | {formatPHDateTime(check.checked_at)}</div>
+                                  </div>
+                                )) : <div className="text-sm text-slate-500">No pickup check rows recorded.</div>}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="mb-2 font-semibold">Wallet Settlement</div>

@@ -140,14 +140,93 @@ export async function GET(req: NextRequest) {
       if (Array.isArray(uuidSearch.data)) rows.push(...uuidSearch.data);
     }
 
-    const bookings = uniqueByBookingId(rows).slice(0, 25);
+    const bookingResults = uniqueByBookingId(rows);
+
+    const agriRows: any[] = [];
+    const agriTextSearch = await supabase
+      .from("agrimarket_orders")
+      .select("id, order_code, status, customer_user_id, producer_id, assigned_driver_id, delivery_label, created_at, updated_at")
+      .or([
+        "order_code.ilike." + pattern,
+        "delivery_label.ilike." + pattern,
+        "status.ilike." + pattern,
+      ].join(","))
+      .order("updated_at", { ascending: false })
+      .limit(25);
+
+    if (agriTextSearch.error) {
+      return NextResponse.json(
+        { ok: false, error: "AGRIMARKET_SEARCH_FAILED", message: agriTextSearch.error.message },
+        { status: 500 }
+      );
+    }
+
+    if (Array.isArray(agriTextSearch.data)) agriRows.push(...agriTextSearch.data);
+
+    if (isUuid(q)) {
+      const agriUuidSearch = await supabase
+        .from("agrimarket_orders")
+        .select("id, order_code, status, customer_user_id, producer_id, assigned_driver_id, delivery_label, created_at, updated_at")
+        .or([
+          "id.eq." + q,
+          "customer_user_id.eq." + q,
+          "producer_id.eq." + q,
+          "assigned_driver_id.eq." + q,
+          "delivery_booking_id.eq." + q,
+        ].join(","))
+        .order("updated_at", { ascending: false })
+        .limit(25);
+
+      if (agriUuidSearch.error) {
+        return NextResponse.json(
+          { ok: false, error: "AGRIMARKET_UUID_SEARCH_FAILED", message: agriUuidSearch.error.message },
+          { status: 500 }
+        );
+      }
+
+      if (Array.isArray(agriUuidSearch.data)) agriRows.push(...agriUuidSearch.data);
+    }
+
+    const seenAgri = new Set<string>();
+    const normalizedAgri = agriRows
+      .filter((row) => {
+        const key = String(row?.id || row?.order_code || "");
+        if (!key || seenAgri.has(key)) return false;
+        seenAgri.add(key);
+        return true;
+      })
+      .map((row) => ({
+        id: row?.id ?? null,
+        booking_code: row?.order_code ?? null,
+        passenger_name: null,
+        from_label: null,
+        to_label: row?.delivery_label ?? null,
+        town: null,
+        status: row?.status ?? null,
+        service_type: "agrimarket",
+        trip_type: "agrimarket",
+        driver_id: row?.assigned_driver_id ?? null,
+        assigned_driver_id: row?.assigned_driver_id ?? null,
+        vendor_id: row?.producer_id ?? null,
+        created_by_user_id: row?.customer_user_id ?? null,
+        created_at: row?.created_at ?? null,
+        updated_at: row?.updated_at ?? null,
+      }));
+
+    const bookings = [...bookingResults, ...normalizedAgri]
+      .sort((a: any, b: any) => {
+        const at = Date.parse(String(a?.updated_at || a?.created_at || "")) || 0;
+        const bt = Date.parse(String(b?.updated_at || b?.created_at || "")) || 0;
+        return bt - at;
+      })
+      .slice(0, 25);
 
     return NextResponse.json({
       ok: true,
       query: q,
       total: bookings.length,
       bookings,
-      note: "V1 searches confirmed bookings columns only. It does not assume passenger, driver, or vendor table schemas.",
+      note: "Service-aware search covers bookings plus AgriMarket order codes and identifiers.",
     });
   } catch (err: any) {
     return NextResponse.json(
