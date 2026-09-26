@@ -42,8 +42,9 @@ function database(location = {driver_id:driver,status:'online',lat:17.08,lng:121
     };return q;
   };return db;
 }
-function harness(db) {
+function harness(db, options = {}) {
   const cache=new Map();
+  const logs=[];
   const env={SUPABASE_URL:'https://test.invalid',SUPABASE_SERVICE_ROLE_KEY:'test-only',SUPABASE_ANON_KEY:'test-anon',DRIVER_PING_SECRET:'test-secret'};
   function load(file){
     if(cache.has(file))return cache.get(file).exports;
@@ -56,7 +57,7 @@ function harness(db) {
       return require(name);
     };
     const code=ts.transpileModule(fs.readFileSync(path.join(root,file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
-    vm.runInNewContext(code,{module,exports:module.exports,require:req,process:{env},URL,Date,Set,Number,AbortController,setTimeout,clearTimeout,console:{log(){},warn(){},error(){}},fetch:async()=>{throw Error('Unexpected network call');}},{filename:file});
+    vm.runInNewContext(code,{module,exports:module.exports,require:req,process:{env},URL,Date:options.Date||Date,Set,Number,AbortController,setTimeout,clearTimeout,console:{log(...args){logs.push(copy(args));},warn(){},error(){}},fetch:async()=>{throw Error('Unexpected network call');}},{filename:file});
     return module.exports;
   }
   const api=load('app/api/driver/location/ping/route.ts');
@@ -66,7 +67,7 @@ function harness(db) {
     return {url,nextUrl:new URL(url),headers,json:async()=>body};
   }
   const ordered=(status,revision=db.tables.driver_locations[0]?.duty_revision||initial,extra={})=>({driver_id:driver,device_id:'emulator-test',status,duty_ordering_v1:true,duty_expected_revision:revision,...extra});
-  return {api,request,ordered,load};
+  return {api,request,ordered,load,logs};
 }
 (async()=>{
   await test('handshake authenticates and does not mutate duty or device locks',async()=>{
@@ -124,6 +125,41 @@ function harness(db) {
     let db=database(),h=harness(db);db.failRead=true;assert.equal((await h.api.GET(h.request())).status,503);
     db=database();h=harness(db);db.failWrite=true;assert.equal((await h.api.POST(h.request(h.ordered('offline')))).status,500);assert.equal(db.tables.driver_locations[0].status,'online');assert.equal(db.cancellations.length,0);
     db=database();h=harness(db);db.tables.driver_locations[0].duty_revision=null;assert.equal((await h.api.GET(h.request())).status,503);assert.equal((await h.api.POST(h.request(h.ordered('offline')))).status,503);
+  });
+  await test('GPS diagnostic is tester-only, expires exactly, and excludes coordinates and secrets',async()=>{
+    const h=harness(database());
+    const build=h.load('lib/driver-gps-request-diagnostic.ts').driverGpsRequestDiagnostic;
+    const input={driverId:'00000000-0000-4000-8000-000000000002',body:Object.freeze({lat:17.08,lng:121.12,accuracy_m:12.5,is_mock_location:false,client_version_name:'1.0.97',client_version_code:500000103,password:'sensitive',authorization:'sensitive'}),hasCoordinates:true,accuracyMeters:12.5,mockLocation:false,ordered:true,userAgent:'okhttp/4.12.0\r\n\u2603'+ 'x'.repeat(200),nowMs:Date.parse('2026-09-26T15:59:59.999Z')};
+    const result=build(input);
+    assert.equal(result.accuracy_meters,12.5);assert.equal(result.mock_location,false);
+    assert.equal(result.accuracy_m_present,true);assert.equal(result.mock_flag_present,true);
+    assert.equal(result.user_agent.length,160);assert.match(result.user_agent,/^[\x20-\x7E]*$/);
+    const serialized=JSON.stringify(result);for(const secret of ['17.08','121.12','sensitive','password','authorization'])assert.ok(!serialized.includes(secret));
+    assert.equal(build({...input,driverId:driver}),null);
+    assert.equal(build({...input,nowMs:Date.parse('2026-09-26T16:00:00.000Z')}),null);
+    assert.equal(build({...input,nowMs:NaN}),null);
+  });
+  await test('real ping preserves GPS metadata through parsing and RPC while diagnosing request shape',async()=>{
+    const tester='00000000-0000-4000-8000-000000000002';
+    class ActiveDate extends Date { static now(){return Date.parse('2026-09-25T23:00:00.000Z');} }
+    for(const kind of ['measured','legacy','heartbeat']) {
+      const db=database();for(const rows of Object.values(db.tables))for(const row of rows)if(row.driver_id===driver)row.driver_id=tester;
+      const rpcCalls=[];db.rpc=(name,args)=>{rpcCalls.push({name,args:copy(args)});const p=Promise.resolve({data:true,error:null});p.abortSignal=()=>p;return p;};
+      const h=harness(db,{Date:ActiveDate});
+      const body=h.ordered('online',undefined,{driver_id:tester,client_version_name:'1.0.97',client_version_code:500000103,...(kind==='heartbeat'?{}:{lat:17.08,lng:121.12}),...(kind==='measured'?{accuracy_m:12.5,is_mock_location:false}:{})});
+      const r=await h.api.POST(h.request(body));assert.equal(r.status,200);
+      const logs=h.logs.filter(x=>x[0]==='[JRIDE_TEST_DRIVER_GPS_REQUEST_V1]');assert.equal(logs.length,1);
+      const record=rpcCalls.find(x=>x.name==='jride_record_driver_location_observation_minute_v1');
+      if(kind==='heartbeat'){assert.equal(record,undefined);assert.equal(logs[0][1].has_coordinates,false);}
+      else {assert.ok(record);assert.equal(record.args.p_accuracy_meters,kind==='measured'?12.5:null);assert.equal(record.args.p_client_mock_location,kind==='measured'?false:null);}
+      assert.equal(logs[0][1].accuracy_m_present,kind==='measured');
+      assert.equal(logs[0][1].mock_flag_present,kind==='measured');
+    }
+  });
+  await test('unauthenticated tester request cannot produce GPS diagnostic logging',async()=>{
+    const db=database(),h=harness(db);
+    const r=await h.api.POST(h.request({driver_id:'00000000-0000-4000-8000-000000000002',status:'online',lat:17.08,lng:121.12},{auth:'none'}));
+    assert.equal(r.status,401);assert.equal(h.logs.filter(x=>x[0]==='[JRIDE_TEST_DRIVER_GPS_REQUEST_V1]').length,0);assert.equal(db.writes.length,0);
   });
   console.log(`\n${passed} driver duty regression groups passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});
