@@ -2,11 +2,18 @@
 
 import * as React from "react";
 import PassengerEvidence from "@/app/components/PassengerEvidence";
-import type { PassengerActivity, PassengerIdentity } from "@/lib/passenger/identity";
+import type {
+  PassengerActivity,
+  PassengerIdentity,
+  VerificationSubmissionLocation,
+} from "@/lib/passenger/identity";
 
 type ProfileResult = {
   profile: PassengerIdentity;
   can_view_evidence: boolean;
+  can_view_verification_location: boolean;
+  verification_location: VerificationSubmissionLocation | null;
+  verification_location_error: string | null;
   activity: PassengerActivity[];
   activity_has_more: boolean;
   activity_error: string | null;
@@ -24,6 +31,24 @@ function field(label: string, value: string | null) {
 function status(value: string) {
   const labels: Record<string, string> = { approved: "Approved", submitted: "Submitted", pending_admin: "Pending admin", rejected: "Declined", not_submitted: "Not submitted" };
   return labels[value] || value;
+}
+
+function locationStatus(value: string) {
+  const labels: Record<string, string> = {
+    captured: "Captured",
+    denied: "Permission denied",
+    unavailable: "Unavailable",
+    timeout: "Timed out",
+    error: "Capture error",
+    not_provided: "Not provided",
+  };
+  return labels[value] || value;
+}
+
+function locationSource(value: string) {
+  if (value === "browser_geolocation") return "Browser/device geolocation";
+  if (value === "client_geolocation") return "Client geolocation";
+  return value || "Not recorded";
 }
 
 export default function PassengerLookupPage() {
@@ -142,6 +167,51 @@ export default function PassengerLookupPage() {
               </dl>
               <p className="mt-4 text-xs text-slate-500">{p.verification_source === "passenger_verifications" ? "Source: legacy verification record. " : p.verification_source ? "Source: verification request. " : "No verification record. "}The verified name is the name stored with the approved submission. It is not extracted from the ID image.</p></div>
             </div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="font-bold">Verification submission location</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              This is a review signal recorded when the verification request was submitted. Device geolocation can be spoofed, and network location can reflect a carrier gateway or VPN; neither is proof of physical presence.
+            </p>
+            {!detail.can_view_verification_location ? (
+              <p className="mt-3 text-sm text-slate-600">Verification submission location is restricted to authorized admins.</p>
+            ) : detail.verification_location_error ? (
+              <p role="alert" className="mt-3 text-sm text-red-700">{detail.verification_location_error}</p>
+            ) : detail.verification_location ? (() => {
+              const l = detail.verification_location;
+              const hasCoordinates = Number.isFinite(l.device_latitude) && Number.isFinite(l.device_longitude);
+              const coordinates = hasCoordinates
+                ? Number(l.device_latitude).toFixed(6) + ", " + Number(l.device_longitude).toFixed(6)
+                : null;
+              const network = [l.network_city, l.network_region, l.network_country].filter(Boolean).join(", ") || null;
+              const mapUrl = hasCoordinates
+                ? "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(String(l.device_latitude)) +
+                  "&mlon=" + encodeURIComponent(String(l.device_longitude)) +
+                  "#map=17/" + encodeURIComponent(String(l.device_latitude)) + "/" + encodeURIComponent(String(l.device_longitude))
+                : null;
+              return (
+                <div className="mt-4">
+                  <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    {field("Capture result", locationStatus(l.device_status))}
+                    {field("Device-reported coordinates", coordinates)}
+                    {field("Accuracy", l.device_accuracy_m !== null ? Math.round(Number(l.device_accuracy_m)) + " m" : null)}
+                    {field("Source", locationSource(l.device_source))}
+                    {field("Device captured (Manila)", date(l.device_captured_at))}
+                    {field("Server received (Manila)", date(l.server_received_at))}
+                    {field("Declared town", l.declared_town)}
+                    {field("Network location (coarse)", network)}
+                  </dl>
+                  {mapUrl ? (
+                    <a href={mapUrl} target="_blank" rel="noreferrer noopener"
+                      className="mt-4 inline-block rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold">
+                      Open submitted location on map
+                    </a>
+                  ) : null}
+                </div>
+              );
+            })() : (
+              <p className="mt-3 text-sm text-slate-600">No submission-location snapshot is recorded for this verification request. Older verifications will normally show this until the passenger submits again.</p>
+            )}
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <h3 className="mb-3 font-bold">Verification evidence</h3>
