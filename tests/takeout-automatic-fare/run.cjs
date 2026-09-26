@@ -221,6 +221,50 @@ function booking(subtotal) {
   }
 
   {
+    const { helper, db } = makeHarness({ deliveryKm: 2, pickupKm: 6.5 });
+    const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
+      booking: booking(500.01),
+      driverId: "driver-1",
+      supabase: db,
+    });
+    assert.equal(result.outcome, "automatic");
+    assert.equal(result.pickupBreakdown.pickup_first_tier_fee, 200);
+    assert.equal(result.pickupBreakdown.pickup_beyond_first_tier_fee, 0);
+    assert.equal(result.pickupBreakdown.pickup_excess_fee, 200);
+    assert.equal(result.pickupBreakdown.pickup_distance_exception_required, false);
+  }
+
+  {
+    const { helper, db } = makeHarness({ deliveryKm: 2, pickupKm: 10 });
+    const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
+      booking: booking(500.01),
+      driverId: "driver-1",
+      supabase: db,
+    });
+    assert.equal(result.outcome, "automatic");
+    assert.equal(result.pickupBreakdown.pickup_first_tier_fee, 200);
+    assert.equal(result.pickupBreakdown.pickup_beyond_first_tier_fee, 70);
+    assert.equal(result.pickupBreakdown.pickup_excess_fee, 270);
+    assert.equal(result.pickupBreakdown.pickup_beyond_first_tier_units_500m, 7);
+    assert.equal(result.pickupBreakdown.pickup_distance_exception_required, false);
+  }
+
+  {
+    const { helper, db } = makeHarness({ deliveryKm: 2, pickupKm: 12.19 });
+    const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
+      booking: booking(500.01),
+      driverId: "driver-1",
+      supabase: db,
+    });
+    assert.equal(result.outcome, "automatic");
+    assert.equal(result.pickupBreakdown.pickup_distance_km, 12.19);
+    assert.equal(result.pickupBreakdown.pickup_priced_distance_km, 10);
+    assert.equal(result.pickupBreakdown.pickup_excess_fee, 270);
+    assert.equal(result.pickupBreakdown.pickup_distance_exception_required, true);
+    assert.equal(result.snapshot.takeout_pickup_distance_exception_required, true);
+  }
+
+  {
     const { helper, db, calls } = makeHarness({ deliveryKm: 3.000001 });
     const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
       booking: booking(340),
@@ -253,6 +297,12 @@ function booking(subtotal) {
   assert.match(proposal, /const MIN_DELIVERY_FEE = 25;/);
   assert.match(proposal, /deliveryFee < MIN_DELIVERY_FEE/);
   assert.match(proposal, /Takeout delivery fee must be at least PHP 25\./);
+  assert.match(proposal, /CUSTOMER_CASH_PICKUP_FIRST_TIER_END_KM = 6\.5/);
+  assert.match(proposal, /CUSTOMER_CASH_PICKUP_SECOND_TIER_END_KM = 10/);
+  assert.match(proposal, /CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M = 10/);
+  assert.match(proposal, /CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_FEE = 200/);
+  assert.match(proposal, /CUSTOMER_CASH_PICKUP_SECOND_TIER_MAX_FEE = 70/);
+  assert.match(proposal, /pickup_distance_exception_required/);
   assert.match(proposal, /const cashRequired = computedSubtotal > 500;/);
   assert.doesNotMatch(proposal, /computedSubtotal >= 500/);
   assert.match(proposal, /const passengerLat = num\(order\.dropoff_lat\);/);

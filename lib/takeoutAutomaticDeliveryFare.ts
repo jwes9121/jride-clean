@@ -24,9 +24,12 @@ export const TAKEOUT_CASH_FIRST_THRESHOLD = 500;
 export const TAKEOUT_SERVICE_FEE = 15;
 
 const CUSTOMER_CASH_PICKUP_FREE_KM = 1.5;
-const CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M = 20;
-const CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM = 10;
-const CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM = 10;
+const CUSTOMER_CASH_PICKUP_FIRST_TIER_END_KM = 6.5;
+const CUSTOMER_CASH_PICKUP_SECOND_TIER_END_KM = 10;
+const CUSTOMER_CASH_PICKUP_FIRST_TIER_RATE_PER_500M = 20;
+const CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M = 10;
+const CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_FEE = 200;
+const CUSTOMER_CASH_PICKUP_SECOND_TIER_MAX_FEE = 70;
 const DRIVER_LOCATION_MAX_AGE_MINUTES = 15;
 
 export type TakeoutRoutePlan = "vendor_first" | "customer_cash_first";
@@ -40,11 +43,15 @@ export type TakeoutPickupBreakdown = {
   pickup_first_tier_fee: number;
   pickup_beyond_first_tier_km: number;
   pickup_beyond_first_tier_units_km: number;
+  pickup_beyond_first_tier_units_500m: number;
   pickup_beyond_first_tier_fee: number;
   pickup_excess_units_500m: number;
   pickup_excess_fee_per_500m: number;
   pickup_beyond_first_tier_fee_per_km: number;
+  pickup_beyond_first_tier_fee_per_500m: number;
   pickup_excess_fee: number;
+  pickup_priced_distance_km: number | null;
+  pickup_distance_exception_required: boolean;
   pickup_distance_source: "not_required" | "mapbox_road";
   computation_status: "not_required" | "computed";
 };
@@ -127,12 +134,17 @@ function noCustomerCashPickupBreakdown(): TakeoutPickupBreakdown {
     pickup_first_tier_fee: 0,
     pickup_beyond_first_tier_km: 0,
     pickup_beyond_first_tier_units_km: 0,
+    pickup_beyond_first_tier_units_500m: 0,
     pickup_beyond_first_tier_fee: 0,
     pickup_excess_units_500m: 0,
-    pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M,
+    pickup_excess_fee_per_500m: CUSTOMER_CASH_PICKUP_FIRST_TIER_RATE_PER_500M,
     pickup_beyond_first_tier_fee_per_km:
-      CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM,
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M * 2,
+    pickup_beyond_first_tier_fee_per_500m:
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M,
     pickup_excess_fee: 0,
+    pickup_priced_distance_km: null,
+    pickup_distance_exception_required: false,
     pickup_distance_source: "not_required",
     computation_status: "not_required",
   };
@@ -142,24 +154,36 @@ function customerCashPickupFeeBreakdown(
   distanceKmRaw: number
 ): TakeoutPickupBreakdown {
   const pickupDistanceKm = roundKm(Math.max(0, distanceKmRaw));
-  const billableKm = roundKm(
-    Math.max(0, pickupDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM)
+  const pricedDistanceKm = roundKm(
+    Math.min(pickupDistanceKm, CUSTOMER_CASH_PICKUP_SECOND_TIER_END_KM)
   );
   const firstTierKm = roundKm(
-    Math.min(billableKm, CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM)
+    Math.min(
+      Math.max(0, pricedDistanceKm - CUSTOMER_CASH_PICKUP_FREE_KM),
+      CUSTOMER_CASH_PICKUP_FIRST_TIER_END_KM - CUSTOMER_CASH_PICKUP_FREE_KM
+    )
   );
   const beyondFirstTierKm = roundKm(
-    Math.max(0, billableKm - CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_KM)
+    Math.min(
+      Math.max(0, pricedDistanceKm - CUSTOMER_CASH_PICKUP_FIRST_TIER_END_KM),
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_END_KM -
+        CUSTOMER_CASH_PICKUP_FIRST_TIER_END_KM
+    )
   );
+  const billableKm = roundKm(firstTierKm + beyondFirstTierKm);
   const firstTierUnits500m =
     firstTierKm > 0 ? Math.ceil(firstTierKm / 0.5) : 0;
-  const firstTierFee =
-    firstTierUnits500m * CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M;
-  const beyondFirstTierUnitsKm =
-    beyondFirstTierKm > 0 ? Math.ceil(beyondFirstTierKm) : 0;
-  const beyondFirstTierFee =
-    beyondFirstTierUnitsKm *
-    CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM;
+  const beyondFirstTierUnits500m =
+    beyondFirstTierKm > 0 ? Math.ceil(beyondFirstTierKm / 0.5) : 0;
+  const firstTierFee = Math.min(
+    CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_FEE,
+    firstTierUnits500m * CUSTOMER_CASH_PICKUP_FIRST_TIER_RATE_PER_500M
+  );
+  const beyondFirstTierFee = Math.min(
+    CUSTOMER_CASH_PICKUP_SECOND_TIER_MAX_FEE,
+    beyondFirstTierUnits500m *
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M
+  );
 
   return {
     pickup_distance_km: pickupDistanceKm,
@@ -169,14 +193,23 @@ function customerCashPickupFeeBreakdown(
     pickup_first_tier_units_500m: firstTierUnits500m,
     pickup_first_tier_fee: money(firstTierFee) as number,
     pickup_beyond_first_tier_km: beyondFirstTierKm,
-    pickup_beyond_first_tier_units_km: beyondFirstTierUnitsKm,
+    // Legacy field name retained for compatibility; value is the count of
+    // started 500 m blocks in the second tier.
+    pickup_beyond_first_tier_units_km: beyondFirstTierUnits500m,
+    pickup_beyond_first_tier_units_500m: beyondFirstTierUnits500m,
     pickup_beyond_first_tier_fee: money(beyondFirstTierFee) as number,
-    pickup_excess_units_500m: firstTierUnits500m,
+    pickup_excess_units_500m:
+      firstTierUnits500m + beyondFirstTierUnits500m,
     pickup_excess_fee_per_500m:
-      CUSTOMER_CASH_PICKUP_DISTANCE_RATE_PER_500M,
+      CUSTOMER_CASH_PICKUP_FIRST_TIER_RATE_PER_500M,
     pickup_beyond_first_tier_fee_per_km:
-      CUSTOMER_CASH_PICKUP_BEYOND_FIRST_TIER_RATE_PER_KM,
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M * 2,
+    pickup_beyond_first_tier_fee_per_500m:
+      CUSTOMER_CASH_PICKUP_SECOND_TIER_RATE_PER_500M,
     pickup_excess_fee: money(firstTierFee + beyondFirstTierFee) as number,
+    pickup_priced_distance_km: pricedDistanceKm,
+    pickup_distance_exception_required:
+      pickupDistanceKm > CUSTOMER_CASH_PICKUP_SECOND_TIER_END_KM,
     pickup_distance_source: "mapbox_road",
     computation_status: "computed",
   };
@@ -290,6 +323,8 @@ function buildSnapshot(args: {
     pickup_second_tier_km: pickupBreakdown.pickup_beyond_first_tier_km,
     takeout_pickup_beyond_first_tier_units_km:
       pickupBreakdown.pickup_beyond_first_tier_units_km,
+    takeout_pickup_beyond_first_tier_units_500m:
+      pickupBreakdown.pickup_beyond_first_tier_units_500m,
     takeout_pickup_beyond_first_tier_fee:
       pickupBreakdown.pickup_beyond_first_tier_fee,
     takeout_pickup_excess_units_500m:
@@ -298,6 +333,12 @@ function buildSnapshot(args: {
       pickupBreakdown.pickup_excess_fee_per_500m,
     takeout_pickup_beyond_first_tier_fee_per_km:
       pickupBreakdown.pickup_beyond_first_tier_fee_per_km,
+    takeout_pickup_beyond_first_tier_fee_per_500m:
+      pickupBreakdown.pickup_beyond_first_tier_fee_per_500m,
+    takeout_pickup_priced_distance_km:
+      pickupBreakdown.pickup_priced_distance_km,
+    takeout_pickup_distance_exception_required:
+      pickupBreakdown.pickup_distance_exception_required,
     takeout_pickup_excess_fee: pickupBreakdown.pickup_excess_fee,
     pickup_distance_fee: pickupBreakdown.pickup_excess_fee,
     takeout_pickup_distance_source: pickupBreakdown.pickup_distance_source,
