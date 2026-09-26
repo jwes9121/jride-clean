@@ -420,7 +420,10 @@ export async function POST(req: NextRequest) {
 
   // Cash collection and arrival are driver steps, not a reversal of vendor
   // readiness. Keep the vendor/customer ready signal until actual pickup.
-  if (isPrePickupProgress && current === "pickup_ready") {
+  // The actual picked_up transition must replace Ready with Picked up.
+  const preserveVendorReady =
+    nextStatus === "cash_collected" || nextStatus === "rider_arrived_vendor";
+  if (preserveVendorReady && current === "pickup_ready") {
     delete patch.vendor_status;
     delete patch.customer_status;
   }
