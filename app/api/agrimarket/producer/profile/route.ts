@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
 import { canonicalAgrimarketBarangay, isAgrimarketActiveTown } from "@/lib/agrimarket/farmer-towns";
+import { driverDirectionsError } from "@/lib/agrimarket/farmer-profile-validation";
 import {
   agrimarketFarmerPortalDisabledResponse,
   agrimarketFarmerPortalEnabled,
@@ -229,10 +230,18 @@ export async function POST(req: NextRequest) {
         message: "Choose at least one vehicle that can reach the pickup point.",
       });
     }
-    if (directions.length < 5 || directions.length > 1000) {
+    const directionsError = driverDirectionsError({
+      directions,
+      contactName,
+      vendorName,
+      town: selectedTown,
+      barangay: canonicalBarangay,
+    });
+    if (directionsError) {
       return jsonNoStore(400, {
         ok: false,
-        message: "Enter private driver directions or a landmark between 5 and 1000 characters.",
+        error: "AGRIMARKET_PICKUP_DIRECTIONS_INVALID",
+        message: directionsError,
       });
     }
 

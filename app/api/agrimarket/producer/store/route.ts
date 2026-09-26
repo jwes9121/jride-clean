@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { agrimarketFarmerPortalEnabled, agrimarketFarmerPortalDisabledResponse,
   createServiceSupabase, jsonNoStore, requireAgrimarketProducer } from "../../_lib/server";
+import { driverDirectionsError } from "@/lib/agrimarket/farmer-profile-validation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,6 +16,13 @@ function completeProfile(store: any) {
   const phone = String(store.contact_phone || "").trim();
   const barangay = String(store.barangay || "").trim();
   const directions = String(store.pickup_driver_directions || "").trim();
+  const directionsReady = !driverDirectionsError({
+    directions,
+    contactName: name,
+    vendorName: vendor,
+    town: store.town,
+    barangay,
+  });
   const pickupReady =
     pickup.length >= 2 &&
     !pickup.toUpperCase().startsWith("PROFILE PENDING") &&
@@ -32,7 +40,7 @@ function completeProfile(store: any) {
     barangay.length >= 2 &&
     pickupReady &&
     accessReady &&
-    directions.length >= 5
+    directionsReady
   );
 }
 

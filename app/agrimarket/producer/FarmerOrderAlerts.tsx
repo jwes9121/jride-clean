@@ -17,7 +17,7 @@ const EMPTY: Feed = { orders: [], offset: 0, received: 0, publicKey: null, pushA
 function stored(key: string) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
 function save(key: string, value: string) { try { localStorage.setItem(key, value); } catch { /* Session still works. */ } }
 
-export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { accountCode: string; onReviewOrder?: (orderCode: string) => void }) {
+export default function FarmerOrderAlerts({ accountCode, onReviewOrder, compact = false }: { accountCode: string; onReviewOrder?: (orderCode: string) => void; compact?: boolean }) {
   const account = accountCode;
   const [subscriptionId, setSubscriptionId] = useState("");
   const [browserSubscribed, setBrowserSubscribed] = useState(false);
@@ -223,13 +223,15 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
     try { sessionStorage.setItem("AGRI_SNOOZE_V1:" + account, String(until)); } catch { /* In-page snooze still works. */ }
   }
 
-  return <section className={styles.alertPanel} aria-label="AgriMarket order alerts">
+  if (compact && pending.length === 0 && !error) return null;
+
+  return <section className={compact ? styles.alertPanelCompact : styles.alertPanel} aria-label="AgriMarket order alerts">
     {pending.length > 0 && <div className={styles.incomingOrderBar}>
       <div role="status" aria-live="polite"><strong><Bell size={18} aria-hidden="true" />{pending.length} {pending.length === 1 ? "order needs" : "orders need"} your reply</strong><span>Review before the farmer confirmation deadline.</span></div>
       <a href={farmerOrderHref(pending[0].order_code)} onClick={() => { dismiss(); setReviewingOrder(pending[0].order_code); onReviewOrder?.(pending[0].order_code); }}>Review order</a>
     </div>}
     {error && <p className={styles.alertConnectionError} role="alert">{error}</p>}
-    <details className={styles.alertSettings}>
+    {!compact && <details className={styles.alertSettings}>
       <summary><span><Settings2 size={16} aria-hidden="true" />Notification settings</span><ChevronDown size={16} aria-hidden="true" /></summary>
       <div className={styles.alertSettingsBody}>
         <p className={styles.alertNote}>These settings control browser alerts. The vendor app manages its own notifications.</p>
@@ -252,7 +254,7 @@ export default function FarmerOrderAlerts({ accountCode, onReviewOrder }: { acco
           ? "accepted by the push service; phone delivery and sound are NOT confirmed"
           : ["pending", "sending"].includes(lastTest.status) ? "queued. Lock the phone now and allow up to 90 seconds. No order or driver dispatch was created" : lastTest.status}.</p>}
       </div>
-    </details>
+    </details>}
     <dialog ref={dialog} className={styles.alertDialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="agri-incoming-title">
       <h2 id="agri-incoming-title">New AgriMarket order</h2>
       <p>{popupOrders.length} order{popupOrders.length === 1 ? "" : "s"} waiting for your response.</p>

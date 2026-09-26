@@ -25,6 +25,9 @@ function apiHarness(opt = {}) {
   '@/lib/agrimarket/farmer-towns':{
     isAgrimarketActiveTown:value=>['Lagawe','Hingyon','Banaue','Lamut'].includes(value),
     canonicalAgrimarketBarangay:(town,value)=>(town==='Lamut'&&['Pugol','Poblacion West'].includes(value))||(town==='Banaue'&&value==='Poblacion')?value:null
+  },
+  '@/lib/agrimarket/farmer-profile-validation':{
+    driverDirectionsError:({directions})=>String(directions||'').trim().length>=8?null:'Add clearer driver directions or a landmark of at least 8 characters.'
   }
  });
  return {api,calls,req:(extra={},requestOrigin=origin)=>({headers:new Headers({origin:requestOrigin}),nextUrl:new URL(origin+'/api/agrimarket/producer/profile'),text:async()=>JSON.stringify({...current,...extra})})};
@@ -44,6 +47,9 @@ function uiHarness(opt={}) {
     AGRIMARKET_ACTIVE_TOWNS:['Lagawe','Hingyon','Banaue','Lamut'],
     agrimarketBarangays:town=>town==='Lamut'?['Pugol','Poblacion West']:[],
     canonicalAgrimarketBarangay:(town,value)=>town==='Lamut'&&['Pugol','Poblacion West'].includes(value)?value:null
+  },
+  '@/lib/agrimarket/farmer-profile-validation':{
+    driverDirectionsError:({directions})=>String(directions||'').trim().length>=8?null:'Add clearer driver directions or a landmark of at least 8 characters.'
   },
   '../FarmerWorkspace':{FarmerFeedback:()=>null,FarmerLogin:()=>null,FarmerUnavailable:()=>null,FarmerWorkspace:()=>null},
   '../useFarmerSession':{useFarmerSession:()=>({sessionCode:'AGF-TEST',invalidate:()=>{}})}
@@ -72,7 +78,7 @@ function uiHarness(opt={}) {
  await test('failed save retains review and never redirects or locks in UI',async()=>{const h=uiHarness({saveFailure:true});await h.ready();await h.find(n=>n.type==='form').props.onSubmit({preventDefault(){}});h.render();h.find(n=>n.type==='button'&&n.props.children==='Confirm and save').props.onClick();await flush();h.render();assert.equal(h.navigations.length,0);assert(h.find(n=>n.props?.['aria-label']==='Confirm farm name'));assert.equal(h.notices.length,0);});
  await test('reopened locked profile starts read-only and contact editing keeps name read-only',async()=>{const h=uiHarness({locked:true,complete:true});await h.ready();assert(!h.find(n=>n.type==='form'));h.find(n=>n.type==='button'&&n.props.children==='Update contact / pickup details').props.onClick();h.render();assert(h.find(n=>n.type==='input'&&n.props.value==='Chosen Farm').props.readOnly);await h.find(n=>n.type==='form').props.onSubmit({preventDefault(){}});await flush();assert.equal(JSON.parse(h.requests.at(-1).options.body).confirm_vendor_name,false);});
  await test('prefilled complete but unlocked name is not silently confirmed',async()=>{const h=uiHarness({complete:true});await h.ready();assert(!h.find(n=>n.type==='form'));assert(h.find(n=>n.type==='button'&&n.props.children==='Review and confirm farm/store name'));assert.equal(h.requests.filter(r=>r.options.method==='POST').length,0);});
- await test('products page no longer offers alternate name writer',()=>{const source=read('app/agrimarket/producer/products/page.tsx');assert(!source.includes('set_vendor_name'));assert(source.includes('Open Farm profile'));const api=read('app/api/agrimarket/producer/products/route.ts');const branch=api.slice(api.indexOf('if (action === "set_vendor_name")'),api.indexOf('} else if (action === "set_active")'));assert(branch.includes('return jsonNoStore(409'));assert(!branch.includes('.update('));});
+ await test('products page no longer offers alternate name writer',()=>{const source=read('app/agrimarket/producer/products/page.tsx');assert(!source.includes('set_vendor_name'));assert(source.includes('View farm profile'));const api=read('app/api/agrimarket/producer/products/route.ts');const branch=api.slice(api.indexOf('if (action === "set_vendor_name")'),api.indexOf('} else if (action === "set_active")'));assert(branch.includes('return jsonNoStore(409'));assert(!branch.includes('.update('));});
  await test('migration guards both the name and lock timestamp without backfilling names',()=>{const file=fs.readdirSync(path.join(root,'supabase/migrations')).find(n=>n.endsWith('_agrimarket_confirmed_farm_name_v1.sql'));const sql=read('supabase/migrations/'+file);assert(sql.includes('FOR UPDATE'));assert(sql.includes('NEW.vendor_name IS DISTINCT FROM OLD.vendor_name'));assert(sql.includes('NEW.vendor_name_locked_at IS DISTINCT FROM OLD.vendor_name_locked_at'));assert(sql.includes('FROM PUBLIC,anon,authenticated'));assert(!sql.includes('DISABLE TRIGGER'));assert.equal((sql.match(/SET vendor_name_locked_at=/g)||[]).length,1);});
  console.log('Farm name/profile: '+passed+' groups passed.');
 })().catch(e=>{console.error(e);process.exitCode=1});

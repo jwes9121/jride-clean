@@ -10,6 +10,7 @@ function load(file, server) {
   vm.runInNewContext(source,{module,exports:module.exports,Date,console,require(name){
     if(name==='next/server')return {};
     if(name==='../../_lib/server')return server;
+    if(name==='@/lib/agrimarket/farmer-profile-validation')return {driverDirectionsError:()=>null};
     throw new Error('Unexpected dependency '+name);
   }});
   return module.exports;

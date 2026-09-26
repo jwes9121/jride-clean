@@ -52,6 +52,9 @@ function harness(options = {}) {
       isAgrimarketActiveTown: value => ['Lagawe','Hingyon','Banaue','Lamut'].includes(value),
       canonicalAgrimarketBarangay: (town,value) => town === 'Lamut' && value === 'Pugol' ? value : null,
     },
+    '@/lib/agrimarket/farmer-profile-validation': {
+      driverDirectionsError: ({ directions }) => String(directions || '').trim().length >= 8 ? null : 'Add clearer driver directions.',
+    },
   };
   const module = { exports: {} };
   const compiled = ts.transpileModule(read(route), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }, reportDiagnostics: true });

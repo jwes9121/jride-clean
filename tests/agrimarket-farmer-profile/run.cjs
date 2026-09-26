@@ -257,8 +257,9 @@ async function run() {
   await test('profile passes account code and keeps municipality/access/directions save gates', () => {
     const page = read('app/agrimarket/producer/profile/page.tsx');
     assert(page.includes('farmerCode={sessionCode}'));
-    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== form.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'form.pickup_driver_directions.trim().length < 5']) assert(page.includes(guard));
+    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== form.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'Boolean(directionsError)']) assert(page.includes(guard));
     assert(page.includes('Driver directions / landmark'));
+    assert(page.includes('driverDirectionsError'));
     assert(page.includes("AGRIMARKET_ACTIVE_TOWNS"));
     assert(!read('lib/agrimarket/farmer-towns.ts').includes('Kiangan'));
   });

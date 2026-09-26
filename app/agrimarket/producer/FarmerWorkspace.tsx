@@ -37,10 +37,10 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onRev
             <Link href="/agrimarket/producer/profile" className={`${styles.tab} ${section === "profile" ? styles.selectedTab : ""}`} aria-current={section === "profile" ? "page" : undefined}><UserRound size={18} /> Profile</Link>
           </div>
           <button type="button" onClick={onRefresh} disabled={loading} className={styles.refresh} aria-label={loading ? "Refreshing" : `Refresh ${section}`}><RefreshCw size={18} className={loading ? styles.spinning : ""} /></button>
-          {onSignOut && <button type="button" onClick={onSignOut} disabled={loading} className={styles.tab}>Sign out</button>}
+          {onSignOut && section === "profile" && <button type="button" onClick={onSignOut} disabled={loading} className={styles.tab}>Sign out</button>}
         </nav>}
-        {!guest && accountCode && <FarmerStoreStatus key={accountCode} accountCode={accountCode} />}
-        {!guest && <FarmerOrderAlerts key={accountCode} accountCode={accountCode} onReviewOrder={onReviewOrder} />}
+        {!guest && accountCode && <FarmerStoreStatus key={accountCode} accountCode={accountCode} compact={section !== "orders"} />}
+        {!guest && <FarmerOrderAlerts key={accountCode} accountCode={accountCode} onReviewOrder={onReviewOrder} compact={section !== "orders"} />}
         {!guest && section === "orders" && <ProfileSavedNotice accountCode={accountCode} />}
         {children}
         <footer className={styles.footer}><Sprout size={15} /> Grown locally. Connected by JRide.</footer>
