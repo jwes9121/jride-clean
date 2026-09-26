@@ -128,6 +128,13 @@ function provisioningFailure(error: any) {
       message: "A farmer with this mobile number already has an open or approved Agrimarket record.",
     });
   }
+  if (raw.includes("agrimarket_producers_town_vendor_name_ci_uidx") || raw.includes("STORE_NAME_TAKEN")) {
+    return jsonNoStore(409, {
+      ok: false,
+      error: "AGRIMARKET_STORE_NAME_TAKEN",
+      message: "That farm/store name is already used in the selected municipality. Choose another name or keep the farmer in the current municipality.",
+    });
+  }
   if (raw.includes("store_name_required") || raw.includes("STORE_NAME_REQUIRED")) {
     return jsonNoStore(409, { ok: false, error: "AGRIMARKET_STORE_NAME_REQUIRED", message: "The farmer must save a store name in Farm details before orders can be enabled." });
   }
