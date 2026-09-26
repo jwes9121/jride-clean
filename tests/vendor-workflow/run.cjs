@@ -112,6 +112,17 @@ function harness(db, globals={}) {
 }
 
 async function routes() {
+  await test('dedicated Takeout test vendor/passenger is isolated to tester drivers',async()=>{
+    const source=fs.readFileSync(path.join(root,'app/api/vendor-orders/route.ts'),'utf8');
+    assert(source.includes('11111111-1111-1111-1111-111111111111'));
+    assert(source.includes('a80e8043-6477-4ce0-96a7-06ef7007b541'));
+    assert(source.includes('00000000-0000-4000-8000-000000000001'));
+    assert(source.includes('00000000-0000-4000-8000-000000000002'));
+    assert(source.includes('TAKEOUT_TEST_DRIVER_IDS.has(did)'));
+    assert(source.includes('dedicated_test_driver_unavailable'));
+    assert(source.includes('dedicated_test_driver_only'));
+    assert(source.includes('vendor_id,created_by_user_id,pickup_lat'));
+  });
   await test('after-hours vendor controls can edit hours and reopen today without touching order flow',async()=>{
     const gate=fs.readFileSync(path.join(root,'app/components/VendorHoursGate.tsx'),'utf8');
     const hoursApi=fs.readFileSync(path.join(root,'app/api/vendor-hours/route.ts'),'utf8');
