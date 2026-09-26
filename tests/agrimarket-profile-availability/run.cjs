@@ -48,6 +48,7 @@ function harness(options = {}) {
     '../../_lib/admin-farmer-location': { reverseGeocodeFarmerPin: async () => {
       calls.push({ geocode: true }); return { launch_eligible: true, town: options.pinTown || 'Lamut', label: row.pickup_label };
     } },
+    '@/lib/agrimarket/farmer-towns': { isAgrimarketActiveTown: value => ['Lagawe','Hingyon','Banaue','Lamut'].includes(value) },
   };
   const module = { exports: {} };
   const compiled = ts.transpileModule(read(route), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 }, reportDiagnostics: true });
@@ -72,7 +73,7 @@ async function run() {
   await test('pending store remains blocked and receives accurate explanation', async () => {
     const h = harness({ ready: false, open: false }); const r = await h.api.POST(h.req());
     assert.equal(r.status, 200); assert.equal(r.body.readiness_review_pending, true);
-    assert.match(r.body.message, /New orders are paused/); assert.match(r.body.message, /products have not been deleted/);
+    assert.match(r.body.message, /JRide will review your pickup and products/); assert.match(r.body.message, /receive new orders/);
   });
   await test('latest database readback wins over an earlier RPC readiness value', async () => {
     const h = harness({ ready: false, open: false, rpcReady: true }); const r = await h.api.POST(h.req());
@@ -80,7 +81,7 @@ async function run() {
   });
   await test('caller cannot choose another farmer or set approval flags', async () => {
     const h = harness({ ready: false }); await h.api.POST(h.req({ producer_id: 'other', id: 'other', accepting_orders: true, store_open: true }));
-    const call = h.calls.find(c => c.name); assert.equal(call.args.p_producer_id, 'authenticated-farmer');
+    const call = h.calls.find(c => c.name); assert.equal(call.name, 'agrimarket_farmer_save_profile_v3'); assert.equal(call.args.p_producer_id, 'authenticated-farmer'); assert.equal(call.args.p_town, 'Lamut');
     assert.equal(call.args.p_actor, 'AGF-TESTONLY');
     assert(!Object.hasOwn(call.args, 'accepting_orders')); assert(!Object.hasOwn(call.args, 'store_open'));
     assert.equal(call.args.p_phone_normalized, '+639991234567');

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import FarmerPickupMap, { emptyFarmerPin } from "@/components/agrimarket/FarmerPickupMap";
-import { FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
 import { FarmerFeedback, FarmerWorkspace } from "../producer/FarmerWorkspace";
 import styles from "../producer/farmer.module.css";
 
@@ -98,7 +98,7 @@ export default function AgrimarketFarmerJoinPage() {
           <label>Last 2–4 ID characters only (optional)<input maxLength={4} pattern="[A-Za-z0-9]{2,4}" value={form.identity_reference_last4} onChange={(event) => change("identity_reference_last4", event.target.value)} /></label>
         </div></fieldset>
         <fieldset className={styles.formSection}><legend><span>02</span> Private pickup point</legend><div className={styles.formGrid}>
-          <label>Municipality<select value={form.town} onChange={(event) => { change("town", event.target.value); change("barangay", ""); change("pin_confirmed", false); }}>{Object.keys(FARMER_TOWN_CENTERS).map((town) => <option key={town}>{town}</option>)}</select></label>
+          <label>Municipality<select value={form.town} onChange={(event) => { change("town", event.target.value); change("barangay", ""); change("pin_confirmed", false); }}>{AGRIMARKET_ACTIVE_TOWNS.map((town) => <option key={town} value={town}>{town}</option>)}</select></label>
           <label>Barangay / local place<input maxLength={100} value={form.barangay} onChange={(event) => change("barangay", event.target.value)} /></label>
           <label className={styles.fullWidth}>Handoff point description<input required minLength={2} maxLength={180} value={form.pickup_label} onChange={(event) => change("pickup_label", event.target.value)} placeholder="Farm gate or agreed roadside pickup" /></label>
           <div className={styles.fullWidth}><FarmerPickupMap selectedTown={form.town} value={pin} onChange={(next) => { setPin(next); change("pin_confirmed", false); if (next.resolved_barangay) change("barangay", next.resolved_barangay); }} /></div>

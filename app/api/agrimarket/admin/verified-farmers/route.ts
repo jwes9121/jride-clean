@@ -1,6 +1,7 @@
 import { randomBytes, randomInt } from "crypto";
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
+import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
 import {
   createServiceSupabase,
   jsonNoStore,
@@ -11,8 +12,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
 
-const LAUNCH_TOWNS = ["Lagawe", "Hingyon", "Kiangan", "Banaue", "Lamut"] as const;
-const TOWN_BY_LOWER = new Map(LAUNCH_TOWNS.map((town) => [town.toLowerCase(), town]));
+const TOWN_BY_LOWER = new Map(AGRIMARKET_ACTIVE_TOWNS.map((town) => [town.toLowerCase(), town]));
 const ACCESS_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 type AdminClient = ReturnType<typeof createServiceSupabase>;

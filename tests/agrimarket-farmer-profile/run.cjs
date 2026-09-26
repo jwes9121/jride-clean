@@ -43,10 +43,24 @@ const client = load('lib/agrimarket/farmerSessionClient.ts', {
 });
 function apiHarness(options = {}) {
   const calls = [];
-  const db = { rpc: async (name, args) => {
-    calls.push({ kind: 'auth', name, args });
-    return options.expired ? { data: null, error: null } : { data: { access_code: code, producer }, error: null };
-  } };
+  const db = {
+    rpc: async (name, args) => {
+      calls.push({ kind: 'auth', name, args });
+      return options.expired ? { data: null, error: null } : { data: { access_code: code, producer }, error: null };
+    },
+    from: table => {
+      calls.push({ kind: 'profile', table });
+      const q = {
+        select() { return q; },
+        eq() { return q; },
+        limit() { return q; },
+        maybeSingle: async () => options.profileReadError
+          ? { data: null, error: { message: 'profile read failed' } }
+          : { data: { town: producer.town, vendor_name_locked_at: options.locked ? '2026-09-26T00:00:00Z' : null }, error: null },
+      };
+      return q;
+    },
+  };
   const api = load('app/api/agrimarket/producer/location/route.ts', {
     '../../_lib/server': {
       agrimarketFarmerPortalEnabled: () => options.portal !== false,
@@ -57,6 +71,7 @@ function apiHarness(options = {}) {
         const value = await session.readFarmerSession(req, db);
         return value ? { ok: true, ...value, accessCode: value.access_code } : { ok: false, response: { status: 401, body: { ok: false, message: 'Sign in again.' } } };
       },
+      createServiceSupabase: () => db,
       jsonNoStore: (status, body) => ({ status, body }),
     },
     '../../_lib/admin-farmer-location': {
@@ -147,14 +162,34 @@ async function run() {
   await test('disabled farmer portal fails closed', async () => {
     const h = apiHarness({ portal: false }); assert.equal((await h.api.GET(h.req('q=Lamut'))).status, 503); assert.equal(h.calls.length, 0);
   });
+  await test('profile town lookup fails closed before geocoding', async () => {
+    const h = apiHarness({ profileReadError: true });
+    const response = await h.api.GET(h.req('q=Lamut&town=Lamut'));
+    assert.equal(response.status, 503);
+    assert(!h.calls.some(c => c.kind === 'search' || c.kind === 'reverse'));
+  });
   await test('authenticated search does not depend on public onboarding and filters other towns', async () => {
     const h = apiHarness({ results: [point, { ...point, town: 'Lagawe' }, { ...point, launch_eligible: false }] });
     const r = await h.api.GET(h.req('q=Municipal+hall&town=Lamut'));
     assert.equal(r.status, 200); assert.equal(r.body.results.length, 1); assert.equal(h.calls.find(c => c.kind === 'search').town, 'Lamut');
   });
-  await test('forged municipality and invalid search length do not call provider', async () => {
-    const h = apiHarness();
-    for (const q of ['q=hall&town=Lagawe', 'q=a', 'q=' + 'a'.repeat(181)]) assert.equal((await h.api.GET(h.req(q))).status, 400);
+  await test('unlocked first setup may verify another active municipality, but Kiangan remains unavailable', async () => {
+    let h = apiHarness({ results: [{ ...point, town: 'Lagawe' }] });
+    const allowed = await h.api.GET(h.req('q=hall&town=Lagawe'));
+    assert.equal(allowed.status, 200);
+    assert.equal(h.calls.find(c => c.kind === 'search').town, 'Lagawe');
+
+    h = apiHarness();
+    for (const q of ['q=hall&town=Kiangan', 'q=a&town=Lamut', 'q=' + 'a'.repeat(181) + '&town=Lamut']) {
+      assert.equal((await h.api.GET(h.req(q))).status, 400);
+    }
+    assert(!h.calls.some(c => c.kind === 'search'));
+  });
+  await test('confirmed farm keeps municipality locked before calling the location provider', async () => {
+    const h = apiHarness({ locked: true });
+    const response = await h.api.GET(h.req('q=hall&town=Lagawe'));
+    assert.equal(response.status, 409);
+    assert.match(response.body.message, /locked/i);
     assert(!h.calls.some(c => c.kind === 'search'));
   });
   await test('no search matches is not a pin-verification failure', async () => {
@@ -222,8 +257,27 @@ async function run() {
   await test('profile passes account code and keeps municipality/access/directions save gates', () => {
     const page = read('app/agrimarket/producer/profile/page.tsx');
     assert(page.includes('farmerCode={sessionCode}'));
-    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== profile.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'form.pickup_driver_directions.trim().length < 5']) assert(page.includes(guard));
+    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== form.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'form.pickup_driver_directions.trim().length < 5']) assert(page.includes(guard));
     assert(page.includes('Driver directions / landmark'));
+    assert(page.includes("AGRIMARKET_ACTIVE_TOWNS"));
+    assert(!read('lib/agrimarket/farmer-towns.ts').includes('Kiangan'));
+  });
+  await test('all farmer onboarding surfaces exclude Kiangan and the V3 save locks town after setup', () => {
+    const townSource = read('lib/agrimarket/farmer-towns.ts');
+    const adminPage = read('app/admin/agrimarket/verified-farmers/page.tsx');
+    const adminRoute = read('app/api/agrimarket/admin/verified-farmers/route.ts');
+    const applicationRoute = read('app/api/agrimarket/farmer-applications/route.ts');
+    const migration = read('supabase/migrations/20260926074951_agrimarket_initial_town_selection_v1.sql');
+    for (const source of [townSource, adminPage, adminRoute, applicationRoute, migration]) {
+      assert(!source.includes('"Kiangan"') && !source.includes("'Kiangan'"), 'Kiangan must not be an active AgriMarket onboarding town');
+    }
+    assert(adminPage.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(adminRoute.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(applicationRoute.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(migration.includes('AGRIMARKET_FARMER_TOWN_LOCKED'));
+    assert(migration.includes("vendor_name_locked_at IS NOT NULL AND v_town_changed"));
+    assert(migration.includes('accepting_orders = false'));
+    assert(migration.includes('store_open = false'));
   });
   await test('audit migration changes only compatible event labels and adds action detail', () => {
     const before = read('supabase/migrations/20260922012406_agrimarket_preassigned_farmer_profile_completion_v1.sql');

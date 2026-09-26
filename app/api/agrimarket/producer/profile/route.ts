@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
+import { isAgrimarketActiveTown } from "@/lib/agrimarket/farmer-towns";
 import {
   agrimarketFarmerPortalDisabledResponse,
   agrimarketFarmerPortalEnabled,
@@ -31,6 +32,20 @@ function saveFailure(message: string) {
   if (message.includes("FARM_NAME_LOCKED")) {
     return jsonNoStore(409, { ok: false, error: "AGRIMARKET_FARM_NAME_LOCKED",
       message: "Your confirmed farm/store name is locked. Refresh to see the saved name. Contact JRide for a correction." });
+  }
+  if (message.includes("FARMER_TOWN_LOCKED")) {
+    return jsonNoStore(409, {
+      ok: false,
+      error: "AGRIMARKET_FARMER_TOWN_LOCKED",
+      message: "Municipality is locked after farm setup. Contact JRide if the municipality needs correction.",
+    });
+  }
+  if (message.includes("FARMER_TOWN_INVALID")) {
+    return jsonNoStore(400, {
+      ok: false,
+      error: "AGRIMARKET_FARMER_TOWN_INVALID",
+      message: "Choose an active AgriMarket municipality.",
+    });
   }
   if (message.includes("FARM_NAME_CONFIRMATION_REQUIRED")) {
     return jsonNoStore(409, { ok: false, error: "AGRIMARKET_FARM_NAME_CONFIRMATION_REQUIRED",
@@ -88,6 +103,7 @@ function payload(row: any) {
     contact_name: namePending ? "" : contactName,
     contact_phone: phone,
     town: clean(row.town),
+    town_editable: !row.vendor_name_locked_at,
     barangay,
     vendor_name: vendorName,
     vendor_name_locked: Boolean(row.vendor_name_locked_at),
@@ -166,6 +182,7 @@ export async function POST(req: NextRequest) {
 
     const contactName = clean(body.contact_name);
     const contactPhone = clean(body.contact_phone);
+    const selectedTown = clean(body.town);
     const barangay = clean(body.barangay);
     const vendorName = clean(body.vendor_name);
     const directions = clean(body.pickup_driver_directions);
@@ -181,6 +198,9 @@ export async function POST(req: NextRequest) {
     const normalizedPhone = normalizePhilippineMobile(contactPhone);
     if (!normalizedPhone || contactPhone.length < 10 || contactPhone.length > 30) {
       return jsonNoStore(400, { ok: false, message: "Enter a valid Philippine mobile number." });
+    }
+    if (!isAgrimarketActiveTown(selectedTown)) {
+      return jsonNoStore(400, { ok: false, message: "Choose Lagawe, Hingyon, Banaue, or Lamut." });
     }
     if (barangay.length < 2 || barangay.length > 120) {
       return jsonNoStore(400, { ok: false, message: "Enter the farmer's barangay." });
@@ -205,17 +225,18 @@ export async function POST(req: NextRequest) {
     }
 
     const resolved = await reverseGeocodeFarmerPin(lat, lng);
-    if (!resolved?.launch_eligible || resolved.town !== auth.producer.town) {
+    if (!resolved?.launch_eligible || resolved.town !== selectedTown) {
       return jsonNoStore(422, {
         ok: false,
-        message: `The pickup pin must be inside ${auth.producer.town}.`,
+        message: `The pickup pin must be inside ${selectedTown}.`,
       });
     }
 
     const admin = createServiceSupabase();
-    const completed = await admin.rpc("agrimarket_farmer_save_profile_v2", {
+    const completed = await admin.rpc("agrimarket_farmer_save_profile_v3", {
       p_confirm_vendor_name: body.confirm_vendor_name === true,
       p_producer_id: auth.producer.id,
+      p_town: selectedTown,
       p_contact_name: contactName,
       p_phone_display: contactPhone,
       p_phone_normalized: normalizedPhone,
@@ -258,7 +279,7 @@ export async function POST(req: NextRequest) {
         ? savedProfile.store_open
           ? "Farm profile saved. Your approval is unchanged and your store remains open."
           : "Farm profile saved. Your approval is unchanged. Your store remains closed; open it when ready."
-        : "Farm profile saved. New orders are paused until JRide approves readiness. Your products have not been deleted.",
+        : "Farm profile saved. JRide will review your pickup and products before your store can receive new orders.",
     });
   } catch (error: any) {
     return jsonNoStore(500, {
