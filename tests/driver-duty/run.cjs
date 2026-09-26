@@ -108,6 +108,20 @@ function harness(db, options = {}) {
     assert.equal(pending.status,200);assert.equal(pending.body.status,'gps_pending');assert.equal(db.tables.driver_locations[0].status,'gps_pending');
     const offline=await h.api.POST(h.request(h.ordered('offline')));assert.equal(offline.body.status,'offline');assert.equal(db.cancellations.length,1);
   });
+  await test('status-only offline and online pings cannot refresh old GPS coordinates',async()=>{
+    const oldGpsAt='2026-09-26T08:00:00.000Z';
+    const db=database({driver_id:driver,status:'online',lat:17.08,lng:121.12,updated_at:oldGpsAt,vehicle_type:'tricycle',duty_revision:randomUUID()});
+    const h=harness(db);
+    const offline=await h.api.POST(h.request(h.ordered('offline')));
+    assert.equal(offline.status,200);assert.equal(db.tables.driver_locations[0].status,'offline');
+    assert.equal(db.tables.driver_locations[0].updated_at,oldGpsAt);
+    assert.equal(db.tables.driver_locations[0].lat,17.08);assert.equal(db.tables.driver_locations[0].lng,121.12);
+    const onlineRevision=db.tables.driver_locations[0].duty_revision;
+    const online=await h.api.POST(h.request(h.ordered('online',onlineRevision)));
+    assert.equal(online.status,200);assert.equal(db.tables.driver_locations[0].status,'online');
+    assert.equal(db.tables.driver_locations[0].updated_at,oldGpsAt);
+    assert.equal(online.body.retry_triggered,false);
+  });
   await test('malformed ordering fails without writes',async()=>{
     for(const extra of [{duty_ordering_v1:false},{duty_expected_revision:'bad'},{duty_expected_revision:null},{duty_ordering_v1:undefined}]){
       const db=database(),h=harness(db),r=await h.api.POST(h.request(h.ordered('offline',undefined,extra)));assert.equal(r.status,400);assert.equal(db.writes.length,0);
