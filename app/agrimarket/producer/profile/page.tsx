@@ -159,7 +159,7 @@ export default function AgrimarketProducerProfilePage() {
     if (!sessionCode) return false;
     const phoneDigits = form.contact_phone.replace(/\D/g, "");
     const vendorName = form.vendor_name.trim().replace(/\s+/g, " ");
-    if (phoneDigits.length < 10 || vendorName.length < 2 || !form.town) return false;
+    if (phoneDigits.length < 10 || !form.town) return false;
 
     setProfileCheck((current) => ({ ...current, checking: true, error: "" }));
     try {
@@ -182,15 +182,27 @@ export default function AgrimarketProducerProfilePage() {
         throw new Error(body?.message || "JRide could not check the mobile number and farm/store name.");
       }
       const phoneAvailable = body.phone_available === true;
-      const storeNameAvailable = body.store_name_available === true;
+      const storeNameAvailable = body.store_name_available == null ? null : body.store_name_available === true;
       setProfileCheck({ checking: false, phoneAvailable, storeNameAvailable, error: "" });
+      setError((current) => {
+        if (
+          current.includes("mobile number is already registered") ||
+          current.includes("farm/store name already exists")
+        ) return "";
+        return current;
+      });
 
       if (showError && !phoneAvailable) {
         setError("This mobile number is already registered to another AgriMarket farmer account. Use a different number.");
-      } else if (showError && !profile?.vendor_name_locked && !storeNameAvailable) {
+      } else if (showError && !profile?.vendor_name_locked && vendorName.length < 2) {
+        setError("Enter a farm or store name between 2 and 60 characters.");
+      } else if (showError && !profile?.vendor_name_locked && storeNameAvailable !== true) {
         setError(`This farm/store name already exists in ${form.town}. Choose a different name.`);
       }
-      return phoneAvailable && (profile?.vendor_name_locked === true || storeNameAvailable);
+      return phoneAvailable && (
+        profile?.vendor_name_locked === true ||
+        (vendorName.length >= 2 && storeNameAvailable === true)
+      );
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "JRide could not check your farmer details.";
       setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: message });
@@ -202,8 +214,7 @@ export default function AgrimarketProducerProfilePage() {
   useEffect(() => {
     if (!editing || !sessionCode) return;
     const phoneDigits = form.contact_phone.replace(/\D/g, "");
-    const vendorName = form.vendor_name.trim();
-    if (phoneDigits.length < 10 || vendorName.length < 2 || !form.town) {
+    if (phoneDigits.length < 10 || !form.town) {
       setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
       return;
     }
@@ -408,7 +419,10 @@ export default function AgrimarketProducerProfilePage() {
                     required
                     inputMode="tel"
                     value={form.contact_phone}
-                    onChange={(event) => setForm({ ...form, contact_phone: event.target.value })}
+                    onChange={(event) => {
+                      setForm({ ...form, contact_phone: event.target.value });
+                      setError("");
+                    }}
                     className="mt-1 w-full rounded-xl border px-3 py-3"
                     placeholder="09XXXXXXXXX"
                   />
@@ -426,6 +440,7 @@ export default function AgrimarketProducerProfilePage() {
                         onChange={(event) => {
                           setForm({ ...form, town: event.target.value, barangay: "" });
                           setPickup(emptyFarmerPin());
+                          setError("");
                         }}
                         className="mt-1 w-full rounded-xl border px-3 py-3"
                       >
@@ -465,7 +480,10 @@ export default function AgrimarketProducerProfilePage() {
                     maxLength={60}
                     readOnly={profile.vendor_name_locked}
                     value={form.vendor_name}
-                    onChange={(event) => setForm({ ...form, vendor_name: event.target.value })}
+                    onChange={(event) => {
+                      setForm({ ...form, vendor_name: event.target.value });
+                      setError("");
+                    }}
                     className="mt-1 w-full rounded-xl border px-3 py-3"
                     placeholder="Name customers will see"
                   />
