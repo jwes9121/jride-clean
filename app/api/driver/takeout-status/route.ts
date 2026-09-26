@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,notes")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,notes")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -495,7 +495,7 @@ export async function POST(req: NextRequest) {
       .is("takeout_delivery_fee", null);
   }
   const up = await updateQuery
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,updated_at")
     .maybeSingle();
 
   if (up.error) {
