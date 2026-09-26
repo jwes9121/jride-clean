@@ -157,6 +157,20 @@ function booking(subtotal) {
 
 (async () => {
   {
+    const { helper, db } = makeHarness({ deliveryKm: 0.1, elevationGainM: 0 });
+    const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
+      booking: booking(90),
+      driverId: "driver-1",
+      supabase: db,
+    });
+    assert.equal(result.outcome, "automatic");
+    assert.equal(result.deliveryFee, 25);
+    assert.equal(result.serviceFee, 15);
+    assert.equal(result.totalPayable, 130);
+    assert.equal(result.fare.rideMinimumApplied, true);
+  }
+
+  {
     const { helper, db, calls } = makeHarness({ deliveryKm: 3, elevationGainM: 25 });
     const result = await helper.evaluateTakeoutAutomaticDeliveryFare({
       booking: booking(340),
@@ -269,6 +283,15 @@ function booking(subtotal) {
   assert.match(status, /confirm_takeout_automatic_short_trip_v1/);
   assert.match(status, /automaticTakeoutFare\?\.outcome === "automatic"/);
   assert.match(status, /TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE/);
+
+  const vendorOrdersRoute = fs.readFileSync(
+    path.join(root, "app/api/vendor-orders/route.ts"),
+    "utf8"
+  );
+  assert.match(vendorOrdersRoute, /TAKEOUT_ACTIVE_ORDER_EXISTS/);
+  assert.match(vendorOrdersRoute, /created_by_user_id/);
+  assert.match(vendorOrdersRoute, /\.not\("status", "in", "\(completed,cancelled,canceled\)"\)/);
+  assert.match(vendorOrdersRoute, /ux_bookings_one_active_takeout_passenger_v1/);
   assert.match(status, /TAKEOUT_VENDOR_NOT_READY_FOR_PICKUP/);
   assert.match(status, /TAKEOUT_DRIVER_NOT_AT_VENDOR/);
   assert.match(status, /vendor_driver_arrived_at/);
@@ -291,6 +314,23 @@ function booking(subtotal) {
   assert.match(migration, /update public\.vendor_menu_items as menu/);
   assert.match(migration, /takeout_customer_confirmed_at = effective_now/);
   assert.match(migration, /driver_fee_proposal_expires_at = null/);
+
+  const singleActiveMigration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260926121500_takeout_single_active_order_v1.sql"
+    ),
+    "utf8"
+  );
+  assert.match(
+    singleActiveMigration,
+    /create unique index if not exists ux_bookings_one_active_takeout_passenger_v1/
+  );
+  assert.match(singleActiveMigration, /service_type = 'takeout'/);
+  assert.match(
+    singleActiveMigration,
+    /status not in \('completed', 'cancelled', 'canceled'\)/
+  );
 
   console.log("takeout-automatic-fare: ok");
 })().catch((error) => {
