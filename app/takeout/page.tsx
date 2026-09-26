@@ -94,6 +94,11 @@ type TakeoutPricingOrder = {
   takeout_delivery_fee?: number | string | null;
   takeout_service_fee?: number | string | null;
   takeout_total_payable?: number | string | null;
+  takeout_product_purchase_amount?: number | string | null;
+  takeout_cash_first_amount?: number | string | null;
+  takeout_pay_on_delivery_amount?: number | string | null;
+  cash_collection_amount?: number | string | null;
+  pay_on_delivery_amount?: number | string | null;
   takeout_cash_collection_required?: boolean | null;
   takeout_fee_proposed_at?: string | null;
   takeout_fee_expires_at?: string | null;
@@ -1310,7 +1315,10 @@ function selectedAddressTown(
   const estimatedSubtotalWithPackaging = itemsSubtotal + packagingEstimate;
   const premiumPackagingSelected = packagingEstimate > 0;
   const premiumPackagingLabel = "Premium packaging";
-  const cashCollectionRequired = estimatedSubtotalWithPackaging >= 500;
+  // JRIDE_TAKEOUT_CASH_FIRST_THRESHOLD_V2
+  // PHP500 and below in menu/items subtotal = vendor first.
+  // Only a menu/items subtotal strictly above PHP500 = customer cash first.
+  const cashCollectionRequired = itemsSubtotal > 500;
 
   // Human readable for vendor UI, and JSON snapshot for future lock
   const itemsText = useMemo(() => {
@@ -2865,9 +2873,9 @@ function selectedAddressTown(
 
             {cashCollectionRequired ? (
               <div className="mt-3 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-sm">
-                <div className="font-bold">Cash collection required.</div>
+                <div className="font-bold">Customer-first vendor cash required.</div>
                 <div className="mt-1">
-                  Because this order exceeds PHP 500, your driver will collect the cash payment from you before proceeding to the vendor purchase.
+                  Because the menu/items subtotal is above PHP500, the driver will collect only the vendor purchase amount first. Delivery, JRide service, and pickup/approach charges are paid on final delivery.
                 </div>
               </div>
             ) : null}
@@ -3555,6 +3563,20 @@ function selectedAddressTown(
               const vendorPoint = takeoutMapPoint(order?.vendor_lat ?? order?.pickup_lat, order?.vendor_lng ?? order?.pickup_lng);
               const customerPoint = takeoutMapPoint(order?.customer_lat ?? order?.dropoff_lat, order?.customer_lng ?? order?.dropoff_lng);
               const cashFirstRoute = order?.takeout_cash_collection_required === true || routePlan === "customer_cash_first";
+              const productPurchaseAmount = Math.max(
+                0,
+                toNum(order?.takeout_product_purchase_amount) || Number((foodSubtotal + confirmationPackagingSubtotal).toFixed(2))
+              );
+              const cashFirstAmount = Math.max(
+                0,
+                toNum(order?.takeout_cash_first_amount ?? order?.cash_collection_amount) ||
+                  (cashFirstRoute ? productPurchaseAmount : 0)
+              );
+              const payOnDeliveryAmount = Math.max(
+                0,
+                toNum(order?.takeout_pay_on_delivery_amount ?? order?.pay_on_delivery_amount) ||
+                  Number((totalPayable - cashFirstAmount).toFixed(2))
+              );
               const alreadyPickedUp = ["picked_up", "delivering", "completed"].includes(progressStatus);
               const cashAlreadyCollected = ["cash_collected", "vendor_bound", "rider_arrived_vendor", "arrived_vendor", "picked_up", "delivering", "completed"].some((s) =>
                 [progressStatus, customerStatus, vendorStatus, driverStatus].includes(s)
@@ -3646,8 +3668,19 @@ function selectedAddressTown(
                       <span className="font-bold">{totalPayable > 0 ? money(totalPayable) : "Pending"}</span>
                     </div>
                     {order?.takeout_cash_collection_required === true ? (
-                      <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                        Driver will collect the cash payment from you before proceeding to the vendor purchase.
+                      <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                        <div className="font-bold">Customer-first cash split</div>
+                        <div className="mt-2 flex justify-between gap-3">
+                          <span>Give driver now for vendor purchase</span>
+                          <span className="font-bold">{money(cashFirstAmount)}</span>
+                        </div>
+                        <div className="mt-1 flex justify-between gap-3">
+                          <span>Pay on final delivery</span>
+                          <span className="font-bold">{money(payOnDeliveryAmount)}</span>
+                        </div>
+                        <div className="mt-2 text-[11px] text-amber-800">
+                          The first amount covers the menu/items and vendor packaging only. Delivery, JRide service, and pickup/approach charges are paid when the order is delivered.
+                        </div>
                       </div>
                     ) : null}
                     {status === "driver_fee_proposed" && !isOrderCompleted && !isOrderCancelled ? (
@@ -3679,7 +3712,7 @@ function selectedAddressTown(
                   {status === "customer_confirmed" && !hasMovedPastCustomerConfirmation ? (
                     <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
                       {order?.takeout_cash_collection_required === true
-                        ? "Order confirmed. The driver is on the way to collect the cash payment before proceeding to the vendor."
+                        ? `Order confirmed. Give the driver ${money(cashFirstAmount)} for the vendor purchase only. The remaining ${money(payOnDeliveryAmount)} is due on final delivery.`
                         : "Order confirmed. The driver is now assigned and the vendor workflow can proceed."}
                     </div>
                   ) : null}
