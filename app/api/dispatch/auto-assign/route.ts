@@ -629,11 +629,6 @@ async function matchSingle(
     // JRIDE_DRIVER_STANDBY_DISPATCH_V1
     // Fresh live GPS always wins. Standby is a separately confirmed saved-home
     // point used only for this initial assignment scan.
-    if (dispatchLocation.source === "standby") {
-      debug.eligible_standby_count++;
-    } else {
-      debug.eligible_live_gps_count++;
-    }
 
     // JRIDE_RIDE_RESCUE_DISPATCH_TOWN_V1
     // Normal/Rescue Ride eligibility uses the server GPS-derived town helper.
@@ -748,6 +743,12 @@ async function matchSingle(
     if (walletBalance < walletMinRequired) {
       debug.rejected_low_wallet_count++;
       continue;
+    }
+
+    if (dispatchLocation.source === "standby") {
+      debug.eligible_standby_count++;
+    } else {
+      debug.eligible_live_gps_count++;
     }
 
     eligible.push({
