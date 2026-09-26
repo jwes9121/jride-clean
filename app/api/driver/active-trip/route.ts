@@ -55,8 +55,19 @@ function jrideTakeoutSystemInstructions(row: any, cashRequired: boolean): string
   const snap = row?.takeout_pricing_snapshot && typeof row.takeout_pricing_snapshot === "object" ? row.takeout_pricing_snapshot : {};
   const receiptRequested = Boolean(row?.receipt_requested ?? row?.request_vendor_receipt ?? snap?.receipt_requested ?? false);
   const packaging = jrideActiveTripText(row?.premium_packaging_label ?? snap?.premium_packaging_label ?? "");
+  const cashFirstAmount = n(row?.takeout_cash_first_amount ?? snap?.takeout_cash_first_amount);
+  const payOnDeliveryAmount = n(row?.takeout_pay_on_delivery_amount ?? snap?.takeout_pay_on_delivery_amount);
   if (packaging) out.push(`Packaging: ${packaging}`);
-  if (cashRequired) out.push("Collect cash before vendor purchase.");
+  if (cashRequired) {
+    if (cashFirstAmount != null) {
+      out.push(`Collect PHP ${cashFirstAmount.toFixed(2)} now for the vendor purchase only.`);
+    } else {
+      out.push("Collect the vendor purchase amount before going to the vendor.");
+    }
+    if (payOnDeliveryAmount != null) {
+      out.push(`Collect PHP ${payOnDeliveryAmount.toFixed(2)} on final delivery.`);
+    }
+  }
   if (receiptRequested) out.push("Vendor receipt requested.");
   return out;
 }
@@ -1015,6 +1026,16 @@ export async function GET(req: NextRequest) {
       driver_delivery_fee: takeoutDeliveryFeeForDriver,
       delivery_fee: takeoutDeliveryFeeForDriver,
       takeout_total_payable: takeoutTotalPayableForDriver,
+      takeout_product_purchase_amount: n((booking as any).takeout_product_purchase_amount),
+      takeout_cash_first_amount: n((booking as any).takeout_cash_first_amount),
+      cash_collection_amount: n((booking as any).takeout_cash_first_amount),
+      takeout_pay_on_delivery_amount: n((booking as any).takeout_pay_on_delivery_amount),
+      pay_on_delivery_amount: n((booking as any).takeout_pay_on_delivery_amount),
+      takeout_driver_commission: n((booking as any).takeout_driver_commission),
+      takeout_company_revenue: n((booking as any).takeout_company_revenue),
+      takeout_driver_delivery_earnings: n((booking as any).takeout_driver_delivery_earnings),
+      company_cut: n((booking as any).company_cut),
+      driver_payout: n((booking as any).driver_payout),
       // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
       takeout_pickup_distance_km: takeoutPickupDistanceKmForDriver,
       takeout_pickup_free_km: takeoutPickupFreeKmForDriver,
