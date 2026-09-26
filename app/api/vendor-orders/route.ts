@@ -1303,6 +1303,45 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
   const passengerAuth = await requireVerifiedTakeoutPassenger(req, admin);
   if (!passengerAuth.ok) return passengerAuth.response;
 
+  const takeoutPassengerUserId = String(passengerAuth.passenger.userId || "").trim();
+  if (takeoutPassengerUserId) {
+    const activeTakeoutRes = await admin
+      .from("bookings")
+      .select("id,booking_code,status,vendor_status,customer_status,created_at")
+      .eq("service_type", "takeout")
+      .eq("created_by_user_id", takeoutPassengerUserId)
+      .not("status", "in", "(completed,cancelled,canceled)")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (activeTakeoutRes.error) {
+      return json(500, {
+        ok: false,
+        error: "TAKEOUT_ACTIVE_ORDER_CHECK_FAILED",
+        message: activeTakeoutRes.error.message,
+      });
+    }
+
+    const activeTakeout = Array.isArray(activeTakeoutRes.data)
+      ? activeTakeoutRes.data[0]
+      : null;
+
+    if (activeTakeout) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ACTIVE_ORDER_EXISTS",
+        message:
+          "You already have an active Takeout order. Finish or cancel it before creating another.",
+        existing_booking_id: activeTakeout.id ?? null,
+        existing_booking_code: activeTakeout.booking_code ?? null,
+        existing_status: activeTakeout.status ?? null,
+        existing_vendor_status: activeTakeout.vendor_status ?? null,
+        existing_customer_status: activeTakeout.customer_status ?? null,
+        existing_created_at: activeTakeout.created_at ?? null,
+      });
+    }
+  }
+
   const customer_name = passengerAuth.passenger.name;
   const customer_phone = passengerAuth.passenger.phone;
   const to_label = String(body?.to_label ?? body?.toLabel ?? "").trim();
@@ -1663,7 +1702,24 @@ const order_id = String(body?.order_id ?? body?.orderId ?? body?.booking_id ?? b
 
   const ins = await insertBookingSchemaSafe(createPayload);
 
-  if (ins.error) return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
+  if (ins.error) {
+    const dbCode = String((ins.error as any)?.code || "").trim();
+    const dbMessage = String((ins.error as any)?.message || "");
+    const isActiveTakeoutConflict =
+      dbCode === "23505" &&
+      dbMessage.includes("ux_bookings_one_active_takeout_passenger_v1");
+
+    if (isActiveTakeoutConflict) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ACTIVE_ORDER_EXISTS",
+        message:
+          "You already have an active Takeout order. Finish or cancel it before creating another.",
+      });
+    }
+
+    return json(500, { ok: false, error: "DB_ERROR", message: ins.error.message });
+  }
 
   const bookingId = String(ins.data?.id ?? "");
   if (!bookingId) return json(500, { ok: false, error: "CREATE_FAILED", message: "Missing booking id after insert" });
