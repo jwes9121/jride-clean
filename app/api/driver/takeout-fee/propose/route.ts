@@ -599,7 +599,7 @@ export async function POST(req: NextRequest) {
       .gt("driver_fee_proposal_expires_at", new Date().toISOString());
 
     const updateRes = await updateQuery
-      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_fee_proposed_by_driver_id,takeout_pricing_snapshot")
+      .select("id,booking_code,service_type,takeout_pricing_status,takeout_delivery_fee,takeout_service_fee,takeout_total_payable,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,takeout_fee_proposed_by_driver_id,takeout_pricing_snapshot")
       .maybeSingle();
 
     if (updateRes.error) return json(500, { ok: false, error: "TAKEOUT_FEE_PROPOSAL_UPDATE_FAILED", message: updateRes.error.message });
