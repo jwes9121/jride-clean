@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { cancelPendingDutyChecksForOfflineDriver } from "@/lib/driver-duty-check/onlineGuard";
 import { parseUsableCoordinatePair } from "@/lib/location/coordinateValidity";
 import { INITIAL_DUTY_REVISION, dutyRevision, parseDutyOrdering, persistDriverDuty } from "@/lib/driver-duty-ordering";
+import { driverGpsRequestDiagnostic } from "@/lib/driver-gps-request-diagnostic";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -1192,6 +1193,18 @@ export async function POST(req: NextRequest) {
     const orderingResponse = (row: any) => ordering.ordered ? {
       ordering_version: 1, duty_expected_revision: expectedRevision, duty_revision: row?.duty_revision,
     } : {};
+
+    // Observe request shape only after authentication, device lock and revision checks.
+    try {
+      const diagnostic = driverGpsRequestDiagnostic({
+        driverId, body, hasCoordinates: hasIncomingCoords,
+        accuracyMeters: incomingAccuracyMeters, mockLocation: incomingClientMockLocation,
+        ordered: ordering.ordered, userAgent: req.headers.get("user-agent"),
+      });
+      if (diagnostic) console.log("[JRIDE_TEST_DRIVER_GPS_REQUEST_V1]", diagnostic);
+    } catch {
+      // Diagnostic failures must not affect duty, location, or dispatch behavior.
+    }
 
     const previousStatus = norm((prevLoc as any)?.status ?? "");
     const previousUpdatedAt = text((prevLoc as any)?.updated_at);
