@@ -340,6 +340,8 @@ function booking(subtotal) {
   assert.match(status, /TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE/);
   assert.match(status, /handleTakeoutPickupDistanceException/);
   assert.match(status, /TAKEOUT_PICKUP_DISTANCE_EXCEPTION/);
+  assert.match(status, /!exceptionResult\.released/);
+  assert.match(status, /could not safely release this assignment automatically/);
   assert.match(status, /takeout_split_cash_v2/);
   assert.match(status, /strictCashSplitClient &&\n\s*expectedFinal != null/);
   assert.doesNotMatch(status, /\(strictCashSplitClient \|\| cashCollectedAmount != null\)/);
@@ -436,6 +438,18 @@ function booking(subtotal) {
   assert.match(pickupExceptionHelper, /triggerTakeoutFeeProposalReassign/);
   assert.match(pickupExceptionHelper, /openTakeoutDriverUnavailableOperationsCase/);
   assert.match(pickupExceptionHelper, /takeout_pickup_distance_exception_status/);
+  const pickupReleaseGuardMigration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260927192000_takeout_pickup_exception_release_guard_v1.sql"
+    ),
+    "utf8"
+  );
+  assert.match(pickupReleaseGuardMigration, /JRIDE_TAKEOUT_PICKUP_DISTANCE_EXCEPTION_RELEASE_V1/);
+  assert.match(pickupReleaseGuardMigration, /old_status in \('assigned', 'accepted'\)/);
+  assert.match(pickupReleaseGuardMigration, /takeout_pickup_distance_exception_required/);
+  assert.match(pickupReleaseGuardMigration, /takeout_pickup_distance_exception_status/);
+  assert.match(pickupReleaseGuardMigration, /new\.last_expired_driver_id = coalesce\(old\.assigned_driver_id, old\.driver_id\)/);
 
   const takeoutDispatch = fs.readFileSync(
     path.join(root, "app/api/admin/takeout-dispatch/route.ts"),
