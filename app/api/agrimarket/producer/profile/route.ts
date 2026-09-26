@@ -202,13 +202,6 @@ export async function POST(req: NextRequest) {
     if (!isAgrimarketActiveTown(selectedTown)) {
       return jsonNoStore(400, { ok: false, message: "Choose Lagawe, Hingyon, Banaue, or Lamut." });
     }
-    if (auth.producer.vendor_name_locked_at && selectedTown !== auth.producer.town) {
-      return jsonNoStore(409, {
-        ok: false,
-        error: "AGRIMARKET_FARMER_TOWN_LOCKED",
-        message: "Municipality is locked after farm setup. Contact JRide if the municipality needs correction.",
-      });
-    }
     if (barangay.length < 2 || barangay.length > 120) {
       return jsonNoStore(400, { ok: false, message: "Enter the farmer's barangay." });
     }
