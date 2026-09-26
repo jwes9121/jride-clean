@@ -4,6 +4,11 @@ import {
   computeRidePickupFee,
   RIDE_PICKUP_NORMAL_MAX_KM,
 } from "@/lib/pricing/pickupFee";
+import {
+  consumeDriverStandbyLocation,
+  resolveDriverDispatchLocations,
+  type DriverDispatchLocationResolution,
+} from "@/lib/driver/standbyDispatch";
 
 const DRIVER_STALE_AFTER_SECONDS = 120;
 const DRIVER_ACCEPT_TTL_SECONDS = 300;
@@ -76,6 +81,7 @@ export type ErrandStage0AssignmentResultV2 = {
   pickup_road_distance_km?: number;
   pickup_distance_fee?: number;
   driver_accept_expires_at?: string;
+  dispatch_location_source?: "live_gps" | "standby";
   error?: string;
   message?: string;
   excluded_driver_count?: number;
@@ -262,36 +268,64 @@ export async function assignErrandStage0V2(input: {
     if (!previous || nextTime >= previousTime) latestByDriver.set(id, row);
   }
 
-  const freshLocations = Array.from(latestByDriver.values()).filter((row: any) => {
-    const age = ageSeconds(row.updated_at);
-    const online = ONLINE_LIKE.has(lower(row.status));
-    const lat = finiteNumber(row.lat);
-    const lng = finiteNumber(row.lng);
-    const vehicle = normalizeVehicle(row.vehicle_type);
-    const maxCargoKg =
-      vehicle === "motorcycle"
-        ? motorcycleMaxKg
-        : vehicle === "tricycle"
-          ? tricycleMaxKg
-          : vehicle === "kolong_kolong"
-            ? kolongKolongMaxKg
-            : -1;
-    const vehicleMatchesRequest =
-      !requiredVehicle ||
-      requiredVehicle === "either" ||
-      requiredVehicle === vehicle;
-    const vehicleCapacityEligible = cargoWeightKg <= maxCargoKg;
-
-    return (
-      age != null &&
-      age <= DRIVER_STALE_AFTER_SECONDS &&
-      online &&
-      lat != null &&
-      lng != null &&
-      vehicleMatchesRequest &&
-      vehicleCapacityEligible
+  const locationRows = Array.from(latestByDriver.values());
+  let dispatchLocationByDriverId: Map<
+    string,
+    DriverDispatchLocationResolution
+  >;
+  try {
+    dispatchLocationByDriverId = await resolveDriverDispatchLocations(
+      admin,
+      locationRows,
+      {
+        freshnessSeconds: DRIVER_STALE_AFTER_SECONDS,
+      }
     );
-  });
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: "DRIVER_DISPATCH_LOCATION_SCAN_FAILED",
+      message: text(error?.message || error),
+    };
+  }
+
+  const freshLocations = locationRows
+    .map((row: any) => {
+      const driverId = text(row.driver_id);
+      const dispatchLocation = dispatchLocationByDriverId.get(driverId);
+      if (!dispatchLocation || !dispatchLocation.ok) return null;
+
+      const online = ONLINE_LIKE.has(lower(row.status));
+      const vehicle = normalizeVehicle(row.vehicle_type);
+      const maxCargoKg =
+        vehicle === "motorcycle"
+          ? motorcycleMaxKg
+          : vehicle === "tricycle"
+            ? tricycleMaxKg
+            : vehicle === "kolong_kolong"
+              ? kolongKolongMaxKg
+              : -1;
+      const vehicleMatchesRequest =
+        !requiredVehicle ||
+        requiredVehicle === "either" ||
+        requiredVehicle === vehicle;
+      const vehicleCapacityEligible = cargoWeightKg <= maxCargoKg;
+
+      if (!online || !vehicleMatchesRequest || !vehicleCapacityEligible) {
+        return null;
+      }
+
+      return {
+        ...row,
+        lat: dispatchLocation.lat,
+        lng: dispatchLocation.lng,
+        town: dispatchLocation.town || row.town,
+        updated_at: dispatchLocation.freshAt,
+        dispatch_location_source: dispatchLocation.source,
+        standby_confirmed_at: dispatchLocation.standbyConfirmedAt,
+      };
+    })
+    .filter((row: any) => row != null);
 
   if (freshLocations.length === 0) {
     return {
@@ -378,6 +412,9 @@ export async function assignErrandStage0V2(input: {
     .map((row: any) => ({
       driverId: text(row.driver_id),
       metric: roadMetrics.get(text(row.driver_id)) || null,
+      dispatchLocationSource:
+        row.dispatch_location_source === "standby" ? "standby" : "live_gps",
+      standbyConfirmedAt: text(row.standby_confirmed_at) || null,
     }))
     .filter(
       (entry) =>
@@ -443,6 +480,22 @@ export async function assignErrandStage0V2(input: {
       .update({ errand_stage: "driver_assigned", updated_at: now.toISOString() })
       .eq("booking_id", booking.id);
 
+    if (candidate.dispatchLocationSource === "standby") {
+      const standbyConsume = await consumeDriverStandbyLocation(admin, {
+        driverId: candidate.driverId,
+        confirmedAt: candidate.standbyConfirmedAt,
+        reason: "errand:" + text(booking.id),
+      });
+      if (!standbyConsume.ok) {
+        console.error("[JRIDE_STANDBY_CONSUME_FAILED]", {
+          driver_id: candidate.driverId,
+          booking_id: booking.id,
+          service_type: "errand",
+          error: standbyConsume.error || null,
+        });
+      }
+    }
+
     return {
       ok: true,
       assigned: true,
@@ -452,6 +505,7 @@ export async function assignErrandStage0V2(input: {
       pickup_road_distance_km: Number(pickupDistanceKm.toFixed(3)),
       pickup_distance_fee: pickupFee,
       driver_accept_expires_at: expiresAt,
+      dispatch_location_source: candidate.dispatchLocationSource,
       excluded_driver_count: excludedDriverIds.size,
     };
   }
