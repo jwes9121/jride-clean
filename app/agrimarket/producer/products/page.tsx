@@ -269,7 +269,7 @@ export default function AgrimarketProducerProductsPage() {
               <div className="flex flex-wrap items-start gap-4">
                 {newPhotoPreview && <img src={newPhotoPreview} alt="New product photo preview" className="h-36 w-48 rounded-2xl object-cover" />}
                 <div><PhotoPicker label={newPhoto ? "Change selected photo" : "Choose product photo"} disabled={!!busy} onBusy={setPreparingPhoto} onSelect={file => setNewPhoto(file)} />
-                  <p className="mt-2 max-w-sm text-xs text-slate-600">Choose a clear photo of this product. JPG, PNG or WebP; phone photos are resized automatically. Customers will see this photo.</p>
+                  <p className="mt-2 max-w-sm text-xs text-slate-600">Choose a clear JPG, PNG or WebP photo up to 20 MB. JRide resizes and compresses it automatically before upload and removes camera/GPS metadata. Customers will see the optimized photo.</p>
                   {newPhoto && <button type="button" disabled={!!busy || preparingPhoto} className="mt-2 text-sm text-red-800 underline" onClick={() => setNewPhoto(null)}>Remove selected photo</button>}
                 </div>
               </div>
