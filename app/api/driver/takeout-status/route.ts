@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,notes")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,notes")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -168,10 +168,55 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const isPrePickupProgress = nextStatus === "cash_collected" || nextStatus === "rider_arrived_vendor";
+  const driverWorkflowStatus = normStatus((existing.data as any).driver_status);
+  const vendorWorkflowStatus = normStatus((existing.data as any).vendor_status);
+  const customerWorkflowStatus = normStatus((existing.data as any).customer_status);
+
+  if (nextStatus === "rider_arrived_vendor") {
+    const allowedArrivalStates = new Set(["driver_accepted", "cash_collected", "vendor_bound", "rider_arrived_vendor"]);
+    if (!allowedArrivalStates.has(driverWorkflowStatus)) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ARRIVAL_STEP_INVALID",
+        message: "The driver cannot mark arrival at the vendor from the current Takeout step. Refresh the current order.",
+      });
+    }
+  }
+
+  if (nextStatus === "picked_up") {
+    const alreadyPickedUp =
+      driverWorkflowStatus === "picked_up" &&
+      vendorWorkflowStatus === "picked_up" &&
+      customerWorkflowStatus === "picked_up";
+    if (alreadyPickedUp) {
+      return json(200, { ok: true, order: existing.data, already_picked_up: true });
+    }
+
+    const vendorReady = ["pickup_ready", "ready_for_pickup"].includes(vendorWorkflowStatus);
+    if (!vendorReady) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_VENDOR_NOT_READY_FOR_PICKUP",
+        message: "The vendor must mark the order Ready for pickup before the driver can mark it Picked up.",
+      });
+    }
+    if (driverWorkflowStatus !== "rider_arrived_vendor") {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_DRIVER_NOT_AT_VENDOR",
+        message: "Mark Arrived at vendor before marking this order Picked up.",
+      });
+    }
+  }
+
+  const isPrePickupProgress =
+    nextStatus === "cash_collected" ||
+    nextStatus === "rider_arrived_vendor" ||
+    nextStatus === "picked_up";
   if (isPrePickupProgress) {
-    const states = [current, normStatus((existing.data as any).driver_status), normStatus((existing.data as any).customer_status)];
-    if (states.some(value => ["picked_up", "delivering", "completed", "cancelled"].includes(value)) ||
+    const states = [current, driverWorkflowStatus, customerWorkflowStatus];
+    if (states.some(value => ["delivering", "completed", "cancelled"].includes(value)) ||
+      (nextStatus !== "picked_up" && states.includes("picked_up")) ||
       (nextStatus === "cash_collected" && states.includes("rider_arrived_vendor"))) {
       return json(409, { ok: false, error: "TAKEOUT_STEP_CHANGED", message: "This order has moved to a later step. Refresh the current trip." });
     }
@@ -354,13 +399,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const statusNowIso = new Date().toISOString();
   const patch: any = {
     vendor_status: nextStatus,
     customer_status: nextStatus,
     driver_status: nextStatus,
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
-    updated_at: new Date().toISOString(),
+    updated_at: statusNowIso,
   };
+
+  if (nextStatus === "rider_arrived_vendor") {
+    patch.vendor_driver_arrived_at =
+      (existing.data as any).vendor_driver_arrived_at || statusNowIso;
+  }
+
+  if (nextStatus === "picked_up") {
+    patch.vendor_order_picked_at =
+      (existing.data as any).vendor_order_picked_at || statusNowIso;
+  }
 
   // Cash collection and arrival are driver steps, not a reversal of vendor
   // readiness. Keep the vendor/customer ready signal until actual pickup.
@@ -436,7 +492,7 @@ export async function POST(req: NextRequest) {
       .is("takeout_delivery_fee", null);
   }
   const up = await updateQuery
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,updated_at")
     .maybeSingle();
 
   if (up.error) {
