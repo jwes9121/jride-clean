@@ -1189,7 +1189,7 @@ function NewErrandFlow(props: {
                 <summary className="cursor-pointer font-bold text-[#F3F6FA]">How the fare is calculated</summary>
                 <div className="mt-3 space-y-2 text-xs leading-5 text-[#B6C7D3]">
                   <div><span className="font-bold text-[#F3F6FA]">Approach:</span> PHP 40 minimum, or the routed pickup-distance charge when higher. They are never added together.</div>
-                  <div><span className="font-bold text-[#F3F6FA]">Confirmed route:</span> PHP 15 per kilometer.</div>
+                  <div><span className="font-bold text-[#F3F6FA]">Confirmed route:</span> PHP 20 per kilometer.</div>
                   <div><span className="font-bold text-[#F3F6FA]">Extra stops:</span> Task Stop 1 included; PHP 40 for each additional confirmed stop.</div>
                   <div><span className="font-bold text-[#F3F6FA]">Waiting:</span> First 15 total minutes free, then PHP 20 per started 15-minute block.</div>
                 </div>
