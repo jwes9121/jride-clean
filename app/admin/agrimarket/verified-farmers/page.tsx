@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import FarmerPickupMap, { FarmerPickupPin } from "./FarmerPickupMap";
+import { ProductPhoto } from "@/app/agrimarket/ProductPhoto";
 
 type VerifiedFarmer = {
   application_id: string;
@@ -42,6 +43,39 @@ type VerifiedFarmer = {
     details?: Record<string, unknown>;
   } | null;
   created_at: string;
+};
+
+type CatalogProduct = {
+  id: string;
+  name: string;
+  description?: string | null;
+  product_group: string;
+  selling_unit: string;
+  unit_price: number | string;
+  listed_quantity: number | string;
+  reserved_quantity: number | string;
+  sold_quantity: number | string;
+  remaining_quantity: number | string;
+  availability_mode: string;
+  harvest_start_at?: string | null;
+  harvest_end_at?: string | null;
+  harvest_order_cutoff_at?: string | null;
+  vehicle_requirement: string;
+  photo_urls?: string[] | null;
+  is_active: boolean;
+  updated_at: string;
+};
+
+type CatalogStore = {
+  id: string;
+  vendor_name?: string | null;
+  status: string;
+  accepting_orders: boolean;
+  store_open: boolean;
+  catalog_approved_at?: string | null;
+  active_available_product_count: number;
+  product_count: number;
+  products: CatalogProduct[];
 };
 
 type OneTimeCredential = {
@@ -149,6 +183,11 @@ function titleCase(value: unknown): string {
 }
 
 
+function money(value: unknown): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `PHP ${amount.toFixed(2)}` : "PHP -";
+}
+
 function farmerAccessSummary(farmer: VerifiedFarmer): string {
   const options = [
     farmer.pickup_motorcycle_accessible ? "motorcycle" : "",
@@ -170,6 +209,7 @@ export default function VerifiedFarmersAdminPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [pin, setPin] = useState<FarmerPickupPin>(EMPTY_PIN);
   const [farmers, setFarmers] = useState<VerifiedFarmer[]>([]);
+  const [catalogStores, setCatalogStores] = useState<Record<string, CatalogStore>>({});
   const [staffRole, setStaffRole] = useState("");
   const [staffActor, setStaffActor] = useState("");
   const [loading, setLoading] = useState(true);
@@ -188,21 +228,47 @@ export default function VerifiedFarmersAdminPage() {
   async function loadFarmers() {
     setLoading(true);
     setError("");
-    const response = await fetch("/api/agrimarket/admin/verified-farmers", {
-      cache: "no-store",
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload?.ok === false) {
+    try {
+      const [farmersResponse, catalogResponse] = await Promise.all([
+        fetch("/api/agrimarket/admin/verified-farmers", { cache: "no-store" }),
+        fetch("/api/agrimarket/admin/catalog-review", { cache: "no-store" }),
+      ]);
+      const [payload, catalogPayload] = await Promise.all([
+        farmersResponse.json().catch(() => ({})),
+        catalogResponse.json().catch(() => ({})),
+      ]);
+
+      if (!farmersResponse.ok || payload?.ok === false) {
+        setFarmers([]);
+        setCatalogStores({});
+        setStaffRole("");
+        setStaffActor("");
+        setError(payload?.message || payload?.error || "Unable to load staff-verified farmers.");
+      } else {
+        setFarmers(Array.isArray(payload?.farmers) ? payload.farmers : []);
+        setStaffRole(String(payload?.staff_role || ""));
+        setStaffActor(String(payload?.staff_actor || ""));
+
+        if (catalogResponse.ok && catalogPayload?.ok !== false && Array.isArray(catalogPayload?.stores)) {
+          const byProducer: Record<string, CatalogStore> = {};
+          for (const store of catalogPayload.stores) {
+            if (store?.id) byProducer[String(store.id)] = store as CatalogStore;
+          }
+          setCatalogStores(byProducer);
+        } else {
+          setCatalogStores({});
+          setError(catalogPayload?.message || catalogPayload?.error || "Verified farmers loaded, but uploaded product review is temporarily unavailable.");
+        }
+      }
+    } catch {
       setFarmers([]);
+      setCatalogStores({});
       setStaffRole("");
       setStaffActor("");
-      setError(payload?.message || payload?.error || "Unable to load staff-verified farmers.");
-    } else {
-      setFarmers(Array.isArray(payload?.farmers) ? payload.farmers : []);
-      setStaffRole(String(payload?.staff_role || ""));
-      setStaffActor(String(payload?.staff_actor || ""));
+      setError("Unable to load verified farmers and uploaded product review.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -780,8 +846,8 @@ export default function VerifiedFarmersAdminPage() {
         <section className="mt-6 rounded-3xl border bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-xl font-bold">Approved farmers and readiness</h2>
-              <p className="mt-1 text-sm text-slate-600">New farmers stay in setup mode until they have an active product and an administrator approves order readiness.</p>
+              <h2 className="text-xl font-bold">Approved farmers, uploaded products and readiness</h2>
+              <p className="mt-1 text-sm text-slate-600">Review the actual products a farmer uploaded here before approving the first catalog publication and order readiness.</p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold">{farmers.length} record(s)</span>
           </div>
@@ -790,7 +856,10 @@ export default function VerifiedFarmersAdminPage() {
           {!loading && !farmers.length ? <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No staff-verified farmers yet.</p> : null}
 
           <div className="mt-4 space-y-4">
-            {farmers.map((farmer) => (
+            {farmers.map((farmer) => {
+              const catalog = farmer.producer_id ? catalogStores[farmer.producer_id] : undefined;
+              const uploadedProducts = catalog?.products || [];
+              return (
               <article key={farmer.application_id} className="rounded-2xl border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -821,10 +890,83 @@ export default function VerifiedFarmersAdminPage() {
                   </p>
                 </div>
 
+                <div className="mt-3 rounded-2xl border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold">Actual uploaded products</h4>
+                      <p className="mt-1 text-xs text-slate-500">
+                        These are the current product records from the farmer portal, not the intended-products note used during onboarding.
+                      </p>
+                    </div>
+                    <div className="text-right text-xs text-slate-500">
+                      <div>{uploadedProducts.length} uploaded</div>
+                      <div>{catalog?.active_available_product_count || 0} active with stock</div>
+                    </div>
+                  </div>
+
+                  {catalog ? (
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm">
+                      <strong>
+                        {!catalog.catalog_approved_at
+                          ? "Needs first catalog approval"
+                          : catalog.accepting_orders
+                            ? catalog.store_open
+                              ? "Catalog approved - store ON"
+                              : "Catalog approved - store OFF"
+                            : "Catalog approved - orders paused"}
+                      </strong>
+                      <p className="mt-1 text-xs text-slate-500">
+                        First catalog approval: {catalog.catalog_approved_at ? formatDate(catalog.catalog_approved_at) : "Not yet approved"}.
+                        Store switch: {catalog.store_open ? "ON" : "OFF"}.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-500">No uploaded product record yet.</div>
+                  )}
+
+                  {uploadedProducts.length ? (
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      {uploadedProducts.map((product) => (
+                        <div key={product.id} className={`grid gap-3 rounded-xl border p-3 sm:grid-cols-[110px_1fr] ${product.is_active ? "" : "opacity-60"}`}>
+                          <ProductPhoto
+                            url={Array.isArray(product.photo_urls) ? product.photo_urls[0] : undefined}
+                            name={product.name}
+                            className="w-full"
+                          />
+                          <div>
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <strong>{product.name}</strong>
+                                <p className="text-xs text-slate-500">{titleCase(product.product_group)} - {titleCase(product.availability_mode)}</p>
+                              </div>
+                              <span className={`rounded-full px-2 py-1 text-xs font-semibold ${product.is_active ? "bg-emerald-100 text-emerald-900" : "bg-slate-200 text-slate-700"}`}>
+                                {product.is_active ? "Active" : "Inactive"}
+                              </span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                              <div><span className="text-slate-500">Price</span><strong className="block text-sm">{money(product.unit_price)} / {product.selling_unit}</strong></div>
+                              <div><span className="text-slate-500">Available</span><strong className="block text-sm">{Number(product.remaining_quantity || 0)} {product.selling_unit}</strong></div>
+                              <div><span className="text-slate-500">Listed / Reserved / Sold</span><strong className="block text-sm">{Number(product.listed_quantity || 0)} / {Number(product.reserved_quantity || 0)} / {Number(product.sold_quantity || 0)}</strong></div>
+                              <div><span className="text-slate-500">Vehicle</span><strong className="block text-sm">{titleCase(product.vehicle_requirement)}</strong></div>
+                            </div>
+                            {product.availability_mode === "scheduled_harvest" ? (
+                              <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-950">
+                                <div>Harvest: {formatDate(product.harvest_start_at)}{product.harvest_end_at ? ` to ${formatDate(product.harvest_end_at)}` : ""}</div>
+                                <div>Reservation cutoff: {formatDate(product.harvest_order_cutoff_at)}</div>
+                              </div>
+                            ) : null}
+                            <p className="mt-2 text-xs text-slate-400">Updated {formatDate(product.updated_at)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 <div className="mt-3 rounded-xl border p-3">
                   <label className="text-xs font-semibold text-slate-600">
                     Readiness audit note
-                    <input value={farmer.producer_id ? readinessNotes[farmer.producer_id] || "" : ""} onChange={(event) => farmer.producer_id && setReadinessNotes((current) => ({ ...current, [farmer.producer_id as string]: event.target.value }))} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" maxLength={500} placeholder={farmer.accepting_orders ? "Why are new orders being paused?" : "Confirm product, stock, pickup pin, and farmer training checks"} />
+                    <input value={farmer.producer_id ? readinessNotes[farmer.producer_id] || "" : ""} onChange={(event) => farmer.producer_id && setReadinessNotes((current) => ({ ...current, [farmer.producer_id as string]: event.target.value }))} className="mt-1 w-full rounded-lg border px-3 py-2 text-sm" maxLength={500} placeholder={farmer.accepting_orders ? "Why are new orders being paused?" : "Confirm uploaded products, stock, pickup pin, and farmer training checks"} />
                   </label>
                   <button
                     type="button"
@@ -836,9 +978,15 @@ export default function VerifiedFarmersAdminPage() {
                       ? "Updating..."
                       : farmer.accepting_orders
                         ? "Pause new orders"
-                        : "Mark ready for orders"}
+                        : catalog?.catalog_approved_at
+                          ? "Resume order readiness"
+                          : "Approve catalog and readiness"}
                   </button>
-                  {!farmer.accepting_orders ? <p className="mt-2 text-xs text-slate-500">The database will reject readiness until at least one active product has available quantity.</p> : null}
+                  {!farmer.accepting_orders ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Review the actual uploaded products above before approval. The database will also reject readiness until at least one active product has available quantity.
+                    </p>
+                  ) : null}
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
@@ -847,7 +995,8 @@ export default function VerifiedFarmersAdminPage() {
                   Last farmer login: {farmer.credential_last_used_at ? formatDate(farmer.credential_last_used_at) : "Never"}.
                 </p>
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
       </div>
