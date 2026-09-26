@@ -43,19 +43,20 @@ begin
     return new;
   end if;
 
-  v_packaging := greatest(coalesce(
-    public._jnum(v_snapshot, 'takeout_packaging_subtotal'),
-    public._jnum(v_snapshot, 'packaging_subtotal'),
-    public._jnum(v_snapshot, 'premium_packaging_fee'),
-    0
-  ), 0);
+  -- Some historical rows have a generic 0 while the pricing snapshot contains
+  -- the authoritative positive amount. Use the largest non-negative source
+  -- instead of COALESCE so a default zero cannot mask the real charge.
+  v_packaging := greatest(
+    greatest(coalesce(public._jnum(v_snapshot, 'takeout_packaging_subtotal'), 0), 0),
+    greatest(coalesce(public._jnum(v_snapshot, 'packaging_subtotal'), 0), 0),
+    greatest(coalesce(public._jnum(v_snapshot, 'premium_packaging_fee'), 0), 0)
+  );
 
-  v_pickup := greatest(coalesce(
-    new.pickup_distance_fee,
-    public._jnum(v_snapshot, 'takeout_pickup_excess_fee'),
-    public._jnum(v_snapshot, 'pickup_distance_fee'),
-    0
-  ), 0);
+  v_pickup := greatest(
+    greatest(coalesce(new.pickup_distance_fee, 0), 0),
+    greatest(coalesce(public._jnum(v_snapshot, 'takeout_pickup_excess_fee'), 0), 0),
+    greatest(coalesce(public._jnum(v_snapshot, 'pickup_distance_fee'), 0), 0)
+  );
 
   v_product := round(v_items + v_packaging, 2);
   v_cash_required := v_items > 500;
