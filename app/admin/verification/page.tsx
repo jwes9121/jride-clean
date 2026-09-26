@@ -3,6 +3,22 @@
 import * as React from "react";
 import PassengerEvidence from "@/app/components/PassengerEvidence";
 
+type VerificationLocation = {
+  passenger_id: string;
+  request_submitted_at: string;
+  server_received_at: string;
+  device_status: string;
+  device_source: string;
+  device_latitude: number | null;
+  device_longitude: number | null;
+  device_accuracy_m: number | null;
+  device_captured_at: string | null;
+  declared_town: string | null;
+  network_city: string | null;
+  network_region: string | null;
+  network_country: string | null;
+};
+
 type Row = {
   passenger_id: string;
   full_name: string | null;
@@ -16,13 +32,16 @@ type Row = {
   has_id_front?: boolean;
   has_id_back?: boolean;
   has_selfie?: boolean;
+  can_view_verification_location?: boolean;
+  verification_location?: VerificationLocation | null;
 };
 
 type Payload = {
   ok: boolean;
   error?: string;
-  counts?: { submitted?: number; pending_admin?: number; declined?: number };
-  rows?: { submitted?: Row[]; pending_admin?: Row[]; declined?: Row[] };
+  counts?: { submitted?: number; pending_admin?: number; declined?: number; approved_recent?: number };
+  rows?: { submitted?: Row[]; pending_admin?: Row[]; declined?: Row[]; approved?: Row[] };
+  verification_location_error?: string | null;
 };
 
 function fmt(value: any) {
@@ -40,6 +59,53 @@ function statusLabel(value: string | null | undefined) {
   if (value === "submitted") return "Submitted";
   if (value === "approved") return "Approved";
   return String(value || "");
+}
+
+function locationStatus(value: string | null | undefined) {
+  if (value === "captured") return "GPS captured";
+  if (value === "denied") return "GPS permission denied";
+  if (value === "unavailable") return "GPS unavailable";
+  if (value === "timeout") return "GPS timed out";
+  if (value === "error") return "GPS capture error";
+  if (value === "not_provided") return "GPS not provided by client";
+  return value ? String(value) : "No location snapshot";
+}
+
+function SubmissionLocation(props: { row: Row }) {
+  const { row } = props;
+  if (!row.can_view_verification_location) return null;
+  const l = row.verification_location;
+  if (!l) return <div className="mt-2 text-xs text-slate-500">Submission location: no snapshot recorded.</div>;
+
+  const hasCoordinates =
+    Number.isFinite(l.device_latitude) && Number.isFinite(l.device_longitude);
+  const network = [l.network_city, l.network_region, l.network_country].filter(Boolean).join(", ");
+  const mapUrl = hasCoordinates
+    ? "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(String(l.device_latitude)) +
+      "&mlon=" + encodeURIComponent(String(l.device_longitude)) +
+      "#map=17/" + encodeURIComponent(String(l.device_latitude)) + "/" + encodeURIComponent(String(l.device_longitude))
+    : "";
+
+  return (
+    <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-xs text-sky-950">
+      <div className="font-semibold">Submission location</div>
+      <div className="mt-1">{locationStatus(l.device_status)}</div>
+      {hasCoordinates ? (
+        <div className="mt-1">
+          {Number(l.device_latitude).toFixed(6)}, {Number(l.device_longitude).toFixed(6)}
+          {l.device_accuracy_m !== null ? " - accuracy about " + Math.round(Number(l.device_accuracy_m)) + " m" : ""}
+        </div>
+      ) : null}
+      {network ? <div className="mt-1">Network signal: {network} (coarse only)</div> : null}
+      <div className="mt-1 opacity-70">Received: {fmt(l.server_received_at)}</div>
+      {mapUrl ? (
+        <a href={mapUrl} target="_blank" rel="noreferrer noopener" className="mt-2 inline-block font-semibold underline">
+          Open map
+        </a>
+      ) : null}
+      <div className="mt-1 opacity-70">Location signals are for review only and are not proof of physical presence.</div>
+    </div>
+  );
 }
 
 function StatCard(props: { label: string; value: string }) {
@@ -67,9 +133,16 @@ function RowItem(props: {
         <div className="font-semibold">{row.full_name || "(no name)"}</div>
         <div className="text-xs opacity-70">{row.passenger_id}</div>
         <div className="mt-1 text-xs opacity-60">Status: {statusLabel(row.status)}</div>
+        <a href={"/admin/analytics-v3/passengers?passenger_id=" + encodeURIComponent(row.passenger_id)}
+          className="mt-2 inline-block text-xs font-semibold underline">
+          Open V3 passenger profile
+        </a>
       </td>
       <td className="p-3">{row.town || ""}</td>
-      <td className="p-3">{fmt(row.submitted_at)}</td>
+      <td className="p-3">
+        <div>{fmt(row.submitted_at)}</div>
+        <SubmissionLocation row={row} />
+      </td>
       <td className="p-3">
         <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notes; required when declining" className="w-full rounded-xl border border-black/10 px-3 py-2" />
       </td>
@@ -113,6 +186,37 @@ function QueueTable(props: {
   );
 }
 
+function ApprovedTable(props: { loading: boolean; rows: Row[] }) {
+  const { loading, rows } = props;
+  return (
+    <div className="mt-6 overflow-x-auto rounded-2xl border border-emerald-200">
+      <div className="bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900">
+        {loading ? "Loading..." : "Recently approved - " + rows.length}
+      </div>
+      {!loading && rows.length === 0 ? <div className="p-4 text-sm">No recent approvals.</div> : null}
+      {rows.length > 0 ? (
+        <table className="w-full min-w-[900px] text-sm">
+          <thead className="bg-emerald-50/60"><tr><th className="p-3 text-left">Passenger</th><th className="p-3 text-left">Town</th><th className="p-3 text-left">Submitted</th><th className="p-3 text-left">Approved</th><th className="p-3 text-left">Approved by</th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.passenger_id} className="border-t border-emerald-100 align-top">
+              <td className="p-3">
+                <div className="font-semibold">{r.full_name || "(no name)"}</div>
+                <div className="text-xs opacity-70">{r.passenger_id}</div>
+                <a href={"/admin/analytics-v3/passengers?passenger_id=" + encodeURIComponent(r.passenger_id)}
+                  className="mt-2 inline-block text-xs font-semibold underline">Open V3 passenger profile</a>
+              </td>
+              <td className="p-3">{r.town || ""}</td>
+              <td className="p-3"><div>{fmt(r.submitted_at)}</div><SubmissionLocation row={r} /></td>
+              <td className="p-3">{fmt(r.reviewed_at)}</td>
+              <td className="p-3">{r.reviewed_by || ""}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      ) : null}
+    </div>
+  );
+}
+
 function DeclinedTable(props: { loading: boolean; rows: Row[] }) {
   const { loading, rows } = props;
   return (
@@ -142,6 +246,8 @@ export default function AdminVerificationPage() {
   const [submitted, setSubmitted] = React.useState<Row[]>([]);
   const [pendingAdmin, setPendingAdmin] = React.useState<Row[]>([]);
   const [declined, setDeclined] = React.useState<Row[]>([]);
+  const [approved, setApproved] = React.useState<Row[]>([]);
+  const [locationError, setLocationError] = React.useState("");
   const [cSubmitted, setCSubmitted] = React.useState(0);
   const [cPendingAdmin, setCPendingAdmin] = React.useState(0);
   const [cDeclined, setCDeclined] = React.useState(0);
@@ -161,16 +267,19 @@ export default function AdminVerificationPage() {
       const sub = Array.isArray(rows.submitted) ? rows.submitted : [];
       const pad = Array.isArray(rows.pending_admin) ? rows.pending_admin : [];
       const dec = Array.isArray(rows.declined) ? rows.declined : [];
+      const app = Array.isArray(rows.approved) ? rows.approved : [];
 
       setSubmitted(sub);
       setPendingAdmin(pad);
       setDeclined(dec);
+      setApproved(app);
+      setLocationError(j.verification_location_error || "");
       setCSubmitted(Number(counts.submitted || sub.length || 0));
       setCPendingAdmin(Number(counts.pending_admin || pad.length || 0));
       setCDeclined(Number(counts.declined || dec.length || 0));
     } catch (e: any) {
       setMsg(e?.message || "Failed to load.");
-      setSubmitted([]); setPendingAdmin([]); setDeclined([]);
+      setSubmitted([]); setPendingAdmin([]); setDeclined([]); setApproved([]); setLocationError("");
       setCSubmitted(0); setCPendingAdmin(0); setCDeclined(0);
     } finally {
       setLoading(false);
@@ -232,6 +341,7 @@ export default function AdminVerificationPage() {
         </div>
 
         {msg ? <div className="mt-4 rounded-xl border border-black/10 bg-black/5 p-3 text-sm">{msg}</div> : null}
+        {locationError ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{locationError}</div> : null}
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <StatCard label="Submitted (Dispatcher queue)" value={loading ? "..." : String(cSubmitted)} />
@@ -241,6 +351,7 @@ export default function AdminVerificationPage() {
 
         <QueueTable title="Submitted (waiting for dispatcher review)" loading={loading} rows={submitted} busyId={busyId} onForward={forward} onDecide={decide} showForward={true} />
         <QueueTable title="Pending Admin (dispatcher forwarded)" loading={loading} rows={pendingAdmin} busyId={busyId} onForward={forward} onDecide={decide} showForward={false} />
+        <ApprovedTable loading={loading} rows={approved} />
         <DeclinedTable loading={loading} rows={declined} />
       </div>
     </main>
