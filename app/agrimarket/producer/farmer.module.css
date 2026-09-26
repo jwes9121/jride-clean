@@ -195,3 +195,22 @@
   .setupProgress strong { display: grid; margin: 0 auto 4px; }
   .formActions { gap: 8px; padding-top: 13px; }
 }
+
+.storeStatusCompact { padding: 10px 12px; margin: 0 0 10px; border: 1px solid var(--line); border-radius: 12px; background: #fffef9; font-size: 12px; }
+.storeStatusCompact .storeStatusRow { gap: 8px; }
+.storeStatusCompact .storeStatusRow strong { font-size: 13px; }
+.storeStatusCompact p { margin: 2px 0 0; }
+.storeStatusText { color: #667563; font-size: 11px; line-height: 1.4; }
+.pendingBadge { display: inline-flex; min-height: 32px; align-items: center; border-radius: 999px; background: #fff3cc; color: #6d5518; padding: 6px 10px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.alertPanelCompact { position: relative; margin: 0 0 10px; border: 1px solid #e2cf91; border-radius: 13px; background: #fff8df; color: #49380e; overflow: hidden; }
+.alertPanelCompact .incomingOrderBar { border-radius: 0; border-bottom: 0; }
+.alertPanelCompact .alertConnectionError { border-radius: 0; }
+@media (max-width: 480px) {
+  .storeStatusCompact { padding: 8px 10px; }
+  .storeStatusCompact .storeStatusRow { flex-wrap: nowrap; }
+  .pendingBadge { min-height: 28px; padding: 5px 8px; }
+  .navigation { margin-bottom: 9px; }
+  .tabs { min-width: 0; }
+  .tab { min-height: 40px; }
+  .refresh { width: 40px; height: 40px; }
+}
