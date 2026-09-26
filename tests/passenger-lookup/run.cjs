@@ -65,12 +65,13 @@ function harness(options = {}) {
     const q = {
       select(value) { columns = value; calls.push({ select: value, table }); return q; },
       eq(key, value) { filters.push([key, value]); calls.push({ filter: key, value, table }); return q; },
+      in(key, values) { filters.push([key, new Set(values)]); calls.push({ in: key, values, table }); return q; },
       order(key, value) { calls.push({ order: key, value, table }); return q; },
       limit(value) { calls.push({ limit: value, table }); return q; },
       insert(value) { mode = "insert"; calls.push({ insert: value, table }); return q; },
       then(resolve) {
         if (options.failTable === table || (table === "admin_audit_logs" && options.auditFailure)) return Promise.resolve({ error: { message: "PRIVATE_DATABASE_ERROR" }, data: null }).then(resolve);
-        let data = (rows || []).filter((row) => filters.every(([k, v]) => row[k] === v));
+        let data = (rows || []).filter((row) => filters.every(([k, v]) => v instanceof Set ? v.has(row[k]) : row[k] === v));
         if (columns) data = data.map((row) => Object.fromEntries(columns.split(",").filter((key) => key in row).map((key) => [key, row[key]])));
         return Promise.resolve({ error: null, data: mode === "insert" ? null : data }).then(resolve);
       },
@@ -206,12 +207,23 @@ function harness(options = {}) {
     const h = harness({ request: null, legacy: { user_id: uid, id_photo_url: "https://fixture.supabase.co/storage/v1/object/public/passenger-ids/" + uid + "/id.jpg" } });
     assert.equal((await h.evidence()).status, 200); assert.equal(h.calls.find((c) => c.sign).sign, uid + "/id.jpg");
   });
-  await test("queue returns presence flags without paths or automatic signed URLs for either staff role", async () => {
+  await test("queue returns evidence flags and admin-only submission location without private paths", async () => {
     for (const role of ["admin", "dispatcher"]) {
-      const h = harness({ role, request: { ...requestRow, status: "submitted", full_name: "Submitted Name" } }), r = await h.pending();
+      const h = harness({
+        role,
+        request: { ...requestRow, status: "submitted", full_name: "Submitted Name", submitted_at: locationRow.request_submitted_at },
+      }), r = await h.pending();
       assert.equal(r.status, 200); assert.equal(r.body.rows.submitted[0].can_view_evidence, role === "admin");
       assert.equal(r.body.rows.submitted[0].has_id_front, true); assert.equal(JSON.stringify(r.body).includes("id_front/"), false);
       assert.equal(JSON.stringify(r.body).includes("signed_url"), false); assert.equal(h.calls.some((c) => c.sign), false);
+      assert.equal(r.body.rows.submitted[0].can_view_verification_location, role === "admin");
+      if (role === "admin") {
+        assert.equal(r.body.rows.submitted[0].verification_location.device_status, "captured");
+        assert.ok(h.calls.some((c) => c.table === "passenger_verification_latest_location_v1" && c.in === "passenger_id"));
+      } else {
+        assert.equal(r.body.rows.submitted[0].verification_location, null);
+        assert.equal(h.calls.some((c) => c.table === "passenger_verification_latest_location_v1"), false);
+      }
     }
   });
   await test("evidence path parser rejects external URLs, traversal and malformed ownership", () => {
@@ -245,6 +257,12 @@ function harness(options = {}) {
       assert.match(source, /passenger_verification_submission_locations/);
       assert.match(source, /location_recorded/);
     }
+  });
+  await test("verification review UI includes submission location and recently approved review", () => {
+    const source = fs.readFileSync(path.join(root, "app/admin/verification/page.tsx"), "utf8");
+    assert.match(source, /Submission location/);
+    assert.match(source, /Recently approved/);
+    assert.match(source, /Open V3 passenger profile/);
   });
   await test("lookup page renders the search controls without embedding passenger data", () => {
     const page = load("app/admin/analytics-v3/passengers/page.tsx", { "@/app/components/PassengerEvidence": { default: () => null } }).default;
