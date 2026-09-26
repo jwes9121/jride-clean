@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import FarmerPickupMap, { FarmerPickupPin } from "./FarmerPickupMap";
 import { ProductPhoto } from "@/app/agrimarket/ProductPhoto";
+import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
 
 type VerifiedFarmer = {
   application_id: string;
@@ -711,11 +712,7 @@ export default function VerifiedFarmersAdminPage() {
                 Municipality
                 <select required value={form.town} onChange={(event) => updateTown(event.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-3">
                   <option value="">Select town</option>
-                  <option value="Lagawe">Lagawe</option>
-                  <option value="Hingyon">Hingyon</option>
-                  <option value="Kiangan">Kiangan</option>
-                  <option value="Banaue">Banaue</option>
-                  <option value="Lamut">Lamut</option>
+                  {AGRIMARKET_ACTIVE_TOWNS.map((town) => <option key={town} value={town}>{town}</option>)}
                 </select>
               </label>
 
@@ -1064,11 +1061,7 @@ export default function VerifiedFarmersAdminPage() {
                 Municipality
                 <select required value={editForm.town} onChange={(event) => updateEditTown(event.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-3">
                   <option value="">Select town</option>
-                  <option value="Lagawe">Lagawe</option>
-                  <option value="Hingyon">Hingyon</option>
-                  <option value="Kiangan">Kiangan</option>
-                  <option value="Banaue">Banaue</option>
-                  <option value="Lamut">Lamut</option>
+                  {AGRIMARKET_ACTIVE_TOWNS.map((town) => <option key={town} value={town}>{town}</option>)}
                 </select>
               </label>
               <label className="text-sm font-semibold sm:col-span-2">
