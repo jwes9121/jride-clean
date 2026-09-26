@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "entries": [
     {
       "role": "passenger",
@@ -1154,6 +1154,24 @@
       }
     },
     {
+      "role": "passenger",
+      "category": {
+        "en": "AgriMarket",
+        "tl": "AgriMarket",
+        "ilo": "AgriMarket"
+      },
+      "question": {
+        "en": "What if the farmer is ready but no driver accepts my AgriMarket order?",
+        "tl": "Paano kung handa na ang farmer pero walang driver na tumatanggap ng AgriMarket order ko?",
+        "ilo": "Kasano no nakasaganan ti farmer ngem awan ti driver nga umawat iti AgriMarket orderko?"
+      },
+      "answer": {
+        "en": "JRide keeps looking for an eligible driver and shows the latest search reason in your order. A driver is assigned only after accepting an offer. If the prepared order remains unassigned, the staff dispatch screen flags it for follow-up after 15 minutes and for review after 30 minutes, when a search result is recorded. This is an in-app staff alert, not a guarantee that an offline staff member has seen it. Contact JRide with your order code if the delay continues. Prepared goods are not automatically cancelled because no driver is nearby. Agree on any delivery or cancellation plan with JRide and the farmer; do not leave payment unattended.",
+        "tl": "Patuloy na naghahanap ang JRide ng eligible na driver at ipinapakita sa order ang pinakahuling dahilan ng paghihintay. Ma-aassign lamang ang driver kapag tinanggap niya ang offer. Kung handa na ang order ngunit wala pa ring driver, mamarkahan ito sa staff dispatch screen para sa follow-up pagkalipas ng 15 minuto at review pagkalipas ng 30 minuto kapag may naitalang resulta ng paghahanap. In-app alert ito para sa staff; hindi nito sinisiguro na nakita ito ng staff na offline. Kontakin ang JRide gamit ang order code kung magtagal ang paghihintay. Hindi awtomatikong makakansela ang handang produkto dahil walang malapit na driver. Makipagkasundo sa JRide at farmer sa delivery o cancellation at huwag mag-iwan ng perang walang nagbabantay.",
+        "ilo": "Agtultuloy ti JRide nga agsapul iti eligible a driver ken ipakitana iti order ti kabaruan a rason ti panaguray. Ma-assign laeng ti driver no inawatna ti offer. No nakasaganan ti order ngem awan pay driver, maipakita daytoy iti staff dispatch screen para iti follow-up kalpasan ti 15 minutos ken review kalpasan ti 30 minutos no adda nairekord a resulta ti panagsapul. In-app alert daytoy para iti staff; saanna a paneknekan a nakita daytoy ti staff nga offline. Kontaken ti JRide babaen ti order code no agtultuloy ti panaguray. Saan nga automatiko a makansela dagiti nakasagana a produkto gapu ta awan ti asideg a driver. Makikoordinar iti JRide ken farmer para iti delivery wenno cancellation ken saan nga ibati ti kuarta nga awan agbantay."
+      }
+    },
+    {
       "role": "driver",
       "category": {
         "en": "AgriMarket",
@@ -1262,5 +1280,5 @@
       }
     }
   ],
-  "generated_note": "JRide Help & FAQ v9. Clarifies the estimated preparation window and customer-approved AgriMarket vehicle switch."
+  "generated_note": "JRide Help & FAQ v10. Explains AgriMarket driver search delays and in-app staff follow-up for prepared orders."
 }

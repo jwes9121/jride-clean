@@ -1,4 +1,5 @@
 import { scheduledActivity } from "@/lib/agrimarket/schedule";
+import { customerDispatchWait, dispatchAttention } from "@/lib/agrimarket/dispatchWait";
 import { loadOrderCustomers, nullableNumber } from "@/lib/agrimarket/orderCustomer";
 import { NextRequest } from "next/server";
 import {
@@ -75,7 +76,7 @@ export async function GET(req: NextRequest) {
     const ordersRes = await admin
       .from("agrimarket_orders")
       .select(
-        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,cancelled_at,cancel_reason,created_at,updated_at," +
+        "id,order_code,status,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,producer_responded_at,producer_accepted_at,producer_rejected_at,producer_timeout_at,preparation_minutes,ready_at,preferred_vehicle_type,required_vehicle_type,assigned_driver_id,dispatch_wait_code,dispatch_wait_vehicle_type,dispatch_checked_at,estimated_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_kg,confirmed_cargo_weight_band,confirmed_handling_tier,product_subtotal,delivery_fee,pickup_distance_fee,pickup_fee_locked_at,heavy_load_fee,marketplace_fee,producer_product_net,producer_paid_at,producer_paid_amount,handling_fee,total_payable,customer_approved_total,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,picked_up_at,delivered_at,completed_at,cancelled_at,cancel_reason,created_at,updated_at," +
         "customer_user_id,delivery_address_id,delivery_label,route_plan,assignment_anchor,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,cash_collection_required,selected_vehicle_type"
       )
       .eq("producer_id", producerAuth.producer.id)
@@ -187,6 +188,16 @@ export async function GET(req: NextRequest) {
       const reapprovalRequired =
         String(row.status || "").toLowerCase() === "awaiting_customer_reapproval" &&
         row.customer_reapproval_response == null;
+      const wait = {
+        status: row.status,
+        vehicle: row.preferred_vehicle_type,
+        code: row.dispatch_wait_code,
+        checkedAt: row.dispatch_checked_at,
+        checkedVehicle: row.dispatch_wait_vehicle_type,
+        readyAt: row.ready_at,
+        assignedDriverId: row.assigned_driver_id,
+        now: nowMs,
+      };
 
       return {
         customer: {
@@ -201,6 +212,8 @@ export async function GET(req: NextRequest) {
         selected_vehicle_type: row.selected_vehicle_type || null,
         order_code: row.order_code,
         status: row.status,
+        dispatch_wait: customerDispatchWait(wait),
+        dispatch_attention: dispatchAttention(wait),
         fulfillment_mode: row.fulfillment_mode || "always_available",
         scheduled_activity: row.fulfillment_mode === "scheduled_harvest" ? scheduledActivity(orderItems) : null,
         harvest_expected_start_at: row.harvest_expected_start_at,

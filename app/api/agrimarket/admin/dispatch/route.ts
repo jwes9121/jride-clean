@@ -1,5 +1,6 @@
 import { agrimarketAdminActions } from "@/lib/agrimarket/adminActions";
 import { scheduledHarvestAttention } from "@/lib/agrimarket/harvestAttention";
+import { customerDispatchWait, dispatchAttention } from "@/lib/agrimarket/dispatchWait";
 import { NextRequest } from "next/server";
 import { loadOrderCustomers, nullableNumber } from "@/lib/agrimarket/orderCustomer";
 import { offerAgrimarketDriver } from "@/lib/agrimarket/dispatch";
@@ -57,25 +58,35 @@ export async function GET() {
     const admin = createServiceSupabase();
     const expiry = await admin.rpc("agrimarket_expire_customer_reapproval_v1");
     if (expiry.error) return jsonNoStore(503, { ok: false, error: "AGRIMARKET_TIMEOUT_SWEEP_FAILED" });
-    const ordersRes = await admin
-      .from("agrimarket_orders")
-      .select(
-        "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at," +
-        "customer_user_id,delivery_address_id,delivery_label,delivery_lat,delivery_lng,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,route_provider,selected_vehicle_type,checkout_preferred_vehicle_type,product_required_vehicle_type,delivery_base_fee,delivery_distance_fee,delivery_rate_per_km,heavy_load_fee,handling_reason,pickup_fee_locked_at,driver_delivery_payout,delivery_company_cut,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,final_cash_collected_at,final_cash_collected_amount,company_settlement_due,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_band,confirmed_handling_tier,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,dispatch_started_at,picked_up_at,delivering_at,delivered_at,completed_at"
-      )
-      .in("status", ACTIVE_STATUSES)
-      .order("created_at", { ascending: false })
-      .limit(100);
+    const nowMs = Date.now();
+    const orderColumns =
+      "id,order_code,producer_id,status,pickup_issue,fulfillment_mode,harvest_expected_start_at,harvest_expected_end_at,harvest_ready_at,producer_confirm_expires_at,preparation_minutes,ready_at,product_subtotal,cash_collection_required,cash_collection_amount,route_plan,assignment_anchor,preferred_vehicle_type,required_vehicle_type,route_distance_km,delivery_fee,pickup_distance_fee,handling_fee,total_payable,assigned_driver_id,dispatch_wait_code,dispatch_wait_vehicle_type,dispatch_checked_at,wallet_settlement_status,wallet_settlement_amount,wallet_settlement_error,created_at,updated_at," +
+      "customer_user_id,delivery_address_id,delivery_label,delivery_lat,delivery_lng,route_duration_seconds,farmer_to_customer_distance_km,farmer_to_customer_duration_seconds,customer_to_farmer_distance_km,customer_to_farmer_duration_seconds,driver_to_first_pickup_km,route_provider,selected_vehicle_type,checkout_preferred_vehicle_type,product_required_vehicle_type,delivery_base_fee,delivery_distance_fee,delivery_rate_per_km,heavy_load_fee,handling_reason,pickup_fee_locked_at,driver_delivery_payout,delivery_company_cut,customer_cash_collected_at,customer_cash_collected_amount,producer_paid_at,producer_paid_amount,final_cash_collected_at,final_cash_collected_amount,company_settlement_due,estimated_cargo_weight_kg,confirmed_cargo_weight_kg,confirmed_cargo_weight_basis,confirmed_cargo_weight_band,confirmed_handling_tier,customer_approved_total,customer_approved_vehicle_type,customer_reapproval_required_at,customer_reapproval_expires_at,customer_reapproval_response,customer_reapproval_proposed_total,customer_reapproval_proposed_vehicle_type,dispatch_started_at,picked_up_at,delivering_at,delivered_at,completed_at";
+    const [ordersRes, attentionRes] = await Promise.all([
+      admin.from("agrimarket_orders").select(orderColumns)
+        .in("status", ACTIVE_STATUSES).order("created_at", { ascending: false }).limit(100),
+      // Old prepared orders must remain visible even when newer orders fill the usual list.
+      admin.from("agrimarket_orders").select(orderColumns)
+        .in("status", ["ready_for_dispatch", "dispatching"])
+        .is("assigned_driver_id", null)
+        .not("dispatch_wait_code", "is", null)
+        .lte("ready_at", new Date(nowMs - 15 * 60_000).toISOString())
+        .order("ready_at", { ascending: true }).limit(100),
+    ]);
 
-    if (ordersRes.error) {
+    if (ordersRes.error || attentionRes.error) {
       return jsonNoStore(500, {
         ok: false,
         error: "AGRIMARKET_ADMIN_DISPATCH_READ_FAILED",
-        message: ordersRes.error.message,
+        message: ordersRes.error?.message || attentionRes.error?.message,
       });
     }
 
-    const orders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
+    const orders = Array.from(new Map(
+      [...(Array.isArray(attentionRes.data) ? attentionRes.data : []),
+        ...(Array.isArray(ordersRes.data) ? ordersRes.data : [])]
+        .map((row: any) => [text(row.id), row])
+    ).values());
     const orderIds = orders.map((row: any) => text(row.id)).filter(Boolean);
     const producerIds = Array.from(new Set(orders.map((row: any) => text(row.producer_id)).filter(Boolean)));
 
@@ -161,7 +172,6 @@ export async function GET() {
       driverById.set(text((row as any).driver_id), row);
     }
 
-    const nowMs = Date.now();
     const safeOrders = orders.map((row: any) => {
       const producer = producerById.get(text(row.producer_id));
       const offer = latestOfferByOrder.get(text(row.id));
@@ -170,8 +180,20 @@ export async function GET() {
       const expiryMs = offer?.expires_at ? Date.parse(String(offer.expires_at)) : NaN;
 
       const activeOffer = (offersRes.data || []).find((candidate: any) => candidate.order_id === row.id && candidate.status === "offered");
+      const wait = {
+        status: row.status,
+        vehicle: row.preferred_vehicle_type,
+        code: row.dispatch_wait_code,
+        checkedAt: row.dispatch_checked_at,
+        checkedVehicle: row.dispatch_wait_vehicle_type,
+        readyAt: row.ready_at,
+        assignedDriverId: row.assigned_driver_id,
+        now: nowMs,
+      };
       return {
         admin_actions: agrimarketAdminActions(row, activeOffer?.id || null),
+        dispatch_wait: activeOffer ? null : customerDispatchWait(wait),
+        dispatch_attention: activeOffer ? null : dispatchAttention(wait),
         customer_reapproval_expires_at: row.customer_reapproval_expires_at || null,
         server_now: new Date(nowMs).toISOString(),
         harvest_attention: scheduledHarvestAttention({ ...row, pending_harvest_proposal: ordersWithPendingProposal.has(text(row.id)) }, nowMs),
@@ -258,6 +280,10 @@ export async function GET() {
         created_at: row.created_at,
         updated_at: row.updated_at,
       };
+    }).sort((a: any, b: any) => {
+      const priority = (value: any) => value.dispatch_attention?.level === "review_required" ? 2
+        : value.dispatch_attention?.level === "duty_alert" ? 1 : 0;
+      return priority(b) - priority(a) || Date.parse(b.created_at) - Date.parse(a.created_at);
     });
 
     return jsonNoStore(200, {

@@ -59,6 +59,8 @@ type ProducerOrder = {
   confirmation_seconds_remaining: number;
   preparation_minutes?: number | null;
   ready_at?: string | null;
+  dispatch_wait?: { code: string; message: string; checked_at: string } | null;
+  dispatch_attention?: { level: "duty_alert" | "review_required"; waiting_minutes: number; since: string } | null;
   preferred_vehicle_type: string;
   required_vehicle_type: string;
   estimated_cargo_weight_kg?: number | null;
@@ -584,6 +586,12 @@ export default function AgrimarketProducerPage() {
                 </div> : null}
 
                 {["preparing", "awaiting_customer_reapproval", "ready_for_dispatch", "dispatching", "driver_assigned", "picked_up", "delivering", "delivered", "completed"].includes(order.status) ? <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm"><strong>{order.status === "preparing" ? "Preparing for driver pickup" : order.status === "awaiting_customer_reapproval" ? "Waiting for customer to approve revised charges" : titleCase(order.status)}</strong>{order.status !== "awaiting_customer_reapproval" && order.ready_at ? <><br/>Ready target: {formatDate(order.ready_at)}</> : null}{order.confirmed_cargo_weight_basis ? <><br/>Confirmed cargo: {order.confirmed_cargo_weight_basis === "exact" ? `${order.confirmed_cargo_weight_kg ?? "?"} kg exact` : `${String(order.confirmed_cargo_weight_band || "").replace(/_/g, "-")} kg approximate`} - {titleCase(order.confirmed_handling_tier || "")}</> : null}{order.producer_paid_at ? <><br/>Farmer paid: {money(order.producer_paid_amount)}</> : null}</div> : null}
+
+                {order.dispatch_wait ? <div role={order.dispatch_attention ? "alert" : "status"} className={`mt-3 rounded-xl border p-3 text-sm ${order.dispatch_attention?.level === "review_required" ? "border-rose-400 bg-rose-50 text-rose-950" : "border-amber-400 bg-amber-50 text-amber-950"}`}>
+                  <strong>{order.dispatch_attention?.level === "review_required" ? "Driver pickup requires JRide staff review" : order.dispatch_attention ? "Driver pickup needs staff attention" : "Waiting for an available driver"}</strong>
+                  <p className="mt-1">{order.dispatch_wait.message}</p>
+                  {order.dispatch_attention ? <p className="mt-2">Ready for pickup for {order.dispatch_attention.waiting_minutes} minutes. Keep the goods safe and watch for pickup updates. Contact JRide with order code {order.order_code} to arrange the next step.</p> : null}
+                </div> : null}
 
                 {scheduled && activity === "butchering" && ["awaiting_producer", "awaiting_harvest"].includes(order.status) && <CancelReservation
                   key={order.order_code} order={order} accountCode={sessionCode} busy={Boolean(busy)}

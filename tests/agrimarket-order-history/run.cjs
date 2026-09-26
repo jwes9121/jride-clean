@@ -11,6 +11,7 @@ function load(mocks, sourceFile = filename) {
   }).outputText;
   vm.runInNewContext(source, { module, exports: module.exports, require: name => {
     if (name === "@/lib/agrimarket/orderCustomer") return load(mocks, path.resolve(__dirname, "../../lib/agrimarket/orderCustomer.ts"));
+    if (name === "@/lib/agrimarket/dispatchWait") return load(mocks, path.resolve(__dirname, "../../lib/agrimarket/dispatchWait.ts"));
     if (!(name in mocks)) throw new Error("Unexpected dependency: " + name);
     return mocks[name];
   }, Date, console }, { filename });
