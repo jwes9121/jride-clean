@@ -1,13 +1,7 @@
 import { normalizeIfugaoTown } from "./location";
-import { FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, FARMER_TOWN_CENTERS } from "@/lib/agrimarket/farmer-towns";
 
-export const AGRIMARKET_LAUNCH_TOWNS = [
-  "Lagawe",
-  "Hingyon",
-  "Kiangan",
-  "Banaue",
-  "Lamut",
-] as const;
+export const AGRIMARKET_LAUNCH_TOWNS = AGRIMARKET_ACTIVE_TOWNS;
 
 const LAUNCH_TOWN_SET = new Set<string>(AGRIMARKET_LAUNCH_TOWNS);
 
