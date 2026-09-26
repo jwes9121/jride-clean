@@ -102,3 +102,112 @@ set updated_at = updated_at
 where lower(coalesce(service_type, '')) = 'takeout'
   and takeout_delivery_fee is not null
   and takeout_total_payable is not null;
+
+
+-- Keep Takeout wallet settlement metadata aligned with the already-existing
+-- wallet deduction transaction. This does not create or change a deduction.
+create or replace function public.finalize_takeout_wallet_metadata_v1()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_tx public.driver_wallet_transactions%rowtype;
+  v_settlement_id uuid;
+begin
+  if tg_op <> 'UPDATE'
+     or coalesce(old.status, '') = 'completed'
+     or coalesce(new.status, '') <> 'completed'
+     or lower(coalesce(new.service_type, '')) <> 'takeout' then
+    return new;
+  end if;
+
+  select *
+  into v_tx
+  from public.driver_wallet_transactions
+  where booking_id = new.id
+    and amount < 0
+    and reason in ('takeout_cut_15', 'takeout_cut_20')
+  order by created_at desc
+  limit 1;
+
+  if not found then
+    return new;
+  end if;
+
+  v_settlement_id := coalesce(v_tx.wallet_settlement_id, gen_random_uuid());
+
+  if v_tx.wallet_settlement_id is null then
+    update public.driver_wallet_transactions
+    set wallet_settlement_id = v_settlement_id
+    where id = v_tx.id
+      and wallet_settlement_id is null;
+  end if;
+
+  update public.bookings
+  set wallet_settled_at = coalesce(wallet_settled_at, v_tx.created_at, now()),
+      wallet_settlement_id = coalesce(wallet_settlement_id, v_settlement_id),
+      wallet_settlement_status = 'settled',
+      wallet_settlement_version = greatest(coalesce(wallet_settlement_version, 0), 4),
+      wallet_settlement_hash = coalesce(
+        wallet_settlement_hash,
+        md5(
+          new.id::text || ':' ||
+          coalesce(new.assigned_driver_id, new.driver_id)::text || ':' ||
+          coalesce(new.company_cut, 0)::text || ':takeout_split_v1'
+        )
+      ),
+      updated_at = now()
+  where id = new.id;
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists zzzz_finalize_takeout_wallet_metadata_v1 on public.bookings;
+create trigger zzzz_finalize_takeout_wallet_metadata_v1
+after update of status on public.bookings
+for each row
+execute function public.finalize_takeout_wallet_metadata_v1();
+
+-- Backfill settlement metadata for historical completed Takeout rows that
+-- already have a single successful Takeout deduction. No balances are changed.
+with tx as (
+  select distinct on (booking_id)
+    id,
+    booking_id,
+    created_at,
+    wallet_settlement_id,
+    coalesce(wallet_settlement_id, gen_random_uuid()) as effective_settlement_id
+  from public.driver_wallet_transactions
+  where amount < 0
+    and reason in ('takeout_cut_15', 'takeout_cut_20')
+    and booking_id is not null
+  order by booking_id, created_at desc
+),
+tx_ids as (
+  update public.driver_wallet_transactions t
+  set wallet_settlement_id = tx.effective_settlement_id
+  from tx
+  where t.id = tx.id
+    and t.wallet_settlement_id is null
+  returning t.id
+)
+update public.bookings b
+set wallet_settled_at = coalesce(b.wallet_settled_at, tx.created_at),
+    wallet_settlement_id = coalesce(b.wallet_settlement_id, tx.effective_settlement_id),
+    wallet_settlement_status = 'settled',
+    wallet_settlement_version = greatest(coalesce(b.wallet_settlement_version, 0), 4),
+    wallet_settlement_hash = coalesce(
+      b.wallet_settlement_hash,
+      md5(
+        b.id::text || ':' ||
+        coalesce(b.assigned_driver_id, b.driver_id)::text || ':' ||
+        coalesce(b.company_cut, 0)::text || ':takeout_split_v1'
+      )
+    )
+from tx
+where b.id = tx.booking_id
+  and lower(coalesce(b.service_type, '')) = 'takeout'
+  and lower(coalesce(b.status, '')) = 'completed';
