@@ -250,6 +250,9 @@ function booking(subtotal) {
     path.join(root, "app/api/driver/takeout-fee/propose/route.ts"),
     "utf8"
   );
+  assert.match(proposal, /const MIN_DELIVERY_FEE = 25;/);
+  assert.match(proposal, /deliveryFee < MIN_DELIVERY_FEE/);
+  assert.match(proposal, /Takeout delivery fee must be at least PHP 25\./);
   assert.match(proposal, /const cashRequired = computedSubtotal > 500;/);
   assert.doesNotMatch(proposal, /computedSubtotal >= 500/);
   assert.match(proposal, /const passengerLat = num\(order\.dropoff_lat\);/);
