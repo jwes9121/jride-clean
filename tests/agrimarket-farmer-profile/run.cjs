@@ -262,6 +262,23 @@ async function run() {
     assert(page.includes("AGRIMARKET_ACTIVE_TOWNS"));
     assert(!read('lib/agrimarket/farmer-towns.ts').includes('Kiangan'));
   });
+  await test('all farmer onboarding surfaces exclude Kiangan and the V3 save locks town after setup', () => {
+    const townSource = read('lib/agrimarket/farmer-towns.ts');
+    const adminPage = read('app/admin/agrimarket/verified-farmers/page.tsx');
+    const adminRoute = read('app/api/agrimarket/admin/verified-farmers/route.ts');
+    const applicationRoute = read('app/api/agrimarket/farmer-applications/route.ts');
+    const migration = read('supabase/migrations/20260926074951_agrimarket_initial_town_selection_v1.sql');
+    for (const source of [townSource, adminPage, adminRoute, applicationRoute, migration]) {
+      assert(!source.includes('"Kiangan"') && !source.includes("'Kiangan'"), 'Kiangan must not be an active AgriMarket onboarding town');
+    }
+    assert(adminPage.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(adminRoute.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(applicationRoute.includes('AGRIMARKET_ACTIVE_TOWNS.map'));
+    assert(migration.includes('AGRIMARKET_FARMER_TOWN_LOCKED'));
+    assert(migration.includes("vendor_name_locked_at IS NOT NULL AND v_town_changed"));
+    assert(migration.includes('accepting_orders = false'));
+    assert(migration.includes('store_open = false'));
+  });
   await test('audit migration changes only compatible event labels and adds action detail', () => {
     const before = read('supabase/migrations/20260922012406_agrimarket_preassigned_farmer_profile_completion_v1.sql');
     const after = read('supabase/migrations/20260922115740_agrimarket_farmer_profile_audit_contract_v1.sql');
