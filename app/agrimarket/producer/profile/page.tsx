@@ -83,6 +83,7 @@ export default function AgrimarketProducerProfilePage() {
     storeNameAvailable: boolean | null;
     error: string;
   }>({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
+  const profileCheckGeneration = useRef(0);
   const flight = useRef(false);
 
   useEffect(() => {
@@ -161,6 +162,7 @@ export default function AgrimarketProducerProfilePage() {
     const vendorName = form.vendor_name.trim().replace(/\s+/g, " ");
     if (phoneDigits.length < 10 || !form.town) return false;
 
+    const generation = ++profileCheckGeneration.current;
     setProfileCheck((current) => ({ ...current, checking: true, error: "" }));
     try {
       const params = new URLSearchParams({
@@ -181,6 +183,7 @@ export default function AgrimarketProducerProfilePage() {
       if (!response.ok || body?.ok !== true) {
         throw new Error(body?.message || "JRide could not check the mobile number and farm/store name.");
       }
+      if (generation !== profileCheckGeneration.current) return false;
       const phoneAvailable = body.phone_available === true;
       const storeNameAvailable = body.store_name_available == null ? null : body.store_name_available === true;
       setProfileCheck({ checking: false, phoneAvailable, storeNameAvailable, error: "" });
@@ -204,6 +207,7 @@ export default function AgrimarketProducerProfilePage() {
         (vendorName.length >= 2 && storeNameAvailable === true)
       );
     } catch (cause) {
+      if (generation !== profileCheckGeneration.current) return false;
       const message = cause instanceof Error ? cause.message : "JRide could not check your farmer details.";
       setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: message });
       if (showError) setError(message);
@@ -420,6 +424,8 @@ export default function AgrimarketProducerProfilePage() {
                     inputMode="tel"
                     value={form.contact_phone}
                     onChange={(event) => {
+                      profileCheckGeneration.current += 1;
+                      setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
                       setForm({ ...form, contact_phone: event.target.value });
                       setError("");
                     }}
@@ -438,6 +444,8 @@ export default function AgrimarketProducerProfilePage() {
                         required
                         value={form.town}
                         onChange={(event) => {
+                          profileCheckGeneration.current += 1;
+                          setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
                           setForm({ ...form, town: event.target.value, barangay: "" });
                           setPickup(emptyFarmerPin());
                           setError("");
@@ -481,6 +489,8 @@ export default function AgrimarketProducerProfilePage() {
                     readOnly={profile.vendor_name_locked}
                     value={form.vendor_name}
                     onChange={(event) => {
+                      profileCheckGeneration.current += 1;
+                      setProfileCheck((current) => ({ ...current, storeNameAvailable: null, error: "" }));
                       setForm({ ...form, vendor_name: event.target.value });
                       setError("");
                     }}
