@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       (existing.data as any).takeout_pay_on_delivery_amount
     );
     if (
-      (strictCashSplitClient || cashCollectedAmount != null) &&
+      strictCashSplitClient &&
       expectedFinal != null &&
       expectedFinal > 0 &&
       (cashCollectedAmount == null ||
