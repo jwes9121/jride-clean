@@ -1312,10 +1312,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // JRIDE_GPS_FRESHNESS_STATUS_SEPARATION_V1
+    // driver_locations.updated_at belongs to the coordinates stored in lat/lng.
+    // Duty and presence recency are tracked separately by the device lock and
+    // presence-session telemetry. A status-only ping, including Offline, must
+    // never make old coordinates look fresh to dispatch.
     const preservePreviousLocationTimestamp =
       !hasIncomingCoords &&
       coordsSource === "previous_row" &&
-      ONLINE_OBSERVATION_STATUSES.has(status) &&
       !!previousUpdatedAt;
 
     const upsertPayload: any = {
