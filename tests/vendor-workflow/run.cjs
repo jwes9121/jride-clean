@@ -143,24 +143,33 @@ async function routes() {
   await test('vendor cannot complete a trip or cancel after assignment',async()=>{
     const db=database([booking({vendor_status:'pickup_ready',assigned_driver_id:driver,driver_id:driver})]),h=harness(db),api=h.load('app/api/vendor-orders/route.ts');for(const next of ['completed','cancelled'])assert.equal((await api.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:next,cancel_reason:'Test'}))).status,409);assert.equal(db.writes.length,0);
   });
-  await test('full route sequence: accept, assign, driver accept, customer confirm, ready, pickup, delivery, complete',async()=>{
+  await test('full route sequence: accept, assign, driver accept, customer confirm, ready, arrive, pickup, delivery, complete',async()=>{
     const db=database([booking()]);db.tables.driver_locations=[{driver_id:driver,lat:17.08,lng:121.12,status:'online',updated_at:new Date().toISOString(),town:'Lagawe',home_town:'Lagawe'}];
     const h=harness(db),api=h.load('app/api/vendor-orders/route.ts'),driverApi=h.load('app/api/driver/takeout-status/route.ts');let result=await api.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'vendor_accepted'}));assert.equal(result.status,200);assert.equal(db.tables.bookings[0].vendor_status,'driver_assigned');assert.equal(db.tables.bookings[0].driver_id,driver);
     result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'driver_accepted'}));assert.equal(result.status,200);
     // Customer confirmation is set by the existing passenger flow, not vendor code.
     db.tables.bookings[0].takeout_customer_confirmed_at=new Date().toISOString();
     assert.equal((await api.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'pickup_ready'}))).status,200);
-    for(const status of ['picked_up','delivering','completed']) {result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status}));assert.equal(result.status,200);assert.equal(db.tables.bookings[0].vendor_status,status);}
+    result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}));assert.equal(result.status,200);assert.equal(db.tables.bookings[0].driver_status,'rider_arrived_vendor');assert.ok(db.tables.bookings[0].vendor_driver_arrived_at);
+    for(const status of ['picked_up','delivering','completed']) {result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status}));assert.equal(result.status,200);assert.equal(db.tables.bookings[0].vendor_status,status);if(status==='picked_up')assert.ok(db.tables.bookings[0].vendor_order_picked_at);}
     assert.equal(db.tables.bookings[0].status,'completed');assert(db.tables.bookings[0].completed_at);assert.equal(result.body.wallet_deduction.owner,'database_trigger');
   });
-  await test('existing driver pickup path remains supported when the vendor did not press Ready',async()=>{
-    const db=database([booking({vendor_status:'driver_accepted',status:'fare_proposed',assigned_driver_id:driver,driver_id:driver,takeout_customer_confirmed_at:new Date().toISOString()})]);
-    const h=harness(db),api=h.load('app/api/driver/takeout-status/route.ts'),workflow=h.load('lib/vendorOrderWorkflow.ts');
-    for(const status of ['picked_up','delivering','completed']) {
-      const result=await api.POST(h.request({driver_id:driver,order_id:'order-1',status}));
-      assert.equal(result.status,200);assert.equal(workflow.orderStatus(db.tables.bookings[0]),status);assert(!workflow.canMarkReady(db.tables.bookings[0]));
-      if(status==='completed')assert.equal(result.body.wallet_deduction.owner,'database_trigger');
-    }
+  await test('pickup is blocked until vendor Ready and driver arrival are both recorded',async()=>{
+    const db=database([booking({vendor_status:'driver_accepted',customer_status:'driver_accepted',driver_status:'driver_accepted',status:'fare_proposed',assigned_driver_id:driver,driver_id:driver,takeout_customer_confirmed_at:new Date().toISOString()})]);
+    const h=harness(db),vendorApi=h.load('app/api/vendor-orders/route.ts'),driverApi=h.load('app/api/driver/takeout-status/route.ts'),workflow=h.load('lib/vendorOrderWorkflow.ts');
+
+    let result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'picked_up'}));
+    assert.equal(result.status,409);assert.equal(result.body.error,'TAKEOUT_VENDOR_NOT_READY_FOR_PICKUP');assert.equal(workflow.orderStatus(db.tables.bookings[0]),'driver_accepted');
+
+    assert.equal((await vendorApi.POST(h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'pickup_ready'}))).status,200);
+    result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'picked_up'}));
+    assert.equal(result.status,409);assert.equal(result.body.error,'TAKEOUT_DRIVER_NOT_AT_VENDOR');assert.equal(workflow.orderStatus(db.tables.bookings[0]),'pickup_ready');
+
+    result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'rider_arrived_vendor'}));
+    assert.equal(result.status,200);assert.ok(db.tables.bookings[0].vendor_driver_arrived_at);assert.equal(db.tables.bookings[0].vendor_status,'pickup_ready');
+
+    result=await driverApi.POST(h.request({driver_id:driver,order_id:'order-1',status:'picked_up'}));
+    assert.equal(result.status,200);assert.equal(workflow.orderStatus(db.tables.bookings[0]),'picked_up');assert.ok(db.tables.bookings[0].vendor_order_picked_at);
   });
 }
 

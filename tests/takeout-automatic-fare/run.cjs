@@ -269,6 +269,12 @@ function booking(subtotal) {
   assert.match(status, /confirm_takeout_automatic_short_trip_v1/);
   assert.match(status, /automaticTakeoutFare\?\.outcome === "automatic"/);
   assert.match(status, /TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE/);
+  assert.match(status, /TAKEOUT_VENDOR_NOT_READY_FOR_PICKUP/);
+  assert.match(status, /TAKEOUT_DRIVER_NOT_AT_VENDOR/);
+  assert.match(status, /vendor_driver_arrived_at/);
+  assert.match(status, /vendor_order_picked_at/);
+  assert.match(status, /nextStatus === "picked_up"/);
+  assert.match(status, /driverWorkflowStatus !== "rider_arrived_vendor"/);
 
   const migration = fs.readFileSync(
     path.join(
