@@ -329,7 +329,11 @@ export default function VendorHoursGate() {
           setPanelOpen(false);
         }
 
-        if (action === "open_today" && typeof window !== "undefined") {
+        if (
+          (action === "open_today" ||
+            action === "save_hours_and_open_today") &&
+          typeof window !== "undefined"
+        ) {
           window.setTimeout(() => window.location.reload(), 150);
         }
       } catch (e: any) {
@@ -521,7 +525,11 @@ export default function VendorHoursGate() {
                   </strong>
                 </div>
                 <div className="mt-1 text-xs text-slate-300">
-                  {statusText(status)}
+                  {timing.afterClose &&
+                  !status.effective_accepting_orders &&
+                  !suspended
+                    ? "Today's closing time has passed. Set a later closing time to reopen for orders."
+                    : statusText(status)}
                 </div>
                 <div className="vendor-hours-schedule mt-1 text-[11px] text-slate-400">
                   Hours: {formatClock(status.normal_open_time)} -{" "}
@@ -559,7 +567,11 @@ export default function VendorHoursGate() {
                   aria-expanded={panelOpen}
                   className="vendor-hours-secondary"
                 >
-                  {panelOpen ? "Hide hours" : "Manage hours"}
+                  {panelOpen
+                    ? "Hide hours"
+                    : timing.afterClose && !suspended
+                      ? "Edit hours & reopen"
+                      : "Manage hours"}
                 </button>
               </div>
             </div>
@@ -639,6 +651,18 @@ export default function VendorHoursGate() {
 
             {panelOpen ? (
               <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/80 p-3">
+                {timing.afterClose && !suspended ? (
+                  <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3">
+                    <div className="text-sm font-black text-amber-100">
+                      Need to stay open later today?
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-amber-100/90">
+                      Change the closing time to a time later than now, then use
+                      Save hours & reopen today. This does not affect your menu,
+                      orders, or profile.
+                    </div>
+                  </div>
+                ) : null}
                 <div className="grid gap-1 text-xs text-slate-300 sm:grid-cols-3">
                   <div>
                     <span className="font-bold text-white">Opened today:</span>{" "}
@@ -693,19 +717,50 @@ export default function VendorHoursGate() {
                   </div>
                 ) : null}
 
-                <button
-                  type="button"
-                  disabled={busy || !validDraftHours}
-                  onClick={() =>
-                    void postAction("save_hours", {
-                      normal_open_time: openTime,
-                      normal_close_time: closeTime,
-                    })
-                  }
-                  className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
-                >
-                  {busy ? "Saving..." : "Save normal hours"}
-                </button>
+                {timing.afterClose && !suspended ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled={busy || !validDraftHours}
+                      onClick={() =>
+                        void postAction("save_hours_and_open_today", {
+                          normal_open_time: openTime,
+                          normal_close_time: closeTime,
+                        })
+                      }
+                      className="rounded-lg bg-emerald-500 px-3 py-2.5 text-xs font-black text-slate-950 disabled:opacity-50"
+                    >
+                      {busy ? "Saving..." : "SAVE HOURS & REOPEN TODAY"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !validDraftHours}
+                      onClick={() =>
+                        void postAction("save_hours", {
+                          normal_open_time: openTime,
+                          normal_close_time: closeTime,
+                        })
+                      }
+                      className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
+                    >
+                      {busy ? "Saving..." : "Save normal hours only"}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy || !validDraftHours}
+                    onClick={() =>
+                      void postAction("save_hours", {
+                        normal_open_time: openTime,
+                        normal_close_time: closeTime,
+                      })
+                    }
+                    className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {busy ? "Saving..." : "Save normal hours"}
+                  </button>
+                )}
 
                 {canShowExtensionControls ? (
                   <div className="mt-3 grid grid-cols-2 gap-2">
