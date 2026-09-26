@@ -121,6 +121,15 @@ function load(file, mocks = {}, globals = {}) {
     assert.equal(current.quality, 74);
   });
 
+  await test("readiness cannot bypass useful pickup directions", () => {
+    const storeApi = read("app/api/agrimarket/producer/store/route.ts");
+    const adminApi = read("app/api/agrimarket/admin/verified-farmers/route.ts");
+    assert(storeApi.includes("driverDirectionsError"));
+    assert(storeApi.includes("directionsReady"));
+    assert(adminApi.includes("AGRIMARKET_PICKUP_DIRECTIONS_INVALID"));
+    assert(adminApi.includes("Correct the farmer pickup directions before approving readiness."));
+  });
+
   await test("profile success notice is single-message and auto-hides", () => {
     const page = read("app/agrimarket/producer/profile/page.tsx");
     const notice = read("app/agrimarket/producer/ProfileSavedNotice.tsx");
