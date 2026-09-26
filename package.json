@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "echo DIAGNOSTIC_SKIP_PREBUILD",
+    "prebuild": "node tests/agrimarket-farm-name/run.cjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
