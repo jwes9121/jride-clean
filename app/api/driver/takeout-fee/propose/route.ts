@@ -409,14 +409,14 @@ export async function POST(req: NextRequest) {
     // JRIDE_TAKEOUT_ROUTE_PLAN_PROPOSE_ROUTE_V1
     // Takeout-only route plan disclosure. This makes clear whether the proposed delivery fee
     // covers vendor-first pickup or customer cash pickup before vendor pickup.
-    const routePlan = lower(body?.takeout_route_plan ?? body?.route_plan ?? body?.routePlan);
+    const requestedRoutePlan = lower(body?.takeout_route_plan ?? body?.route_plan ?? body?.routePlan);
     const allowedRoutePlans = new Set(["vendor_first", "customer_cash_first"]);
 
     if (!orderId && !bookingCode) return json(400, { ok: false, error: "ORDER_REQUIRED", message: "order_id or booking_code is required." });
     if (deliveryFee === null || deliveryFee <= 0 || deliveryFee > MAX_DELIVERY_FEE) {
       return json(400, { ok: false, error: "BAD_DELIVERY_FEE", message: "Delivery fee must be greater than 0 and not excessive." });
     }
-    if (!allowedRoutePlans.has(routePlan)) {
+    if (requestedRoutePlan && !allowedRoutePlans.has(requestedRoutePlan)) {
       return json(400, { ok: false, error: "BAD_TAKEOUT_ROUTE_PLAN", message: "route_plan must be vendor_first or customer_cash_first." });
     }
 
@@ -469,19 +469,19 @@ export async function POST(req: NextRequest) {
     ) ?? 0;
     const notePackaging = parsePackagingSubtotalFromText(order.customer_note, order.notes);
     const packagingSubtotal = Math.max(0, snapshotPackaging, notePackaging);
-    const cashRequired = routePlan === "customer_cash_first" || computedSubtotal >= 500;
+    // Server-side source of truth: PHP 500 and below is vendor-first.
+    // Only a food/items subtotal strictly above PHP 500 is cash-first.
+    // Client route_plan is advisory so older installed apps cannot force the
+    // wrong side of the threshold.
+    const cashRequired = computedSubtotal > 500;
+    const routePlan = cashRequired ? "customer_cash_first" : "vendor_first";
     let pickupBreakdown = noCustomerCashPickupBreakdown();
-    if (cashRequired || routePlan === "customer_cash_first") {
+    if (cashRequired) {
       const driverLoc = await loadFreshDriverLocation(serviceSupabase, driverAuth.driverId);
-      const passengerLat =
-  routePlan === "customer_cash_first"
-    ? num(order.pickup_lat)
-    : num(order.dropoff_lat);
-
-const passengerLng =
-  routePlan === "customer_cash_first"
-    ? num(order.pickup_lng)
-    : num(order.dropoff_lng);
+      // Takeout pickup_lat/lng is the vendor. Cash-first requires the
+      // driver's first leg to the customer, which is stored in dropoff_lat/lng.
+      const passengerLat = num(order.dropoff_lat);
+      const passengerLng = num(order.dropoff_lng);
 
       if (!driverLoc || !isOnlineLike(driverLoc.status) || minutesSince(driverLoc.updated_at) > 15 || !validLatLng(driverLoc.lat, driverLoc.lng)) {
         return json(409, {

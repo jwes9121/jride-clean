@@ -267,7 +267,7 @@ export async function GET(req: NextRequest) {
       const itemInfo = itemsByBooking[id] || { summary: null, computedSubtotal: null };
       const foodSubtotal = money(row?.takeout_items_subtotal) ?? itemInfo.computedSubtotal;
       const pricingStatus = lower(row?.takeout_pricing_status || "pricing_pending");
-      const cashRequired = (foodSubtotal ?? 0) >= 500;
+      const cashRequired = (foodSubtotal ?? 0) > 500;
       const vendorId = text(row?.vendor_id);
 
       return {

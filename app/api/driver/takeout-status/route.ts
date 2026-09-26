@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import {
+  evaluateTakeoutAutomaticDeliveryFare,
+  TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION,
+} from "@/lib/takeoutAutomaticDeliveryFare";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -129,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,completed_at,notes")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -173,10 +177,39 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let automaticTakeoutFare: any = null;
+  let acceptExpiryRaw = "";
+  let acceptExpiryMs = NaN;
+
   if (nextStatus === "driver_accepted") {
     const currentDriverStatus = normStatus((existing.data as any).driver_status);
+    const existingSnapshot =
+      (existing.data as any).takeout_pricing_snapshot &&
+      typeof (existing.data as any).takeout_pricing_snapshot === "object"
+        ? (existing.data as any).takeout_pricing_snapshot
+        : {};
+    const alreadyAutomatic =
+      String(existingSnapshot?.version || "").trim() ===
+      TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION;
+
+    if (
+      currentDriverStatus === "driver_accepted" &&
+      (existing.data as any).takeout_customer_confirmed_at &&
+      alreadyAutomatic
+    ) {
+      return json(200, {
+        ok: true,
+        order: existing.data,
+        already_accepted: true,
+        automatic_fare: true,
+        takeout_automatic_delivery_fare: true,
+        pricing_version: TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION,
+      });
+    }
+
     if (currentDriverStatus === "driver_accepted") {
-      // A retry must never restart the driver's five-minute proposal clock.
+      // Manual (>3 km) pricing retries must never restart the five-minute
+      // proposal clock.
       const proposalDeadline = Date.parse(
         String((existing.data as any).driver_fee_proposal_expires_at || "")
       );
@@ -187,27 +220,129 @@ export async function POST(req: NextRequest) {
           message: "The delivery fee deadline passed. This order will be cancelled.",
         });
       }
-      return json(200, { ok: true, order: existing.data, already_accepted: true });
+      return json(200, {
+        ok: true,
+        order: existing.data,
+        already_accepted: true,
+        automatic_fare: false,
+      });
     }
+
     if (currentDriverStatus !== "driver_assigned") {
       return json(409, { ok: false, error: "TAKEOUT_STEP_CHANGED" });
     }
-    const expiryRaw = String(
+
+    acceptExpiryRaw = String(
       (existing.data as any).driver_accept_expires_at ||
         (existing.data as any).takeout_driver_accept_expires_at ||
         ""
     ).trim();
+    acceptExpiryMs = acceptExpiryRaw
+      ? new Date(acceptExpiryRaw).getTime()
+      : NaN;
 
-    const expiryMs = expiryRaw ? new Date(expiryRaw).getTime() : NaN;
-
-    if (!Number.isFinite(expiryMs)) {
+    if (!Number.isFinite(acceptExpiryMs)) {
       return json(409, { ok: false, error: "TAKEOUT_ASSIGNMENT_WINDOW_MISSING" });
     }
-    if (Number.isFinite(expiryMs) && expiryMs <= Date.now()) {
+    if (acceptExpiryMs <= Date.now()) {
       return json(409, {
         ok: false,
         error: "TAKEOUT_ASSIGNMENT_EXPIRED",
         message: "This takeout assignment already expired. Please wait for dispatch to reassign.",
+      });
+    }
+
+    try {
+      automaticTakeoutFare = await evaluateTakeoutAutomaticDeliveryFare({
+        booking: existing.data,
+        driverId,
+        supabase: admin,
+      });
+    } catch (error: any) {
+      console.warn(
+        "[TAKEOUT_AUTOMATIC_FARE_EVALUATION_FAILED]",
+        JSON.stringify({
+          booking_code: (existing.data as any).booking_code || null,
+          driver_id: driverId,
+          error: String(error?.message ?? error),
+        })
+      );
+      return json(503, {
+        ok: false,
+        error: "TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE",
+        message: "Automatic Takeout pricing is temporarily unavailable. Please retry acceptance.",
+      });
+    }
+
+    if (automaticTakeoutFare?.outcome === "invalid") {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_AUTOMATIC_FARE_INVALID",
+        message: "This Takeout order is missing required pricing data. Refresh the order.",
+        reason: automaticTakeoutFare?.reason || null,
+      });
+    }
+
+    if (automaticTakeoutFare?.outcome === "retry") {
+      return json(503, {
+        ok: false,
+        error: "TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE",
+        message: "Automatic Takeout pricing is temporarily unavailable. Please retry acceptance.",
+        reason: automaticTakeoutFare?.reason || null,
+      });
+    }
+
+    // Routing/elevation calls can consume the remaining accept window.
+    if (acceptExpiryMs <= Date.now()) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_ASSIGNMENT_EXPIRED",
+        message: "This takeout assignment expired while pricing was being checked.",
+      });
+    }
+
+    if (automaticTakeoutFare?.outcome === "automatic") {
+      const automaticResult = await admin.rpc(
+        "confirm_takeout_automatic_short_trip_v1",
+        {
+          p_booking_id: (existing.data as any).id,
+          p_driver_id: driverId,
+          p_expected_driver_accept_expires_at: acceptExpiryRaw,
+          p_expected_subtotal: automaticTakeoutFare.subtotal,
+          p_delivery_fee: automaticTakeoutFare.deliveryFee,
+          p_service_fee: automaticTakeoutFare.serviceFee,
+          p_total_payable: automaticTakeoutFare.totalPayable,
+          p_cash_required: automaticTakeoutFare.cashRequired,
+          p_route_plan: automaticTakeoutFare.routePlan,
+          p_pricing_snapshot: automaticTakeoutFare.snapshot,
+        }
+      );
+
+      if (automaticResult.error) {
+        return json(500, {
+          ok: false,
+          error: "TAKEOUT_AUTOMATIC_FARE_CONFIRM_FAILED",
+          message: automaticResult.error.message,
+        });
+      }
+
+      const result = automaticResult.data as any;
+      if (!result?.ok || !result?.order) {
+        return json(409, {
+          ok: false,
+          error: result?.error || "TAKEOUT_STEP_CHANGED",
+          message: "The Takeout order changed while automatic pricing was being confirmed. Refresh the current order.",
+        });
+      }
+
+      return json(200, {
+        ok: true,
+        order: result.order,
+        automatic_fare: true,
+        takeout_automatic_delivery_fare: true,
+        pricing_version: TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION,
+        route_plan: automaticTakeoutFare.routePlan,
+        cash_collection_required: automaticTakeoutFare.cashRequired,
       });
     }
   }
@@ -235,6 +370,8 @@ export async function POST(req: NextRequest) {
   }
 
   if (nextStatus === "driver_accepted") {
+    // Only >3 km Takeout deliveries reach the existing Proposed Fare path.
+    // <=3 km automatic fares returned above after the atomic confirmation RPC.
     const feeProposalExpiresIso = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     patch.driver_status = "driver_accepted";
     patch.takeout_pricing_status = "pricing_pending";
@@ -315,5 +452,10 @@ export async function POST(req: NextRequest) {
     reason: "takeout wallet deduction is handled by the existing database trigger",
   };
 
-  return json(200, { ok: true, order: up.data, wallet_deduction });
+  return json(200, {
+    ok: true,
+    order: up.data,
+    wallet_deduction,
+    automatic_fare: false,
+  });
 }

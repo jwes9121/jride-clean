@@ -73,7 +73,24 @@ function harness(db, globals={}) {
     const module={exports:{}};cache.set(file,module);
     const filename=path.join(root,file);
     const element=(type,props,key)=>({type,props:props||{},key});
-    const mocks={ 'react/jsx-runtime':{jsx:element,jsxs:element,Fragment:'fragment'}, 'next/server':{NextResponse:{json:(body,options={})=>({status:options.status||200,body,headers:options.headers})}}, 'next/headers':{cookies:()=>({})}, '@supabase/auth-helpers-nextjs':{createRouteHandlerClient:()=>db}, '@supabase/supabase-js':{createClient:()=>db}, '@/auth':{auth:async()=>null} };
+    const mocks={
+      'react/jsx-runtime':{jsx:element,jsxs:element,Fragment:'fragment'},
+      'next/server':{NextResponse:{json:(body,options={})=>({status:options.status||200,body,headers:options.headers})}},
+      'next/headers':{cookies:()=>({})},
+      '@supabase/auth-helpers-nextjs':{createRouteHandlerClient:()=>db},
+      '@supabase/supabase-js':{createClient:()=>db},
+      '@/auth':{auth:async()=>null},
+      '@/lib/takeoutAutomaticDeliveryFare':{
+        TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION:'takeout_short_trip_automatic_v1',
+        evaluateTakeoutAutomaticDeliveryFare:async()=>({
+          outcome:'manual',
+          reason:'road_distance_above_short_trip_limit',
+          roadDistanceKm:4,
+          routePlan:'vendor_first',
+          cashRequired:false,
+        }),
+      },
+    };
     const req=name=>{
       if(mocks[name])return mocks[name];
       if(name.startsWith('@/'))return load(name.slice(2)+'.ts');
