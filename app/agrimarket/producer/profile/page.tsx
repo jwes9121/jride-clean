@@ -6,6 +6,7 @@ import FarmerPickupMap, {
 } from "@/components/agrimarket/FarmerPickupMap";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
 import { AGRIMARKET_ACTIVE_TOWNS, agrimarketBarangays, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
+import { driverDirectionsError } from "@/lib/agrimarket/farmer-profile-validation";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -272,7 +273,7 @@ export default function AgrimarketProducerProfilePage() {
       setMessage(body.message || "Farm profile saved.");
       try {
         sessionStorage.setItem(`JRIDE_FARM_PROFILE_SAVED:${sessionCode}`, JSON.stringify({
-          message: "Farm profile saved. Your farm/store name is locked. " + (body.message || ""),
+          message: body.message || "Farm profile saved.",
           at: Date.now(),
         }));
       } catch { /* Saving succeeds even when the optional dashboard notice cannot be stored. */ }
@@ -289,6 +290,16 @@ export default function AgrimarketProducerProfilePage() {
   const barangays = agrimarketBarangays(form.town);
   const legacyBarangay = form.barangay && !barangays.includes(form.barangay) ? form.barangay : "";
 
+  const directionsError = profile
+    ? driverDirectionsError({
+        directions: form.pickup_driver_directions,
+        contactName: form.contact_name,
+        vendorName: form.vendor_name,
+        town: form.town,
+        barangay: form.barangay,
+      })
+    : null;
+
   const saveRequirement = !profile || !editing
     ? ""
     : profileCheck.phoneAvailable === false
@@ -303,8 +314,8 @@ export default function AgrimarketProducerProfilePage() {
           ? `The pickup pin must be inside ${form.town}.`
           : !form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible
             ? "Choose at least one vehicle that can reach the pickup point."
-            : form.pickup_driver_directions.trim().length < 5
-              ? "Add a clear driver landmark or direction."
+            : directionsError
+              ? directionsError
               : "";
 
   if (disabled) return <FarmerUnavailable section="profile" />;
@@ -550,13 +561,14 @@ export default function AgrimarketProducerProfilePage() {
                   Driver directions / landmark
                   <textarea
                     required
-                    minLength={5}
+                    minLength={8}
                     maxLength={1000}
                     value={form.pickup_driver_directions}
                     onChange={(event) => setForm({ ...form, pickup_driver_directions: event.target.value })}
                     className="mt-1 min-h-24 w-full rounded-xl border px-3 py-3"
-                    placeholder="Example: Meet at the roadside beside the barangay hall."
+                    placeholder="Example: Blue gate beside the barangay hall, along the concrete road."
                   />
+                  <span className={styles.fieldHint}>Give a landmark, road detail, gate, or exact meeting point. Do not enter only the farm/store name.</span>
                 </label>
               </div>
             </fieldset>
@@ -585,7 +597,7 @@ export default function AgrimarketProducerProfilePage() {
                 !pickup.launch_eligible ||
                 pickup.resolved_town !== form.town ||
                 (!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible) ||
-                form.pickup_driver_directions.trim().length < 5 ||
+                Boolean(directionsError) ||
                 profileCheck.phoneAvailable === false ||
                 (!profile.vendor_name_locked && profileCheck.storeNameAvailable === false)
               }
