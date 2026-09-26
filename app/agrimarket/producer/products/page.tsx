@@ -254,10 +254,10 @@ export default function AgrimarketProducerProductsPage() {
   return (
     <FarmerWorkspace section="products" accountCode={sessionCode} onSignOut={() => void signOut()} onRefresh={() => void loadProducts()} loading={loading || restoring || Boolean(busy)}>
         <div className={styles.productHeading}>
-          <div><h1 className="break-words">{vendorName || "Your products"}</h1><p>Your products, photos and stock.</p>{!vendorName.trim() ? <p role="alert" className="mt-2 text-sm font-bold text-amber-800">Store name required. <a href="#farm-details" className="underline">Complete Farm details</a> before publishing.</p> : null}</div>
-          <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>
+          <div><h1 className="break-words">{vendorName || "Your products"}</h1><p>Your products, photos and stock.</p>{!vendorName.trim() ? <p role="alert" className="mt-2 text-sm font-bold text-amber-800">Store name required. <Link href="/agrimarket/producer/profile" className="underline">Complete Farm profile</Link> before publishing.</p> : <Link href="/agrimarket/producer/profile" className="mt-1 inline-block text-xs font-semibold text-[#5b6c5d] underline">View farm profile</Link>}</div>
+          {(products.length > 0 || showCreate) && <button type="button" className={styles.addButton} aria-label="Add product" aria-expanded={showCreate} aria-controls="new-product" onClick={() => { setShowButchering(false); setShowCreate(!showCreate); }}>{showCreate ? <X size={23} /> : <Plus size={23} />}</button>}
         </div>
-        <div className={styles.productActions}><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>
+        {(showButchering || products.some((product) => ["livestock", "meat"].includes(product.product_group))) && <div className={styles.productActions}><button type="button" disabled={!!busy} className={styles.secondaryButton} onClick={() => { setShowCreate(false); setShowButchering(true); }}>Schedule butchering</button></div>}
         {showButchering && <ButcheringForm accessCode={accessCode} headers={farmerSessionHeaders(sessionCode, true)} onClose={() => setShowButchering(false)} onSaved={async count => { setShowButchering(false); setMessage(`Butchering schedule saved with ${count} meat ${count === 1 ? "cut" : "cuts"}.`); await loadProducts(); }} />}
         <FarmerFeedback error={authError || (showCreate ? undefined : error)} message={message} />
 
@@ -342,14 +342,7 @@ export default function AgrimarketProducerProductsPage() {
             </article>;
           })}
         </section>
-        <details id="farm-details" className={styles.farmDetails} open={!vendorName.trim() || undefined}>
-          <summary>Farm details</summary>
-          <div className={styles.farmDetailsBody}>
-            <p className="font-semibold">{vendorName || "Farm/store name not set"}</p>
-            <p className="mt-2 text-sm">Review and confirm your farm/store name in Farm profile. Once confirmed and saved, you cannot change it in the app.</p>
-            <Link href="/agrimarket/producer/profile" className={styles.secondaryButton}>Open Farm profile</Link>
-          </div>
-        </details>
+
     </FarmerWorkspace>
   );
 }
