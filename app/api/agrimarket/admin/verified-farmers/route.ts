@@ -1,7 +1,7 @@
 import { randomBytes, randomInt } from "crypto";
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
-import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
 import {
   createServiceSupabase,
   jsonNoStore,
@@ -126,6 +126,13 @@ function provisioningFailure(error: any) {
       ok: false,
       error: "AGRIMARKET_FARMER_PHONE_ALREADY_REGISTERED",
       message: "A farmer with this mobile number already has an open or approved Agrimarket record.",
+    });
+  }
+  if (raw.includes("agrimarket_producers_town_vendor_name_ci_uidx") || raw.includes("STORE_NAME_TAKEN")) {
+    return jsonNoStore(409, {
+      ok: false,
+      error: "AGRIMARKET_STORE_NAME_TAKEN",
+      message: "That farm/store name is already used in the selected municipality. Choose another name or keep the farmer in the current municipality.",
     });
   }
   if (raw.includes("store_name_required") || raw.includes("STORE_NAME_REQUIRED")) {
@@ -401,7 +408,7 @@ export async function POST(req: NextRequest) {
       const phoneDisplay = singleLine(body?.phone);
       const phoneNormalized = normalizePhone(phoneDisplay);
       const town = TOWN_BY_LOWER.get(text(body?.town).toLowerCase()) || null;
-      const barangay = singleLine(body?.barangay) || null;
+      const barangayInput = singleLine(body?.barangay);
       const pickupLabel = singleLine(body?.private_pickup_label || body?.pickup_label);
       const pickupLat = finiteCoordinate(body?.private_pickup_lat ?? body?.pickup_lat, "lat");
       const pickupLng = finiteCoordinate(body?.private_pickup_lng ?? body?.pickup_lng, "lng");
@@ -428,8 +435,9 @@ export async function POST(req: NextRequest) {
       if (!town) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_TOWN_INVALID", message: "Choose an Agrimarket launch municipality." });
       }
-      if (barangay && barangay.length > 100) {
-        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_BARANGAY_INVALID", message: "Barangay must be 100 characters or fewer." });
+      const barangay = canonicalAgrimarketBarangay(town, barangayInput);
+      if (!barangay) {
+        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_BARANGAY_INVALID", message: `Choose a barangay from the ${town} list.` });
       }
       if (pickupLabel.length < 2 || pickupLabel.length > 180 || pickupLat == null || pickupLng == null) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID", message: "Set and verify the corrected private pickup pin on the map." });
@@ -481,7 +489,7 @@ export async function POST(req: NextRequest) {
           p_phone_display: phoneDisplay,
           p_phone_normalized: phoneNormalized,
           p_town: town,
-          p_barangay: barangay || resolvedLocation.barangay,
+          p_barangay: barangay,
           p_pickup_label: pickupLabel,
           p_pickup_lat: pickupLat,
           p_pickup_lng: pickupLng,
@@ -522,7 +530,7 @@ export async function POST(req: NextRequest) {
     const phoneDisplay = singleLine(body?.phone);
     const phoneNormalized = normalizePhone(phoneDisplay);
     const town = TOWN_BY_LOWER.get(text(body?.town).toLowerCase()) || null;
-    const barangay = singleLine(body?.barangay) || null;
+    const barangayInput = singleLine(body?.barangay);
     const pickupLabel = singleLine(body?.private_pickup_label || body?.pickup_label);
     const pickupLat = finiteCoordinate(body?.private_pickup_lat ?? body?.pickup_lat, "lat");
     const pickupLng = finiteCoordinate(body?.private_pickup_lng ?? body?.pickup_lng, "lng");
@@ -548,8 +556,9 @@ export async function POST(req: NextRequest) {
     if (!town) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_TOWN_INVALID", message: "Choose an Agrimarket launch municipality." });
     }
-    if (barangay && barangay.length > 100) {
-      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_BARANGAY_INVALID", message: "Barangay must be 100 characters or fewer." });
+    const barangay = canonicalAgrimarketBarangay(town, barangayInput);
+    if (!barangay) {
+      return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_BARANGAY_INVALID", message: `Choose a barangay from the ${town} list.` });
     }
     if (pickupLabel.length < 2 || pickupLabel.length > 180 || pickupLat == null || pickupLng == null) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_VERIFIED_FARMER_PICKUP_PIN_INVALID", message: "Set and verify the private pickup pin on the map, then enter a recognizable pickup description." });
@@ -615,7 +624,7 @@ export async function POST(req: NextRequest) {
       unusedAccessCode(admin),
     ]);
     const generatedPin = temporaryPin();
-    const finalBarangay = barangay || resolvedLocation.barangay;
+    const finalBarangay = barangay;
 
     const rpcRes = await admin
       .rpc("agrimarket_admin_provision_verified_farmer_v2", {

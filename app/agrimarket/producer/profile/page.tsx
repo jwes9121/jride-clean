@@ -5,7 +5,7 @@ import FarmerPickupMap, {
   type FarmerPickupPin,
 } from "@/components/agrimarket/FarmerPickupMap";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
-import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, agrimarketBarangays, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -77,6 +77,13 @@ export default function AgrimarketProducerProfilePage() {
   const [disabled, setDisabled] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [profileCheck, setProfileCheck] = useState<{
+    checking: boolean;
+    phoneAvailable: boolean | null;
+    storeNameAvailable: boolean | null;
+    error: string;
+  }>({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
+  const profileCheckGeneration = useRef(0);
   const flight = useRef(false);
 
   useEffect(() => {
@@ -116,6 +123,7 @@ export default function AgrimarketProducerProfilePage() {
       setProfile(next);
       setEditing(!next.profile_complete);
       setConfirmingName(false);
+      setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
       setForm({
         contact_name: next.contact_name || "",
         contact_phone: next.contact_phone || "",
@@ -148,9 +156,83 @@ export default function AgrimarketProducerProfilePage() {
     }
   }
 
+  async function checkProfileIdentity(showError: boolean): Promise<boolean> {
+    if (!sessionCode) return false;
+    const phoneDigits = form.contact_phone.replace(/\D/g, "");
+    const vendorName = form.vendor_name.trim().replace(/\s+/g, " ");
+    if (phoneDigits.length < 10 || !form.town) return false;
+
+    const generation = ++profileCheckGeneration.current;
+    setProfileCheck((current) => ({ ...current, checking: true, error: "" }));
+    try {
+      const params = new URLSearchParams({
+        town: form.town,
+        phone: form.contact_phone,
+        vendor_name: vendorName,
+      });
+      const response = await fetch(`/api/agrimarket/producer/profile-check?${params}`, {
+        cache: "no-store",
+        headers: farmerSessionHeaders(sessionCode),
+        signal: AbortSignal.timeout(8000),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (response.status === 401 || response.status === 403) {
+        invalidate();
+        throw new Error(body?.message || "Sign in again to check your farmer details.");
+      }
+      if (!response.ok || body?.ok !== true) {
+        throw new Error(body?.message || "JRide could not check the mobile number and farm/store name.");
+      }
+      if (generation !== profileCheckGeneration.current) return false;
+      const phoneAvailable = body.phone_available === true;
+      const storeNameAvailable = body.store_name_available == null ? null : body.store_name_available === true;
+      setProfileCheck({ checking: false, phoneAvailable, storeNameAvailable, error: "" });
+      setError((current) => {
+        if (
+          current.includes("mobile number is already registered") ||
+          current.includes("farm/store name already exists")
+        ) return "";
+        return current;
+      });
+
+      if (showError && !phoneAvailable) {
+        setError("This mobile number is already registered to another AgriMarket farmer account. Use a different number.");
+      } else if (showError && !profile?.vendor_name_locked && vendorName.length < 2) {
+        setError("Enter a farm or store name between 2 and 60 characters.");
+      } else if (showError && !profile?.vendor_name_locked && storeNameAvailable !== true) {
+        setError(`This farm/store name already exists in ${form.town}. Choose a different name.`);
+      }
+      return phoneAvailable && (
+        profile?.vendor_name_locked === true ||
+        (vendorName.length >= 2 && storeNameAvailable === true)
+      );
+    } catch (cause) {
+      if (generation !== profileCheckGeneration.current) return false;
+      const message = cause instanceof Error ? cause.message : "JRide could not check your farmer details.";
+      setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: message });
+      if (showError) setError(message);
+      return false;
+    }
+  }
+
+  useEffect(() => {
+    if (!editing || !sessionCode) return;
+    const phoneDigits = form.contact_phone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || !form.town) {
+      setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
+      return;
+    }
+    const timer = window.setTimeout(() => { void checkProfileIdentity(false); }, 450);
+    return () => window.clearTimeout(timer);
+    // Identity checks intentionally follow the editable farmer fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, sessionCode, form.contact_phone, form.town, form.vendor_name]);
+
   async function save(event: React.FormEvent) {
     event.preventDefault();
     if (!sessionCode || saving || saveFlight.current || flight.current) return;
+    setError("");
+    if (!(await checkProfileIdentity(true))) return;
     if (!profile?.vendor_name_locked) { setConfirmingName(true); return; }
     await persistProfile(false);
   }
@@ -204,9 +286,16 @@ export default function AgrimarketProducerProfilePage() {
     }
   }
 
+  const barangays = agrimarketBarangays(form.town);
+  const legacyBarangay = form.barangay && !barangays.includes(form.barangay) ? form.barangay : "";
+
   const saveRequirement = !profile || !editing
     ? ""
-    : pickup.resolving
+    : profileCheck.phoneAvailable === false
+      ? "Use a mobile number that is not already registered to another AgriMarket farmer."
+      : !profile.vendor_name_locked && profileCheck.storeNameAvailable === false
+        ? `Choose a farm/store name that is not already used in ${form.town}.`
+        : pickup.resolving
       ? "Wait while JRide verifies the pickup municipality."
       : pickup.lat == null || pickup.lng == null || !pickup.launch_eligible
         ? "Place and verify the actual pickup point on the map."
@@ -334,10 +423,18 @@ export default function AgrimarketProducerProfilePage() {
                     required
                     inputMode="tel"
                     value={form.contact_phone}
-                    onChange={(event) => setForm({ ...form, contact_phone: event.target.value })}
+                    onChange={(event) => {
+                      profileCheckGeneration.current += 1;
+                      setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
+                      setForm({ ...form, contact_phone: event.target.value });
+                      setError("");
+                    }}
                     className="mt-1 w-full rounded-xl border px-3 py-3"
                     placeholder="09XXXXXXXXX"
                   />
+                  {profileCheck.checking && <span className={styles.fieldHint}>Checking number...</span>}
+                  {!profileCheck.checking && profileCheck.phoneAvailable === false && <span className="text-xs font-normal text-red-700">Already registered to another AgriMarket farmer.</span>}
+                  {!profileCheck.checking && profileCheck.phoneAvailable === true && <span className="text-xs font-normal text-emerald-700">Mobile number is available for this account.</span>}
                 </label>
                 <label className="text-sm font-semibold">
                   Municipality
@@ -347,8 +444,11 @@ export default function AgrimarketProducerProfilePage() {
                         required
                         value={form.town}
                         onChange={(event) => {
+                          profileCheckGeneration.current += 1;
+                          setProfileCheck({ checking: false, phoneAvailable: null, storeNameAvailable: null, error: "" });
                           setForm({ ...form, town: event.target.value, barangay: "" });
                           setPickup(emptyFarmerPin());
+                          setError("");
                         }}
                         className="mt-1 w-full rounded-xl border px-3 py-3"
                       >
@@ -369,13 +469,16 @@ export default function AgrimarketProducerProfilePage() {
                 </label>
                 <label className="text-sm font-semibold">
                   Barangay
-                  <input
+                  <select
                     required
                     value={form.barangay}
                     onChange={(event) => setForm({ ...form, barangay: event.target.value })}
-                    className="mt-1 w-full rounded-xl border px-3 py-3"
-                    placeholder="Barangay"
-                  />
+                    className="mt-1 w-full rounded-xl border bg-white px-3 py-3"
+                  >
+                    <option value="">Select barangay</option>
+                    {legacyBarangay && <option value={legacyBarangay}>{legacyBarangay} - choose official barangay</option>}
+                    {barangays.map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                  </select>
                 </label>
                 <label className="text-sm font-semibold sm:col-span-2">
                   Farm / store name
@@ -385,10 +488,17 @@ export default function AgrimarketProducerProfilePage() {
                     maxLength={60}
                     readOnly={profile.vendor_name_locked}
                     value={form.vendor_name}
-                    onChange={(event) => setForm({ ...form, vendor_name: event.target.value })}
+                    onChange={(event) => {
+                      profileCheckGeneration.current += 1;
+                      setProfileCheck((current) => ({ ...current, storeNameAvailable: null, error: "" }));
+                      setForm({ ...form, vendor_name: event.target.value });
+                      setError("");
+                    }}
                     className="mt-1 w-full rounded-xl border px-3 py-3"
                     placeholder="Name customers will see"
                   />
+                  {!profile.vendor_name_locked && !profileCheck.checking && profileCheck.storeNameAvailable === false && <span className="text-xs font-normal text-red-700">This name already exists in {form.town}. Choose a different name.</span>}
+                  {!profile.vendor_name_locked && !profileCheck.checking && profileCheck.storeNameAvailable === true && <span className="text-xs font-normal text-emerald-700">This name is available in {form.town}.</span>}
                   <span className="mt-2 block rounded-lg bg-amber-50 p-3 text-sm font-normal text-amber-950">
                     {profile.vendor_name_locked
                       ? "This confirmed name is locked. Contact JRide for a correction."
@@ -400,7 +510,13 @@ export default function AgrimarketProducerProfilePage() {
 
             <fieldset className={styles.formSection}>
               <legend><span>02</span> Actual pickup point</legend>
-              <FarmerPickupMap selectedTown={form.town} value={pickup} onChange={setPickup} farmerCode={sessionCode} />
+              <FarmerPickupMap selectedTown={form.town} value={pickup} onChange={(next) => {
+                setPickup(next);
+                const resolvedBarangay = next.resolved_barangay
+                  ? canonicalAgrimarketBarangay(form.town, next.resolved_barangay)
+                  : null;
+                if (resolvedBarangay) setForm((current) => ({ ...current, barangay: resolvedBarangay }));
+              }} farmerCode={sessionCode} />
             </fieldset>
 
             <fieldset className={styles.formSection}>
@@ -469,7 +585,9 @@ export default function AgrimarketProducerProfilePage() {
                 !pickup.launch_eligible ||
                 pickup.resolved_town !== form.town ||
                 (!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible) ||
-                form.pickup_driver_directions.trim().length < 5
+                form.pickup_driver_directions.trim().length < 5 ||
+                profileCheck.phoneAvailable === false ||
+                (!profile.vendor_name_locked && profileCheck.storeNameAvailable === false)
               }
               className={styles.primaryButton}
             >

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import FarmerPickupMap, { FarmerPickupPin } from "./FarmerPickupMap";
 import { ProductPhoto } from "@/app/agrimarket/ProductPhoto";
-import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, agrimarketBarangays, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
 
 type VerifiedFarmer = {
   application_id: string;
@@ -286,17 +286,22 @@ export default function VerifiedFarmersAdminPage() {
   }
 
   function updateTown(value: string) {
-    setForm((current) => ({ ...current, town: value, pin_confirmed: false }));
+    setForm((current) => ({ ...current, town: value, barangay: "", pin_confirmed: false }));
+    setPin(EMPTY_PIN);
   }
 
   function updatePin(value: FarmerPickupPin) {
     setPin(value);
-    setForm((current) => ({
-      ...current,
-      town: current.town || (value.launch_eligible ? value.resolved_town || "" : ""),
-      barangay: current.barangay || value.resolved_barangay || "",
-      pin_confirmed: false,
-    }));
+    setForm((current) => {
+      const town = current.town || (value.launch_eligible ? value.resolved_town || "" : "");
+      const resolvedBarangay = value.resolved_barangay ? canonicalAgrimarketBarangay(town, value.resolved_barangay) : null;
+      return {
+        ...current,
+        town,
+        barangay: resolvedBarangay || current.barangay,
+        pin_confirmed: false,
+      };
+    });
   }
 
   async function checkPhone() {
@@ -369,6 +374,7 @@ export default function VerifiedFarmersAdminPage() {
     }
     if (phoneCheck.duplicate) missing.push("a mobile number without an existing farmer record");
     if (!form.town) missing.push("municipality");
+    if (!canonicalAgrimarketBarangay(form.town, form.barangay)) missing.push("barangay from the selected municipality");
     if (pin.lat == null || pin.lng == null) missing.push("pickup pin on the map");
     if (pin.resolving) missing.push("completed map verification");
     if (!pin.launch_eligible || !pin.resolved_town) missing.push("pin inside a launch municipality");
@@ -402,6 +408,7 @@ export default function VerifiedFarmersAdminPage() {
     if (editForm.farmer_name.trim().length < 2) missing.push("farmer full name");
     if (!normalizePhone(editForm.phone)) missing.push("valid Philippine mobile number");
     if (!editForm.town) missing.push("municipality");
+    if (!canonicalAgrimarketBarangay(editForm.town, editForm.barangay)) missing.push("barangay from the selected municipality");
     if (editPin.lat == null || editPin.lng == null) missing.push("corrected pickup pin");
     if (editPin.resolving) missing.push("completed map verification");
     if (!editPin.launch_eligible || !editPin.resolved_town) missing.push("pin inside a launch municipality");
@@ -442,7 +449,7 @@ export default function VerifiedFarmersAdminPage() {
         farmer_name: form.farmer_name,
         phone: form.phone,
         town: form.town,
-        barangay: form.barangay || pin.resolved_barangay || null,
+        barangay: form.barangay,
         private_pickup_label: form.private_pickup_label,
         private_pickup_lat: pin.lat,
         private_pickup_lng: pin.lng,
@@ -552,21 +559,23 @@ export default function VerifiedFarmersAdminPage() {
   }
 
   function updateEditTown(value: string) {
-    setEditForm((current) => (current ? { ...current, town: value, pin_confirmed: false } : current));
+    setEditForm((current) => (current ? { ...current, town: value, barangay: "", pin_confirmed: false } : current));
+    setEditPin(EMPTY_PIN);
   }
 
   function updateEditPin(value: FarmerPickupPin) {
     setEditPin(value);
-    setEditForm((current) =>
-      current
-        ? {
-            ...current,
-            town: current.town || (value.launch_eligible ? value.resolved_town || "" : ""),
-            barangay: current.barangay || value.resolved_barangay || "",
-            pin_confirmed: false,
-          }
-        : current
-    );
+    setEditForm((current) => {
+      if (!current) return current;
+      const town = current.town || (value.launch_eligible ? value.resolved_town || "" : "");
+      const resolvedBarangay = value.resolved_barangay ? canonicalAgrimarketBarangay(town, value.resolved_barangay) : null;
+      return {
+        ...current,
+        town,
+        barangay: resolvedBarangay || current.barangay,
+        pin_confirmed: false,
+      };
+    });
   }
 
   async function saveProfileEdit() {
@@ -584,7 +593,7 @@ export default function VerifiedFarmersAdminPage() {
         farmer_name: editForm.farmer_name,
         phone: editForm.phone,
         town: editForm.town,
-        barangay: editForm.barangay || editPin.resolved_barangay || null,
+        barangay: editForm.barangay,
         private_pickup_label: editForm.private_pickup_label,
         private_pickup_lat: editPin.lat,
         private_pickup_lng: editPin.lng,
@@ -718,7 +727,10 @@ export default function VerifiedFarmersAdminPage() {
 
               <label className="text-sm font-semibold">
                 Barangay
-                <input value={form.barangay} onChange={(event) => update("barangay", event.target.value)} className="mt-1 w-full rounded-xl border px-3 py-3" maxLength={100} placeholder="Filled from the pin when available" />
+                <select required value={form.barangay} onChange={(event) => update("barangay", event.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-3">
+                  <option value="">Select barangay</option>
+                  {agrimarketBarangays(form.town).map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                </select>
               </label>
 
               <FarmerPickupMap selectedTown={form.town} value={pin} onChange={updatePin} />
@@ -1066,7 +1078,10 @@ export default function VerifiedFarmersAdminPage() {
               </label>
               <label className="text-sm font-semibold sm:col-span-2">
                 Barangay
-                <input value={editForm.barangay} onChange={(event) => updateEdit("barangay", event.target.value)} className="mt-1 w-full rounded-xl border px-3 py-3" maxLength={100} />
+                <select required value={editForm.barangay} onChange={(event) => updateEdit("barangay", event.target.value)} className="mt-1 w-full rounded-xl border bg-white px-3 py-3">
+                  <option value="">Select barangay</option>
+                  {agrimarketBarangays(editForm.town).map((barangay) => <option key={barangay} value={barangay}>{barangay}</option>)}
+                </select>
               </label>
 
               <FarmerPickupMap selectedTown={editForm.town} value={editPin} onChange={updateEditPin} />

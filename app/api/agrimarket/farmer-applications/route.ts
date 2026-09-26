@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../_lib/admin-farmer-location";
-import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
+import { AGRIMARKET_ACTIVE_TOWNS, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
 import {
   agrimarketOnboardingDisabledResponse,
   agrimarketOnboardingEnabled,
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     const phoneDisplay = text(body?.phone);
     const phoneNormalized = normalizePhone(phoneDisplay);
     const town = TOWN_BY_LOWER.get(text(body?.town).toLowerCase()) || null;
-    const barangay = text(body?.barangay).replace(/\s+/g, " ").slice(0, 100) || null;
+    const barangayInput = text(body?.barangay).replace(/\s+/g, " ").slice(0, 100);
     const pickupLabel = text(body?.pickup_label || body?.pickupLabel).replace(/\s+/g, " ").slice(0, 180);
     const pickupLat = finiteCoordinate(body?.pickup_lat ?? body?.lat, "lat");
     const pickupLng = finiteCoordinate(body?.pickup_lng ?? body?.lng, "lng");
@@ -167,6 +167,14 @@ export async function POST(req: NextRequest) {
     }
     if (!town) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_APPLICANT_TOWN_INVALID", message: "Choose an Agrimarket launch municipality." });
+    }
+    const barangay = canonicalAgrimarketBarangay(town, barangayInput);
+    if (!barangay) {
+      return jsonNoStore(400, {
+        ok: false,
+        error: "AGRIMARKET_APPLICANT_BARANGAY_INVALID",
+        message: `Choose a barangay from the ${town} list.`,
+      });
     }
     if (!pickupLabel || pickupLat == null || pickupLng == null) {
       return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PRIVATE_PICKUP_PIN_REQUIRED", message: "Describe and pin the actual private handoff point." });
@@ -194,7 +202,7 @@ export async function POST(req: NextRequest) {
       p_actor: actor || phoneNormalized, p_actor_role: actorRole,
       p_payload: {
         applicant_name: applicantName, phone_display: phoneDisplay, phone_normalized: phoneNormalized,
-        town, barangay: resolved.barangay || barangay, pickup_label: pickupLabel, pickup_lat: pickupLat, pickup_lng: pickupLng,
+        town, barangay, pickup_label: pickupLabel, pickup_lat: pickupLat, pickup_lng: pickupLng,
         intended_products: products, identity_type: identityType, identity_reference_last4: identityLast4, applicant_note: applicantNote,
         pickup_motorcycle_accessible: body.pickup_motorcycle_accessible === true,
         pickup_tricycle_accessible: body.pickup_tricycle_accessible === true,

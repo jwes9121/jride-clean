@@ -35,10 +35,10 @@ function registrationHarness({ enabled=true, role=null, resolvedTown='Lagawe' }=
   const jsonNoStore=(status,body)=>new Response(JSON.stringify(body),{status});
   const server={agrimarketOnboardingEnabled:()=>enabled,agrimarketOnboardingDisabledResponse:()=>jsonNoStore(503,{ok:false}),jsonNoStore,createServiceSupabase:()=>client,
     requireAgrimarketStaff:async()=>role?{ok:true,role,actor:'verified-staff@example.test',user:{id:'staff'}}:{ok:false,response:jsonNoStore(401,{ok:false})}};
-  const location={reverseGeocodeFarmerPin:async()=>({town:resolvedTown,barangay:'Test barangay',launch_eligible:true})};
+  const location={reverseGeocodeFarmerPin:async()=>({town:resolvedTown,barangay:'Poblacion West',launch_eligible:true})};
   return {calls,public:load('app/api/agrimarket/farmer-applications/route.ts',{'../_lib/server':server,'../_lib/admin-farmer-location':location}),admin:load('app/api/agrimarket/admin/farmer-applications/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location}),verified:load('app/api/agrimarket/admin/verified-farmers/route.ts',{'../../_lib/server':server,'../../_lib/admin-farmer-location':location})};
 }
-const validApplication={applicant_name:'Test farmer',phone:'09000000002',town:'Lagawe',pickup_label:'Test roadside',pickup_lat:16.8,pickup_lng:121.1,intended_products:'Rice, eggs',pickup_motorcycle_accessible:true,pickup_tricycle_accessible:false,pickup_driver_directions:'Use the marked test roadside point',farmer_consent:true,pin_confirmed:true,client_request_id:'81000000-0000-4000-8000-000000000001'};
+const validApplication={applicant_name:'Test farmer',phone:'09000000002',town:'Lagawe',barangay:'Poblacion West',pickup_label:'Test roadside',pickup_lat:16.8,pickup_lng:121.1,intended_products:'Rice, eggs',pickup_motorcycle_accessible:true,pickup_tricycle_accessible:false,pickup_driver_directions:'Use the marked test roadside point',farmer_consent:true,pin_confirmed:true,client_request_id:'81000000-0000-4000-8000-000000000001'};
 const request=(body)=>({json:async()=>body,nextUrl:new URL('http://localhost/api/agrimarket/farmer-applications')});
 
 test('registration rejects missing/coerced pins, consent and municipality mismatch before a write',async()=>{
