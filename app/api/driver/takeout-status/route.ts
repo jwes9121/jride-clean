@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
       (existing.data as any).takeout_pay_on_delivery_amount
     );
     if (
-      strictCashSplitClient &&
+      (strictCashSplitClient || cashCollectedAmount != null) &&
       expectedFinal != null &&
       expectedFinal > 0 &&
       (cashCollectedAmount == null ||
@@ -512,10 +512,18 @@ export async function POST(req: NextRequest) {
   if (nextStatus === "cash_collected" && cashCollectedAmount != null) {
     patch.takeout_cash_first_collected_amount = cashCollectedAmount;
     patch.takeout_cash_first_collected_at = statusNowIso;
+    const expectedCashFirstAudit = money(
+      (existing.data as any).takeout_cash_first_amount
+    );
     patch.takeout_pricing_snapshot = {
       ...existingPricingSnapshot,
       takeout_cash_first_collected_amount: cashCollectedAmount,
       takeout_cash_first_collected_at: statusNowIso,
+      takeout_cash_first_expected_amount: expectedCashFirstAudit,
+      takeout_cash_first_amount_match:
+        expectedCashFirstAudit == null
+          ? null
+          : Math.abs(cashCollectedAmount - expectedCashFirstAudit) < 0.01,
       takeout_cash_first_collection_client_version:
         cashCollectionClientVersion || null,
     };
@@ -524,10 +532,18 @@ export async function POST(req: NextRequest) {
   if (nextStatus === "completed" && cashCollectedAmount != null) {
     patch.takeout_final_collected_amount = cashCollectedAmount;
     patch.takeout_final_collected_at = statusNowIso;
+    const expectedFinalAudit = money(
+      (existing.data as any).takeout_pay_on_delivery_amount
+    );
     patch.takeout_pricing_snapshot = {
       ...(patch.takeout_pricing_snapshot || existingPricingSnapshot),
       takeout_final_collected_amount: cashCollectedAmount,
       takeout_final_collected_at: statusNowIso,
+      takeout_final_expected_amount: expectedFinalAudit,
+      takeout_final_amount_match:
+        expectedFinalAudit == null
+          ? null
+          : Math.abs(cashCollectedAmount - expectedFinalAudit) < 0.01,
       takeout_final_collection_client_version:
         cashCollectionClientVersion || null,
     };
