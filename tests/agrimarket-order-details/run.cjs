@@ -27,10 +27,10 @@ const order = {
   customer_approved_total: '900', customer_reapproval_proposed_total: '1104',
   customer_reapproval_required_at: '2026-09-20T01:00:00Z', confirmed_cargo_weight_band: '101_200',
 };
-function harness({ denied = false, failTable, mismatch = false, missing = false } = {}) {
+function harness({ denied = false, failTable, mismatch = false, missing = false, orderRows } = {}) {
   const calls = [];
   const rows = {
-    agrimarket_orders: [order, { ...order, id: 'order-b', producer_id: 'farm-b', customer_user_id: 'customer-b', delivery_address_id: 'address-b' }],
+    agrimarket_orders: orderRows || [order, { ...order, id: 'order-b', producer_id: 'farm-b', customer_user_id: 'customer-b', delivery_address_id: 'address-b' }],
     agrimarket_order_items: [{ order_id: 'order-a', product_id: 'rice', product_name: 'Rice', quantity: '2', selling_unit: 'sack', unit_price: '205', line_total: '410', cargo_class: 'bulk_sack', condition_required: 'dry' }],
     passenger_verifications: missing ? [] : [{ user_id: 'customer-a', full_name: 'Test Customer', phone: 'PRIVATE PHONE' }, { user_id: 'customer-b', full_name: 'OTHER FARM CUSTOMER', phone: 'OTHER PHONE' }],
     passenger_addresses: [{ id: 'address-a', created_by_user_id: mismatch ? 'customer-b' : 'customer-a', label: 'Edited label', address_text: 'Saved address', landmark: 'Saved landmark' }],
@@ -45,8 +45,11 @@ function harness({ denied = false, failTable, mismatch = false, missing = false 
       const q = {
         select(value) { columns = value.split(','); return q; },
         eq(key, value) { data = data.filter(row => row[key] === value); return q; },
+        is(key, value) { data = data.filter(row => (row[key] ?? null) === value); return q; },
+        not(key, operator, value) { assert.equal(operator, 'is'); data = data.filter(row => (row[key] ?? null) !== value); return q; },
+        lte(key, value) { data = data.filter(row => row[key] && row[key] <= value); return q; },
         in(key, values) { data = data.filter(row => values.includes(row[key])); return q; },
-        order() { return q; }, limit(n) { data = data.slice(0,n); return q; },
+        order(key, options = {}) { data.sort((a,b) => options.ascending ? String(a[key] || '').localeCompare(String(b[key] || '')) : String(b[key] || '').localeCompare(String(a[key] || ''))); return q; }, limit(n) { data = data.slice(0,n); return q; },
         range(a,b) { data = data.slice(a,b+1); return q; },
         then(resolve, reject) { return Promise.resolve({ data: data.map(row => Object.fromEntries(columns.map(key => [key, row[key]]))), error: table === failTable ? { message: 'read failed' } : null }).then(resolve,reject); },
       }; return q;
@@ -89,6 +92,23 @@ async function main() {
   assert.equal(mismatched.customer.delivery_label,'Booked destination');
   assert.equal((await harness({missing:true}).farmer()).body.orders[0].customer.name,null);
   console.log('PASS missing profiles and mismatched address ownership never invent or leak details');
+  const now = Date.now();
+  const old = { ...order, id: 'prepared-old', order_code: 'AG-DELAYED', status: 'ready_for_dispatch',
+    created_at: new Date(now - 2 * 60 * 60_000).toISOString(), ready_at: new Date(now - 31 * 60_000).toISOString(),
+    preferred_vehicle_type: 'tricycle', dispatch_wait_code: 'outside_pickup_range',
+    dispatch_wait_vehicle_type: 'tricycle', dispatch_checked_at: new Date(now - 60_000).toISOString() };
+  const newer = Array.from({length: 101}, (_, i) => ({ ...order, id: `recent-${i}`, order_code: `AG-RECENT-${i}`,
+    created_at: new Date(now - i * 1000).toISOString() }));
+  const delayed = await harness({orderRows: [...newer, old]}).admin();
+  assert.equal(delayed.status, 200);
+  assert.equal(delayed.body.orders[0].order_code, 'AG-DELAYED');
+  assert.equal(delayed.body.orders[0].dispatch_attention.level, 'review_required');
+  assert.match(delayed.body.orders[0].dispatch_wait.message, /10 km road pickup limit/);
+  assert.equal(delayed.body.orders.filter(o => o.order_code === 'AG-DELAYED').length, 1);
+  const farmerDelay = await harness({orderRows: [old]}).farmer();
+  assert.equal(farmerDelay.body.orders[0].dispatch_attention.level, 'review_required');
+  assert.match(farmerDelay.body.orders[0].dispatch_wait.message, /staff review/);
+  console.log('PASS oldest prepared driver delays are surfaced and prioritized beyond the newest 100; farmer sees the same reason');
   for (const method of ['admin','farmer']) {
     const h = harness({denied:true}); assert.equal((await h[method]()).status,401); assert.equal(h.calls.length,0);
     for (const failTable of ['passenger_verifications','passenger_addresses','agrimarket_order_items']) assert.equal((await harness({failTable})[method]()).status,500);

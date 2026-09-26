@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const waitByCode = new Map<string, any>();
     if (view === "deliveries" && codes.length) {
       const waitResult = await admin.from("agrimarket_orders")
-        .select("order_code,status,preferred_vehicle_type,dispatch_wait_code,dispatch_wait_vehicle_type,dispatch_checked_at")
+        .select("order_code,status,preferred_vehicle_type,ready_at,assigned_driver_id,dispatch_wait_code,dispatch_wait_vehicle_type,dispatch_checked_at")
         .eq("customer_user_id", auth.user.id).in("order_code", codes);
       if (waitResult.error || !Array.isArray(waitResult.data)) return unavailable();
       for (const row of waitResult.data) waitByCode.set(row.order_code, row);
@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
             code: waitByCode.get(order.order_code).dispatch_wait_code,
             checkedAt: waitByCode.get(order.order_code).dispatch_checked_at,
             checkedVehicle: waitByCode.get(order.order_code).dispatch_wait_vehicle_type,
+            readyAt: waitByCode.get(order.order_code).ready_at,
+            assignedDriverId: waitByCode.get(order.order_code).assigned_driver_id,
             now: Date.now(),
           }) : null,
     })) });

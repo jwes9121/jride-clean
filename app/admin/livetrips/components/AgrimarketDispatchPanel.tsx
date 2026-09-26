@@ -23,6 +23,8 @@ export type AgrimarketDispatchOrder = {
   harvest_expected_end_at?: string | null;
   harvest_ready_at?: string | null;
   harvest_attention?: ScheduledHarvestAttention;
+  dispatch_attention?: { level: "duty_alert" | "review_required"; waiting_minutes: number; since: string } | null;
+  dispatch_wait?: { code: string; message: string; checked_at: string } | null;
   producer_confirm_expires_at?: string | null;
   preparation_minutes?: number | null;
   ready_at?: string | null;
@@ -189,10 +191,12 @@ export default function AgrimarketDispatchPanel() {
     const harvest = orders.filter((order) => order.status === "awaiting_harvest").length;
     const overdue = orders.filter((order) => order.harvest_attention === "overdue").length;
     const dueSoon = orders.filter((order) => order.harvest_attention === "due_soon").length;
+    const driverReview = orders.filter((order) => order.dispatch_attention?.level === "review_required").length;
+    const driverAlert = orders.filter((order) => order.dispatch_attention?.level === "duty_alert").length;
     const settlement = orders.filter(
       (order) => order.status === "delivered" && order.wallet_settlement_status !== "settled"
     ).length;
-    return { offered, assigned, harvest, overdue, dueSoon, settlement };
+    return { offered, assigned, harvest, overdue, dueSoon, driverAlert, driverReview, settlement };
   }, [orders]);
 
   async function runDispatch(order: AgrimarketDispatchOrder) {
@@ -252,6 +256,8 @@ export default function AgrimarketDispatchPanel() {
           {summary.harvest > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1">{summary.harvest} harvest</span> : null}
           {summary.dueSoon > 0 ? <span className="rounded-full bg-amber-100 px-2 py-1">{summary.dueSoon} starting soon</span> : null}
           {summary.overdue > 0 ? <span role="alert" className="rounded-full bg-rose-700 px-2 py-1 font-bold text-white">{summary.overdue} farmer updates overdue - open to follow up</span> : null}
+          {summary.driverReview > 0 ? <span role="alert" className="rounded-full bg-rose-700 px-2 py-1 font-bold text-white">{summary.driverReview} ready orders need staff review - open to resolve</span> : null}
+          {summary.driverAlert > 0 ? <span role="alert" className="rounded-full bg-amber-700 px-2 py-1 font-bold text-white">{summary.driverAlert} ready orders need driver follow-up - open to check</span> : null}
           {summary.settlement > 0 ? <span className="rounded-full bg-rose-100 px-2 py-1">{summary.settlement} settlement</span> : null}
           <button
             type="button"
@@ -362,6 +368,17 @@ export default function AgrimarketDispatchPanel() {
                 {order.status === "awaiting_harvest" ? (
                   <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
                     Harvest reservation confirmed. Expected {formatDate(order.harvest_expected_start_at)}{order.harvest_expected_end_at ? ` to ${formatDate(order.harvest_expected_end_at)}` : ""}. No driver dispatch until farmer marks harvest ready.
+                  </div>
+                ) : null}
+                {order.dispatch_attention ? (
+                  <div role="alert" className={`mt-2 rounded-lg border p-3 text-xs ${order.dispatch_attention.level === "review_required" ? "border-rose-400 bg-rose-50 text-rose-950" : "border-amber-400 bg-amber-50 text-amber-950"}`}>
+                    <p className="font-bold">{order.dispatch_attention.level === "review_required" ? "Staff review required" : "Duty officer follow-up"}: ready for dispatch for {order.dispatch_attention.waiting_minutes} min.</p>
+                    <p className="mt-1">Ready since {formatDate(order.dispatch_attention.since)} (Philippine time). {order.dispatch_wait ? `Driver search: ${order.dispatch_wait.message}` : "No current driver search reason available."}</p>
+                    <p className="mt-1 font-semibold">Contact the customer and farmer about the delay. Check the search result and arrange a driver or an agreed delivery plan. Resolve payment and prepared goods before any cancellation.</p>
+                  </div>
+                ) : order.dispatch_wait ? (
+                  <div className="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+                    Driver search: {order.dispatch_wait.message}
                   </div>
                 ) : null}
 
