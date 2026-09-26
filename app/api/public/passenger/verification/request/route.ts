@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { createClient as createAdmin, createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { validatePassengerVerificationName } from "@/lib/passengerVerificationName";
+import {
+  normalizeVerificationLocation,
+  verificationNetworkLocation,
+} from "@/lib/passenger/verificationLocation";
 
 export const dynamic = "force-dynamic";
 
@@ -142,6 +146,9 @@ export async function POST(req: Request) {
     let town = "";
     let id_front_path = "";
     let selfie_with_id_path = "";
+    let locationInput: Record<string, unknown> = {};
+    let locationSource: "browser_geolocation" | "client_geolocation" =
+      ct.includes("multipart/form-data") ? "browser_geolocation" : "client_geolocation";
 
     async function uploadToBucket(file: File, bucketName: string, keyPrefix: string) {
       const ext = file?.name && file.name.includes(".") ? file.name.split(".").pop() : "jpg";
@@ -171,6 +178,13 @@ export async function POST(req: Request) {
 
         full_name = String(fd.get("full_name") || fd.get("fullName") || fd.get("fullname") || "").trim();
         town = String(fd.get("town") || fd.get("Town") || "").trim();
+        locationInput = {
+          status: fd.get("location_status"),
+          latitude: fd.get("location_lat"),
+          longitude: fd.get("location_lng"),
+          accuracy_m: fd.get("location_accuracy_m"),
+          captured_at: fd.get("location_captured_at"),
+        };
 
         const nameValidation = validatePassengerVerificationName(full_name);
         if (!nameValidation.valid) {
@@ -199,6 +213,13 @@ export async function POST(req: Request) {
         town = String(body?.town || "").trim();
         id_front_path = body?.id_front_path ? String(body.id_front_path).trim() : "";
         selfie_with_id_path = body?.selfie_with_id_path ? String(body.selfie_with_id_path).trim() : "";
+        locationInput = {
+          status: body?.location_status,
+          latitude: body?.location_lat,
+          longitude: body?.location_lng,
+          accuracy_m: body?.location_accuracy_m,
+          captured_at: body?.location_captured_at,
+        };
       }
     } catch (e: any) {
       return NextResponse.json(
@@ -232,6 +253,33 @@ export async function POST(req: Request) {
         { ok: false, error: "Selfie-with-ID required (upload failed or missing)." },
         { status: 400 }
       );
+    }
+
+    const verificationLocation = normalizeVerificationLocation(locationInput, locationSource);
+    const networkLocation = verificationNetworkLocation(req.headers);
+
+    async function recordSubmissionLocation(submittedAt: string) {
+      const result = await supabase
+        .from("passenger_verification_submission_locations")
+        .insert({
+          passenger_id,
+          request_submitted_at: submittedAt,
+          device_status: verificationLocation.status,
+          device_source: verificationLocation.source,
+          device_latitude: verificationLocation.latitude,
+          device_longitude: verificationLocation.longitude,
+          device_accuracy_m: verificationLocation.accuracy_m,
+          device_captured_at: verificationLocation.captured_at,
+          declared_town: town,
+          network_city: networkLocation.city,
+          network_region: networkLocation.region,
+          network_country: networkLocation.country,
+        });
+      if (result.error) {
+        console.error("[passenger_verification_location] insert failed", result.error.message);
+        return false;
+      }
+      return true;
     }
 
     const existing = await supabase
@@ -283,10 +331,14 @@ export async function POST(req: Request) {
         );
       }
 
+      const locationRecorded = await recordSubmissionLocation(ts);
       return NextResponse.json({
         ok: true,
         request: ins.data,
-        message: "Submitted. Please wait for review.",
+        location_recorded: locationRecorded,
+        message: locationRecorded
+          ? "Submitted. Please wait for review."
+          : "Submitted. Location snapshot could not be recorded; verification is still queued.",
       });
     }
 
@@ -314,10 +366,14 @@ export async function POST(req: Request) {
       );
     }
 
+    const locationRecorded = await recordSubmissionLocation(ts);
     return NextResponse.json({
       ok: true,
       request: upd.data,
-      message: "Submitted. Please wait for review.",
+      location_recorded: locationRecorded,
+      message: locationRecorded
+        ? "Submitted. Please wait for review."
+        : "Submitted. Location snapshot could not be recorded; verification is still queued.",
     });
   } catch (e: any) {
     return NextResponse.json(
