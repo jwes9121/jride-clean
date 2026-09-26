@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { handleTakeoutPickupDistanceException } from "@/lib/takeoutPickupDistanceException";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -412,7 +413,7 @@ async function assertDriverCanPropose(serviceSupabase: any, driverId: string, cu
 async function loadTakeoutOrder(serviceSupabase: any, orderId: string, bookingCode: string) {
   let q = serviceSupabase
     .from("bookings")
-        .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_id,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
+        .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,takeout_items_subtotal,takeout_pricing_status,takeout_pricing_snapshot,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_id,created_by_user_id,last_expired_driver_id,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at,passenger_name,to_label,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,created_at")
     .eq("service_type", "takeout")
     .limit(1);
 
@@ -609,6 +610,37 @@ export async function POST(req: NextRequest) {
       // JRIDE_TAKEOUT_PICKUP_EXCESS_DISPLAY_V3
       // Persist pickup excess breakdown so read routes and UIs can display the hidden total line item.
     };
+
+    if (
+      cashRequired &&
+      pickupBreakdown.pickup_distance_exception_required === true
+    ) {
+      const exceptionResult =
+        await handleTakeoutPickupDistanceException({
+          req,
+          serviceSupabase,
+          order,
+          driverId: driverAuth.driverId,
+          pricingSnapshot: snapshot,
+          actualDistanceKm: pickupBreakdown.pickup_distance_km,
+          cappedPickupFee: pickupBreakdown.pickup_excess_fee,
+          source: "manual",
+        });
+
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_PICKUP_DISTANCE_EXCEPTION",
+        message: exceptionResult.reassigned
+          ? "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. JRide released this assignment and is checking another eligible driver."
+          : "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. This order was released for JRide dispatch review.",
+        pickup_distance_km: exceptionResult.actualDistanceKm,
+        normal_pickup_fee_cap: exceptionResult.cappedPickupFee,
+        assignment_released: exceptionResult.released,
+        reassigned: exceptionResult.reassigned,
+        dispatch_review_required:
+          exceptionResult.dispatchReviewRequired,
+      });
+    }
 
     let updateQuery = serviceSupabase
       .from("bookings")
