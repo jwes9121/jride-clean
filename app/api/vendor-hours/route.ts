@@ -49,6 +49,18 @@ function manilaDateKey(value = new Date()): string {
   return year && month && day ? `${year}-${month}-${day}` : "";
 }
 
+function manilaClockKey(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MANILA_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(value);
+  const hour = parts.find((part) => part.type === "hour")?.value || "";
+  const minute = parts.find((part) => part.type === "minute")?.value || "";
+  return hour && minute ? `${hour}:${minute}` : "";
+}
+
 function future(value: unknown): boolean {
   const t = new Date(String(value || "")).getTime();
   return Number.isFinite(t) && t > Date.now();
@@ -185,7 +197,7 @@ export async function POST(req: NextRequest) {
     }
 
     const suspended = future(vendor?.suspended_until);
-    if (suspended && ["open_today", "extend"].includes(action)) {
+    if (suspended && ["open_today", "save_hours_and_open_today", "extend"].includes(action)) {
       return json(423, {
         ok: false,
         error: "VENDOR_SUSPENDED",
@@ -195,9 +207,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (action === "save_hours") {
+    if (action === "save_hours" || action === "save_hours_and_open_today") {
       const normalOpenTime = clean(body?.normal_open_time || body?.normalOpenTime);
       const normalCloseTime = clean(body?.normal_close_time || body?.normalCloseTime);
+      const reopenToday = action === "save_hours_and_open_today";
 
       if (!TIME_RE.test(normalOpenTime) || !TIME_RE.test(normalCloseTime)) {
         return json(400, {
@@ -215,16 +228,29 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      const now = new Date();
+      const nowClock = manilaClockKey(now);
+      if (
+        reopenToday &&
+        (!nowClock || nowClock < normalOpenTime || nowClock >= normalCloseTime)
+      ) {
+        return json(409, {
+          ok: false,
+          error: "OUTSIDE_UPDATED_VENDOR_HOURS",
+          message: "To reopen now, set an opening time at or before the current time and a closing time later than the current time.",
+        });
+      }
+
       const update = await admin
         .from("vendor_accounts")
         .update({
           normal_open_time: normalOpenTime,
           normal_close_time: normalCloseTime,
           hours_enforced: true,
-          hours_updated_at: new Date().toISOString(),
-          accepting_orders: false,
-          daily_open_date: null,
-          daily_opened_at: null,
+          hours_updated_at: now.toISOString(),
+          accepting_orders: reopenToday,
+          daily_open_date: reopenToday ? manilaDateKey(now) : null,
+          daily_opened_at: reopenToday ? now.toISOString() : null,
           extended_from: null,
           extended_until: null,
         })
@@ -233,7 +259,9 @@ export async function POST(req: NextRequest) {
       if (update.error) {
         return json(500, {
           ok: false,
-          error: "VENDOR_HOURS_SAVE_FAILED",
+          error: reopenToday
+            ? "VENDOR_HOURS_REOPEN_FAILED"
+            : "VENDOR_HOURS_SAVE_FAILED",
           message: update.error.message,
         });
       }
@@ -337,7 +365,7 @@ export async function POST(req: NextRequest) {
       return json(400, {
         ok: false,
         error: "INVALID_ACTION",
-        message: "Supported actions are save_hours, open_today, close_today, extend, and end_extension.",
+        message: "Supported actions are save_hours, save_hours_and_open_today, open_today, close_today, extend, and end_extension.",
       });
     }
 
