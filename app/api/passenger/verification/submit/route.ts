@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import {
+  normalizeVerificationLocation,
+  verificationNetworkLocation,
+} from "@/lib/passenger/verificationLocation";
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +23,17 @@ export async function POST(req: Request) {
 
     const idFile = form.get("id_front") as File | null;
     const selfieFile = form.get("selfie_with_id") as File | null;
+    const verificationLocation = normalizeVerificationLocation(
+      {
+        status: form.get("location_status"),
+        latitude: form.get("location_lat"),
+        longitude: form.get("location_lng"),
+        accuracy_m: form.get("location_accuracy_m"),
+        captured_at: form.get("location_captured_at"),
+      },
+      "client_geolocation"
+    );
+    const networkLocation = verificationNetworkLocation(req.headers);
 
     if (!full_name || !town || !idFile || !selfieFile) {
       return NextResponse.json(
@@ -29,6 +44,7 @@ export async function POST(req: Request) {
 
     const userId = user.id;
     const ts = Date.now();
+    const submittedAt = new Date(ts).toISOString();
 
     const idPath = `${userId}/${ts}_id.jpg`;
     const selfiePath = `${userId}/${ts}_selfie.jpg`;
@@ -62,7 +78,7 @@ export async function POST(req: Request) {
           id_front_path: idPath,
           selfie_with_id_path: selfiePath,
           status: "submitted",
-          submitted_at: new Date().toISOString(),
+          submitted_at: submittedAt,
         },
         { onConflict: "passenger_id" }
       )
@@ -73,7 +89,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ ok: true, row: data }, { status: 200 });
+    const locationInsert = await supabaseAdmin({ noStore: true })
+      .from("passenger_verification_submission_locations")
+      .insert({
+        passenger_id: userId,
+        request_submitted_at: submittedAt,
+        device_status: verificationLocation.status,
+        device_source: verificationLocation.source,
+        device_latitude: verificationLocation.latitude,
+        device_longitude: verificationLocation.longitude,
+        device_accuracy_m: verificationLocation.accuracy_m,
+        device_captured_at: verificationLocation.captured_at,
+        declared_town: town,
+        network_city: networkLocation.city,
+        network_region: networkLocation.region,
+        network_country: networkLocation.country,
+      });
+
+    if (locationInsert.error) {
+      console.error("[passenger_verification_location] legacy insert failed", locationInsert.error.message);
+    }
+
+    return NextResponse.json(
+      { ok: true, row: data, location_recorded: !locationInsert.error },
+      { status: 200 }
+    );
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: String(e?.message || e) },
