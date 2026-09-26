@@ -5,6 +5,7 @@ import FarmerPickupMap, {
   type FarmerPickupPin,
 } from "@/components/agrimarket/FarmerPickupMap";
 import { farmerSessionHeaders } from "@/lib/agrimarket/farmerSessionClient";
+import { AGRIMARKET_ACTIVE_TOWNS } from "@/lib/agrimarket/farmer-towns";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,6 +22,7 @@ type Profile = {
   contact_name: string;
   contact_phone: string;
   town: string;
+  town_editable: boolean;
   barangay: string;
   vendor_name: string;
   vendor_name_locked: boolean;
@@ -40,6 +42,7 @@ type Profile = {
 const blank = {
   contact_name: "",
   contact_phone: "",
+  town: "",
   barangay: "",
   vendor_name: "",
   pickup_motorcycle_accessible: false,
@@ -116,6 +119,7 @@ export default function AgrimarketProducerProfilePage() {
       setForm({
         contact_name: next.contact_name || "",
         contact_phone: next.contact_phone || "",
+        town: next.town || "",
         barangay: next.barangay || "",
         vendor_name: next.vendor_name || "",
         pickup_motorcycle_accessible: next.pickup_motorcycle_accessible === true,
@@ -200,6 +204,20 @@ export default function AgrimarketProducerProfilePage() {
     }
   }
 
+  const saveRequirement = !profile || !editing
+    ? ""
+    : pickup.resolving
+      ? "Wait while JRide verifies the pickup municipality."
+      : pickup.lat == null || pickup.lng == null || !pickup.launch_eligible
+        ? "Place and verify the actual pickup point on the map."
+        : pickup.resolved_town !== form.town
+          ? `The pickup pin must be inside ${form.town}.`
+          : !form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible
+            ? "Choose at least one vehicle that can reach the pickup point."
+            : form.pickup_driver_directions.trim().length < 5
+              ? "Add a clear driver landmark or direction."
+              : "";
+
   if (disabled) return <FarmerUnavailable section="profile" />;
 
   if (!sessionCode) {
@@ -239,6 +257,14 @@ export default function AgrimarketProducerProfilePage() {
             </p>
           </div>
         </div>
+
+        {profile && !profile.profile_complete && (
+          <div className={styles.setupProgress} aria-label="Farm setup steps">
+            <span><strong>1</strong> Farmer details</span>
+            <span><strong>2</strong> Pickup point</span>
+            <span><strong>3</strong> Driver access</span>
+          </div>
+        )}
 
         {profile && (
           <div className={profile.profile_complete ? "rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900" : "rounded-xl bg-amber-50 p-3 text-sm text-amber-950"}>
@@ -315,11 +341,31 @@ export default function AgrimarketProducerProfilePage() {
                 </label>
                 <label className="text-sm font-semibold">
                   Municipality
-                  <input
-                    readOnly
-                    value={profile.town}
-                    className="mt-1 w-full rounded-xl border bg-slate-50 px-3 py-3"
-                  />
+                  {profile.town_editable ? (
+                    <>
+                      <select
+                        required
+                        value={form.town}
+                        onChange={(event) => {
+                          setForm({ ...form, town: event.target.value, barangay: "" });
+                          setPickup(emptyFarmerPin());
+                        }}
+                        className="mt-1 w-full rounded-xl border px-3 py-3"
+                      >
+                        {AGRIMARKET_ACTIVE_TOWNS.map((town) => <option key={town} value={town}>{town}</option>)}
+                      </select>
+                      <span className={styles.fieldHint}>Choose the municipality of the actual pickup point.</span>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        readOnly
+                        value={profile.town}
+                        className="mt-1 w-full rounded-xl border bg-slate-50 px-3 py-3"
+                      />
+                      <span className={styles.fieldHint}>Municipality is locked after setup. Contact JRide for a correction.</span>
+                    </>
+                  )}
                 </label>
                 <label className="text-sm font-semibold">
                   Barangay
@@ -345,8 +391,8 @@ export default function AgrimarketProducerProfilePage() {
                   />
                   <span className="mt-2 block rounded-lg bg-amber-50 p-3 text-sm font-normal text-amber-950">
                     {profile.vendor_name_locked
-                      ? "This confirmed farm/store name is locked. Contact JRide for a correction."
-                      : "Choose your farm/store name carefully. This is the name customers will see. Check the spelling: once saved, you cannot change this name in the app."}
+                      ? "This confirmed name is locked. Contact JRide for a correction."
+                      : "Choose carefully. After you confirm this name, only JRide can correct it."}
                   </span>
                 </label>
               </div>
@@ -354,7 +400,7 @@ export default function AgrimarketProducerProfilePage() {
 
             <fieldset className={styles.formSection}>
               <legend><span>02</span> Actual pickup point</legend>
-              <FarmerPickupMap selectedTown={profile.town} value={pickup} onChange={setPickup} farmerCode={sessionCode} />
+              <FarmerPickupMap selectedTown={form.town} value={pickup} onChange={setPickup} farmerCode={sessionCode} />
             </fieldset>
 
             <fieldset className={styles.formSection}>
@@ -412,14 +458,16 @@ export default function AgrimarketProducerProfilePage() {
               )}
             </div>
 
-            {profile.profile_complete && <button type="button" disabled={saving} className={styles.secondaryButton} onClick={() => void loadProfile()}>Cancel editing</button>}
+            {saveRequirement && <p className={styles.setupRequirement} role="status">{saveRequirement}</p>}
+            <div className={styles.formActions}>
+              {profile.profile_complete && <button type="button" disabled={saving} className={styles.secondaryButton} onClick={() => void loadProfile()}>Cancel editing</button>}
             <button
               type="submit"
               disabled={
                 saving || loading ||
                 pickup.resolving ||
                 !pickup.launch_eligible ||
-                pickup.resolved_town !== profile.town ||
+                pickup.resolved_town !== form.town ||
                 (!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible) ||
                 form.pickup_driver_directions.trim().length < 5
               }
@@ -427,6 +475,7 @@ export default function AgrimarketProducerProfilePage() {
             >
               {saving ? "Saving farm profile..." : "Save farm profile"}
             </button>
+            </div>
           </form>
         )}
 
