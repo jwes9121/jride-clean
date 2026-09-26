@@ -349,6 +349,8 @@ function booking(subtotal) {
   assert.match(splitCashMigration, /takeout_company_revenue/);
   assert.match(splitCashMigration, /takeout_driver_delivery_earnings/);
   assert.match(splitCashMigration, /v_cash_required := v_items > 500/);
+  assert.match(splitCashMigration, /greatest\(coalesce\(new\.pickup_distance_fee, 0\), 0\)/);
+  assert.match(splitCashMigration, /takeout_pickup_excess_fee/);
   assert.match(splitCashMigration, /v_commission := case when v_delivery >= 50 then 5 else 0 end/);
   assert.match(splitCashMigration, /v_company := round\(v_service \+ v_commission, 2\)/);
   assert.match(splitCashMigration, /v_driver_earnings := greatest\(round\(v_delivery \+ v_pickup - v_commission, 2\), 0\)/);
