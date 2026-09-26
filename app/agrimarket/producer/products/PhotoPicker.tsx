@@ -26,7 +26,7 @@ export async function preparePhoto(file: File): Promise<File> {
 
   let bitmap: ImageBitmap | null = null;
   let objectUrl = "";
-  let source: CanvasImageSource;
+  let source: CanvasImageSource | null = null;
   let sourceWidth = 0;
   let sourceHeight = 0;
 
@@ -53,6 +53,7 @@ export async function preparePhoto(file: File): Promise<File> {
     }
 
     if (
+      !source ||
       !sourceWidth ||
       !sourceHeight ||
       !Number.isFinite(sourceWidth) ||
