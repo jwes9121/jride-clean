@@ -341,6 +341,8 @@ function booking(subtotal) {
   assert.match(status, /handleTakeoutPickupDistanceException/);
   assert.match(status, /TAKEOUT_PICKUP_DISTANCE_EXCEPTION/);
   assert.match(status, /takeout_split_cash_v2/);
+  assert.match(status, /strictCashSplitClient &&\n\s*expectedFinal != null/);
+  assert.doesNotMatch(status, /\(strictCashSplitClient \|\| cashCollectedAmount != null\)/);
   assert.match(status, /TAKEOUT_CASH_FIRST_AMOUNT_MISMATCH/);
   assert.match(status, /TAKEOUT_FINAL_PAYMENT_AMOUNT_MISMATCH/);
   assert.match(status, /takeout_cash_first_collected_amount/);
