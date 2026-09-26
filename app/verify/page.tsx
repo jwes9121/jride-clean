@@ -19,6 +19,15 @@ type VerifyRequest = {
   selfie_with_id_path?: string | null;
 };
 
+type VerificationLocationCapture = {
+  status: "captured" | "denied" | "unavailable" | "timeout" | "error";
+  source: "browser_geolocation";
+  latitude: number | null;
+  longitude: number | null;
+  accuracy_m: number | null;
+  captured_at: string | null;
+};
+
 function s(v: any) {
   return String(v ?? "");
 }
@@ -40,6 +49,46 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   } finally {
     clearTimeout(id);
   }
+}
+
+async function captureVerificationLocation(): Promise<VerificationLocationCapture> {
+  const unavailable: VerificationLocationCapture = {
+    status: "unavailable",
+    source: "browser_geolocation",
+    latitude: null,
+    longitude: null,
+    accuracy_m: null,
+    captured_at: null,
+  };
+
+  if (typeof navigator === "undefined" || !navigator.geolocation) return unavailable;
+
+  return await new Promise<VerificationLocationCapture>((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          status: "captured",
+          source: "browser_geolocation",
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy_m: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+          captured_at: new Date(position.timestamp || Date.now()).toISOString(),
+        });
+      },
+      (geoError) => {
+        const status: VerificationLocationCapture["status"] =
+          geoError.code === 1
+            ? "denied"
+            : geoError.code === 2
+              ? "unavailable"
+              : geoError.code === 3
+                ? "timeout"
+                : "error";
+        resolve({ ...unavailable, status });
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+    );
+  });
 }
 
 async function shrinkImageFile(file: File, maxWidth = 1400, maxHeight = 1400, quality = 0.72): Promise<File> {
@@ -179,6 +228,9 @@ export default function VerifyPage() {
       const shrunkIdFront = await shrinkImageFile(idFrontFile, 1400, 1400, 0.72);
       const shrunkSelfie = await shrinkImageFile(selfieFile, 1400, 1400, 0.72);
 
+      setMessage("Capturing your location at verification submission...");
+      const submissionLocation = await captureVerificationLocation();
+
       setMessage(
         `Uploading compressed files: ID ${Math.round(shrunkIdFront.size / 1024)} KB, Selfie ${Math.round(shrunkSelfie.size / 1024)} KB...`
       );
@@ -188,6 +240,12 @@ export default function VerifyPage() {
       fd.append("town", town.trim());
       fd.append("id_front", shrunkIdFront);
       fd.append("selfie_with_id", shrunkSelfie);
+      fd.append("location_status", submissionLocation.status);
+      fd.append("location_source", submissionLocation.source);
+      if (submissionLocation.latitude !== null) fd.append("location_lat", String(submissionLocation.latitude));
+      if (submissionLocation.longitude !== null) fd.append("location_lng", String(submissionLocation.longitude));
+      if (submissionLocation.accuracy_m !== null) fd.append("location_accuracy_m", String(submissionLocation.accuracy_m));
+      if (submissionLocation.captured_at) fd.append("location_captured_at", submissionLocation.captured_at);
 
       const res = await fetchWithTimeout(
         "/api/public/passenger/verification/request",
@@ -281,6 +339,14 @@ export default function VerifyPage() {
       ) : null}
 
       <form onSubmit={onSubmit} className="rounded border bg-white p-4">
+        <div className="mb-4 rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          <div className="font-semibold">Verification location</div>
+          <div className="mt-1">
+            When you submit, JRide will ask for your device location and record the result with this verification request for identity and fraud review.
+            If location access is denied or unavailable, that result is recorded instead and does not block submission.
+          </div>
+        </div>
+
         <div className="mb-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <div className="font-semibold">Name format</div>
           <div className="mt-1">{PASSENGER_VERIFICATION_NAME_GUIDANCE}</div>
