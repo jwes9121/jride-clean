@@ -22,13 +22,19 @@ export async function GET() {
     if (sub.error || pad.error || rejected.error) {
       return json(503, { ok: false, error: "Verification queue is unavailable. Please retry." });
     }
+
     const canViewLocation = access.staff.role === "admin";
+    const approvedRes = canViewLocation
+      ? await admin.from("passenger_verification_requests")
+          .select(columns).eq("status", "approved")
+          .order("reviewed_at", { ascending: false }).limit(50)
+      : { data: [], error: null };
     const locationByPassenger = new Map<string, any>();
     let location_error: string | null = null;
 
     if (canViewLocation) {
       const ids = Array.from(new Set(
-        [...(sub.data || []), ...(pad.data || [])]
+        [...(sub.data || []), ...(pad.data || []), ...(approvedRes.data || [])]
           .map((row: any) => String(row.passenger_id || ""))
           .filter(Boolean)
       ));
@@ -65,10 +71,16 @@ export async function GET() {
     const submitted = safeRows(sub.data, true);
     const pending_admin = safeRows(pad.data, true);
     const declined = safeRows(rejected.data, false);
+    const approved = safeRows(approvedRes.data, true);
     return json(200, {
       ok: true,
-      counts: { submitted: submitted.length, pending_admin: pending_admin.length, declined: declined.length },
-      rows: { submitted, pending_admin, declined },
+      counts: {
+        submitted: submitted.length,
+        pending_admin: pending_admin.length,
+        declined: declined.length,
+        approved_recent: approved.length,
+      },
+      rows: { submitted, pending_admin, declined, approved },
       verification_location_error: location_error,
       auth_debug: { requester_email: access.staff.email, is_admin: access.staff.role === "admin", is_dispatcher: access.staff.role === "dispatcher" },
     });
