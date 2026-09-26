@@ -26,7 +26,7 @@ export function FarmerWorkspace({ section, children, onRefresh, onSignOut, onRev
             <span className={styles.brandMark}><Sprout size={25} strokeWidth={1.7} /></span>
             <span>AgriMarket<small>YOUR FARMER SPACE</small></span>
           </Link>
-          <Link href="/passenger" className={styles.homeLink}><ArrowLeft size={15} /> Home</Link>
+          <Link href="/agrimarket/producer" className={styles.homeLink}><ArrowLeft size={15} /> Home</Link>
         </div>
       </header>
       <main className={styles.main}>
