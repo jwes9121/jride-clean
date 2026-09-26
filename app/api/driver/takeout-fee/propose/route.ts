@@ -630,9 +630,12 @@ export async function POST(req: NextRequest) {
       return json(409, {
         ok: false,
         error: "TAKEOUT_PICKUP_DISTANCE_EXCEPTION",
-        message: exceptionResult.reassigned
-          ? "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. JRide released this assignment and is checking another eligible driver."
-          : "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. This order was released for JRide dispatch review.",
+        message: !exceptionResult.released
+          ? "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. JRide could not safely release this assignment automatically. Do not proceed; JRide Operations review is required."
+          : exceptionResult.reassigned
+            ? "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. JRide released this assignment and is checking another eligible driver."
+            : "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. This order was released for JRide dispatch review.",
+        release_error: exceptionResult.error,
         pickup_distance_km: exceptionResult.actualDistanceKm,
         normal_pickup_fee_cap: exceptionResult.cappedPickupFee,
         assignment_released: exceptionResult.released,
