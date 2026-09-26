@@ -4,6 +4,7 @@ import {
   evaluateTakeoutAutomaticDeliveryFare,
   TAKEOUT_AUTOMATIC_DELIVERY_FARE_VERSION,
 } from "@/lib/takeoutAutomaticDeliveryFare";
+import { handleTakeoutPickupDistanceException } from "@/lib/takeoutPickupDistanceException";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,6 +45,13 @@ function normStatus(value: any) {
   if (s === "pickedup") return "picked_up";
   if (s === "canceled") return "cancelled";
   return s;
+}
+
+function money(value: any): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 100) / 100;
 }
 
 // JRIDE_TAKEOUT_CANONICAL_COMPLETION_PATH_V2
@@ -126,6 +134,18 @@ export async function POST(req: NextRequest) {
   const orderId = String(body?.order_id || body?.orderId || body?.booking_id || body?.bookingId || body?.id || "").trim();
   const bookingCode = String(body?.booking_code || body?.bookingCode || body?.code || "").trim();
   const nextStatus = normStatus(body?.status || body?.vendor_status || body?.vendorStatus);
+  const cashCollectedAmount = money(
+    body?.cash_collected_amount ??
+      body?.collected_amount ??
+      body?.cashCollectedAmount
+  );
+  const cashCollectionClientVersion = String(
+    body?.takeout_cash_collection_client_version ??
+      body?.cash_collection_client_version ??
+      ""
+  ).trim();
+  const strictCashSplitClient =
+    cashCollectionClientVersion === "takeout_split_cash_v2";
 
   if (!driverId) return json(400, { ok: false, error: "driver_id_required" });
   if (!orderId && !bookingCode) return json(400, { ok: false, error: "order_id_or_booking_code_required" });
@@ -133,7 +153,7 @@ export async function POST(req: NextRequest) {
 
   let q = admin
     .from("bookings")
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,notes")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,created_by_user_id,vendor_id,town,pickup_lat,pickup_lng,dropoff_lat,dropoff_lng,takeout_items_subtotal,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_pricing_status,takeout_pricing_snapshot,takeout_cash_collection_required,takeout_route_plan,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_cash_first_collected_amount,takeout_cash_first_collected_at,takeout_final_collected_amount,takeout_final_collected_at,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_fee_proposed_at,takeout_fee_expires_at,takeout_customer_confirmed_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,last_expired_driver_id,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,notes")
     .eq("service_type", "takeout")
     .eq("assigned_driver_id", driverId)
     .limit(1);
@@ -146,6 +166,48 @@ export async function POST(req: NextRequest) {
   }
   if (!existing.data) {
     return json(404, { ok: false, error: "TAKEOUT_ORDER_NOT_FOUND" });
+  }
+
+  if (nextStatus === "cash_collected") {
+    const expectedCashFirst = money(
+      (existing.data as any).takeout_cash_first_amount
+    );
+    if (
+      strictCashSplitClient &&
+      expectedCashFirst != null &&
+      expectedCashFirst > 0 &&
+      (cashCollectedAmount == null ||
+        Math.abs(cashCollectedAmount - expectedCashFirst) >= 0.01)
+    ) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_CASH_FIRST_AMOUNT_MISMATCH",
+        message:
+          "Collect exactly the vendor purchase amount shown by JRide before continuing.",
+        expected_amount: expectedCashFirst,
+      });
+    }
+  }
+
+  if (nextStatus === "completed") {
+    const expectedFinal = money(
+      (existing.data as any).takeout_pay_on_delivery_amount
+    );
+    if (
+      (strictCashSplitClient || cashCollectedAmount != null) &&
+      expectedFinal != null &&
+      expectedFinal > 0 &&
+      (cashCollectedAmount == null ||
+        Math.abs(cashCollectedAmount - expectedFinal) >= 0.01)
+    ) {
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_FINAL_PAYMENT_AMOUNT_MISMATCH",
+        message:
+          "Confirm the exact Pay on final delivery amount shown by JRide before completing.",
+        expected_amount: expectedFinal,
+      });
+    }
   }
 
   const current = normStatus((existing.data as any).vendor_status || "requested");
@@ -346,6 +408,40 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (
+      automaticTakeoutFare?.outcome === "automatic" &&
+      automaticTakeoutFare?.pickupBreakdown
+        ?.pickup_distance_exception_required === true
+    ) {
+      const exceptionResult =
+        await handleTakeoutPickupDistanceException({
+          req,
+          serviceSupabase: admin,
+          order: existing.data,
+          driverId,
+          pricingSnapshot: automaticTakeoutFare.snapshot,
+          actualDistanceKm:
+            automaticTakeoutFare.pickupBreakdown.pickup_distance_km,
+          cappedPickupFee:
+            automaticTakeoutFare.pickupBreakdown.pickup_excess_fee,
+          source: "automatic",
+        });
+
+      return json(409, {
+        ok: false,
+        error: "TAKEOUT_PICKUP_DISTANCE_EXCEPTION",
+        message: exceptionResult.reassigned
+          ? "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. JRide released this assignment and is checking another eligible driver."
+          : "Pickup is outside JRide's normal 10 km approach range. Do not collect customer cash. This order was released for JRide dispatch review.",
+        pickup_distance_km: exceptionResult.actualDistanceKm,
+        normal_pickup_fee_cap: exceptionResult.cappedPickupFee,
+        assignment_released: exceptionResult.released,
+        reassigned: exceptionResult.reassigned,
+        dispatch_review_required:
+          exceptionResult.dispatchReviewRequired,
+      });
+    }
+
     if (automaticTakeoutFare?.outcome === "automatic") {
       const automaticResult = await admin.rpc(
         "confirm_takeout_automatic_short_trip_v1",
@@ -400,6 +496,11 @@ export async function POST(req: NextRequest) {
   }
 
   const statusNowIso = new Date().toISOString();
+  const existingPricingSnapshot =
+    (existing.data as any).takeout_pricing_snapshot &&
+    typeof (existing.data as any).takeout_pricing_snapshot === "object"
+      ? (existing.data as any).takeout_pricing_snapshot
+      : {};
   const patch: any = {
     vendor_status: nextStatus,
     customer_status: nextStatus,
@@ -407,6 +508,46 @@ export async function POST(req: NextRequest) {
     // JRIDE_TAKEOUT_WORKFLOW_FRESHNESS_V2
     updated_at: statusNowIso,
   };
+
+  if (nextStatus === "cash_collected" && cashCollectedAmount != null) {
+    patch.takeout_cash_first_collected_amount = cashCollectedAmount;
+    patch.takeout_cash_first_collected_at = statusNowIso;
+    const expectedCashFirstAudit = money(
+      (existing.data as any).takeout_cash_first_amount
+    );
+    patch.takeout_pricing_snapshot = {
+      ...existingPricingSnapshot,
+      takeout_cash_first_collected_amount: cashCollectedAmount,
+      takeout_cash_first_collected_at: statusNowIso,
+      takeout_cash_first_expected_amount: expectedCashFirstAudit,
+      takeout_cash_first_amount_match:
+        expectedCashFirstAudit == null
+          ? null
+          : Math.abs(cashCollectedAmount - expectedCashFirstAudit) < 0.01,
+      takeout_cash_first_collection_client_version:
+        cashCollectionClientVersion || null,
+    };
+  }
+
+  if (nextStatus === "completed" && cashCollectedAmount != null) {
+    patch.takeout_final_collected_amount = cashCollectedAmount;
+    patch.takeout_final_collected_at = statusNowIso;
+    const expectedFinalAudit = money(
+      (existing.data as any).takeout_pay_on_delivery_amount
+    );
+    patch.takeout_pricing_snapshot = {
+      ...(patch.takeout_pricing_snapshot || existingPricingSnapshot),
+      takeout_final_collected_amount: cashCollectedAmount,
+      takeout_final_collected_at: statusNowIso,
+      takeout_final_expected_amount: expectedFinalAudit,
+      takeout_final_amount_match:
+        expectedFinalAudit == null
+          ? null
+          : Math.abs(cashCollectedAmount - expectedFinalAudit) < 0.01,
+      takeout_final_collection_client_version:
+        cashCollectionClientVersion || null,
+    };
+  }
 
   if (nextStatus === "rider_arrived_vendor") {
     patch.vendor_driver_arrived_at =
@@ -495,7 +636,7 @@ export async function POST(req: NextRequest) {
       .is("takeout_delivery_fee", null);
   }
   const up = await updateQuery
-    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,updated_at")
+    .select("id,booking_code,service_type,status,vendor_status,customer_status,driver_status,assigned_driver_id,driver_id,takeout_total_payable,takeout_delivery_fee,takeout_service_fee,takeout_product_purchase_amount,takeout_cash_first_amount,takeout_pay_on_delivery_amount,takeout_cash_first_collected_amount,takeout_cash_first_collected_at,takeout_final_collected_amount,takeout_final_collected_at,takeout_driver_commission,takeout_company_revenue,takeout_driver_delivery_earnings,company_cut,driver_payout,pickup_distance_fee,takeout_pricing_status,takeout_fee_proposed_at,takeout_fee_expires_at,driver_accept_expires_at,takeout_driver_accept_expires_at,takeout_fee_proposal_expires_at,driver_fee_proposal_expires_at,vendor_driver_arrived_at,vendor_order_picked_at,completed_at,updated_at")
     .maybeSingle();
 
   if (up.error) {

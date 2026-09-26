@@ -146,7 +146,7 @@ export async function GET(req: NextRequest) {
 
   const ordersRes = await admin
     .from("bookings")
-    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_fee_proposal_expires_at,takeout_fee_proposed_at,takeout_delivery_fee,takeout_customer_confirmed_at,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at")
+    .select("id,booking_code,vendor_id,vendor_status,customer_status,status,service_type,passenger_name,to_label,takeout_items_subtotal,assigned_driver_id,created_at,updated_at,town,driver_fee_proposal_expires_at,takeout_fee_proposed_at,takeout_delivery_fee,takeout_customer_confirmed_at,takeout_pricing_snapshot,takeout_auto_dispatch_exhausted,takeout_auto_dispatch_exhausted_at")
     .eq("service_type", "takeout")
     .order("created_at", { ascending: false })
     .limit(500);
@@ -275,6 +275,31 @@ export async function GET(req: NextRequest) {
     const proposalStuck = isExpiredProposalStuck(r);
     const subtotal = Number(r.takeout_items_subtotal || 0);
     const assignedDriverId = String(r.assigned_driver_id || "").trim() || null;
+    const pricingSnapshot =
+      r?.takeout_pricing_snapshot &&
+      typeof r.takeout_pricing_snapshot === "object"
+        ? r.takeout_pricing_snapshot
+        : {};
+    const pickupDistanceKmRaw =
+      pricingSnapshot?.takeout_pickup_distance_km ??
+      pricingSnapshot?.takeout_pickup_distance_km_road ??
+      pricingSnapshot?.pickup_distance_km_road ??
+      null;
+    const pickupDistanceKm =
+      pickupDistanceKmRaw == null || pickupDistanceKmRaw === ""
+        ? null
+        : Number(pickupDistanceKmRaw);
+    const pickupFeeRaw =
+      pricingSnapshot?.takeout_pickup_excess_fee ??
+      pricingSnapshot?.pickup_distance_fee ??
+      null;
+    const pickupFee =
+      pickupFeeRaw == null || pickupFeeRaw === ""
+        ? null
+        : Number(pickupFeeRaw);
+    const pickupException =
+      pricingSnapshot?.takeout_pickup_distance_exception_required === true ||
+      pricingSnapshot?.takeout_pickup_distance_exception_status != null;
 
     return {
       id: r.id || null,
@@ -303,7 +328,14 @@ export async function GET(req: NextRequest) {
         r.takeout_auto_dispatch_exhausted === true,
       takeout_auto_dispatch_exhausted_at:
         r.takeout_auto_dispatch_exhausted_at || null,
-      priority: proposalStuck ? 1 : op.priority,
+      pickup_distance_exception_required: pickupException,
+      pickup_distance_exception_status:
+        pricingSnapshot?.takeout_pickup_distance_exception_status || null,
+      pickup_distance_km:
+        Number.isFinite(pickupDistanceKm) ? pickupDistanceKm : null,
+      pickup_distance_fee:
+        Number.isFinite(pickupFee) ? pickupFee : null,
+      priority: pickupException ? 0 : proposalStuck ? 1 : op.priority,
     };
   });
 

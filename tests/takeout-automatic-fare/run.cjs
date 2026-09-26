@@ -303,6 +303,8 @@ function booking(subtotal) {
   assert.match(proposal, /CUSTOMER_CASH_PICKUP_FIRST_TIER_MAX_FEE = 200/);
   assert.match(proposal, /CUSTOMER_CASH_PICKUP_SECOND_TIER_MAX_FEE = 70/);
   assert.match(proposal, /pickup_distance_exception_required/);
+  assert.match(proposal, /handleTakeoutPickupDistanceException/);
+  assert.match(proposal, /TAKEOUT_PICKUP_DISTANCE_EXCEPTION/);
   assert.match(proposal, /const cashRequired = computedSubtotal > 500;/);
   assert.doesNotMatch(proposal, /computedSubtotal >= 500/);
   assert.match(proposal, /const passengerLat = num\(order\.dropoff_lat\);/);
@@ -336,6 +338,13 @@ function booking(subtotal) {
   assert.match(status, /confirm_takeout_automatic_short_trip_v1/);
   assert.match(status, /automaticTakeoutFare\?\.outcome === "automatic"/);
   assert.match(status, /TAKEOUT_AUTOMATIC_FARE_UNAVAILABLE/);
+  assert.match(status, /handleTakeoutPickupDistanceException/);
+  assert.match(status, /TAKEOUT_PICKUP_DISTANCE_EXCEPTION/);
+  assert.match(status, /takeout_split_cash_v2/);
+  assert.match(status, /TAKEOUT_CASH_FIRST_AMOUNT_MISMATCH/);
+  assert.match(status, /TAKEOUT_FINAL_PAYMENT_AMOUNT_MISMATCH/);
+  assert.match(status, /takeout_cash_first_collected_amount/);
+  assert.match(status, /takeout_final_collected_amount/);
 
   const vendorOrdersRoute = fs.readFileSync(
     path.join(root, "app/api/vendor-orders/route.ts"),
@@ -404,6 +413,34 @@ function booking(subtotal) {
   assert.match(splitCashMigration, /v_commission := case when v_delivery >= 50 then 5 else 0 end/);
   assert.match(splitCashMigration, /v_company := round\(v_service \+ v_commission, 2\)/);
   assert.match(splitCashMigration, /v_driver_earnings := greatest\(round\(v_delivery \+ v_pickup - v_commission, 2\), 0\)/);
+
+  const cashAuditMigration = fs.readFileSync(
+    path.join(
+      root,
+      "supabase/migrations/20260927184500_takeout_cash_collection_audit_v1.sql"
+    ),
+    "utf8"
+  );
+  assert.match(cashAuditMigration, /takeout_cash_first_collected_amount/);
+  assert.match(cashAuditMigration, /takeout_cash_first_collected_at/);
+  assert.match(cashAuditMigration, /takeout_final_collected_amount/);
+  assert.match(cashAuditMigration, /takeout_final_collected_at/);
+
+  const pickupExceptionHelper = fs.readFileSync(
+    path.join(root, "lib/takeoutPickupDistanceException.ts"),
+    "utf8"
+  );
+  assert.match(pickupExceptionHelper, /pickup_distance_over_10km/);
+  assert.match(pickupExceptionHelper, /triggerTakeoutFeeProposalReassign/);
+  assert.match(pickupExceptionHelper, /openTakeoutDriverUnavailableOperationsCase/);
+  assert.match(pickupExceptionHelper, /takeout_pickup_distance_exception_status/);
+
+  const takeoutDispatch = fs.readFileSync(
+    path.join(root, "app/api/admin/takeout-dispatch/route.ts"),
+    "utf8"
+  );
+  assert.match(takeoutDispatch, /pickup_distance_exception_required/);
+  assert.match(takeoutDispatch, /pickup_distance_exception_status/);
   assert.match(splitCashMigration, /wallet_settlement_status = 'settled'/);
 
   const takeoutPage = fs.readFileSync(
