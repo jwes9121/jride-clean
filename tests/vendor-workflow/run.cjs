@@ -112,6 +112,19 @@ function harness(db, globals={}) {
 }
 
 async function routes() {
+  await test('after-hours vendor controls can edit hours and reopen today without touching order flow',async()=>{
+    const gate=fs.readFileSync(path.join(root,'app/components/VendorHoursGate.tsx'),'utf8');
+    const hoursApi=fs.readFileSync(path.join(root,'app/api/vendor-hours/route.ts'),'utf8');
+    assert(gate.includes('Edit hours & reopen'));
+    assert(gate.includes('SAVE HOURS & REOPEN TODAY'));
+    assert(gate.includes('save_hours_and_open_today'));
+    assert(gate.includes("Today's closing time has passed"));
+    assert(hoursApi.includes('save_hours_and_open_today'));
+    assert(hoursApi.includes('OUTSIDE_UPDATED_VENDOR_HOURS'));
+    assert(hoursApi.includes('accepting_orders: reopenToday'));
+    assert(hoursApi.includes('daily_open_date: reopenToday ? manilaDateKey(now) : null'));
+    assert(hoursApi.includes('daily_opened_at: reopenToday ? now.toISOString() : null'));
+  });
   await test('missing, invalid, expired, and wrong-vendor sessions cannot read or mutate orders',async()=>{
     for(const token of ['', 'invalid']) for(const method of ['GET','POST']) { const db=database([booking()]),h=harness(db),api=h.load('app/api/vendor-orders/route.ts'); const result=await api[method](h.request({vendor_id:vendor,order_id:'order-1',vendor_status:'vendor_accepted'},{token}));assert.equal(result.status,401);assert.equal(db.writes.length,0);assert(!db.reads.includes('bookings')); }
     const db=database([booking()]),h=harness(db),api=h.load('app/api/vendor-orders/route.ts');
