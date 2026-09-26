@@ -42,6 +42,15 @@ const TAKEOUT_ORDER_SELECT = [
   "takeout_delivery_fee",
   "takeout_service_fee",
   "takeout_total_payable",
+  "takeout_product_purchase_amount",
+  "takeout_cash_first_amount",
+  "takeout_pay_on_delivery_amount",
+  "takeout_driver_commission",
+  "takeout_company_revenue",
+  "takeout_driver_delivery_earnings",
+  "company_cut",
+  "driver_payout",
+  "pickup_distance_fee",
   "takeout_cash_collection_required",
   "takeout_fee_proposed_by_driver_id",
   "takeout_fee_proposed_at",
@@ -165,6 +174,8 @@ function exposePickupBreakdown(row: any): any {
     pickup_distance_source: pickupSource,
     pickup_first_tier_km: pickupFirstTierKm,
     pickup_second_tier_km: pickupSecondTierKm,
+    cash_collection_amount: firstValue(row?.takeout_cash_first_amount, snap.takeout_cash_first_amount),
+    pay_on_delivery_amount: firstValue(row?.takeout_pay_on_delivery_amount, snap.takeout_pay_on_delivery_amount),
   };
 }
 
