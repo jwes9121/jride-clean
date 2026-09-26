@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from "crypto";
 import { NextRequest } from "next/server";
 import { reverseGeocodeFarmerPin } from "../../_lib/admin-farmer-location";
 import { AGRIMARKET_ACTIVE_TOWNS, canonicalAgrimarketBarangay } from "@/lib/agrimarket/farmer-towns";
+import { driverDirectionsError } from "@/lib/agrimarket/farmer-profile-validation";
 import {
   createServiceSupabase,
   jsonNoStore,
@@ -386,6 +387,43 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      if (ready) {
+        const readinessProfile = await admin
+          .from("agrimarket_producers")
+          .select("contact_name,vendor_name,town,barangay,pickup_driver_directions")
+          .eq("id", producerId)
+          .limit(1)
+          .maybeSingle();
+        if (readinessProfile.error) {
+          return jsonNoStore(503, {
+            ok: false,
+            error: "AGRIMARKET_FARMER_READINESS_PROFILE_UNAVAILABLE",
+            message: "JRide could not verify the farmer pickup directions. No readiness change was made.",
+          });
+        }
+        if (!readinessProfile.data) {
+          return jsonNoStore(404, {
+            ok: false,
+            error: "AGRIMARKET_PRODUCER_NOT_FOUND",
+            message: "Farmer account not found.",
+          });
+        }
+        const directionsError = driverDirectionsError({
+          directions: readinessProfile.data.pickup_driver_directions,
+          contactName: readinessProfile.data.contact_name,
+          vendorName: readinessProfile.data.vendor_name,
+          town: readinessProfile.data.town,
+          barangay: readinessProfile.data.barangay,
+        });
+        if (directionsError) {
+          return jsonNoStore(409, {
+            ok: false,
+            error: "AGRIMARKET_PICKUP_DIRECTIONS_INVALID",
+            message: `Correct the farmer pickup directions before approving readiness. ${directionsError}`,
+          });
+        }
+      }
+
       const readinessRes = await admin
         .rpc("agrimarket_admin_set_verified_farmer_readiness_v1", {
           p_producer_id: producerId,
@@ -445,8 +483,18 @@ export async function POST(req: NextRequest) {
       if (!pickupMotorcycleAccessible && !pickupTricycleAccessible) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_ACCESS_REQUIRED", message: "Confirm which vehicle can reach the actual handoff pin, including roadside pickups." });
       }
-      if (pickupDriverDirections.length < 5 || pickupDriverDirections.length > 1000) {
-        return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PICKUP_DIRECTIONS_REQUIRED", message: "Enter private driver directions between 5 and 1000 characters." });
+      const directionsError = driverDirectionsError({
+        directions: pickupDriverDirections,
+        contactName: farmerName,
+        town,
+        barangay,
+      });
+      if (directionsError) {
+        return jsonNoStore(400, {
+          ok: false,
+          error: "AGRIMARKET_PICKUP_DIRECTIONS_INVALID",
+          message: directionsError,
+        });
       }
       if (reason.length < 5 || reason.length > 500) {
         return jsonNoStore(400, { ok: false, error: "AGRIMARKET_PROFILE_CHANGE_REASON_REQUIRED", message: "Enter a 5 to 500 character reason for this audited correction." });
