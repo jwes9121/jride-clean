@@ -13,6 +13,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const ONLINE_LIKE = new Set(["online", "available", "idle", "waiting"]);
+const JRIDE_SERVICE_TOWNS = ["Lagawe", "Lamut", "Banaue", "Hingyon", "Kiangan"] as const;
 const ACTIVE_BOOKING_STATUSES = [
   "assigned",
   "accepted",
@@ -38,6 +39,95 @@ function json(body: any, status = 200) {
     status,
     headers: noStoreHeaders(),
   });
+}
+
+function canonicalServiceTown(value: unknown): string | null {
+  const raw = text(value)
+    .toLowerCase()
+    .replace(/^municipality\s+of\s+/, "")
+    .replace(/^city\s+of\s+/, "")
+    .trim();
+  if (!raw) return null;
+  return (
+    JRIDE_SERVICE_TOWNS.find((town) => town.toLowerCase() === raw) ?? null
+  );
+}
+
+function mapboxToken(): string {
+  return text(
+    process.env.MAPBOX_ACCESS_TOKEN ||
+      process.env.MAPBOX_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN ||
+      process.env.NEXT_PUBLIC_MAPBOX_TOKEN
+  );
+}
+
+async function resolveSavedHomeTown(
+  lat: number,
+  lng: number
+): Promise<
+  | { ok: true; town: string; rawPlace: string }
+  | { ok: false; error: string; message: string }
+> {
+  const token = mapboxToken();
+  if (!token) {
+    return {
+      ok: false,
+      error: "MAPBOX_TOKEN_MISSING",
+      message: "Saved Home town could not be verified.",
+    };
+  }
+
+  try {
+    const url =
+      "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+      encodeURIComponent(String(lng)) +
+      "," +
+      encodeURIComponent(String(lat)) +
+      ".json?types=place&limit=1&language=en&access_token=" +
+      encodeURIComponent(token);
+
+    const response = await fetch(url, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: "HOME_TOWN_LOOKUP_FAILED",
+        message: "Saved Home town verification failed.",
+      };
+    }
+
+    const payload: any = await response.json().catch(() => ({}));
+    const features = Array.isArray(payload?.features) ? payload.features : [];
+    const feature =
+      features.find(
+        (item: any) =>
+          Array.isArray(item?.place_type) &&
+          item.place_type.includes("place")
+      ) ||
+      features[0] ||
+      null;
+    const rawPlace = text(feature?.text) || text(feature?.place_name);
+    const town = canonicalServiceTown(rawPlace);
+
+    if (!town) {
+      return {
+        ok: false,
+        error: "HOME_OUTSIDE_SERVICE_TOWN",
+        message: "Saved Home is outside a supported JRide service town.",
+      };
+    }
+
+    return { ok: true, town, rawPlace };
+  } catch (error: any) {
+    return {
+      ok: false,
+      error: "HOME_TOWN_LOOKUP_FAILED",
+      message: text(error?.message) || "Saved Home town verification failed.",
+    };
+  }
 }
 
 async function authenticatedDriver(req: NextRequest) {
@@ -291,13 +381,78 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const town = text(location.town || location.home_town);
-  if (!town) {
+  const driverTown = canonicalServiceTown(
+    location.home_town || location.town
+  );
+  if (!driverTown) {
     return json(
       {
         ok: false,
         error: "DRIVER_TOWN_MISSING",
         message: "Driver town is required before enabling Standby Location.",
+      },
+      409
+    );
+  }
+
+  const homeLat = Number(state.homeRes.data.home_lat);
+  const homeLng = Number(state.homeRes.data.home_lng);
+  if (
+    !Number.isFinite(homeLat) ||
+    !Number.isFinite(homeLng) ||
+    homeLat < -90 ||
+    homeLat > 90 ||
+    homeLng < -180 ||
+    homeLng > 180
+  ) {
+    return json(
+      {
+        ok: false,
+        error: "INVALID_SAVED_HOME",
+        message: "Saved Home coordinates are invalid.",
+      },
+      409
+    );
+  }
+
+  let verifiedHomeTown: string | null = null;
+  const previousStandby = state.standbyRes.data;
+  const previousLat = Number(previousStandby?.home_lat);
+  const previousLng = Number(previousStandby?.home_lng);
+  const previousTown = canonicalServiceTown(previousStandby?.town);
+  const samePreviouslyVerifiedHome =
+    Number.isFinite(previousLat) &&
+    Number.isFinite(previousLng) &&
+    Math.abs(previousLat - homeLat) < 0.0000001 &&
+    Math.abs(previousLng - homeLng) < 0.0000001 &&
+    previousTown === driverTown;
+
+  if (samePreviouslyVerifiedHome) {
+    verifiedHomeTown = previousTown;
+  } else {
+    const townLookup = await resolveSavedHomeTown(homeLat, homeLng);
+    if (!townLookup.ok) {
+      return json(
+        {
+          ok: false,
+          error: townLookup.error,
+          message: townLookup.message,
+        },
+        503
+      );
+    }
+    verifiedHomeTown = townLookup.town;
+  }
+
+  if (verifiedHomeTown !== driverTown) {
+    return json(
+      {
+        ok: false,
+        error: "HOME_LOCATION_TOWN_MISMATCH",
+        message:
+          "Saved Home must be inside your JRide service town before Standby Location can be used.",
+        driverTown,
+        homeTown: verifiedHomeTown,
       },
       409
     );
@@ -314,9 +469,9 @@ export async function PUT(req: NextRequest) {
     .upsert(
       {
         driver_id: auth.driverId,
-        home_lat: state.homeRes.data.home_lat,
-        home_lng: state.homeRes.data.home_lng,
-        town,
+        home_lat: homeLat,
+        home_lng: homeLng,
+        town: verifiedHomeTown,
         address_hint: state.homeRes.data.address_hint ?? null,
         confirmed_at: confirmedAt,
         expires_at: expiresAt,
