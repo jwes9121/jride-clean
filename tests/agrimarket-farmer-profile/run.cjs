@@ -222,8 +222,10 @@ async function run() {
   await test('profile passes account code and keeps municipality/access/directions save gates', () => {
     const page = read('app/agrimarket/producer/profile/page.tsx');
     assert(page.includes('farmerCode={sessionCode}'));
-    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== profile.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'form.pickup_driver_directions.trim().length < 5']) assert(page.includes(guard));
+    for (const guard of ['!pickup.launch_eligible', 'pickup.resolved_town !== form.town', '!form.pickup_motorcycle_accessible && !form.pickup_tricycle_accessible', 'form.pickup_driver_directions.trim().length < 5']) assert(page.includes(guard));
     assert(page.includes('Driver directions / landmark'));
+    assert(page.includes("AGRIMARKET_ACTIVE_TOWNS"));
+    assert(!read('lib/agrimarket/farmer-towns.ts').includes('Kiangan'));
   });
   await test('audit migration changes only compatible event labels and adds action detail', () => {
     const before = read('supabase/migrations/20260922012406_agrimarket_preassigned_farmer_profile_completion_v1.sql');
